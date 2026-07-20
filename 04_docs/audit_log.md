@@ -5,6 +5,18 @@
 
 ---
 
+## [2026-07-20] Bugfix — Settings stránka se načítala pomalu
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ⚠️ MEDIUM | `Promise.all([health, config, status])` blokoval zobrazení stránky dokud `/api/status` neověřil NAS (UNC cesta, Windows timeout až 3 s) — uživatel viděl spinner místo obsahu | `pages/Settings.tsx` | ✅ Opraveno |
+
+**Oprava:** health + config načteny okamžitě → `setLoading(false)` → stránka se zobrazí. `/api/status` se spustí na pozadí po zobrazení, NAS tečka se aktualizuje tiše.
+
+**128/128 testů prochází.**
+
+---
+
 ## [2026-07-20] Setup — Git + GitHub
 
 Projekt inicializován jako Git repozitář a pushnut na GitHub.
