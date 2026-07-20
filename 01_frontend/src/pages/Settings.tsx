@@ -238,21 +238,30 @@ export default function Settings() {
     abortRef.current = ctrl
     setLoading(true)
     try {
-      const [hRes, cRes, sRes] = await Promise.all([
+      // health + config jsou rychlé — stránka se zobrazí okamžitě
+      const [hRes, cRes] = await Promise.all([
         fetch('/api/health', { signal: ctrl.signal }),
         fetch('/api/config', { signal: ctrl.signal }),
-        fetch('/api/status', { signal: ctrl.signal }),
       ])
       if (ctrl.signal.aborted) return
-      const [h, c, s] = await Promise.all([hRes.json(), cRes.json(), sRes.json()])
+      const [h, c] = await Promise.all([hRes.json(), cRes.json()])
       setHealth(h as HealthData)
       setConfig(c as ConfigData)
-      setStatus(s as StatusData)
     } catch (e) {
       if (ctrl.signal.aborted) return
     } finally {
       if (!ctrl.signal.aborted) setLoading(false)
     }
+
+    // /api/status kontroluje NAS (UNC cesta, až 3 s) — načítáme na pozadí
+    // nezablokuje zobrazení stránky
+    if (abortRef.current?.signal.aborted) return
+    setStatusChecking(true)
+    fetch('/api/status', { signal: abortRef.current?.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: StatusData | null) => { if (data) setStatus(data) })
+      .catch(() => {})
+      .finally(() => setStatusChecking(false))
   }, [])
 
   useEffect(() => {
