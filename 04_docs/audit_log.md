@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-07-20] Setup — Git + GitHub
+
+Projekt inicializován jako Git repozitář a pushnut na GitHub.
+
+| # | Položka | Detail |
+|---|---------|--------|
+| 1 | Repozitář | [github.com/mds-plc/50-1182875_Trafag_ScadaViewer](https://github.com/mds-plc/50-1182875_Trafag_ScadaViewer) — private |
+| 2 | `.gitignore` | Přidáno: `Config.toml` (síťové údaje + hash hesla), `.claude/settings.local.json` (lokální oprávnění), `05_user_data/scada_example/` (vnořený repozitář) |
+| 3 | `Config.toml.example` | Nový soubor — vzorová konfigurace bez citlivých hodnot; základ pro onboarding |
+| 4 | Initial commit | 136 souborů, včetně testovacích dat `05_user_data/test_db_output/` |
+| 5 | Větev | `master` → trackuje `origin/master` |
+
+**128/128 testů prochází.**
+
+---
+
 ## [2026-07-20] Bugfix — normalizace cest + TOML escape bug
 
 ### Bug 1 — TOML `\t` = tabulátor (Config.toml `remote_path`)
