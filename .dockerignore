@@ -1,0 +1,37 @@
+# Ignorované soubory při docker build context
+# Menší context = rychlejší build (nevysílá zbytečné soubory do Docker daemonu)
+
+# Version control
+.git/
+.gitignore
+
+# Claude Code systémové soubory
+.claude/
+
+# Frontend — node_modules buildí Stage 1 znovu; dist buildí Stage 1 ze zdrojů
+01_frontend/node_modules/
+01_frontend/dist/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# Vývojové a testovací soubory (nejsou potřeba v produkčním image)
+02_tests/
+03_output/
+04_docs/
+05_user_data/
+06_build/
+
+# Lokální konfigurace (připojuje se za runtime jako bind-mount)
+Config.toml
+
+# Windows skripty
+dev.bat
+
+# Dokumentace
+*.md

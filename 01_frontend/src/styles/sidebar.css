@@ -1,0 +1,153 @@
+/**
+ * @file sidebar.css
+ * @description Sidebar navigace — tmavá, s modrým akcentem pro aktivní položku.
+ */
+
+.sidebar {
+  grid-area: sidebar;
+  background: var(--color-sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+  border-right: 1px solid var(--color-sidebar-border);
+}
+
+/* HEADER */
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--color-sidebar-border);
+  flex-shrink: 0;
+  padding: var(--space-5) var(--space-4);
+}
+
+.sidebar__logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+}
+
+.sidebar__logo-text {
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+/* NAVIGATION */
+
+.sidebar__nav {
+  flex: 1;
+  padding: var(--space-4) var(--space-3);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__nav-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 13px var(--space-3);
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+  color: var(--color-sidebar-text);
+  text-decoration: none;
+  user-select: none;
+  position: relative;
+  border-left: 2px solid transparent;
+}
+
+.sidebar__nav-item:hover {
+  background: var(--color-sidebar-item-hover);
+  color: #94a3b8;
+  text-decoration: none;
+}
+
+.sidebar__nav-item.active {
+  background: var(--color-sidebar-item-active);
+  color: var(--color-sidebar-text-active);
+  border-left-color: var(--color-sidebar-accent);
+}
+
+.sidebar__nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar__nav-text {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: inherit;
+  white-space: nowrap;
+}
+
+/* FOOTER */
+
+.sidebar__footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-sidebar-border);
+  flex-shrink: 0;
+}
+
+.sidebar__partner-logos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.sidebar__company-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.sidebar__company-logo img {
+  width: 100%;
+  max-width: 130px;
+  max-height: 46px;
+  object-fit: contain;
+  opacity: 0.28;
+  filter: brightness(0) invert(1);
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar__company-logo:last-child img {
+  max-width: 164px;
+  max-height: 58px;
+}
+
+.sidebar__company-logo img:hover {
+  opacity: 0.5;
+}
+
+.sidebar__partner-sep {
+  width: 100%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}

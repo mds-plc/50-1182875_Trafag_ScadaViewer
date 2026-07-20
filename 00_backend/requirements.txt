@@ -1,0 +1,5 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pyads>=3.4.0
+tomli>=2.0.0; python_version < "3.11"
+httpx2>=2.0.0          # TestClient (testy) — starlette >= 0.41 vyžaduje httpx2

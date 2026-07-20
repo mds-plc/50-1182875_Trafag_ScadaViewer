@@ -1,0 +1,532 @@
+/**
+ * @file chart.css
+ * @description ChartView stránka — hlavička s tlačítkem zpět, layout.
+ */
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.chart-header .page-title {
+  margin-bottom: 0;
+}
+
+/* ORDER SUMMARY — souhrn zakázky nad tabulkou/kartou */
+
+.chart-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent);
+}
+
+.chart-summary__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.chart-summary__key {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.chart-summary__value {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.chart-header__sub {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-muted);
+  margin-left: var(--space-2);
+}
+
+/* ORDER HERO — Varianta B (bohatá hlavička) */
+
+.order-hero {
+  background: #161c2d;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-8);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  border-left: 4px solid var(--color-accent);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.22);
+}
+
+.order-hero__left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Číslo zakázky — výrazné, velké */
+.order-hero__order-num {
+  font-size: var(--font-size-xl);
+  font-family: var(--font-mono);
+  color: #f1f5f9;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.order-hero__counts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Počet záznamů — menší, méně dominantní */
+.order-hero__count-main {
+  font-size: 28px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.order-hero__count-total {
+  font-size: var(--font-size-md);
+  color: #4a5568;
+  font-family: var(--font-mono);
+}
+
+.order-hero__count-label {
+  font-size: var(--font-size-xs);
+  color: #4a5568;
+  align-self: flex-end;
+  padding-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.order-hero__progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.order-hero__progress {
+  flex: 1;
+  max-width: 200px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.order-hero__progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.order-hero__progress-pct {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium);
+  color: #64748b;
+}
+
+.order-hero__divider {
+  width: 1px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.order-hero__right {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.order-hero__switch-label {
+  font-size: var(--font-size-xs);
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-1);
+}
+
+/* Název spínače — dominantní */
+.order-hero__switch-name {
+  font-size: 26px;
+  font-weight: var(--font-weight-semibold);
+  color: #e2e8f0;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.order-hero__switch-id {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: #4a5568;
+  margin-top: var(--space-1);
+}
+
+.order-hero__groups {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.order-hero__group-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--font-mono);
+  cursor: default;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  opacity: 0.85;
+}
+
+/* ORDER METRICS — Varianta A (metrické dlaždice) */
+
+.order-metrics {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.order-metric-tile {
+  flex: 1;
+  min-width: 160px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.order-metric-tile--groups {
+  flex: 2;
+  min-width: 220px;
+}
+
+.order-metric-tile__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.order-metric-tile__counts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.order-metric-tile__main {
+  font-size: 38px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.order-metric-tile__expected {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.order-metric-bar {
+  height: 6px;
+  background: var(--color-surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: var(--space-1);
+}
+
+.order-metric-bar__fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.order-metric-tile__pct {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font-mono);
+}
+
+.order-metric-tile__name {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.3;
+}
+
+.order-metric-tile__id {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.order-metric-tile__order {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ORDER SPLIT — Varianta C (split layout: info vlevo, graf vpravo) */
+
+.order-split {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  align-items: start;
+}
+
+.order-split__left {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--color-accent);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.order-split__right {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Split info — obsah levého panelu */
+
+.split-info__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.split-info__order {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.split-info__switch {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.3;
+}
+
+.split-info__id {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.split-info__counts-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.split-info__counts-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.split-info__counts {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.split-info__count-main {
+  font-size: 38px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.split-info__count-expected {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.split-info__progress {
+  height: 6px;
+  background: var(--color-surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.split-info__progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.split-info__pct {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.split-info__groups-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.split-info__groups-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.order-groups-mini--tall {
+  height: 100px;
+}
+
+/* Mini skupinový sloupcový graf */
+
+.order-groups-mini {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  height: 88px;
+  padding-top: var(--space-3);
+}
+
+.order-groups-mini__col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 100%;
+}
+
+.order-groups-mini__count {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  line-height: 1;
+}
+
+.order-groups-mini__bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 4px;
+  transition: height 0.4s ease;
+}
+
+.order-groups-mini__label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+
+/* RECORD DETAIL — key/value grid */
+
+.chart-record-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2) var(--space-6);
+  padding: var(--space-4) var(--space-6);
+}
+
+.chart-record-field {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) 0;
+  min-height: 44px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chart-record-field__key {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.chart-record-field__value {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+/* PARAMS PLACEHOLDER */
+
+.chart-params-placeholder {
+  padding: var(--space-8) var(--space-6);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+}

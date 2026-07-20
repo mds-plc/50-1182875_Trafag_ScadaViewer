@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Frontend
+01_frontend/node_modules/
+01_frontend/dist/
+
+# Build artifacts
+06_build/dist/
+06_build/build_work/
+06_build/releases/
+
+# Výstupy
+03_output/logs/*.log
+03_output/logs/*.log.*
+
+# Konfigurace — obsahuje síťové údaje a hash hesla; nikdy do repozitáře
+Config.toml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

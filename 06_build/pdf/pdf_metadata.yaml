@@ -1,0 +1,22 @@
+---
+title: "ScadaViewer — Dokumentace"
+subtitle: "Webová SCADA aplikace — monitoring PLC a vizualizace výrobních dat"
+author: "Trafag AG"
+date: "2026"
+lang: cs
+toc: true
+toc-depth: 3
+number-sections: true
+colorlinks: true
+linkcolor: blue
+urlcolor: blue
+toccolor: black
+geometry: "margin=2.5cm"
+fontsize: 11pt
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhead[L]{ScadaViewer}
+  - \fancyhead[R]{\thepage}
+  - \fancyfoot[C]{}
+---

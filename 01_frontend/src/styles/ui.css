@@ -1,0 +1,225 @@
+/**
+ * @file ui.css
+ * @description Sdílené UI — spinner, error boundary, filter bar, plc status grid.
+ */
+
+/* =============================================================================
+   LOADING SPINNER
+   ============================================================================= */
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-10);
+  color: var(--color-text-muted);
+}
+
+.loading-spinner__ring {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner__text {
+  font-size: var(--font-size-sm);
+}
+
+/* =============================================================================
+   ERROR BOUNDARY
+   ============================================================================= */
+
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10);
+}
+
+.error-boundary__card {
+  background: var(--color-surface);
+  border: 1px solid #fca5a5;
+  border-top: 2px solid var(--color-danger);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.error-boundary__title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+.error-boundary__message {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  word-break: break-word;
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+/* =============================================================================
+   FILTER BAR
+   ============================================================================= */
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.filter-bar__input,
+.filter-bar__select {
+  padding: 11px var(--space-4);
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-primary);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.filter-bar__input:focus,
+.filter-bar__select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+}
+
+/* =============================================================================
+   PLC STATUS GRID
+   ============================================================================= */
+
+.plc-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.plc-status__connection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.plc-status__connection--ok  {
+  background: var(--color-success-muted);
+  color: var(--color-success);
+}
+
+.plc-status__connection--err {
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+}
+
+.plc-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-success);
+  animation: pulse-connected 2.5s ease-in-out infinite;
+}
+
+.plc-status__dot--err {
+  background: var(--color-danger);
+  animation: pulse-danger 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-connected {
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  60%  { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+@keyframes pulse-danger {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  60%  { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+.plc-status__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plc-status__item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+}
+
+.plc-status__item:hover {
+  background: var(--color-border);
+}
+
+.plc-status__symbol {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.plc-status__value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px var(--space-2);
+  border-radius: 4px;
+}
+
+.plc-status__value--bool-on  { color: var(--color-success); background: var(--color-success-muted); }
+.plc-status__value--bool-off { color: var(--color-text-muted); background: var(--color-surface-2); }
+.plc-status__value--number   { color: var(--color-accent); background: var(--color-accent-muted); }
+.plc-status__value--text     { color: var(--color-text-primary); }
+
+.plc-status__ts {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.plc-status__empty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-4) 0;
+}
+
+/* =============================================================================
+   UTILITY
+   ============================================================================= */
+
+.mt-4 { margin-top: var(--space-4); }
+.mb-4 { margin-bottom: var(--space-4); }
+.error-text {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3) 0;
+}

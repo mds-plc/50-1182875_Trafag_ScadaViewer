@@ -1,0 +1,225 @@
+/**
+ * @file topbar.css
+ * @description Topbar — tmavý, s názvem aplikace, PLC statusem a hodinami.
+ */
+
+.topbar {
+  grid-area: topbar;
+  background: var(--color-topbar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-5);
+  height: 48px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.topbar__left,
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* SKUPINY — logické bloky vpravo */
+
+.topbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Tečkový oddělovač mezi skupinami */
+.topbar__vsep {
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.15);
+  user-select: none;
+  padding: 0 var(--space-1);
+  flex-shrink: 0;
+}
+
+.topbar__vsep::before {
+  content: '·';
+}
+
+/* APP NAME */
+
+.topbar__app-name {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: #e2e8f0;
+  letter-spacing: -0.2px;
+}
+
+.topbar__app-name span {
+  color: #3d4f6b;
+  font-weight: var(--font-weight-regular);
+  margin-left: 4px;
+}
+
+/* PLC STATUS — pulsující tečka (průmyslový standard) */
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: #64748b;
+}
+
+.status-indicator__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-success);
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4);
+  animation: pulse-connected 2.5s ease-in-out infinite;
+}
+
+.status-indicator__dot--danger {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  animation: pulse-danger 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-connected {
+  0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+  60%  { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+
+@keyframes pulse-danger {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  60%  { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* CHIPS — flat, bez rámečku */
+
+.topbar__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.topbar__chip:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.topbar__chip--user {
+  color: #94a3b8;
+  font-size: var(--font-size-sm);
+}
+
+.topbar__chip-sep {
+  width: 1px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 2px;
+}
+
+/* LOCAL USER + LOGOUT */
+
+.topbar__logout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: #64748b;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.topbar__logout:hover {
+  background: rgba(220, 38, 38, 0.18);
+  color: #f87171;
+}
+
+/* LANG SWITCHER */
+
+.topbar__lang {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+}
+
+.topbar__lang-btn {
+  padding: 7px 12px;
+  min-height: 34px;
+  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: #64748b;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.topbar__lang-btn:hover:not(.topbar__lang-btn--active) {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.topbar__lang-btn--active {
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
+}
+
+/* THEME TOGGLE — moon / sun ikona */
+
+.topbar__theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: #64748b;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.topbar__theme-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+/* DATETIME */
+
+.topbar__datetime {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topbar__date {
+  font-size: var(--font-size-sm);
+  color: #475569;
+}
+
+.topbar__datetime-sep {
+  color: #2d3a4f;
+  font-size: var(--font-size-sm);
+  user-select: none;
+}
+
+.topbar__clock {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: #64748b;
+  letter-spacing: 0.04em;
+}

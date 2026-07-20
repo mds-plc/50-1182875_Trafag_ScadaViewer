@@ -1,0 +1,38 @@
+# =============================================================================
+# ScadaViewer — vzorová konfigurace
+# Zkopírovat jako Config.toml a upravit před spuštěním.
+# =============================================================================
+
+[server]
+host = "0.0.0.0"   # 0.0.0.0 = přístupné z celé LAN; "127.0.0.1" = pouze localhost
+port = 8080
+# cors_origins = ["*"]   # odkomentovat pro LAN intranet
+
+[ads]
+net_id = "X.X.X.X.1.1"   # AMS Net ID PLC runtime — zjistit v TwinCAT → System → Routes
+port   = 851               # TwinCAT PLC runtime port (851 = výchozí)
+
+[data]
+# DEV (testovací data v projektu): "05_user_data/test_db_output"
+# PROD: absolutní cesta ke sdílené složce, kam DatabaseGateway zapisuje CSV
+local_path = "05_user_data/test_db_output"
+
+# NAS — UNC cesta; prázdná = Remote tab vždy nedostupný
+# POZOR: v TOML basic stringu musí být každý \ zapsán jako \\
+# Příklad: \\\\10.45.124.20\\trafag_test
+remote_path = ""
+
+csv_separator = ";"          # shodné s DatabaseGateway [storage] csv_separator
+csv_encoding  = "utf-8-sig"  # shodné s DatabaseGateway [storage] csv_encoding
+
+[auth]
+# Vygenerovat hash před nasazením do produkce:
+#   python -c "
+#     import hashlib, secrets
+#     s = secrets.token_hex(16)
+#     h = hashlib.pbkdf2_hmac('sha256', b'VASE_HESLO', bytes.fromhex(s), 260_000).hex()
+#     print(f'{s}:{h}')
+#   "
+# Výchozí (DEV): admin / admin — NEVHODNÉ PRO PRODUKCI
+username      = "admin"
+password_hash = "655feb7a425c20f21861f3f6d47f686b:3d4da7fee8ec93ebc4ae0bc114e4c5a02c3c408d5310ca6e4e4f8a0190b5cdf0"

@@ -1,0 +1,83 @@
+/**
+ * @file tiles.css
+ * @description Tile grid systém — 12 sloupců + tile karty se status variantami.
+ */
+
+/* GRID */
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+/* COLUMN SPANS */
+
+.tile--1  { grid-column: span 1;  }
+.tile--2  { grid-column: span 2;  }
+.tile--3  { grid-column: span 3;  }
+.tile--4  { grid-column: span 4;  }
+.tile--5  { grid-column: span 5;  }
+.tile--6  { grid-column: span 6;  }
+.tile--7  { grid-column: span 7;  }
+.tile--8  { grid-column: span 8;  }
+.tile--9  { grid-column: span 9;  }
+.tile--12 { grid-column: span 12; }
+
+/* TILE BASE */
+
+.tile {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal);
+}
+
+.tile:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* TILE STATUS VARIANTS — barevný horní lem */
+
+.tile--ok {
+  border-top: 2px solid var(--color-success);
+}
+
+.tile--error {
+  border-top: 2px solid var(--color-danger);
+}
+
+.tile--warning {
+  border-top: 2px solid var(--color-warning);
+}
+
+.tile--info {
+  border-top: 2px solid var(--color-accent);
+}
+
+/* TILE HEADER */
+
+.tile__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.tile__title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* Skupina prvků vpravo v tile__header (badge + tlačítka) */
+.tile__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

@@ -1,0 +1,36 @@
+# ScadaViewer — Docker Compose
+#
+# Prerekvizity:
+#   1. Upravte Config.toml:
+#        local_path  = "/data"          # svazek níže
+#        remote_path = ""               # nebo UNC cesta pokud je NAS přístupný z kontejneru
+#   2. docker compose up -d --build
+#   3. Aplikace dostupná na http://localhost:8080
+#
+# Data (CSV soubory):
+#   Složka ./data/ na hostiteli se mapuje na /data v kontejneru.
+#   Sem ukládá DatabaseGateway svá výstupní data, ScadaViewer z ní čte.
+
+services:
+  scada:
+    build: .
+    image: scadaviewer:latest
+    container_name: scadaviewer
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Config.toml:/app/Config.toml:ro   # konfigurace (read-only)
+      - ./data:/data                        # CSV soubory (local_path = "/data")
+    environment:
+      - PYTHONUNBUFFERED=1                  # Python stdout/stderr okamžitě (pro docker logs)
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s    # čas pro start uvicorn + AdsMonitor init

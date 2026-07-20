@@ -1,0 +1,166 @@
+/**
+ * @file login.css
+ * @description Login overlay a formulář.
+ */
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 26, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.login-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-10) var(--space-8);
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.login-card__logo {
+  margin-bottom: var(--space-1);
+}
+
+.login-card__title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  letter-spacing: -0.4px;
+}
+
+.login-card__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.login-card__divider {
+  width: 100%;
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-1) 0;
+}
+
+.login-card__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.login-card__status-text--ok  { color: var(--color-success); }
+.login-card__status-text--err { color: var(--color-danger);  }
+
+.login-card__waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.login-card__spinner {
+  animation: spin 1.8s linear infinite;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+/* FORMULÁŘ */
+
+.login-card__form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.login-card__form-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.login-card__input {
+  width: 100%;
+  padding: 10px var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-primary);
+  color: var(--color-text-primary);
+  background: var(--color-surface-2);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.login-card__input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+  background: var(--color-surface);
+}
+
+.login-card__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  margin-top: calc(-1 * var(--space-1));
+}
+
+.login-card__submit {
+  width: 100%;
+  justify-content: center;
+  padding: 11px;
+  font-size: var(--font-size-md);
+}
+
+/* TAB BAR — pro Database stránku */
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+.tab-bar__tab {
+  padding: 6px var(--space-5);
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  border: none;
+  background: none;
+  font-family: var(--font-primary);
+}
+
+.tab-bar__tab:hover {
+  color: var(--color-text-primary);
+}
+
+.tab-bar__tab.active {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-sm);
+  font-weight: var(--font-weight-semibold);
+}
