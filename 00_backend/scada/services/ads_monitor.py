@@ -12,10 +12,15 @@ Počáteční snapshot:
   odešlou klientům přes WebSocket. Nový klient dostane snapshot okamžitě
   z cache ws_manager — bez dalšího ADS dotazu.
 
-Chybové chování (graceful degradation):
-  Pokud PLC není dostupné při startu, monitor zaloguje chybu a aplikace
-  běží dál bez ADS. CSV data, Database a ChartView fungují normálně.
+Chybové chování — automatický reconnect:
+  Pokud PLC není dostupné při startu (nebo se odpojí za běhu), monitor
+  čeká a opakuje pokus o připojení (exponential backoff 1→2→4→…→30 s).
+  CSV data, Database a ChartView fungují normálně celou dobu.
   connected → False, /api/health vrátí checks.ads = False.
+
+  Odpojení za běhu se detekuje přes heartbeat: po _HB_MAX_FAILURES
+  consecutive selháních write_by_name() se heartbeat loop ukončí výjimkou
+  → reconnect loop zahájí nový pokus.
 
 Typy symbolů:
   Podporované typy: BOOL (1 B), INT (2 B), UINT (2 B), DINT (4 B), STRING (n B).
@@ -46,6 +51,11 @@ log = logging.getLogger(__name__)
 # Výchozí typ a velikost pokud symbol není v SYM_TYPES
 _DEFAULT_TYPE = pyads.PLCTYPE_BOOL
 _DEFAULT_SIZE = 1
+
+# Reconnect — po tolika consecutive heartbeat selháních považujeme PLC za odpadlé
+_HB_MAX_FAILURES   = 3
+# Reconnect — maximální čekací doba mezi pokusy (exponential backoff: 1→2→4→…→30 s)
+_RECONNECT_MAX_S   = 30
 
 
 def _plctype(name: str) -> type:
@@ -109,9 +119,9 @@ class AdsMonitor:
         self._manager = ws_manager
         self._plc:    pyads.Connection | None = None
         self._loop:   asyncio.AbstractEventLoop | None = None
-        self._handles:       list = []   # notification handles pro del_device_notification
-        self._callback_refs: list = []   # drží Python closures naživu (GC prevence)
-        self._hb_task: asyncio.Task | None = None   # heartbeat task
+        self._handles:          list = []   # notification handles pro del_device_notification
+        self._callback_refs:    list = []   # drží Python closures naživu (GC prevence)
+        self._reconnect_task:   asyncio.Task | None = None   # reconnect + heartbeat loop
 
     @property
     def connected(self) -> bool:
@@ -124,64 +134,109 @@ class AdsMonitor:
 
     async def start(self) -> None:
         """
-        Připojí se k PLC a zaregistruje ADS notifikace pro všechny SYM symboly.
+        Spustí reconnect smyčku — pokusí se připojit k PLC a po odpojení se automaticky
+        znovu připojí (exponential backoff 1→2→4→…→30 s).
 
-        Graceful degradation: selhání připojení nezastaví aplikaci.
-        Chyba je zalogována, aplikace běží bez ADS.
+        Graceful degradation: selhání připojení nezastaví aplikaci — monitor retryuje
+        na pozadí dokud PLC není dostupné.
         """
         self._loop = asyncio.get_running_loop()
-        # Okamžitě oznámit "nepřipojeno" — nový WS klient dostane stav ještě před connect()
         await self._manager.broadcast({"type": "ads_status", "connected": False})
-        log.info("[ADS]   Připojuji: %s:%d", self._cfg.ads.net_id, self._cfg.ads.port)
-        try:
-            await asyncio.to_thread(self._connect)
-            log.info("[ADS]   Připojeno — sledováno %d symbolů", len(self._handles))
-            await self._manager.broadcast({"type": "ads_status", "connected": True})
-            self._hb_task = asyncio.create_task(self._heartbeat_loop())
-        except pyads.ADSError as exc:
-            log.error("[ADS]   Spojení selhalo — monitoring deaktivován: %s", exc)
-            await self._manager.broadcast({"type": "ads_status", "connected": False})
-        except Exception as exc:
-            log.error("[ADS]   Neočekávaná chyba při startu ADS: %s", exc)
-            await self._manager.broadcast({"type": "ads_status", "connected": False})
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
     async def stop(self) -> None:
-        """Odregistruje notifikace a zavře ADS spojení."""
-        if self._plc is None:
+        """Zastaví reconnect smyčku a zavře ADS spojení."""
+        if self._reconnect_task is None:
             return
-        log.info("[ADS]   Odpojuji")
+        log.info("[ADS]   Zastavuji monitor")
         await self._manager.broadcast({"type": "ads_status", "connected": False})
-        if self._hb_task is not None:
-            self._hb_task.cancel()
-            await asyncio.gather(self._hb_task, return_exceptions=True)
-            self._hb_task = None
-        try:
-            await asyncio.to_thread(self._disconnect)
-        except Exception as exc:
-            log.error("[ADS]   Chyba při odpojení: %s", exc)
+        self._reconnect_task.cancel()
+        await asyncio.gather(self._reconnect_task, return_exceptions=True)
+        self._reconnect_task = None
+        # Safety cleanup — CancelledError v _reconnect_loop mohl přerušit disconnect
+        if self._plc is not None:
+            try:
+                await asyncio.to_thread(self._disconnect)
+            except Exception as exc:
+                log.debug("[ADS]   Safety cleanup selhal: %s", exc)
 
     # ------------------------------------------------------------------
-    # Heartbeat — async task (běží po celou dobu připojení)
+    # Reconnect smyčka — běží po celou dobu životnosti monitoru
+    # ------------------------------------------------------------------
+
+    async def _reconnect_loop(self) -> None:
+        """
+        Exponential backoff reconnect smyčka.
+
+        Cyklus: _connect() → _heartbeat_loop() → (výjimka) → _disconnect()
+                → čekání → opakovat.
+
+        CancelledError propaguje nahoru — ukončí smyčku při stop().
+        Ostatní výjimky (ADSError, ConnectionError) způsobí čekání a retry.
+        """
+        attempt = 0
+        while True:
+            label = "Připojuji" if attempt == 0 else f"Reconnect #{attempt}"
+            log.info("[ADS]   %s: %s:%d", label, self._cfg.ads.net_id, self._cfg.ads.port)
+            try:
+                await asyncio.to_thread(self._connect)
+                log.info("[ADS]   Připojeno — sledováno %d symbolů", len(self._handles))
+                await self._manager.broadcast({"type": "ads_status", "connected": True})
+                attempt = 0
+                await self._heartbeat_loop()   # blokuje dokud PLC funguje
+            except asyncio.CancelledError:
+                # Shutdown — zapíše offline bity a ukončí čistě
+                await asyncio.to_thread(self._write_offline)
+                await asyncio.to_thread(self._disconnect)
+                raise
+            except Exception as exc:
+                log.warning("[ADS]   Spojení selhalo/ztraceno: %s", exc)
+
+            await asyncio.to_thread(self._disconnect)
+            await self._manager.broadcast({"type": "ads_status", "connected": False})
+            delay = min(2 ** attempt, _RECONNECT_MAX_S)
+            log.info("[ADS]   Reconnect za %g s (pokus %d)", delay, attempt + 1)
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                raise
+            attempt = min(attempt + 1, 5)   # cap exponent: 2^5 = 32 > _RECONNECT_MAX_S
+
+    # ------------------------------------------------------------------
+    # Heartbeat — async (běží po celou dobu připojení, volán z _reconnect_loop)
     # ------------------------------------------------------------------
 
     async def _heartbeat_loop(self) -> None:
-        """Toggleuje sv_heartbeat každých 500 ms; drží sv_ready = True."""
+        """
+        Toggleuje sv_heartbeat každých 500 ms.
+
+        Po _HB_MAX_FAILURES consecutive selháních vyhodí ConnectionError
+        → _reconnect_loop() zahájí nový pokus o připojení.
+        CancelledError propaguje přímo nahoru (shutdown).
+        """
         toggle = False
-        try:
-            while True:
-                await asyncio.sleep(0.5)
-                toggle = not toggle
+        consecutive_failures = 0
+        while True:
+            await asyncio.sleep(0.5)
+            toggle = not toggle
+            try:
                 await asyncio.to_thread(self._write_hb, toggle)
-        except asyncio.CancelledError:
-            await asyncio.to_thread(self._write_offline)
+                consecutive_failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                consecutive_failures += 1
+                log.warning("[ADS]   Heartbeat selhal (%d/%d): %s",
+                            consecutive_failures, _HB_MAX_FAILURES, exc)
+                if consecutive_failures >= _HB_MAX_FAILURES:
+                    raise ConnectionError(
+                        f"Heartbeat selhal {_HB_MAX_FAILURES}× za sebou — odpojuji"
+                    ) from exc
 
     def _write_hb(self, value: bool) -> None:
         if self._plc is None:
-            return
-        try:
-            self._plc.write_by_name(SYM_WRITE["sv_heartbeat"], value, pyads.PLCTYPE_BOOL)
-        except Exception as exc:
-            log.warning("[ADS]   heartbeat write selhal: %s", exc)
+            raise ConnectionError("PLC není připojeno")
+        self._plc.write_by_name(SYM_WRITE["sv_heartbeat"], value, pyads.PLCTYPE_BOOL)
 
     def _write_offline(self) -> None:
         """Zapíše Ready=False a Heartbeat=False před odpojením."""
@@ -206,6 +261,7 @@ class AdsMonitor:
         """
         plc = pyads.Connection(self._cfg.ads.net_id, self._cfg.ads.port)
         plc.open()
+        plc.set_timeout(2000)   # 2 s — zkrátí detekci výpadku při network timeoutu (výchozí ~5 s)
         plc.read_state()   # vyhodí ADSError pokud PLC runtime nedostupný
 
         for name, symbol in SYM.items():
