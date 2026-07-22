@@ -106,6 +106,10 @@ class _RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Whitelist: zdravotní endpointy nesmí být rate limitovány (NSSM watchdog)
+        if request.url.path in ("/api/health", "/api/status"):
+            return await call_next(request)
+
         ip  = request.client.host if request.client else "unknown"
         now = time.monotonic()
         cutoff = now - self._window
@@ -140,7 +144,11 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     """
     monitor       = AdsMonitor(cfg, manager)
     csv_reader    = FileService(CsvRepository(cfg.data))
-    order_watcher = OrderWatcher(Path(cfg.data.local_path), orders_manager)
+    order_watcher = OrderWatcher(
+        Path(cfg.data.local_path),
+        orders_manager,
+        csv_encoding=cfg.data.csv_encoding,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

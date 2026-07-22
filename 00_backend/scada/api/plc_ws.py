@@ -7,15 +7,24 @@ Server broadcastuje JSON zprávy při každé změně ADS hodnoty:
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from scada.services.ws_manager import manager
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.websocket("/plc")
 async def plc_websocket(websocket: WebSocket) -> None:
+    origin  = websocket.headers.get("origin", "")
+    allowed = websocket.app.state.config.server.cors_origins
+    if allowed and "*" not in allowed and origin and origin not in allowed:
+        await websocket.close(code=1008)
+        log.warning("[WS]    odmítnuto WS /plc z origin: %s", origin)
+        return
     await manager.connect(websocket)
     try:
         while True:

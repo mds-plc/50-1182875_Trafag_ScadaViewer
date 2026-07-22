@@ -100,7 +100,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         salt     = bytes.fromhex(salt_hex)
         expected = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 260_000)
         return secrets.compare_digest(expected.hex(), hash_hex)
-    except Exception:
+    except (ValueError, UnicodeEncodeError):
         return False
 
 

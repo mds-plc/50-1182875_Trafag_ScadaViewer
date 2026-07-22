@@ -130,7 +130,8 @@ CLAUDE.md                  ← tento soubor
 
 04_docs/
 ├── architecture.md            ← tok dat, vrstvy, API formáty, CSS, provider strom
-└── audit_log.md               ← záznamy auditů (/audit)
+├── audit_log.md               ← záznamy auditů (/audit)
+└── project_reviews.md         ← průběžná hodnocení profesionality projektu
 
 05_user_data/
 └── test_db_output/            ← testovací data (local_path v Config.toml)
@@ -689,6 +690,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — krok za krokem: nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč, CSS komponenta |
 | `04_docs/professional_improvements.md` | **Roadmapa profesionálního projektu** — bezpečnost (JWT, HTTPS), stabilita, UX, observability, deployment; s prioritami a odhadem náročnosti |
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
+| `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem; přidávat nové záznamy při každém hodnocení |
 | `04_docs/architecture.md` | Detailní popis architekury, datového toku, API formátů |
 
 > **Pravidlo:** Při každém rozšíření aktualizuj i příslušnou dokumentaci.

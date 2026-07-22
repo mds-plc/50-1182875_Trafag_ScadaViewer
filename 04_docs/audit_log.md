@@ -5,6 +5,97 @@
 
 ---
 
+## [2026-07-22] Audit — full (backend + frontend + ads + security + docs)
+
+Hloubkový audit po přidání server-side stránkování (`/api/data`), agregace skupin (`group_counts`), fixu blikání expand tabulky a ADS reconnect logiky.
+
+### Backend
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | `csv_reader.py` je mrtvý kód — API používá `FileService(CsvRepository(...))`. Soubor vrací 2-tuple `(records, total)`, zatímco `CsvRepository` vrací 4-tuple. Jakákoli budoucí změna CSV formátu musí být provedena na 2 místech | `services/csv_reader.py`, `services/repositories/csv_repository.py` | ✅ Opraveno (2026-07-22) — `csv_reader.py` + `test_csv_reader.py` smazány |
+| 2 | ~~⚠️ MEDIUM~~ | ~~`files.py` — `list_files_paginated()` spuštěno v `asyncio.to_thread()`, ale **bez** `asyncio.wait_for(timeout=...)`~~ — **FALEŠNĚ POZITIVNÍ**: `files.py:46-57` již obsahuje `asyncio.wait_for(timeout=timeout)` (30 s remote, 10 s local) | `api/files.py:44-57` | ✅ Ověřeno — OK |
+| 3 | ⚠️ MEDIUM | `order_watcher.py` — hardcoded `encoding="utf-8-sig"` při čtení WIP CSV místo čtení `cfg.data.csv_encoding` z Config.toml. Pokud admin změní encoding, OrderWatcher se rozsynchronizuje | `services/order_watcher.py:100` | ✅ Opraveno (2026-07-22) — `csv_encoding` parametr v `__init__`, předáván z `app.py` |
+| 4 | ⚠️ MEDIUM | `config.py:verify_password()` — `except Exception:` je příliš obecný; chytá i programátorské chyby (AttributeError, TypeError) jako tiché selhání autentizace | `config.py:95-104` | ✅ Opraveno (2026-07-22) — změněno na `except (ValueError, UnicodeEncodeError):` |
+| 5 | 🔵 LOW | `auth.py:_update_config_file()` — TOML se upravuje regexem místo parserem (`tomli`). Edge case: pokud `[auth]` sekce v Config.toml neexistuje, přidá ji na konec souboru bez ověření struktury | `api/auth.py:42-73` | ⬜ Otevřeno (nízká priorita) — přijatelné pro current use case |
+| 6 | 🔵 LOW | `order_watcher.py` — logging prefix `[OW]` není v CLAUDE.md, ostatní moduly používají 5–7 znaků (`[API]`, `[ADS]`, `[CSV]`, `[SVC]`, `[WS]`) | `services/order_watcher.py:47,56,89,111,117` | ⬜ Otevřeno — sjednotit na `[OWW]` nebo `[WIP]` a doplnit do CLAUDE.md |
+
+### Frontend
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 7 | ~~🔴 HIGH~~ | ~~`useFiles()` — `useEffect([location, type])` resetuje stav, ale `fetchFiles` se nezavolá automaticky~~ — **FALEŠNĚ POZITIVNÍ**: `fetchFiles` je `useCallback([location, type, page, ...])`, takže při změně location/type vznikne nová reference → `useEffect([fetchFiles, ...])` v `useDatabaseState.ts:49` se spustí → auto-fetch proběhne | `hooks/useDatabaseState.ts:49-54` | ✅ Ověřeno — OK |
+| 8 | ~~⚠️ MEDIUM~~ | ~~`PlcContext.tsx` — `adsConnected` se neresetuje na `false` při `ws.onclose`~~ — **FALEŠNĚ POZITIVNÍ**: `setAdsConnected(false)` je již implementováno na řádku 64 (`ws.onclose` handler) | `context/PlcContext.tsx:64` | ✅ Ověřeno — OK |
+| 9 | ⚠️ MEDIUM | `ChartView.tsx` — po přidání `groupCounts` + `fileExpectedCount` do `useDataFetch()` hook (a tím i `useData()`), ChartView tyto hodnoty nepoužívá. Skupinový přehled ani progress bar v detail zakázky neexistuje | `pages/ChartView.tsx`, `hooks/useData.ts:144` | ⬜ Otevřeno — zvážit OrderHero rozšíření o skupinový přehled |
+| 10 | ⚠️ MEDIUM | `ChartView.tsx` — obsahuje komponentu `OrderMetrics` (deklarována ale nikde nevolána) — mrtvý kód | `pages/ChartView.tsx:29-114` (přibližně) | ⬜ Otevřeno — odstranit nebo zapojit do UI |
+| 11 | 🔵 LOW | `GROUP_COLORS` je hardcoded array v `ChartView.tsx` i `FileTable.tsx` — duplikace, obchází design token systém z `variables.css` | `pages/ChartView.tsx:26`, `components/FileTable.tsx:19` | ⬜ Otevřeno — extrahovat do sdíleného utility souboru nebo CSS proměnné |
+
+### Security
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 12 | ⚠️ MEDIUM | WebSocket endpointy `/ws/plc` a `/ws/orders` **neověřují origin** požadavku. Stačí `CORSMiddleware` pro HTTP, ale WebSocket upgrade probíhá mimo CORS middleware. Každá doména se může připojit | `api/plc_ws.py:17-26`, `api/orders_ws.py:17-25` | ✅ Opraveno (2026-07-22) — origin check před `manager.connect()`; respektuje `cors_origins` z config |
+| 13 | ⚠️ MEDIUM | CORS v prod: `cors_origins = ["*"]` v dev Config.toml — pokud se nasadí na síť bez změny, je celé API dostupné z libovolné domény | `app.py:169-176`, `Config.toml.example` | ✅ Opraveno (2026-07-22) — přidáno varování do `Config.toml.example` |
+| 14 | 🔵 LOW | Rate limiting (120 req/min) se aplikuje i na `/api/health` — NSSM watchdog volá tento endpoint periodicky; pokud jiný burst requestů vyčerpá limit, watchdog dostane 429 | `app.py:70-128` | ✅ Opraveno (2026-07-22) — `/api/health` + `/api/status` whitelistovány v `_RateLimitMiddleware` |
+
+### Testy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 15 | ⚠️ MEDIUM | `test_api.py` — žádný test neověřuje nová pole `group_counts` a `file_expected_count` v `/api/data` response. Pokud se vrátí `null` nebo špatný typ, testy to nepodchytí | `02_tests/test_api.py` | ⬜ Otevřeno — přidat `TestDataGroupStats` třídu |
+| 16 | 🔵 LOW | `test_csv_reader.py` testuje `CsvReader` (legacy mrtvý kód), ne `CsvRepository` (produkční kód). Pokud se změní `CsvRepository`, testy to nepodchytí | `02_tests/test_csv_reader.py` | ⬜ Otevřeno — přepsat testy na `CsvRepository` (závisí na nálezu #1) |
+
+**Celkem:** 16 nálezů | 3 falešně pozitivní (#2, #7, #8) | 13 reálných otevřeno
+
+### Prioritní pořadí oprav
+
+1. **#1** — Odstranit `csv_reader.py`, přepsat testy na `CsvRepository` (#16 tím padá)
+2. **#12** — WebSocket origin check (security)
+3. **#9** — Skupinový přehled + expected_count v ChartView detail zakázky (UX)
+4. **#4** — `config.py:verify_password()` — zúžit `except Exception` na konkrétní typy
+5. **#14** — Whitelist `/api/health` v RateLimitMiddleware (NSSM watchdog reliability)
+
+
+---
+
+## [2026-07-22] Bugfix — ADS reconnect logika + detekce výpadku (live PLC testy)
+
+Implementace automatického reconnectu a séria bugů odhalených testováním se skutečným PLC a fyzickým odpojením kabelu.
+
+### Opravené nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | `AdsMonitor` neměl žádnou reconnect logiku — `start()` se pokusil připojit jednou, při selhání vzdal a aplikace zůstala natrvalo bez ADS | `services/ads_monitor.py` | ✅ Implementována `_reconnect_loop()` s exponential backoff |
+| 2 | 🔴 HIGH | `_heartbeat_loop()` ignoroval selhání write — při výpadku PLC za běhu pokračoval dál beze změny, bez triggeru reconnectu | `services/ads_monitor.py` | ✅ Počítání consecutive selhání; po 3× vyhodí `ConnectionError` → reconnect |
+| 3 | 🔴 HIGH | `_disconnect()` volala `del_device_notification()` pro všechny handles při zavření — při odpojeném kabelu každý call čekal 2s ADS timeout → **23 × 2s = 46 s blokování** před odesláním `ads_status: false` → vizuálně "nic se nestalo" | `services/ads_monitor.py` | ✅ Smyčka odstraněna — AMS router zruší subscriptions automaticky při `close()` |
+| 4 | ⚠️ MEDIUM | `write_by_name()` v heartbeatu může být potvrzeno lokálním ADS routerem i při odpojeném kabelu → timeout nikdy nevznikne → výpadek nedetekován | `services/ads_monitor.py` | ✅ Přidán `read_state()` po write — vynutí skutečný round-trip k PLC |
+| 5 | ⚠️ MEDIUM | `del_device_notification(handle)` — pyads vrací tuple `(notification_handle, user_handle)`, ale volání předávalo tuple jako jeden argument → notifikace se nikdy neodregistrovaly (resource leak) | `services/ads_monitor.py` | ✅ Opraveno na `del_device_notification(*handle)` (nálezy 3+5 dohromady vedly k odstranění smyčky) |
+| 6 | ⚠️ MEDIUM | Detekce výpadku trvala 20–27 s — výchozí ADS timeout ~5 s × 5 selhání | `services/ads_monitor.py` | ✅ `plc.set_timeout(2000)` + `_HB_MAX_FAILURES=3` → ~7.5 s |
+
+### Nová architektura ADS lifecycle
+
+```
+start() → _reconnect_loop() [task]
+  └── loop:
+        _connect()          → open + set_timeout(2s) + notifications + sv_ready + snapshot
+        broadcast ads_status: true
+        _heartbeat_loop()   → write sv_heartbeat každých 500 ms
+          └── po 3 consecutive selháních → ConnectionError
+        _disconnect()       → del_device_notification(*handle) + close()
+        broadcast ads_status: false
+        sleep(2^attempt, max 30 s)
+        attempt++
+stop() → cancel task → write_offline + disconnect
+```
+
+### Naměřené timing (z produkčního logu)
+- Detekce výpadku kabelu: **~7.5 s** (3 × 2.5 s)
+- Reconnect pokusy: backoff 1 s → 2 s → 4 s (viz logy Reconnect #1, #2, #3)
+- Reconnect #3 úspěšný: snapshot 23 symbolů odeslán, `ads_status: true` broadcastován
+
+---
+
 ## [2026-07-21] Audit — Overview redesign + PLC status + komplexní revize
 
 Hloubkový audit provedený po implementaci: Overview KPI merge, PLC offline stav (WifiOff), ADS status WebSocket propagace. Celkem 22 nálezů; 9 opraveno v této session.

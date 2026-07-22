@@ -32,12 +32,18 @@ _POLL_INTERVAL = 1.0   # sekund
 class OrderWatcher:
     """Polls wip/ složky a broadcastuje nové CSV řádky přes WebSocket."""
 
-    def __init__(self, local_path: Path, manager: ConnectionManager) -> None:
+    def __init__(
+        self,
+        local_path: Path,
+        manager: ConnectionManager,
+        csv_encoding: str = "utf-8-sig",
+    ) -> None:
         self._wip_dirs: list[Path] = [
             local_path / "production" / "wip",
             local_path / "testing"    / "wip",
         ]
-        self._manager  = manager
+        self._manager      = manager
+        self._csv_encoding = csv_encoding
         self._task:    asyncio.Task | None = None
         # path → počet již zpracovaných řádků (bez hlavičky)
         self._line_count: dict[Path, int] = {}
@@ -97,7 +103,7 @@ class OrderWatcher:
     def _read_file(self, path: Path) -> list[dict[str, str]]:
         """Přečte nové řádky z jednoho CSV souboru."""
         try:
-            with path.open("r", encoding="utf-8-sig", newline="") as f:
+            with path.open("r", encoding=self._csv_encoding, newline="") as f:
                 reader = csv.DictReader(f, delimiter=";")
                 all_rows = list(reader)
         except (OSError, csv.Error) as exc:

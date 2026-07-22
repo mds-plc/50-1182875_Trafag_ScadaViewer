@@ -343,6 +343,41 @@ class TestData:
         assert r.status_code == 200
         assert r.json()["records"] == []
 
+    def test_response_contains_pagination_fields(self) -> None:
+        """Odpověď obsahuje page, pages, per_page pro frontend stránkování."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        assert "page"     in body
+        assert "pages"    in body
+        assert "per_page" in body
+        assert body["page"]  == 1
+        assert body["pages"] == 1   # 5 záznamů, per_page=200 → 1 stránka
+
+    def test_pagination_page_1(self) -> None:
+        """Stránka 1, per_page=2 → 2 záznamy, total=5, pages=3."""
+        body = self.c.get(f"/api/data?file={self.fname}&per_page=2&page=1").json()
+        assert len(body["records"]) == 2
+        assert body["total"] == 5
+        assert body["pages"] == 3
+        assert body["page"]  == 1
+
+    def test_pagination_page_2(self) -> None:
+        """Stránka 2, per_page=2 → záznamy 3 a 4."""
+        body = self.c.get(f"/api/data?file={self.fname}&per_page=2&page=2").json()
+        assert len(body["records"]) == 2
+        assert body["records"][0]["timestamp"].startswith("2026-07-03")
+
+    def test_pagination_last_page_partial(self) -> None:
+        """Poslední stránka obsahuje zbývající záznamy (méně než per_page)."""
+        body = self.c.get(f"/api/data?file={self.fname}&per_page=2&page=3").json()
+        assert len(body["records"]) == 1   # 5 záznamů, stránka 3: jen 1 zbývá
+
+    def test_per_page_zero_returns_all(self) -> None:
+        """per_page=0 vrátí všechny záznamy (zpětná kompatibilita)."""
+        body = self.c.get(f"/api/data?file={self.fname}&per_page=0").json()
+        assert len(body["records"]) == 5
+        assert body["total"] == 5
+        assert body["pages"] == 1
+
 
 # ======================================================================
 # Security headers — middleware
@@ -414,29 +449,37 @@ class TestRateLimit:
     def test_requests_within_limit_succeed(self, limited_client) -> None:
         """První 3 požadavky musí projít (HTTP 200)."""
         for _ in range(3):
-            assert limited_client.get("/api/health").status_code == 200
+            assert limited_client.get("/api/files").status_code == 200
 
     def test_request_over_limit_returns_429(self, limited_client) -> None:
-        """4. požadavek překročí limit 3/min → HTTP 429."""
+        """4. požadavek překročí limit 3/min → HTTP 429. /api/health je whitelistován."""
         for _ in range(3):
-            limited_client.get("/api/health")  # vyčerpat limit
-        r = limited_client.get("/api/health")
+            limited_client.get("/api/files")  # vyčerpat limit
+        r = limited_client.get("/api/files")
         assert r.status_code == 429
 
     def test_429_has_retry_after_header(self, limited_client) -> None:
         """429 odpověď musí obsahovat Retry-After hlavičku."""
         for _ in range(3):
-            limited_client.get("/api/health")
-        r = limited_client.get("/api/health")
+            limited_client.get("/api/files")
+        r = limited_client.get("/api/files")
         assert r.status_code == 429
         assert "retry-after" in r.headers
 
     def test_429_has_detail_message(self, limited_client) -> None:
         """429 odpověď musí mít čitelnou zprávu v JSON body."""
         for _ in range(3):
-            limited_client.get("/api/health")
-        body = limited_client.get("/api/health").json()
+            limited_client.get("/api/files")
+        body = limited_client.get("/api/files").json()
         assert "detail" in body
+
+    def test_health_exempt_from_rate_limit(self, limited_client) -> None:
+        """/api/health a /api/status nejsou rate limitovány (NSSM watchdog whitelist)."""
+        for _ in range(3):
+            limited_client.get("/api/files")  # vyčerpat limit
+        # whitelist endpointy musí stále vracet 200
+        assert limited_client.get("/api/health").status_code == 200
+        assert limited_client.get("/api/status").status_code == 200
 
 
 # ======================================================================

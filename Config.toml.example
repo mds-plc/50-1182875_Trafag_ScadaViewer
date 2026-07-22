@@ -6,7 +6,9 @@
 [server]
 host = "0.0.0.0"   # 0.0.0.0 = přístupné z celé LAN; "127.0.0.1" = pouze localhost
 port = 8080
-# cors_origins = ["*"]   # odkomentovat pro LAN intranet
+# VAROVÁNÍ (produkce): cors_origins = ["*"] povoluje přístup z LIBOVOLNÉ domény.
+# Nastav konkrétní origin pro produkci: cors_origins = ["http://10.45.124.1:8080"]
+# cors_origins = []
 
 [ads]
 net_id = "X.X.X.X.1.1"   # AMS Net ID PLC runtime — zjistit v TwinCAT → System → Routes
