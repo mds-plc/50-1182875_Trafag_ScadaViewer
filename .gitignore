@@ -15,6 +15,8 @@ build/
 06_build/dist/
 06_build/build_work/
 06_build/releases/
+# generovaná dokumentace (pdoc + TypeDoc) — znovu vygenerovat přes 06_build/generate-docs.bat
+06_build/docs/
 
 # Výstupy
 03_output/logs/*.log

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src"],
+  "entryPointStrategy": "expand",
+  "out": "../06_build/docs/frontend",
+  "name": "ScadaViewer — Frontend",
+  "includeVersion": true,
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeExternals": true,
+  "cleanOutputDir": true,
+  "skipErrorChecking": true,
+  "blockTags": [
+    "@param", "@returns", "@throws", "@example",
+    "@deprecated", "@since", "@see", "@file", "@description"
+  ],
+  "navigationLinks": {
+    "Backend docs": "../backend/index.html",
+    "GitHub": "https://github.com/mds-plc/50-1182875_Trafag_ScadaViewer"
+  }
+}
