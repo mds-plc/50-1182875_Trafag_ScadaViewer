@@ -147,10 +147,51 @@ export interface Translations {
     accountPwdChanged:  string
     accountPwdEmpty:    string
   }
+  overview: {
+    title:          string
+    // Režim stroje
+    modeUnknown:    string
+    // Zakázka
+    orderTile:      string
+    orderNumber:    string
+    orderValidity:  string
+    orderValid:     string
+    orderInvalid:   string
+    orderWaiting:   string
+    orderProgress:  string   // "47 / 120"
+    orderSwitchType: string
+    // Třídění
+    sortingTile:    string
+    sortingActive:  string
+    sortingIdle:    string
+    // Boxy
+    boxesTile:      string
+    boxFull:        string
+    boxEmpty:       string
+    boxPresent:     string
+    // Live záznamy
+    recordsTile:    string
+    lastRecordTile: string
+    colTimestamp:   string
+    colId:          string
+    colSwitchType:  string
+    colGroup:       string
+    noRecords:      string
+    noActiveOrder:  string
+  }
   info: {
-    title: string
-    appTile: string
-    projectTile: string
+    title:        string
+    appVersion:   string
+    appGithubLink: string
+    projectTile:  string
+    projNumber:   string
+    projCustomer: string
+    projSupplier: string
+    projContact:  string
+    docsTile:     string
+    docsAbout:    string
+    docsManual:   string
+    docsManualNote: string
   }
   login: {
     waitingPLC: string

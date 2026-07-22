@@ -236,8 +236,8 @@ pytest 02_tests/test_scada.py -v   # offline — bez ADS, bez PLC
 [AdsMonitor]                     asyncio.run_coroutine_threadsafe()
 (services/ads_monitor.py)  ─────────────────────────────────────►  [ConnectionManager]
  start() uloží event loop                                          (services/ws_manager.py)
- _make_callback() → ADS callback                                        │  broadcast()
- TODO: implementovat pyads connect                                       ▼
+ _make_callback() → ctypes decode → JSON                                │  broadcast()
+ add_device_notification pro každý SYM                                  ▼
                                                                    [Prohlížeče]
 [CSV soubory z DatabaseGateway]                                    ws://host/ws/plc
     │  local:  {local_path}/production/done_local/                  → Overview (PlcStatus grid)
@@ -293,13 +293,15 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 
 | Endpoint | Metoda | Popis |
 |----------|--------|-------|
-| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast při každé změně ADS symbolu |
+| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast ADS notifikací + `{type:"ads_status", connected:bool}` |
+| `/ws/orders` | WebSocket | Live CSV záznamy z wip/ složek — OrderWatcher broadcastuje nové řádky |
 | `/api/health` | GET | Zdravotní stav aplikace — `{status, version, checks}` (NSSM watchdog, diagnostika) |
 | `/api/config` | GET | Bezpečná podmnožina konfigurace — `{server, ads, data, auth}` (bez hash) |
 | `/api/auth/change-password` | POST | Změní heslo; ověří token+aktuální heslo; zneplatní session |
 | `/api/files` | GET | Seznam zakázek (`?location=local\|remote&type=production\|testing`) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
+| `/api/wip` | GET | Záznamy aktuální WIP zakázky — `?order=X` → `{file, records[], total}` |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
@@ -392,12 +394,12 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
-| Overview | `/` | `usePlc` (PlcContext) | `PlcStatus` | ✅ skeleton, TODO tiles |
+| Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV download |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | — | ✅ key-value grid + params placeholder |
-| Settings | `/settings` | — | — | ⬜ placeholder |
-| Info | `/info` | — | — | ⬜ placeholder |
+| Settings | `/settings` | — | — | ✅ Předvolby + Připojení + folder picker |
+| Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
 
 ---
 
@@ -609,8 +611,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | FastAPI kostra (app.py, lifespan) | ✅ | hotovo |
 | WebSocket connection manager | ✅ | ws_manager.py |
 | Config + dataclasses | ✅ | config.py + `_validate_config()` (port, net_id, local_path) |
-| ADS symboly (constants.py) | ✅ | read-only monitoring |
-| ADS monitor (notifikace) | ✅ | ads_monitor.py — pyads.Connection.open() + add_device_notification pro každý SYM; graceful degradation |
+| ADS symboly (constants.py) | ✅ | 23 symbolů: mode, order_*, box_1..6_* (GVL: GV_IO_ADS_API.ScadaViewerApp) |
+| ADS monitor (notifikace) | ✅ | ads_monitor.py — ADSTRANS_SERVERONCHA; ctypes data.offset fix; GC prevence (_callback_refs); heartbeat loop |
 | CSV reader (list_files + read_records) | ✅ | csv_reader.py — local + NAS, O(1) paměť |
 | REST /api/files | ✅ | files.py — location + type + stránkování (page, per_page) |
 | REST /api/files/{id} — DELETE | ✅ | 204 OK; 403 pro remote; 404 nenalezeno; 503 I/O chyba |
@@ -626,11 +628,12 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | i18n (LangContext, cs.ts, en.ts) | ✅ | přepínač CS/EN v Topbar, localStorage persistence |
 | Hooks (useFiles, useFileRecords, useRemoteStatus, useData) | ✅ | useData.ts — AbortController (race condition fix), reset stavu při přepnutí záložky |
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
-| Stránka Overview (PLC status grid) | ✅ | skeleton — TODO tiles |
+| Stránka Overview | ✅ | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
 | Stránka ChartView — order detail | ✅ | Production: OrderHero (tmavý panel) + Chart + klikací tabulka → record detail; Testing: summary + chart + placeholder |
 | Stránka ChartView — record detail (?record=N) | ✅ | key-value grid všech polí záznamu + params placeholder; tlačítko Zpět (navigate(-1)) |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
-| Stránka Info | ⬜ | placeholder |
+| WebSocket /ws/orders + OrderWatcher | ✅ | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
+| Stránka Info | ✅ | 2 záložky Projekt/Dokumentace; verze z /api/health; info.css |
 | Styling / design | ✅ | design systém hotov; dark mode; topbar redesign (3 skupiny + oddělovače) |
 | Autentizace | ✅ | AuthContext → POST /api/auth/login (PBKDF2); sessionStorage token |
 | Toast notifikace | ✅ | ToastContext, PlcWatcher |
@@ -651,20 +654,19 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 ## 14. TODO
 
 ### Krátkodobé
-1. Doplnit Overview tiles — aktuální zakázka, poslední vygenerovaný soubor, stav sync
-2. Rozšířit Database stránku — řazení sloupců, vyhledávání, hromadné operace
-3. Doplnit zákaznické CSV sloupce do ChartView (AnalyzedParams — upřesnit s Trafag)
+1. Rozšířit Database stránku — řazení sloupců, vyhledávání, hromadné operace
+2. Doplnit zákaznické CSV sloupce do ChartView (AnalyzedParams — upřesnit s Trafag)
 
 ### Střednědobé
-4. `build.bat` — npm run build + PyInstaller (vzor z Analyzing/06_build)
-5. `scada.spec` — frontend dist jako `datas` (vzor z db_gateway.spec)
-6. Odkomentovat StaticFiles v app.py po prvním build
-7. Frontend testy (Vitest + React Testing Library) — klíčové komponenty Database a ChartView
+3. `build.bat` — npm run build + PyInstaller (vzor z Analyzing/06_build)
+4. `scada.spec` — frontend dist jako `datas` (vzor z db_gateway.spec)
+5. Odkomentovat StaticFiles v app.py po prvním build
+6. Frontend testy (Vitest + React Testing Library) — klíčové komponenty Database a ChartView
 
 ### Dlouhodobé
-8. CORS konfigurace pro produkci — omezit `cors_origins` z `["*"]` na konkrétní původy
-9. Přidat další ADS symboly dle požadavků (stav zakázky, počty záznamů)
-10. CSP hlavička (Content-Security-Policy) — zmapovat assety, přidat do `_SecurityHeadersMiddleware`
+7. CORS konfigurace pro produkci — omezit `cors_origins` z `["*"]` na konkrétní původy
+8. CSP hlavička (Content-Security-Policy) — zmapovat assety, přidat do `_SecurityHeadersMiddleware`
+9. Testy pokrývající ADS notifikace — mock pyads + callback simulace
 
 ---
 

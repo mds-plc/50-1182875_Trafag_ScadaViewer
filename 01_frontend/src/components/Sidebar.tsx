@@ -13,7 +13,7 @@ export default function Sidebar() {
   const location = useLocation()
 
   const NAV_ITEMS = [
-    { to: '/',         label: t.nav.overview, icon: Monitor,  extraPaths: []        },
+    { to: '/',         label: t.nav.overview, icon: Monitor,  extraPaths: ['/wip']  },
     { to: '/database', label: t.nav.database, icon: Database, extraPaths: ['/chart'] },
     { to: '/settings', label: t.nav.settings, icon: Settings, extraPaths: []        },
     { to: '/info',     label: t.nav.info,     icon: Info,     extraPaths: []        },

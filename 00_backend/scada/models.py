@@ -188,3 +188,14 @@ class UpdatePathsRequest(BaseModel):
     """Tělo požadavku PATCH /api/config/paths."""
     local_path:  str
     remote_path: str
+
+
+# ======================================================================
+# /api/wip — aktuální WIP záznamy z otevřené zakázky
+# ======================================================================
+
+class WipResponse(BaseModel):
+    """Odpověď GET /api/wip."""
+    file:    str | None              # název WIP souboru (bez cesty); None pokud žádný soubor
+    records: list[CsvRecordModel]    # záznamy nejstarší → nejnovější
+    total:   int                     # počet záznamů

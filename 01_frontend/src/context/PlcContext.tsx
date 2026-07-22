@@ -13,16 +13,18 @@ const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS  = 30_000
 
 interface PlcContextType {
-  status: Record<string, PlcStatus>
-  connected: boolean
+  status:       Record<string, PlcStatus>
+  connected:    boolean   // WebSocket frontend↔backend
+  adsConnected: boolean   // ADS backend↔PLC (broadcastováno serverem)
 }
 
 const PlcContext = createContext<PlcContextType | null>(null)
 
 /** Jeden WebSocket pro celou aplikaci — obaluje kořen stromu. */
 export function PlcProvider({ children }: { children: React.ReactNode }) {
-  const [status,    setStatus]    = useState<Record<string, PlcStatus>>({})
-  const [connected, setConnected] = useState(false)
+  const [status,       setStatus]       = useState<Record<string, PlcStatus>>({})
+  const [connected,    setConnected]    = useState(false)
+  const [adsConnected, setAdsConnected] = useState(false)
   const wsRef     = useRef<WebSocket | null>(null)
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destroyed = useRef(false)
@@ -45,8 +47,13 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
 
       ws.onmessage = (e) => {
         try {
-          const msg: PlcStatus = JSON.parse(e.data)
-          setStatus(prev => ({ ...prev, [msg.symbol]: msg }))
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'ads_status') {
+            setAdsConnected(Boolean(msg.connected))
+          } else {
+            const plcMsg: PlcStatus = msg
+            setStatus(prev => ({ ...prev, [plcMsg.symbol]: plcMsg }))
+          }
         } catch {
           // neplatný JSON — ignorovat
         }
@@ -54,6 +61,7 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
 
       ws.onclose = () => {
         setConnected(false)
+        setAdsConnected(false)
         setStatus({})   // bezpečnostní reset: po odpojení nezobrazovat stará data
         if (destroyed.current) return
         const delay = Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS)
@@ -76,7 +84,7 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <PlcContext.Provider value={{ status, connected }}>
+    <PlcContext.Provider value={{ status, connected, adsConnected }}>
       {children}
     </PlcContext.Provider>
   )

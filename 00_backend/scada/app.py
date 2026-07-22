@@ -20,11 +20,12 @@ from starlette.responses import JSONResponse, Response
 _FRONTEND_DIST = Path("01_frontend/dist")
 
 from scada.config import AppConfig
-from scada.api import plc_ws, files, data, status, health, auth, config_api
+from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
+from scada.services.order_watcher import OrderWatcher
 from scada.services.repositories.csv_repository import CsvRepository
-from scada.services.ws_manager import manager
+from scada.services.ws_manager import manager, orders_manager
 
 log = logging.getLogger(__name__)
 
@@ -137,8 +138,9 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
                     Pro testy předat nízkou hodnotu (např. 3) pro rychlé
                     otestování chování při překročení limitu.
     """
-    monitor    = AdsMonitor(cfg, manager)
-    csv_reader = FileService(CsvRepository(cfg.data))
+    monitor       = AdsMonitor(cfg, manager)
+    csv_reader    = FileService(CsvRepository(cfg.data))
+    order_watcher = OrderWatcher(Path(cfg.data.local_path), orders_manager)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -150,8 +152,10 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         log.info("[APP]   ScadaViewer start")
         try:
             await monitor.start()
+            await order_watcher.start()
             yield
         finally:
+            await order_watcher.stop()
             await monitor.stop()
             log.info("[APP]   ScadaViewer stop")
 
@@ -172,12 +176,14 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         )
 
     app.include_router(plc_ws.router,     prefix="/ws",  tags=["plc"])
+    app.include_router(orders_ws.router,  prefix="/ws",  tags=["orders"])
     app.include_router(health.router,     prefix="/api", tags=["health"])
     app.include_router(auth.router,       prefix="/api", tags=["auth"])
     app.include_router(config_api.router, prefix="/api", tags=["config"])
     app.include_router(files.router,      prefix="/api", tags=["files"])
     app.include_router(data.router,       prefix="/api", tags=["data"])
     app.include_router(status.router,     prefix="/api", tags=["status"])
+    app.include_router(wip.router,        prefix="/api", tags=["wip"])
 
     # React frontend — automaticky aktivní pokud existuje build (Docker / produkce).
     # V dev módu (npm run dev na :5173) adresář dist/ neexistuje → přeskočeno.

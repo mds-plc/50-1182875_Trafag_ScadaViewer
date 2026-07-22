@@ -32,7 +32,7 @@ function useClock(lang: Lang) {
 }
 
 export default function Topbar() {
-  const { connected }            = usePlc()
+  const { adsConnected }         = usePlc()
   const { isLocalLogin, logout } = useAuth()
   const { lang, setLang, t }     = useLang()
   const { time, dateStr }        = useClock(lang)
@@ -53,7 +53,7 @@ export default function Topbar() {
         {/* Skupina 1: Stav spojení + přihlášený uživatel */}
         <div className="topbar__group">
           <div className="topbar__chip">
-            <AdsStatus connected={connected} />
+            <AdsStatus connected={adsConnected} />
           </div>
 
           {isLocalLogin && (

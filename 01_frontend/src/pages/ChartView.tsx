@@ -24,7 +24,7 @@ interface MetricsProps {
   t:          ReturnType<typeof import('../context/LangContext').useLang>['t']
 }
 
-function OrderMetrics({ records, t }: MetricsProps) {
+export function OrderMetrics({ records, t }: MetricsProps) {
   const first = records[0] ?? {}
 
   const expectedCount = useMemo(() => {
@@ -192,7 +192,7 @@ function OrderHero({ records, t }: MetricsProps) {
 
 // ── Varianta C — Split layout (info vlevo, graf vpravo) ─────────────────────
 
-function OrderSplitInfo({ records, t }: MetricsProps) {
+export function OrderSplitInfo({ records, t }: MetricsProps) {
   const first = records[0] ?? {}
 
   const expectedCount = useMemo(() => {

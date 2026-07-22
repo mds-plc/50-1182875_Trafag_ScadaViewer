@@ -1,6 +1,6 @@
 # ScadaViewer — Architektura
 
-> Poslední aktualizace: 2026-07-20
+> Poslední aktualizace: 2026-07-21
 
 Tento dokument popisuje **strukturu a historii** projektu.
 Pro hloubkový rozbor vrstev, propojení a rozšiřitelnosti viz [`architecture_critique.md`](architecture_critique.md).
@@ -313,6 +313,157 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 
 ---
 
+### Fáze 13 — Overview stránka a ADS notifikace (2026-07-21)
+
+**Co bylo implementováno:**
+
+**`constants.py`** — přepracování ADS symbolů:
+- Nový GVL prefix: `GV_IO_ADS_API.ScadaViewerApp` (vlastní ADS rozhraní ScadaViewer; `DatabaseGateway` GVL byl z předchozí fáze)
+- `SYM_WRITE` — 2 symboly pro zápis do PLC (In směr): `sv_heartbeat`, `sv_ready`
+- `SYM` — 23 symbolů pro čtení (Out směr): `mode` (UINT), `order_valid/name/count_expected/count_actual` (BOOL/STRING/UINT), `box_1..6_present/full` (BOOL×12), `box_1..6_count` (UINT×6)
+- `SYM_TYPES` — type overrides pro ne-BOOL symboly: `PLCTYPE_UINT` (2 B), `PLCTYPE_STRING` (82 B pro STRING(80))
+
+**`services/ads_monitor.py`** — plná implementace ADS notifikací:
+- `pyads.Connection.open()` + `add_device_notification(symbol, attr, cb)` pro každý symbol v SYM
+- `NotificationAttrib(trans_mode=ADSTRANS_SERVERONCHA)` — callback pouze při změně hodnoty
+- `self._callback_refs: list` — explicitní reference na Python closures (GC prevence)
+- `_read_and_broadcast_initial()` — počáteční snapshot přes `read_by_name()` po připojení
+- Heartbeat loop — `sv_heartbeat` toggle každých 500 ms; `sv_ready = True` při připojení / `False` při odpojení
+- Polling zcela odstraněn — ADS notifikace jsou dostatečné
+
+**Kritický bugfix — ctypes `data.offset`** (viz audit_log.md 2026-07-21):
+- Symptom: `addressof() argument must be _ctypes._CData, not int`
+- Root cause: přístup přes `notification.contents.data` vrátí Python `int` (ne `_CData` objekt) — ctypes automaticky konvertuje `c_ubyte` při přístupu přes `.contents`
+- Fix: `data_addr = ctypes.addressof(hdr) + type(hdr).data.offset` — adresa structury + byte-offset pole
+- Diagnostika: poll interval zvýšen na 60 s a `log.debug` → `log.info` v callbacku → potvrzeno že callbacks přicházejí, ale decode selhával
+
+**`services/ws_manager.py`** — přidán `orders_manager` singleton:
+- Druhý `ConnectionManager` pro `/ws/orders` (live CSV záznamy)
+- Oddělení od `manager` (PLC ADS stav `/ws/plc`) — různé datové kanály, různí příjemci
+
+**`services/order_watcher.py`** (nový soubor):
+- Polls `{local_path}/production/wip/` a `{local_path}/testing/wip/` každou 1 s
+- `self._line_count: dict[Path, int]` — sleduje počet zpracovaných řádků per soubor
+- Nový soubor → initial snapshot (všechny existující záznamy), pak jen přírůstky
+- Uzavřený soubor (zmizel z wip/) → odstraní ze sledování
+
+**`api/orders_ws.py`** (nový soubor):
+- WebSocket endpoint `/ws/orders` — accept, receive_text loop, disconnect
+
+**`app.py`** — `OrderWatcher` přidán do lifespan; `/ws/orders` endpoint registrován
+
+**`pages/Overview.tsx`** (kompletní přepis):
+- `MODE_MAP: Record<number, ModeInfo>` — 16 hodnot TwinCAT ENUM `E_APP_ModeManager_Mode` s bilingvními texty
+- 7 CSS tříd: `off/wait/init/auto-stop/auto-run/service/test` (barva + animace keyframes)
+- `ACTIVE_MODE_NUMS = new Set([0,3,5,6,10,11,15,20])` — 8 módů kde se zobrazuje aktivní výrobní obsah
+- Hero badge: gradient pozadí + dot + label + timestamp + subtitle + inline progress bar (v auto módech)
+- Klidový stav: `PauseCircle` ikona + popisek (mimo ACTIVE_MODE_NUMS)
+- Tile "Zakázka" (tile--5): název, platnost, actual/expected, progress bar, start čas
+- Tile "Boxy" (tile--7): 6 boxů (`ov-box--present/full/empty`) s count
+- Tile "Průběh výroby" (tile--12): Recharts LineChart — kumulativní počet v čase (pokud ≥2 záznamy)
+- Tile "Live záznamy" (tile--12): `data-table` s Timestamp/ID/SwitchType/Group
+
+**`hooks/useOrderWatcher.ts`** (nový soubor):
+- WebSocket `/ws/orders` s exponential backoff reconnect (1s→30s)
+- `{ records: OrderRecord[] }` — max 200 posledních záznamů (nejnovější jako první)
+
+**`styles/overview.css`** (nový soubor):
+- `.ov-mode`, `.ov-mode--{cls}` — 7 variant gradient pozadí s keyframe animacemi (`ov-pulse`, `ov-glow-run`, `ov-glow-warn`, `ov-glow-test`)
+- `.ov-mode__dot/label/ts/sub/progress/bar` — hero badge elementy
+- `.ov-kpi__*` — zakázka tile (název, platnost, count actual/expected, bar, meta)
+- `.ov-boxes`, `.ov-box`, `.ov-box--present/full/empty` — 3-sloupcový grid boxů s dot + count + chip
+- `.ov-idle`, `.ov-records`, `.ov-tile-grid`
+
+**`pages/Info.tsx`** (nový soubor):
+- 2 záložky: Projekt (verze, číslo projektu, zákazník, dodavatel, kontakt, GitHub) + Dokumentace
+- Verze načtena z `/api/health` — AbortController vzor; tiché selhání pokud API nedostupné
+- Layout shodný se Settings: `db-page`, `db-header`, `db-tabs`, `tile--12`, `settings-row`
+
+**`styles/info.css`** (nový soubor):
+- `.info-mono`, `.info-link`, `.info-about`, `.info-manual-note`
+
+**Klíčová rozhodnutí:**
+- **Polling odstraněn** — ADS `ADSTRANS_SERVERONCHA` notifikace jsou dostatečné; polling byl jen diagnostická berlička při ladění
+- **Oddělený `orders_manager`** — `/ws/plc` (PLC stav) a `/ws/orders` (CSV záznamy) jsou různé datové kanály; sdílení by zkomplikovalo filtrování na frontendu
+- **`ACTIVE_MODE_NUMS` zahrnuje i mód 0 (`off`)** — záměrné: operátor vidí poslední stav zakázky/boxů i po zastavení stroje (SCADA safety)
+- **`useOrderWatcher` MAX_RECORDS = 200** — live view; historická data jsou v Database/ChartView
+
+---
+
+### Fáze 14 — Overview redesign + ADS status propagace + WIP endpoint (2026-07-22)
+
+**Podnět:** 3 uživatelské požadavky po vizuální kontrole:
+1. ORDER tile měl příliš mnoho prázdného místa — KPIs byly v samostatné dlaždici
+2. Topbar chip ukazoval "PLC Připojeno" i při fyzicky odpojeném PLC (záměna WebSocket ↔ ADS spojení)
+3. Hero badge zobrazoval "PLC Odpojeno" text — uživatel preferoval skrytý badge + centrovanou ikonu
+
+**`services/ads_monitor.py`** — explicitní ADS status broadcast:
+- `{"type": "ads_status", "connected": false}` broadcastován okamžitě na začátku `start()` (před připojením)
+- `{"type": "ads_status", "connected": true}` po úspěšném `_connect()`
+- `{"type": "ads_status", "connected": false}` v obou except blocích + na začátku `stop()`
+- Nový klient připojený kdykoli dostane správný stav z `ws_manager._cache`
+
+**`services/ws_manager.py`** — cache rozšířena:
+- Klíč pro cache: explicitní `if message.get("symbol")` → pak `elif message.get("type")` (místo `or` — zabrání falzely fallthrough)
+- `ads_status` zpráva je nyní cachována pod klíčem `"ads_status"` → nový WS klient dostane stav okamžitě
+
+**`context/PlcContext.tsx`** — nový stav `adsConnected`:
+- `connected: boolean` = WebSocket frontend↔backend (existující)
+- `adsConnected: boolean` = ADS backend↔PLC (nový) — výchozí `false`
+- `ws.onmessage`: `msg.type === 'ads_status'` → `setAdsConnected(msg.connected)`; ostatní → PLC symbol stav
+- `ws.onclose`: `setAdsConnected(false)` (reset při ztrátě WebSocket)
+
+**`components/Topbar.tsx`** — chip ADS stavu přepnut na `adsConnected` (ne `connected`)
+
+**`api/wip.py`** (nový soubor):
+- `GET /api/wip?order=X` → `{ file: string|null, records: CsvRecord[], total: number }`
+- Hledá `{local_path}/production/wip/*.csv` — nejnovější dle mtime
+- Filtruje záznamy dle `order` parametru (číslo zakázky z PLC)
+- `asyncio.to_thread()` — synchronní I/O mimo event loop
+
+**`hooks/useWipData.ts`** (nový soubor):
+- `useWipData(enabled: boolean, orderName: string|undefined)` → `{ data, loading }`
+- Fetch pouze pokud `enabled=true && orderName` — zabrání zbytečným requestům
+- Při změně `orderName` (nová zakázka): clear + refetch
+- `enabled=false` → clear dat (přepnutí mimo auto mód)
+- AbortController vzor (konzistentní s ostatními hooky)
+
+**`pages/Overview.tsx`** — kompletní redesign:
+- `ACTIVE_MODE_NUMS` sada nahrazena: `showActive = adsConnected && (cls === 'auto-stop' || cls === 'auto-run')`
+- PLC offline → hero badge skryt, centrovaná `WifiOff` ikona (opacity 0.25) s popisem
+- KPI merge: 6 stats (Zbývá/Uplynulo/Rychlost/Zbývá~/Dokončení/Plné boxy) přesunuto z vlastní dlaždice do ORDER tile za progress bar (oddělovač `.ov-kpi__stats-sep`)
+- Chart rozšířen z `tile--7` na `tile--12` (plná šířka)
+- Skeleton loader v Last Record tile: `wipLoading && displayRecords.length === 0` → `.ov-skeleton-wrap`
+- WIP soubor zobrazen v ORDER tile header (`.ov-wip-file`)
+- Merge WS + REST záznamů: `useWipData` poskytne historická data po obnovení stránky; WS přírůstky deduplikovány dle `timestamp`
+- `_fmtDur()` extrahovana na úroveň modulu (bylo uvnitř `useMemo`); `elapsedStr` ji nyní volá
+- Dead code odstraněn: `OvRow` komponenta (definována, nikdy nepoužita)
+
+**`styles/overview.css`** — přidány třídy:
+- `.ov-plc-offline` — centrovaný placeholder při odpojeném ADS
+- `.ov-kpi__stats-sep` — oddělovač pod progress barem v ORDER tile
+- `.ov-stats`, `.ov-stat`, `.ov-stat__label/value/unit` — 2-sloupcový grid stats
+- `.ov-skeleton-wrap`, `.ov-skeleton` + `@keyframes ov-shimmer` — shimmer loading placeholder
+- `.ov-wip-file` — název WIP souboru v tile header (monospace, ellipsis)
+- `.ov-ts-mono` — timestamp text (monospace, muted)
+- Dead CSS `.ov-row*` odstraněno (bylo pro odstraněnou `OvRow` komponentu)
+
+**`api/files.py`** — timeout pro NAS:
+- `asyncio.wait_for(..., timeout=30.0)` pro `location=remote`; `timeout=10.0` pro local
+- `asyncio.TimeoutError` → HTTP 503 s popisnou zprávou
+- Prevence blokování event loopu při nedostupném NAS (Windows timeout ~60 s)
+
+**`pages/Wip.tsx`** — oprava error stavu:
+- Přidán `error: string|null` stav
+- `catch` nyní volá `setError(t.common.errorLoading)` místo tiché fallback na "Žádná aktivní zakázka"
+
+**Klíčová rozhodnutí:**
+- **`connected` vs `adsConnected`** — záměrně dvě hodnoty: WebSocket může být live (backend běží) i když ADS selhal (PLC vypnuto); ukazovat "PLC Připojeno" jen při obou podmínkách by bylo matoucí
+- **Skrytý badge při offline** — průmyslový SCADA standard: místo chybového stavu v badgeu jednoduchá ikona; operátor okamžitě ví co se děje
+- **WIP REST + WS merge** — obnovení stránky ztrácí WS historii; REST snapshot + dedup dle `timestamp` zajistí konzistenci bez race condition
+
+---
+
 ## Tok dat
 
 ```
@@ -324,7 +475,7 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
  start() uloží event loop                                          (services/ws_manager.py)
  pyads.Connection.open()                                                │  broadcast()
  add_device_notification per SYM                                        ▼
- _make_callback() → bool(raw[0]) → JSON
+ _make_callback() → ctypes decode → JSON
                                                                    [Prohlížeče]
 [CSV soubory — sdílená složka]                                     ws://host/ws/plc
     │  DatabaseGateway ZAPISUJE  ──►  C:/apps/scada_data/  ◄── ScadaViewer ČÍTÁ
@@ -376,12 +527,14 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 
 | Endpoint | Metoda | Popis |
 |----------|--------|-------|
-| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast při každé ADS notifikaci |
+| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast při každé ADS notifikaci + `{type:"ads_status"}` |
+| `/ws/orders` | WebSocket | Live CSV záznamy z wip/ složek — broadcast nových řádků (OrderWatcher) |
 | `/api/health` | GET | `{status, version, checks}` — zdravotní stav (NSSM watchdog, monitoring) |
 | `/api/files` | GET | Seznam zakázek; `?location=local\|remote&type=production\|testing&page=1&per_page=50` |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` |
 | `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=` |
+| `/api/wip` | GET | Záznamy aktuální WIP zakázky; `?order=X` → `{file, records[], total}` |
 | `/api/status` | GET | `{remote_available: bool}` |
 | `/api/auth/login` | POST | `{username, password}` → `{token}`; PBKDF2-HMAC-SHA256 |
 | `/api/auth/logout` | POST | `{token}` → 204; odstraní session |
@@ -400,7 +553,7 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 ```
 
 `status`: `"ok"` nebo `"degraded"` (vždy HTTP 200 — NSSM rozlišuje connection refused od degraded).
-`ads: false` je očekávaný stav dokud není implementováno pyads připojení.
+`ads: true` pokud je AdsMonitor připojen k PLC; `ads: false` pokud PLC nedostupné (graceful degradation).
 
 ### /api/files — formát odpovědi
 
@@ -465,11 +618,11 @@ Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` po
 
 | Stránka | Cesta | Hook | Komponenty | Stav |
 |---------|-------|------|-----------|------|
-| Overview | `/` | `usePlc` (Context) | `PlcStatus` | ✅ skeleton, TODO tiles |
+| Overview | `/` | `usePlc` (PlcContext) + `useOrderWatcher` | hero badge, KPI, boxy, mini chart, live records | ✅ plně funkční — hero badge + zakázka + boxy + live záznamy |
 | Database | `/database` | `useFiles`, `useFileRecords`, `useRemoteStatus` | `Pagination` | ✅ plně funkční + stránkování + klávesové zkratky |
 | ChartView | `/chart?file=...` nebo `/chart?file=...&record=N` | `useData` | `Chart`, `DataTable`, `OrderHero` | ✅ dvourežimový (order detail + record detail); Production: hero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
-| Settings | `/settings` | — | — | ⬜ placeholder |
-| Info | `/info` | — | — | ⬜ placeholder |
+| Settings | `/settings` | — | — | ✅ Předvolby + Připojení + folder picker |
+| Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
 
 ---
 
@@ -534,6 +687,64 @@ const numericKeys = useMemo(() => {
 ---
 
 ## Frontend — stránky v detailu
+
+### Overview (`/`)
+
+**Zdroje dat:** `PlcContext` (ADS notifikace via WebSocket `/ws/plc`) + `useOrderWatcher` (WS live přírůstky) + `useWipData` (REST snapshot po obnově stránky).
+
+**Layout:**
+```
+Overview.tsx
+│
+├── (!adsConnected) <div class="ov-plc-offline">
+│   └── WifiOff 60px (opacity 0.25) + nadpis + podnadpis
+│
+├── (adsConnected) <div class="ov-mode ov-mode--{cls}">     ← hero gradient badge
+│   ├── dot + label (název režimu) + timestamp
+│   ├── subtitle (popis režimu)
+│   └── inline progress bar (jen auto-stop/auto-run s platnou zakázkou)
+│
+├── (adsConnected && !showActive) <div class="ov-idle">
+│   └── PauseCircle 48px + popisek
+│
+└── (showActive) <div class="tile-grid ov-tile-grid">
+    ├── <tile tile--5> Zakázka (ORDER)
+    │   ├── tile__header: nadpis + ov-wip-file (název WIP souboru, jen pokud platná zakázka)
+    │   ├── ov-kpi__name (číslo zakázky)
+    │   ├── ov-kpi__validity (ok/err badge)
+    │   ├── ov-kpi__count (actual / expected)
+    │   ├── ov-kpi__bar-row (progress bar + %)
+    │   ├── ov-kpi__stats-sep (oddělovač)
+    │   └── ov-stats (2-col grid): Zbývá | Uplynulo | Rychlost | Zbývá~ | Dokončení | Plné boxy
+    ├── <tile tile--7> Boxy
+    │   └── ov-boxes (3-col grid): ov-box × 6 (present/full/empty) + dot + count + chip
+    ├── <tile tile--12> Poslední záznam
+    │   ├── tile__header-right: timestamp + [Záznamy zakázky] + [Databáze]
+    │   └── wipLoading && empty → ov-skeleton-wrap (3 shimmer řádky)
+    │       jinak → ov-last-record (field list: ID | SwitchType | Group)
+    └── <tile tile--12 ov-chart-tile> Průběh výroby
+        └── Recharts LineChart: kumulativní počet ks v čase + ReferenceLine(expectedCnt)
+            osa X: hourTicks (celé hodiny HH:00) | osa Y: 0..max(actual, expected)
+```
+
+**`showActive`** = `adsConnected && (cls === 'auto-stop' || cls === 'auto-run')`
+(dříve `ACTIVE_MODE_NUMS` sada — zjednodušeno na test CSS třídy)
+
+**Mód → CSS třída → vizuál:**
+
+| Číslo | TwinCAT ENUM | CSS třída | Vizuál |
+|-------|-------------|-----------|--------|
+| 0 | eMACHINEOFF | `off` | šedý gradient, statický |
+| 3,4,6,14,30 | eSTARTING / eHOMING / eSTOPPING | `init` | jantarový, pulzující |
+| 5,9 | eUNHOMED / eRESUME | `wait` | jantarový, statický |
+| 10 | eAUTOSTOP | `auto-stop` | zelený, statický |
+| 15,16,17 | eAUTOMODE / eMSA / eLI | `auto-run` | zelený, pulzující |
+| 20,21,25 | eSERVICE / eSTEPBYSTEP | `service` | oranžový, statický |
+| 11 | eDUMMYMODE | `test` | modrý, pulzující |
+
+**`ACTIVE_MODE_NUMS`** = `{0, 3, 5, 6, 10, 11, 15, 20}` — zobrazuje aktivní obsah (zakázka + boxy + záznamy); záměrně zahrnuje mód `0` (off) pro SCADA safety (operátor vidí poslední stav).
+
+---
 
 ### Database (`/database`)
 
@@ -653,7 +864,7 @@ Stav v aplikaci je organizován do tří vrstev:
 |---------|-----|---------|------------|
 | `LangContext` | `App.tsx` (outermost) | `lang`, `setLang`, `t` | `localStorage['scada_lang']` |
 | `ToastContext` | pod Lang | `toasts[]`, `addToast()`, auto-dismiss 4500ms | — (ephemeral) |
-| `PlcContext` | pod Toast | `status: Record<symbol, PlcStatus>`, `connected: bool`, WebSocket singleton | — (live) |
+| `PlcContext` | pod Toast | `status: Record<symbol, PlcStatus>`, `connected: bool` (WS), `adsConnected: bool` (ADS), WebSocket singleton | — (live) |
 | `AuthContext` | pod Plc | `isLoggedIn`, `isLocalLogin`, `login()`, `logout()` | `sessionStorage['scada_token']` |
 
 ### 2. Stránkový stav (hook)
@@ -890,10 +1101,12 @@ Umístění: vpravo v Topbar, před hodinami.
 | `useFileRecords` | `hooks/useData.ts` | Záznamy konkrétního souboru pro ExpandedRow |
 | `useRemoteStatus` | `hooks/useData.ts` | Dostupnost NAS (polling `/api/status`); `bool \| null` |
 | `useData` | `hooks/useData.ts` | Záznamy pro ChartView s date filtry |
+| `useOrderWatcher` | `hooks/useOrderWatcher.ts` | WebSocket `/ws/orders`; live CSV záznamy z wip/; reconnect backoff; max 200 záznamů |
+| `useWipData` | `hooks/useWipData.ts` | REST `/api/wip?order=X`; historický snapshot WIP po obnovení stránky; AbortController |
 | `useBackendOnline` | `hooks/useBackendOnline.ts` | Polling `/api/health` každých 10 s → offline banner |
 | `useKeyShortcuts` | `hooks/useKeyShortcuts.ts` | Globální klávesové zkratky; skip při fokusu inputu |
 | `useLang` | `context/LangContext.tsx` | i18n hook; `{ lang, setLang, t }` |
-| `usePlc` | `context/PlcContext.tsx` | WebSocket stav; `{ status, connected }` |
+| `usePlc` | `context/PlcContext.tsx` | WebSocket stav; `{ status, connected, adsConnected }` |
 | `useAuth` | `context/AuthContext.tsx` | Přihlášení; `{ isLoggedIn, isLocalLogin, login, logout }` |
 | `useToast` | `context/ToastContext.tsx` | Toast notifikace; `{ addToast }` |
 
@@ -953,6 +1166,8 @@ Všechny styly jsou vanilla CSS, importované přes `src/index.css` v pevném po
 | 10 | `styles/toast.css` | `.toast-container` (fixed), `.toast--success/danger/warning/info`, `.toast__dot` |
 | 11 | `styles/database.css` | `.db-page`, `.db-tabs`, `.db-toolbar`, `.db-table`, `.db-expand`, `.db-remote-alert`, `.db-modal`, `.db-order-stats`, `.db-count-tile`, `.db-group-badge` |
 | 12 | `styles/chart.css` | `.chart-header`, `.chart-summary`, `.order-hero` (dark panel s metrics), `.chart-record-fields`, `.chart-params-placeholder`, `.order-groups-mini` |
+| 13 | `styles/overview.css` | `.ov-mode`, `.ov-mode--{cls}` (7 variant), keyframes `ov-pulse/glow-run/glow-warn/glow-test/ov-shimmer`, `.ov-kpi__*`, `.ov-stats`, `.ov-stat`, `.ov-boxes`, `.ov-box--present/full/empty`, `.ov-idle`, `.ov-records`, `.ov-plc-offline`, `.ov-skeleton-wrap`, `.ov-skeleton`, `.ov-wip-file`, `.ov-ts-mono` |
+| 14 | `styles/info.css` | `.info-mono`, `.info-link`, `.info-about`, `.info-manual-note` |
 
 > **Konvence:** BEM-like pojmenování. Nové stránkové styly = nový soubor + import v `index.css`.
 

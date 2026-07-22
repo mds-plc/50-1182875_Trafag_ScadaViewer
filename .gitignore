@@ -23,6 +23,12 @@ build/
 # Konfigurace — obsahuje síťové údaje a hash hesla; nikdy do repozitáře
 Config.toml
 
+# Claude Code — lokální oprávnění (machine-specific, nepatří do repozitáře)
+.claude/settings.local.json
+
+# Vnořené repozitáře v 05_user_data
+05_user_data/scada_example/
+
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,687 @@
+/**
+ * @file overview.css
+ * @description Styly pro stránku Přehled — gradient hero badge, zakázka, boxy, live tabulka.
+ */
+
+/* ── Full-height layout — Overview vyplní celou obrazovku bez scrollu ───── */
+
+.ov-page {
+  flex:       1;        /* vyplní .content (flex column) — bez zbytečného scrollu */
+  min-height: 0;        /* nutné pro flex child s overflow */
+  overflow:   hidden;
+}
+
+/* Kompaktnější tile padding pro Overview — globální .tile má space-5/6 (20/24px) */
+.ov-page .tile {
+  padding: var(--space-3) var(--space-5);   /* 12px 20px místo 20px 24px */
+}
+
+/* Tile tituly — výraznější v kontextu dashboardu */
+.ov-page .tile__title {
+  font-weight: 700;
+  color:       var(--color-text-secondary);
+}
+
+/* Tile grid roste do zbývajícího místa po db-header + hero badge */
+.ov-page .ov-tile-grid {
+  flex:               1;
+  min-height:         0;               /* nutné pro flex child s overflow */
+  /* Řádky: order+boxy | last-record | CHART plná šířka (roste) */
+  grid-template-rows: auto auto 1fr;
+}
+
+/* Chart tile musí být flex column aby ov-chart-wrap mohl flex: 1 */
+.ov-chart-tile {
+  display:        flex;
+  flex-direction: column;
+  min-height:     130px;
+}
+
+/* Chart wrapper vyplní zbytek tile (za tile__header) */
+.ov-chart-wrap {
+  flex:        1;
+  min-height:  0;
+  touch-action: pan-y;
+}
+
+/* ── Machine mode hero badge ────────────────────────────────────────────── */
+
+.ov-mode {
+  position:       relative;
+  display:        flex;
+  flex-direction: column;
+  gap:            var(--space-1);
+  padding:        var(--space-4) var(--space-6);
+  min-height:     72px;
+  border-radius:  var(--radius-lg);
+  margin-bottom:  0;
+  border:         none;
+  overflow:       hidden;
+  transition:     box-shadow 0.4s ease;
+}
+
+.ov-mode__top {
+  display:     flex;
+  align-items: center;
+  gap:         var(--space-4);
+}
+
+.ov-mode__dot {
+  width:         24px;
+  height:        24px;
+  border-radius: 50%;
+  flex-shrink:   0;
+  background:    rgba(255, 255, 255, 0.92);
+  box-shadow:    0 0 0 5px rgba(255, 255, 255, 0.18);
+  transition:    box-shadow 0.3s ease, opacity 0.3s ease;
+}
+
+.ov-mode__label {
+  flex:           1;
+  font-size:      26px;
+  font-weight:    900;
+  line-height:    1;
+  letter-spacing: -0.4px;
+  color:          #fff;
+}
+
+.ov-mode__ts {
+  font-size:   var(--font-size-xs);
+  font-family: var(--font-mono);
+  color:       rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+.ov-mode__sub {
+  font-size:   var(--font-size-sm);
+  font-weight: 400;
+  color:       rgba(255, 255, 255, 0.60);
+  padding-left: calc(24px + var(--space-4));  /* zarovnat s label (přeskočit dot 24px + gap 16px) */
+}
+
+.ov-mode__progress {
+  display:     flex;
+  align-items: center;
+  gap:         var(--space-3);
+  padding-left: calc(24px + var(--space-4));
+  margin-top:  var(--space-2);
+}
+
+.ov-mode__bar {
+  flex:          1;
+  height:        4px;
+  background:    rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow:      hidden;
+}
+
+.ov-mode__bar-fill {
+  height:        100%;
+  background:    rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+  transition:    width 0.5s ease;
+}
+
+.ov-mode__bar-text {
+  font-size:   var(--font-size-xs);
+  font-family: var(--font-mono);
+  color:       rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+/* ── Stavy — gradient backgrounds ──────────────────────────────────────── */
+
+/* Vypnuto — tmavě šedá */
+.ov-mode--off {
+  background: #374151;
+}
+.ov-mode--off .ov-mode__dot   { background: rgba(255, 255, 255, 0.20); box-shadow: none; }
+.ov-mode--off .ov-mode__label { color: #9ca3af; }
+.ov-mode--off .ov-mode__sub   { color: rgba(156, 163, 175, 0.55); }
+.ov-mode--off .ov-mode__ts    { color: rgba(156, 163, 175, 0.35); }
+
+/* Čekání — tmavě jantarová */
+.ov-mode--wait {
+  background: #92400e;
+}
+.ov-mode--wait .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+/* Inicializace — jantarová + pulzující glow */
+.ov-mode--init {
+  background: #b45309;
+  animation:  ov-glow-warn 2s ease-in-out infinite;
+}
+.ov-mode--init .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+  animation:  ov-pulse 1s infinite;
+}
+
+/* Auto — Stop — tmavě zelená, statická */
+.ov-mode--auto-stop {
+  background: #15803d;
+}
+.ov-mode--auto-stop .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+/* Auto — Run — zelená + pulzující glow */
+.ov-mode--auto-run {
+  background: #16a34a;
+  animation:  ov-glow-run 2.5s ease-in-out infinite;
+}
+.ov-mode--auto-run .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.20);
+  animation:  ov-pulse 1.4s infinite;
+}
+
+/* Servis — oranžová */
+.ov-mode--service {
+  background: #c2410c;
+}
+.ov-mode--service .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+/* Testovací — modrá + pulzující glow */
+.ov-mode--test {
+  background: #1d4ed8;
+  animation:  ov-glow-test 2s ease-in-out infinite;
+}
+.ov-mode--test .ov-mode__dot {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.15);
+  animation:  ov-pulse 1.4s infinite;
+}
+
+/* ── Animace ────────────────────────────────────────────────────────────── */
+
+@keyframes ov-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+@keyframes ov-glow-run {
+  0%, 100% { box-shadow: 0 4px 20px 0   rgba(22, 163, 74, 0.15); }
+  50%       { box-shadow: 0 6px 40px 4px rgba(22, 163, 74, 0.45); }
+}
+
+@keyframes ov-glow-warn {
+  0%, 100% { box-shadow: 0 4px 20px 0   rgba(180, 83, 9, 0.15); }
+  50%       { box-shadow: 0 6px 40px 4px rgba(180, 83, 9, 0.40); }
+}
+
+@keyframes ov-glow-test {
+  0%, 100% { box-shadow: 0 4px 20px 0   rgba(29, 78, 216, 0.15); }
+  50%       { box-shadow: 0 6px 40px 4px rgba(29, 78, 216, 0.40); }
+}
+
+/* ── Kompaktní tile grid pro Overview ───────────────────────────────────── */
+
+@keyframes ov-tiles-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tile-grid.ov-tile-grid {
+  gap:         var(--space-3);
+  align-items: stretch;   /* tiles v řadě mají stejnou výšku */
+  animation:   ov-tiles-in 0.3s ease both;
+  /* flex + grid-template-rows doplňuje .ov-page .ov-tile-grid výše */
+}
+
+/* KPI tile (zakázka) — flex column pro margin-top: auto na meta */
+.tile-grid.ov-tile-grid .tile--5 {
+  display:        flex;
+  flex-direction: column;
+}
+
+
+/* ── Progress bar v ORDER tile ──────────────────────────────────────────── */
+
+.ov-progress {
+  display:     flex;
+  align-items: center;
+  gap:         var(--space-2);
+}
+.ov-progress__bar {
+  flex:          1;
+  height:        6px;
+  background:    var(--color-surface-2);
+  border-radius: 3px;
+  overflow:      hidden;
+}
+.ov-progress__fill {
+  height:        100%;
+  background:    var(--color-success);
+  border-radius: 3px;
+  transition:    width 0.4s ease;
+}
+.ov-progress__text {
+  font-size:   var(--font-size-xs);
+  color:       var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Boxy ────────────────────────────────────────────────────────────────── */
+
+.ov-boxes {
+  display:               grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:                   var(--space-3);
+}
+
+/* Zašedlé boxy — zakázka není platná */
+.ov-boxes--dim .ov-box {
+  border-color: var(--color-border) !important;
+  background:   var(--color-surface) !important;
+  box-shadow:   none !important;
+  opacity:      0.45;
+}
+.ov-boxes--dim .ov-box__dot  { background: var(--color-border) !important; box-shadow: none !important; animation: none !important; }
+.ov-boxes--dim .ov-box__count { display: none; }
+.ov-boxes--dim .ov-box__chip  { background: var(--color-surface-2) !important; color: var(--color-text-muted) !important; }
+
+.ov-box {
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             var(--space-1);
+  padding:         var(--space-1) var(--space-2);
+  min-height:      60px;
+  border-radius:   var(--radius-md);
+  border:          1.5px solid var(--color-border);
+  background:      var(--color-surface);
+  box-shadow:      0 1px 4px rgba(0, 0, 0, 0.05);
+  text-align:      center;
+  transition:      border-color 0.3s, background 0.3s, box-shadow 0.3s;
+}
+
+.ov-box__number {
+  font-size:      var(--font-size-xs);
+  font-weight:    700;
+  color:          var(--color-text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.ov-box__dot {
+  width:         16px;
+  height:        16px;
+  border-radius: 50%;
+  background:    var(--color-border);
+  flex-shrink:   0;
+  margin:        var(--space-1) 0;
+  transition:    background 0.3s, box-shadow 0.3s;
+}
+
+.ov-box__count {
+  font-size:   var(--font-size-sm);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color:       var(--color-text-muted);
+}
+
+.ov-box__chip {
+  font-size:      10px;
+  font-weight:    700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding:        2px 9px;
+  border-radius:  100px;
+  background:     var(--color-surface-2);
+  color:          var(--color-text-muted);
+}
+
+/* Přítomen */
+.ov-box--present {
+  border-color: var(--color-success);
+  box-shadow:   0 1px 8px rgba(22, 163, 74, 0.14);
+}
+.ov-box--present .ov-box__dot   {
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18);
+}
+.ov-box--present .ov-box__count { color: var(--color-success); }
+.ov-box--present .ov-box__chip  {
+  background: rgba(22, 163, 74, 0.12);
+  color:      var(--color-success);
+}
+
+/* Plný */
+.ov-box--full {
+  border-color: var(--color-warning);
+  background:   rgba(217, 119, 6, 0.05);
+  box-shadow:   0 1px 8px rgba(217, 119, 6, 0.15);
+}
+.ov-box--full .ov-box__dot   {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.20);
+  animation:  ov-pulse 1s infinite;
+}
+.ov-box--full .ov-box__count { color: var(--color-warning); }
+.ov-box--full .ov-box__chip  {
+  background: rgba(217, 119, 6, 0.15);
+  color:      var(--color-warning);
+}
+
+/* ── KPI karta zakázky ───────────────────────────────────────────────────── */
+
+.ov-kpi__name {
+  font-size:      var(--font-size-lg);
+  font-weight:    800;
+  font-family:    var(--font-mono);
+  color:          var(--color-text-primary);
+  line-height:    1.2;
+  word-break:     break-all;
+  margin-bottom:  var(--space-2);
+}
+
+.ov-kpi__validity {
+  display:        inline-flex;
+  align-items:    center;
+  align-self:     flex-start;
+  font-size:      var(--font-size-xs);
+  font-weight:    700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding:        2px 10px;
+  border-radius:  100px;
+  margin-bottom:  var(--space-2);
+}
+.ov-kpi__validity--ok  { background: rgba(22, 163, 74, 0.12);  color: var(--color-success); }
+.ov-kpi__validity--err { background: rgba(220, 38, 38, 0.12);  color: var(--color-danger);  }
+
+.ov-kpi__count {
+  line-height:   1;
+  margin-bottom: var(--space-2);
+}
+.ov-kpi__count-actual {
+  font-size:      34px;
+  font-weight:    900;
+  font-family:    var(--font-mono);
+  color:          var(--color-text-primary);
+  letter-spacing: -0.5px;
+}
+.ov-kpi__count-sep {
+  font-size:   20px;
+  font-weight: 400;
+  color:       var(--color-text-muted);
+}
+.ov-kpi__count-expected {
+  font-size:   20px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color:       var(--color-text-secondary);
+}
+
+.ov-kpi__bar-row {
+  display:        flex;
+  align-items:    center;
+  gap:            var(--space-2);
+  margin-bottom:  var(--space-2);
+}
+
+.ov-kpi__bar {
+  flex:          1;
+  height:        8px;
+  background:    var(--color-surface-2);
+  border-radius: 4px;
+  overflow:      hidden;
+}
+.ov-kpi__bar-fill {
+  height:        100%;
+  background:    var(--color-success);
+  border-radius: 4px;
+  transition:    width 0.4s ease;
+}
+
+.ov-kpi__pct {
+  font-size:   var(--font-size-xs);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color:       var(--color-success);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ov-kpi__meta {
+  font-size:   var(--font-size-xs);
+  font-family: var(--font-mono);
+  color:       var(--color-text-muted);
+  margin-top:  auto;
+  padding-top: var(--space-3);
+  border-top:  1px solid var(--color-border);
+}
+
+
+/* ── Tile header — pravá strana (timestamp + akční tlačítka) ────────────── */
+
+.tile__header-right {
+  display:     flex;
+  align-items: center;
+  gap:         var(--space-3);
+}
+
+.ov-ts-mono {
+  font-size:   var(--font-size-xs);
+  font-family: var(--font-mono);
+  color:       var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Poslední záznam ────────────────────────────────────────────────────── */
+
+.ov-last-record {
+  display:   flex;
+  flex-wrap: wrap;
+  gap:       var(--space-2) var(--space-8);
+  padding:   var(--space-3) 0 var(--space-2);
+}
+
+.ov-last-record__field {
+  display:        flex;
+  flex-direction: column;
+  gap:            var(--space-1);
+  min-width:      120px;
+}
+
+.ov-last-record__label {
+  font-size:      var(--font-size-xs);
+  font-weight:    600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color:          var(--color-text-muted);
+}
+
+.ov-last-record__value {
+  font-size:   var(--font-size-lg);
+  font-weight: 700;
+  color:       var(--color-text-primary);
+}
+
+.ov-last-record__value--mono {
+  font-family: var(--font-mono);
+}
+
+/* ── Placeholder — neplatná zakázka (ikona + text uvnitř tile) ─────────── */
+
+.ov-no-data {
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             var(--space-3);
+  padding:         var(--space-8) var(--space-6);
+  color:           var(--color-text-muted);
+}
+
+.ov-no-data span {
+  font-size:  var(--font-size-sm);
+  font-style: italic;
+}
+
+/* ── PLC offline — velká ikona doprostřed stránky ──────────────────────── */
+
+.ov-plc-offline {
+  flex:            1;
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             var(--space-3);
+  color:           var(--color-text-muted);
+}
+
+.ov-plc-offline__icon {
+  opacity: 0.25;
+}
+
+.ov-plc-offline__title {
+  font-size:   var(--font-size-lg);
+  font-weight: 600;
+  color:       var(--color-text-muted);
+}
+
+.ov-plc-offline__sub {
+  font-size: var(--font-size-sm);
+  color:     var(--color-text-muted);
+  opacity:   0.65;
+}
+
+/* ── Klidový stav (mimo aktivní mód) ────────────────────────────────────── */
+
+.ov-idle {
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             var(--space-3);
+  padding:         var(--space-10) var(--space-6);
+  color:           var(--color-text-muted);
+}
+
+.ov-idle__icon { opacity: 0.35; }
+
+.ov-idle__text {
+  font-size:   var(--font-size-md);
+  font-weight: 500;
+  color:       var(--color-text-muted);
+}
+
+/* ── Live záznamy ────────────────────────────────────────────────────────── */
+
+.ov-records {
+  flex:         1;         /* vyplní zbytek records tile po header */
+  min-height:   0;
+  overflow-y:   auto;
+  touch-action: pan-y;
+}
+
+.ov-records__empty {
+  padding:    var(--space-6);
+  text-align: center;
+  color:      var(--color-text-muted);
+  font-size:  var(--font-size-sm);
+}
+
+.ov-records__count {
+  font-weight: 400;
+  color:       var(--color-text-muted);
+}
+
+/* ── WIP soubor — název v tile header ───────────────────────────────────── */
+
+.ov-wip-file {
+  font-size:     var(--font-size-xs);
+  font-family:   var(--font-mono);
+  color:         var(--color-text-muted);
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+  max-width:     260px;
+}
+
+/* ── Oddělovač mezi progress barem a KPI stats uvnitř ORDER tile ─────────── */
+
+.ov-kpi__stats-sep {
+  border-top:  1px solid var(--color-border);
+  margin:      var(--space-3) 0 var(--space-2);
+}
+
+/* ── KPI stats grid (uvnitř ORDER tile) ─────────────────────────────────── */
+
+.ov-stats {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   var(--space-3);
+  padding:               var(--space-2) 0;
+}
+
+.ov-stat {
+  display:        flex;
+  flex-direction: column;
+  gap:            var(--space-1);
+  border-left:    2px solid var(--color-accent-muted);
+  padding-left:   var(--space-2);
+}
+
+.ov-stat__label {
+  font-size:      var(--font-size-xs);
+  font-weight:    600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color:          var(--color-text-muted);
+  white-space:    nowrap;
+  overflow:       hidden;
+  text-overflow:  ellipsis;
+}
+
+.ov-stat__value {
+  font-size:   var(--font-size-lg);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color:       var(--color-text-primary);
+  line-height: 1.1;
+}
+.ov-stat__value--muted { color: var(--color-text-muted); }
+
+.ov-stat__unit {
+  font-size:   var(--font-size-xs);
+  font-weight: 500;
+  color:       var(--color-text-muted);
+}
+
+/* ── Skeleton loading placeholder ───────────────────────────────────────── */
+
+@keyframes ov-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ov-skeleton-wrap {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ov-skeleton {
+  height:        20px;
+  border-radius: var(--radius-sm);
+  background:    linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    var(--color-border)    50%,
+    var(--color-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: ov-shimmer 1.4s infinite;
+}

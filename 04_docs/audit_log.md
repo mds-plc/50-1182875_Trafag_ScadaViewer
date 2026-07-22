@@ -5,6 +5,95 @@
 
 ---
 
+## [2026-07-21] Audit — Overview redesign + PLC status + komplexní revize
+
+Hloubkový audit provedený po implementaci: Overview KPI merge, PLC offline stav (WifiOff), ADS status WebSocket propagace. Celkem 22 nálezů; 9 opraveno v této session.
+
+### Opravené nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | `OvRow` komponenta definována, ale nikdy nepoužita v renderu — dead code | `pages/Overview.tsx` | ✅ Odstraněno |
+| 2 | ⚠️ MEDIUM | `DEV_ORDER` konstanta definována uvnitř funkční komponenty — přealokace při každém renderu | `pages/Overview.tsx` | ✅ Přesunuto na úroveň modulu |
+| 3 | ⚠️ MEDIUM | `_fmtDur()` funkce definována uvnitř `useMemo` — nová closure při každé změně závislostí | `pages/Overview.tsx` | ✅ Extrahováno na úroveň modulu |
+| 4 | ⚠️ MEDIUM | `style={{ fontFamily: 'var(--font-mono)' }}` — inline styl v renderu; porušuje CSS architekturu projektu | `pages/Overview.tsx` | ✅ Nahrazeno třídou `.ov-ts-mono` |
+| 5 | ⚠️ MEDIUM | Žádný počáteční `ads_status: false` broadcast — nový klient neví, zda ADS je připojeno/odpojeno, dokud nepřijde první notifikace | `services/ads_monitor.py` | ✅ Přidán broadcast v `start()` před `_connect()` |
+| 6 | ⚠️ MEDIUM | `ws_manager._cache` klíč přes `or` operátor — pokud `symbol` je přítomen ale prázdný string (`""`), falzely přejde na `type` | `services/ws_manager.py` | ✅ Nahrazeno explicitním `if/elif` |
+| 7 | ⚠️ MEDIUM | `Wip.tsx` catch blok nastavuje pouze `loading=false` bez error stavu — uživatel vidí "Žádná aktivní zakázka" i při síťové chybě | `pages/Wip.tsx` | ✅ Přidán `error` stav |
+| 8 | ⚠️ MEDIUM | `files.py` volá `asyncio.to_thread()` bez timeout — při nedostupném NAS Windows blokuje event loop desítky sekund | `api/files.py` | ✅ Přidán `asyncio.wait_for(timeout=30s remote / 10s local)` |
+| 9 | 🌍 i18n | `cs.ts` obsahoval anglické řetězce pro PLC chip v Topbaru (`'PLC Connected'`, `'PLC Disconnected'`) | `i18n/cs.ts` | ✅ Opraveno na česky |
+
+### Dočišťovací opravy (po auditu)
+
+| # | Popis | Soubor | Status |
+|---|-------|--------|--------|
+| A | `wipLoading` z `useWipData` nebyl napojený — skeleton loader v Last Record tile nyní zobrazí shimmer animaci při prvním načtení WIP dat | `pages/Overview.tsx` | ✅ Opraveno |
+| B | `elapsedStr` duplicoval logiku `_fmtDur()` — nahrazeno voláním funkce | `pages/Overview.tsx` | ✅ Opraveno |
+| C | Dead CSS `.ov-row*` (19 řádků) — odstraněno po smazání `OvRow` komponenty | `styles/overview.css` | ✅ Odstraněno |
+| D | `ws_manager._cache`: explicitní `if/elif` místo `or` | `services/ws_manager.py` | ✅ Opraveno |
+| E | `Wip.tsx`: chyběl `error` stav — fetch chyba zobrazovala misleading "Žádná aktivní zakázka" | `pages/Wip.tsx` | ✅ Opraveno |
+| F | `files.py`: timeout pro NAS operace — `asyncio.wait_for(30s/10s)` | `api/files.py` | ✅ Opraveno |
+
+### Otevřené nálezy (akceptováno / low priority)
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 10 | ⚠️ MEDIUM | `config_api.py` patch cesty přes regex — může poškodit komentáře v Config.toml při spec. znacích | `api/config_api.py` | 🔲 Akceptováno (TOML bez komentářů v produkci) |
+| 11 | ⚠️ MEDIUM | PBKDF2 počet iterací (výchozí ~600 000) není uložen v hash stringu — při změně iterací nelze ověřit staré hashe | `api/auth.py` | 🔲 Dokumentováno (není priorita pro aktuální fázi) |
+| 12 | 💡 LOW | `AdsMonitor.connected` property nerozlišuje "připojování" vs "chyba" — obě stavy vrátí `False` | `services/ads_monitor.py` | 🔲 Akceptováno (low impact) |
+| 13 | 💡 LOW | `order_watcher.py` sort souborů dle jmen (abecedně) — pokud soubory nemají timestamp v názvu, pořadí nemusí odpovídat mtime | `services/order_watcher.py` | 🔲 OK — soubory z DatabaseGateway mají timestamp v názvu |
+| 14 | 💡 LOW | TypeScript `strict: true` — neověřeno zda je aktivní; `tsconfig.json` závisí na `tsc --noEmit` běhu | `tsconfig.json` | ✅ Potvrzeno — strict: true + noUnusedLocals + noUnusedParameters |
+
+### Nové věci přidané v této session (Overview redesign)
+
+| Změna | Popis |
+|-------|-------|
+| `PlcContext.tsx` | Nový stav `adsConnected: boolean`; zpráva `{type:"ads_status"}` zpracována odděleně od PLC symbolů |
+| `Topbar.tsx` | Chip ADS stavu používá `adsConnected` místo `connected` (WebSocket vs ADS rozlišení) |
+| `Overview.tsx` | `showActive` podmínka rozšířena o `adsConnected`; hero badge skryt při `!adsConnected`; WifiOff ikona centrovaná na stránce |
+| `overview.css` | Přidán `.ov-plc-offline` (centered disconnected placeholder), `.ov-kpi__stats-sep`, `.ov-ts-mono` |
+| KPI merge | 6 stats přesunuto z vlastní dlaždice "Produkční KPIs" do ORDER tile (pod progress bar); chart rozšířen na `tile--12` |
+
+---
+
+## [2026-07-21] Bugfix — ADS notifikace nefungovaly (ctypes data.offset)
+
+### Symptom
+
+ADS change notifikace se nepropagovaly do UI Overview. Hodnoty se aktualizovaly pouze přes polling (každé 2 s), nikoliv okamžitě při změně v PLC.
+
+### Diagnóza
+
+Logovací test (poll interval → 60 s, callback log → INFO) potvrdil:
+1. Callbacky **jsou** volány — pyads notifikace dorazily ✅
+2. Chyba nastávala až při čtení dat: `addressof() argument must be _ctypes._CData, not int`
+
+**Root cause**: `notification.contents.data` je pole `c_ubyte` v ctypes struktuře `SAdsNotificationHeader`. Přístup přes `.contents` automaticky konvertuje `c_ubyte` na Python `int`. `ctypes.addressof()` vyžaduje `_CData` objekt — proto selhal.
+
+```python
+# CHYBNĚ:
+raw = ctypes.string_at(ctypes.addressof(notification.contents.data), size)
+# → notification.contents.data = int → TypeError
+
+# SPRÁVNĚ:
+hdr       = notification.contents                           # pojmenovaná ref — GC safe
+data_addr = ctypes.addressof(hdr) + type(hdr).data.offset  # offset pole data v SAdsNotificationHeader
+raw       = bytes((ctypes.c_ubyte * n_bytes).from_address(data_addr))
+```
+
+### Další opravy provedené v této session
+
+| # | Oprava | Soubor |
+|---|--------|--------|
+| 1 | `self._callback_refs: list = []` — explicitní reference na Python closures; pyads může uchovávat pouze ctypes wrapper, ne originální Python closure | `services/ads_monitor.py` |
+| 2 | `hdr = notification.contents` jako pojmenovaná proměnná (ne temporary) — GC nemůže uvolnit ctypes objekt dříve než skončí čtení | `services/ads_monitor.py` |
+| 3 | `n_bytes = min(hdr.cbSampleSize, size)` — velikost čtena z ADS notifikačního headeru, ne předpočítaná | `services/ads_monitor.py` |
+| 4 | Odstraněn `_poll_loop` a `_poll_task` — záložní polling byl odstraněn po potvrzení funkčnosti notifikací | `services/ads_monitor.py` |
+
+**128/128 testů prochází.**
+
+---
+
 ## [2026-07-20] Bugfix — Settings stránka se načítala pomalu
 
 | # | Závažnost | Popis | Soubor | Status |

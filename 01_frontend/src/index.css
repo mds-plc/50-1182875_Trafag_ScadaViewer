@@ -11,3 +11,6 @@
 @import './styles/database.css';
 @import './styles/chart.css';
 @import './styles/settings.css';
+@import './styles/info.css';
+@import './styles/overview.css';
+@import './styles/wip.css';

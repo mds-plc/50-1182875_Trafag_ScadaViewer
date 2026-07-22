@@ -20,6 +20,7 @@ import Database  from './pages/Database'
 import ChartView from './pages/ChartView'
 import Settings  from './pages/Settings'
 import Info      from './pages/Info'
+import Wip       from './pages/Wip'
 import { useBackendOnline } from './hooks/useBackendOnline'
 import { useLang } from './context/LangContext'
 import { WifiOff } from 'lucide-react'
@@ -60,6 +61,7 @@ function AppShell() {
               <Route path="/chart"    element={<ChartView />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/info"     element={<Info />} />
+              <Route path="/wip"      element={<Wip />} />
               <Route path="*"         element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>

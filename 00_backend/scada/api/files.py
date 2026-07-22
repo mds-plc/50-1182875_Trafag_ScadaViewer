@@ -39,16 +39,25 @@ async def list_files(
     to_date:   str|None = Query(None, alias="to",   description="Filtr do (YYYY-MM-DD inclusive)"),
 ) -> FilesResponse:
     reader: DataReader = request.app.state.csv_reader
+    # Remote (NAS/UNC) — Windows může blokovat desítky sekund při nedostupném NAS.
+    # Timeout 30 s pro remote, 10 s pro local (měl by být okamžitý, ale obezřetnost).
+    timeout = 30.0 if location == "remote" else 10.0
     try:
-        result = await asyncio.to_thread(
-            reader.list_files_paginated,
-            location=location,
-            file_type=file_type,
-            page=page,
-            per_page=per_page,
-            from_date=from_date,
-            to_date=to_date,
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                reader.list_files_paginated,
+                location=location,
+                file_type=file_type,
+                page=page,
+                per_page=per_page,
+                from_date=from_date,
+                to_date=to_date,
+            ),
+            timeout=timeout,
         )
+    except asyncio.TimeoutError:
+        log.error("[API]   /api/files timeout (%ss) location=%s", timeout, location)
+        raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/files I/O chyba: %s", exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
