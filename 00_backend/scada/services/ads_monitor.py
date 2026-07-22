@@ -237,6 +237,9 @@ class AdsMonitor:
         if self._plc is None:
             raise ConnectionError("PLC není připojeno")
         self._plc.write_by_name(SYM_WRITE["sv_heartbeat"], value, pyads.PLCTYPE_BOOL)
+        # read_state() vynutí skutečný round-trip k PLC (write může projít přes lokální
+        # ADS router i při odpojeném kabelu — read vždy vyžaduje odpověď od PLC).
+        self._plc.read_state()
 
     def _write_offline(self) -> None:
         """Zapíše Ready=False a Heartbeat=False před odpojením."""
