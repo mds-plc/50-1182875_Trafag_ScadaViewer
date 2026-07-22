@@ -9,7 +9,8 @@ import type { CsvRecord } from '../types'
 
 const MAX_RECORDS = 500
 
-interface OrderRecord extends CsvRecord {
+/** Jeden live záznam z WIP složky — rozšiřuje CsvRecord o zákaznické sloupce. */
+export interface OrderRecord extends CsvRecord {
   [key: string]: unknown
 }
 

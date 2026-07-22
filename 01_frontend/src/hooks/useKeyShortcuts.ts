@@ -22,7 +22,8 @@
  */
 import { useEffect, useRef } from 'react'
 
-type ShortcutMap = Partial<Record<string, (e: KeyboardEvent) => void>>
+/** Mapa klávesových zkratek: `{ [KeyboardEvent.key]: handler }`. */
+export type ShortcutMap = Partial<Record<string, (e: KeyboardEvent) => void>>
 
 /**
  * Registruje globální klávesové zkratky pro aktuální komponentu.

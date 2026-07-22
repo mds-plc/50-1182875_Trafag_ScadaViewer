@@ -16,7 +16,8 @@ const USERNAME_KEY = 'scada_auth_user'
 /** Výsledek pokusu o přihlášení. */
 export type LoginResult = 'ok' | 'invalid' | 'error'
 
-interface AuthContextType {
+/** Tvar hodnoty AuthContext — vrácený z {@link useAuth}. */
+export interface AuthContextType {
   isLoggedIn: boolean
   /** true = přihlášen lokálně (ne přes PLC) */
   isLocalLogin: boolean

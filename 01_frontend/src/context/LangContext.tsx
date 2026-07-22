@@ -11,7 +11,8 @@ import type { Lang, Translations } from '../i18n/types'
 import { cs } from '../i18n/cs'
 import { en } from '../i18n/en'
 
-interface LangContextValue {
+/** Tvar hodnoty LangContext — vrácený z {@link useLang}. */
+export interface LangContextValue {
   lang:    Lang
   setLang: (l: Lang) => void
   t:       Translations

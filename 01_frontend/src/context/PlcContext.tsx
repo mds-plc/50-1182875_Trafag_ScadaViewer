@@ -12,7 +12,8 @@ import type { PlcStatus } from '../types'
 const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS  = 30_000
 
-interface PlcContextType {
+/** Tvar hodnoty PlcContext — vrácený z {@link usePlc}. */
+export interface PlcContextType {
   status:       Record<string, PlcStatus>
   connected:    boolean   // WebSocket frontend↔backend
   adsConnected: boolean   // ADS backend↔PLC (broadcastováno serverem)

@@ -15,7 +15,8 @@ export interface Toast {
   type: ToastType
 }
 
-interface ToastContextType {
+/** Tvar hodnoty ToastContext — vrácený z {@link useToast}. */
+export interface ToastContextType {
   addToast: (message: string, type: ToastType) => void
 }
 

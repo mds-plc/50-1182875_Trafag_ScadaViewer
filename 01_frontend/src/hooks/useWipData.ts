@@ -15,7 +15,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord } from '../types'
 
-interface WipData {
+/** Data z /api/wip — snapshot WIP záznamy aktuální zakázky. */
+export interface WipData {
   file:    string | null
   records: CsvRecord[]
   total:   number

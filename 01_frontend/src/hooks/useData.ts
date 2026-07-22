@@ -21,7 +21,8 @@ import { useLang } from '../context/LangContext'
 // useFiles — seznam souborů dle location + type + stránka
 // ------------------------------------------------------------------
 
-interface FilesParams {
+/** Parametry pro {@link useFiles} hook. */
+export interface FilesParams {
   location: 'local' | 'remote'
   type:     'production' | 'testing'
   page:     number

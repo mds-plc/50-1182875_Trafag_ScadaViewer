@@ -5,7 +5,7 @@
   "out": "../06_build/docs/frontend",
   "name": "ScadaViewer — Frontend",
   "includeVersion": true,
-  "readme": "none",
+  "readme": "docs-index.md",
   "excludePrivate": true,
   "excludeProtected": false,
   "excludeExternals": true,
