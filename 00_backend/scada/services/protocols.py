@@ -66,4 +66,6 @@ class DataReader(Protocol):
         file_type: str = 'production',
         from_date: str | None = None,
         to_date:   str | None = None,
-    ) -> list[dict]: ...
+        page:     int = 1,
+        per_page: int = 0,
+    ) -> tuple[list[dict], int, dict[str, int], int | None]: ...

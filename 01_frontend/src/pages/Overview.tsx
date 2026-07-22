@@ -166,6 +166,13 @@ export default function Overview() {
   const { t, lang } = useLang()
   const { records } = useOrderWatcher()
 
+  // Zablokuje scroll v .content — Overview musí vyplnit výšku bez scrollování
+  useEffect(() => {
+    const el = document.querySelector('.content') as HTMLElement | null
+    if (el) el.style.overflowY = 'hidden'
+    return () => { if (el) el.style.overflowY = '' }
+  }, [])
+
   // Aktuální čas — obnovuje se každých 10 s, aby osa X grafu „tekla" živě
   const [nowTs, setNowTs] = useState(() => Date.now())
   useEffect(() => {
@@ -469,18 +476,18 @@ export default function Overview() {
                 const count   = orderValid ? status[`box_${n}_count`]?.value   as number  | undefined : undefined
                 const cls     = full ? 'full' : present ? 'present' : 'empty'
                 const chipLabel = full
-                  ? t.overview.boxFull
+                  ? (lang === 'cs' ? 'Plná' : 'Full')
                   : present
-                    ? t.overview.boxPresent
-                    : t.overview.boxEmpty
+                    ? (lang === 'cs' ? 'K dispozici' : 'Available')
+                    : (lang === 'cs' ? 'Nepřítomna' : 'Absent')
                 return (
                   <div key={n} className={`ov-box ov-box--${cls}`}>
                     <span className="ov-box__number">BOX {n}</span>
                     <div className="ov-box__dot" />
-                    {count != null && count > 0 && (
+                    {present && count != null && (
                       <span className="ov-box__count">{count}</span>
                     )}
-                    <span className="ov-box__chip">{chipLabel}</span>
+                    <span className={`ov-box__chip ov-box__chip--${cls}`}>{chipLabel}</span>
                   </div>
                 )
               })}
@@ -488,24 +495,14 @@ export default function Overview() {
           </div>
 
           {/* Poslední záznam */}
-          <div className="tile tile--12">
+          <div className="tile tile--5">
             <div className="tile__header">
               <span className="tile__title">{t.overview.lastRecordTile}</span>
-              <div className="tile__header-right">
-                {orderValid && displayRecords[0]?.timestamp && (
-                  <span className="ov-ts-mono">
-                    {formatDateTime(displayRecords[0].timestamp as string)}
-                  </span>
-                )}
-                {orderValid && wipData?.file && (
-                  <Link to="/wip" className="btn btn--sm btn--primary">
-                    {lang === 'cs' ? 'Záznamy zakázky' : 'Order records'}
-                  </Link>
-                )}
-                <Link to="/database?location=local&type=production" className="btn btn--sm btn--secondary">
-                  {lang === 'cs' ? 'Databáze' : 'Database'}
+              {orderValid && wipData?.file && (
+                <Link to="/wip" className="btn btn--sm btn--primary">
+                  {lang === 'cs' ? 'Záznamy' : 'Records'}
                 </Link>
-              </div>
+              )}
             </div>
             {!orderValid ? (
               <div className="ov-no-data">
@@ -521,33 +518,32 @@ export default function Overview() {
             ) : displayRecords.length === 0 ? (
               <div className="ov-records__empty">{t.overview.noRecords}</div>
             ) : (
-              <div className="ov-last-record">
-                <div className="ov-last-record__field">
-                  <span className="ov-last-record__label">{t.overview.colId}</span>
-                  <span className="ov-last-record__value ov-last-record__value--mono">
-                    {(displayRecords[0].microswitch_id as string) ?? '—'}
-                  </span>
+              <div className="ov-rec-list">
+                <div className="ov-rec-list__header">
+                  <span>{lang === 'cs' ? 'Čas' : 'Time'}</span>
+                  <span>{t.overview.colId}</span>
+                  <span>{t.overview.colGroup}</span>
                 </div>
-                <div className="ov-last-record__field">
-                  <span className="ov-last-record__label">{t.overview.colSwitchType}</span>
-                  <span className="ov-last-record__value">
-                    {(displayRecords[0].microswitch_name as string) ?? '—'}
-                  </span>
-                </div>
-                {displayRecords[0].group != null && (
-                  <div className="ov-last-record__field">
-                    <span className="ov-last-record__label">{t.overview.colGroup}</span>
-                    <span className="ov-last-record__value">
-                      {displayRecords[0].group.toString()}
+                {displayRecords.slice(0, 7).map((rec, i) => (
+                  <div key={i} className={`ov-rec-item${i === 0 ? ' ov-rec-item--latest' : ''}`}>
+                    <span className="ov-rec-item__ts">
+                      {rec.timestamp ? _fmtHHMM(rec.timestamp as string) : '—'}
                     </span>
+                    <span className="ov-rec-item__id">
+                      {(rec.microswitch_id as string) ?? '—'}
+                    </span>
+                    {rec.group != null
+                      ? <span className="ov-rec-item__grp">{rec.group.toString()}</span>
+                      : <span />
+                    }
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>
 
           {/* Časový graf průběhu výroby */}
-          <div className="tile tile--12 ov-chart-tile">
+          <div className="tile tile--7 ov-chart-tile">
             <div className="tile__header">
               <span className="tile__title">
                 {lang === 'cs' ? 'Průběh výroby' : 'Production progress'}
@@ -585,12 +581,7 @@ export default function Overview() {
                       axisLine={false}
                       tickLine={false}
                       allowDecimals={false}
-                      domain={[
-                        0,
-                        expectedCnt != null
-                          ? Math.max((chartDataWithNow.at(-1)?.count ?? 0), expectedCnt) + 2
-                          : 'auto',
-                      ]}
+                      domain={[0, 'auto']}
                     />
                     <Tooltip
                       contentStyle={{ fontSize: 12, borderRadius: 8 }}

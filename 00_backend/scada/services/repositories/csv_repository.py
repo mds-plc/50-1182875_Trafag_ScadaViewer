@@ -122,15 +122,27 @@ class CsvRepository:
         path:      Path,
         from_date: str | None = None,
         to_date:   str | None = None,
-    ) -> list[dict]:
+        page:     int = 1,
+        per_page: int = 0,     # 0 = všechny záznamy
+    ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
         Přečte záznamy z CSV souboru.
+        Vrátí (records, total_matching, group_counts, file_expected_count).
+
+        per_page=0: vrátí všechny záznamy (zpětná kompatibilita).
+        per_page>0: stránkování — O(1) paměť; prochází celý soubor pro total_matching.
+        group_counts + file_expected_count se agregují přes celý soubor ve stejné smyčce
+        (žádný extra průchod — "zdarma" jako vedlejší produkt countingu pro stránkování).
         Datumový filtr zde je I/O optimalizace — zabraňuje načítání celého souboru
         do paměti jen proto, aby bylo v service vrstvě co filtrovat.
         """
-        records = []
+        records: list[dict] = []
+        total   = 0
+        group_counts:       dict[str, int] = {}
+        file_expected_count: int | None    = None
         from_day = _date.fromisoformat(from_date) if from_date else None
         to_day   = _date.fromisoformat(to_date)   if to_date   else None
+        offset   = (page - 1) * per_page if per_page > 0 else 0
         try:
             with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
                 reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
@@ -140,17 +152,32 @@ class CsvRepository:
                         try:
                             ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
                         except ValueError:
-                            records.append(rec)  # neparsovatelný timestamp vždy projde
-                            continue
-                        if from_day and ts_day < from_day:
-                            continue
-                        if to_day   and ts_day > to_day:
-                            continue
-                    records.append(rec)
+                            pass   # neparsovatelný timestamp projde filtrem — count + collect
+                        else:
+                            if from_day and ts_day < from_day:
+                                continue
+                            if to_day   and ts_day > to_day:
+                                continue
+                    # Záznam prošel filtry — počítáme (1-based) + agregujeme skupiny
+                    total += 1
+                    grp = str(rec.get('group', '') or '').strip()
+                    if grp:
+                        group_counts[grp] = group_counts.get(grp, 0) + 1
+                    if file_expected_count is None:
+                        ec = rec.get('expected_count', '')
+                        if ec:
+                            try:
+                                file_expected_count = int(ec)
+                            except (ValueError, TypeError):
+                                pass
+                    if per_page == 0:
+                        records.append(rec)
+                    elif offset < total <= offset + per_page:
+                        records.append(rec)
         except (OSError, UnicodeDecodeError) as exc:
             log.error("[CSV]   chyba čtení %s: %s", path.name, exc)
-            return []
-        return records
+            return [], 0, {}, None
+        return records, total, group_counts, file_expected_count
 
     # ------------------------------------------------------------------
     # Vyhledání cesty + validace vstupů

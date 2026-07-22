@@ -4,11 +4,11 @@
  *   (ExpandedRow), stránkování a footer se součty.
  *   Čistá prezentační komponenta — veškerá logika žije v useDatabaseState.
  */
-import { Fragment, useEffect, useMemo } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, Trash2, BarChart2, Download } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { useFileRecords } from '../hooks/useData'
+import { useFileRecords, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import LoadingSpinner from './LoadingSpinner'
 import Pagination from './Pagination'
@@ -31,48 +31,58 @@ interface ExpandedRowProps {
 function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const navigate = useNavigate()
   const { t } = useLang()
-  const { records, loading, error, fetchRecords } = useFileRecords()
+  const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords } = useFileRecords()
+
+  const [recordPage, setRecordPage] = useState(1)
 
   const chartUrl = `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
 
-  // Pro testing záznamy nenačítáme — vše je v detailu celého souboru
+  // Reset stránky při změně souboru
+  useEffect(() => {
+    setRecordPage(1)
+  }, [file.file_id, location, dataType])
+
+  // Načtení dat (production) při změně stránky
   useEffect(() => {
     if (dataType === 'production') {
-      fetchRecords(file.file_id, location, dataType)
+      fetchRecords(file.file_id, location, dataType, recordPage)
     }
-  }, [file.file_id, location, dataType, fetchRecords])
+  }, [file.file_id, location, dataType, recordPage, fetchRecords])
 
-  const hasGroups = useMemo(
-    () => records.some(r => r.group != null),
-    [records]
-  )
+  // groupCounts + fileExpectedCount přicházejí z API — agregovány přes celý soubor,
+  // takže skupinový graf je přesný i při stránkování (nezáleží na aktuální stránce).
+  const hasGroups = Object.keys(groupCounts).length > 0
 
   const groupData = useMemo(
     () => [1, 2, 3, 4, 5, 6].map(g => ({
       name:  String(g),
-      count: records.filter(r => Number(r.group) === g).length,
+      count: groupCounts[String(g)] ?? 0,
     })),
+    [groupCounts]
+  )
+
+  // Sloupec group v tabulce — z aktuální stránky záznamů
+  const hasGroupCol = useMemo(
+    () => records.some(r => r.group != null),
     [records]
   )
 
-  const expectedCount = useMemo(
-    () => records.find(r => r.expected_count != null)?.expected_count ?? null,
-    [records]
-  )
-
-  // colspan pro prázdný stav: # + timestamp + [group] + akce
-  const emptyCols = 3 + (hasGroups ? 1 : 0)
+  // Absolutní index záznamu v celém souboru (0-based) — pro navigaci do ChartView
+  const absIdx = (i: number) => (recordPage - 1) * RECORDS_PER_PAGE + i
 
   // ── Production — skupinový graf + podtabulka záznamů ──
   // (Testing se nikdy nerendruje — hlavní řádek Testing má přímé navigate tlačítko)
+  //
+  // Přestránkování bez blikání: LoadingSpinner jen při prvním načtení (records.length === 0).
+  // Při přechodu na jinou stránku zůstane obsah viditelný — pouze se ztlumí opacity.
   return (
     <div className="db-expand">
-      {loading && <LoadingSpinner />}
-      {error   && <p className="error-text">{error}</p>}
+      {loading && records.length === 0 && <LoadingSpinner />}
+      {error   && records.length === 0 && <p className="error-text">{error}</p>}
 
-      {!loading && !error && (
-        <>
-          {/* Přehled skupin — jen production, jen když jsou skupiny v datech */}
+      {records.length > 0 && (
+        <div style={{ opacity: loading ? 0.45 : 1, transition: 'opacity 0.15s' }}>
+          {/* Přehled skupin — group_counts přichází z API agregovány přes celý soubor */}
           {dataType === 'production' && hasGroups && (
             <div className="db-order-stats">
               <div className="db-group-chart-wrap">
@@ -91,22 +101,42 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                 </ResponsiveContainer>
               </div>
 
-              {expectedCount != null && (
+              {fileExpectedCount != null && (
                 <div className="db-count-tile">
                   <div className="db-order-stats__label">{t.db.totalVsExpected}</div>
                   <div className="db-count-tile__values">
-                    <span className="db-count-tile__total">{records.length}</span>
+                    <span className="db-count-tile__total">{total}</span>
                     <span className="db-count-tile__sep">/</span>
-                    <span className="db-count-tile__expected">{String(expectedCount)}</span>
+                    <span className="db-count-tile__expected">{String(fileExpectedCount)}</span>
                   </div>
                   <div className="db-count-bar-wrap">
                     <div
                       className="db-count-bar"
-                      style={{ width: `${Math.min(100, (records.length / Number(expectedCount)) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (total / fileExpectedCount) * 100)}%` }}
                     />
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Count tile bez skupin — jen počet vs. expected */}
+          {dataType === 'production' && !hasGroups && fileExpectedCount != null && (
+            <div className="db-order-stats">
+              <div className="db-count-tile">
+                <div className="db-order-stats__label">{t.db.totalVsExpected}</div>
+                <div className="db-count-tile__values">
+                  <span className="db-count-tile__total">{total}</span>
+                  <span className="db-count-tile__sep">/</span>
+                  <span className="db-count-tile__expected">{String(fileExpectedCount)}</span>
+                </div>
+                <div className="db-count-bar-wrap">
+                  <div
+                    className="db-count-bar"
+                    style={{ width: `${Math.min(100, (total / fileExpectedCount) * 100)}%` }}
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -117,23 +147,22 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                 <tr>
                   <th className="db-subtable__th db-subtable__th--num">#</th>
                   <th className="db-subtable__th">{t.db.colTimestamp}</th>
-                  {hasGroups && (
+                  {hasGroupCol && (
                     <th className="db-subtable__th db-subtable__th--center">{t.db.colGroup}</th>
                   )}
                   <th className="db-subtable__th db-subtable__th--actions"></th>
                 </tr>
               </thead>
               <tbody>
-                {records.length === 0 && (
-                  <tr>
-                    <td colSpan={emptyCols} className="db-empty">{t.db.noRecords}</td>
-                  </tr>
-                )}
                 {records.map((r, i) => (
-                  <tr key={i} className="db-subtable__row" onClick={() => navigate(`${chartUrl}&record=${i}`)}>
-                    <td className="db-subtable__td db-subtable__td--num">{i + 1}</td>
+                  <tr
+                    key={i}
+                    className="db-subtable__row"
+                    onClick={() => navigate(`${chartUrl}&record=${absIdx(i)}`)}
+                  >
+                    <td className="db-subtable__td db-subtable__td--num">{absIdx(i) + 1}</td>
                     <td className="db-subtable__td">{String(r.timestamp ?? '—')}</td>
-                    {hasGroups && (
+                    {hasGroupCol && (
                       <td className="db-subtable__td db-subtable__td--center">
                         {r.group != null
                           ? (
@@ -152,7 +181,10 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                       <button
                         className="db-icon-btn"
                         title={t.db.openInChart}
-                        onClick={e => { e.stopPropagation(); navigate(`${chartUrl}&record=${i}`) }}
+                        onClick={e => {
+                          e.stopPropagation()
+                          navigate(`${chartUrl}&record=${absIdx(i)}`)
+                        }}
                       >
                         <BarChart2 size={16} />
                       </button>
@@ -163,10 +195,13 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
             </table>
           </div>
 
+          {/* Stránkování záznamu v expand */}
+          <Pagination page={recordPage} pages={pages} onPage={setRecordPage} />
+
           {/* Footer */}
           <div className="db-expand__footer">
             <div className="db-expand__stats">
-              <span>{t.db.rangeRecords}: <strong>{records.length}</strong></span>
+              <span>{t.db.rangeRecords}: <strong>{total}</strong></span>
               {records.length > 1 && (
                 <span className="db-expand__range">
                   {formatDateTime(records[0].timestamp)} &ndash;{' '}
@@ -179,7 +214,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
               {t.db.orderDetail}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

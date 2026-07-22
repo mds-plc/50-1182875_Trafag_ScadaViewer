@@ -85,6 +85,9 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
   return { files, total, pages, loading, error, fetchFiles }
 }
 
+/** Počet záznamů na stránku — musí odpovídat výchozímu per_page v api/data.py */
+export const RECORDS_PER_PAGE = 200
+
 // ------------------------------------------------------------------
 // useDataFetch — sdílená fetch logika pro /api/data (interní)
 // ------------------------------------------------------------------
@@ -97,8 +100,11 @@ function useDataFetch() {
   const tRef = useRef(t)
   tRef.current = t
 
-  const [records, setRecords] = useState<CsvRecord[]>([])
-  const [total,   setTotal]   = useState(0)
+  const [records,           setRecords]           = useState<CsvRecord[]>([])
+  const [total,             setTotal]             = useState(0)
+  const [pages,             setPages]             = useState(1)
+  const [groupCounts,       setGroupCounts]       = useState<Record<string, number>>({})
+  const [fileExpectedCount, setFileExpectedCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -112,16 +118,21 @@ function useDataFetch() {
     setError(null)
     try {
       const params = new URLSearchParams({ file: filter.file })
-      if (filter.location) params.set('location', filter.location)
-      if (filter.type)     params.set('type',     filter.type)
-      if (filter.from)     params.set('from',     filter.from)
-      if (filter.to)       params.set('to',       filter.to)
+      if (filter.location)  params.set('location', filter.location)
+      if (filter.type)      params.set('type',     filter.type)
+      if (filter.from)      params.set('from',     filter.from)
+      if (filter.to)        params.set('to',       filter.to)
+      if (filter.page     != null) params.set('page',     String(filter.page))
+      if (filter.perPage  != null) params.set('per_page', String(filter.perPage))
       const res = await fetch(`/api/data?${params}`, { signal: ctrl.signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.records)) throw new Error(tRef.current.common.errorInvalidResponse)
       setRecords(json.records)
       setTotal(json.total ?? json.records.length)
+      setPages(json.pages ?? 1)
+      setGroupCounts(json.group_counts ?? {})
+      setFileExpectedCount(json.file_expected_count ?? null)
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return
@@ -130,7 +141,7 @@ function useDataFetch() {
     }
   }, [])
 
-  return { records, total, loading, error, fetchData }
+  return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData }
 }
 
 // ------------------------------------------------------------------
@@ -138,15 +149,19 @@ function useDataFetch() {
 // ------------------------------------------------------------------
 
 export function useFileRecords() {
-  const { records, loading, error, fetchData } = useDataFetch()
+  const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData } = useDataFetch()
 
   const fetchRecords = useCallback((
     fileId:   string,
     location: string,
     fileType: string,
-  ) => fetchData({ file: fileId, location, type: fileType }), [fetchData])
+    page = 1,
+  ) => fetchData({
+    file: fileId, location, type: fileType,
+    page, perPage: RECORDS_PER_PAGE,
+  }), [fetchData])
 
-  return { records, loading, error, fetchRecords }
+  return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords }
 }
 
 // ------------------------------------------------------------------

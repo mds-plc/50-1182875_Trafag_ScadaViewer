@@ -4,15 +4,16 @@
  *   1. Detail zakázky (?file=&location=&type=)
  *   2. Detail záznamu  (?file=&location=&type=&record=N)
  */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Download, ArrowLeft } from 'lucide-react'
-import { useData } from '../hooks/useData'
+import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import { exportCsv } from '../utils/exportCsv'
 import Chart          from '../components/Chart'
 import DataTable      from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
+import Pagination     from '../components/Pagination'
 
 const SUMMARY_FIELDS = new Set(['order', 'microswitch_id', 'microswitch_name'])
 const GROUP_COLORS   = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
@@ -20,8 +21,9 @@ const GROUP_COLORS   = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '
 // ── Metrické dlaždice (Production detail) ───────────────────────────────────
 
 interface MetricsProps {
-  records:    Record<string, unknown>[]
-  t:          ReturnType<typeof import('../context/LangContext').useLang>['t']
+  records: Record<string, unknown>[]
+  total?:  number   // skutečný celkový počet (po stránkování může být > records.length)
+  t:       ReturnType<typeof import('../context/LangContext').useLang>['t']
 }
 
 export function OrderMetrics({ records, t }: MetricsProps) {
@@ -114,8 +116,9 @@ export function OrderMetrics({ records, t }: MetricsProps) {
 
 // ── Varianta B — Bohatá hlavička ────────────────────────────────────────────
 
-function OrderHero({ records, t }: MetricsProps) {
-  const first = records[0] ?? {}
+function OrderHero({ records, total: totalProp, t }: MetricsProps) {
+  const first        = records[0] ?? {}
+  const displayTotal = totalProp ?? records.length   // použij API total, ne délku stránky
 
   const expectedCount = useMemo(() => {
     const r = records.find(r => r.expected_count != null)
@@ -123,10 +126,12 @@ function OrderHero({ records, t }: MetricsProps) {
   }, [records])
 
   const completionPct = expectedCount !== null
-    ? Math.min(100, Math.round((records.length / expectedCount) * 100))
+    ? Math.min(100, Math.round((displayTotal / expectedCount) * 100))
     : null
 
-  const hasGroups = records.some(r => r.group != null)
+  // Skupiny zobrazujeme jen pokud máme všechna data (nestránkovaná odpověď)
+  const isPartial = totalProp != null && totalProp > records.length
+  const hasGroups = records.some(r => r.group != null) && !isPartial
   const groupData  = useMemo(
     () => [1, 2, 3, 4, 5, 6].map((g, i) => ({
       g,
@@ -145,7 +150,7 @@ function OrderHero({ records, t }: MetricsProps) {
           <div className="order-hero__order-num">{String(first.order)}</div>
         )}
         <div className="order-hero__counts">
-          <span className="order-hero__count-main">{records.length}</span>
+          <span className="order-hero__count-main">{displayTotal}</span>
           {expectedCount !== null && (
             <span className="order-hero__count-total">/ {expectedCount}</span>
           )}
@@ -308,13 +313,26 @@ export default function ChartView() {
   const recordParam = searchParams.get('record')
   const recordIdx   = recordParam !== null ? Number(recordParam) : null
 
-  const { records, total, loading, error, fetchData } = useData()
+  const { records, total, pages, loading, error, fetchData } = useData()
   const { t } = useLang()
   const navigate = useNavigate()
 
+  // Absolutní index záznamu → stránka, na které leží
+  const pageForRecord = recordIdx != null
+    ? Math.floor(recordIdx / RECORDS_PER_PAGE) + 1
+    : 1
+
+  const [tablePage, setTablePage] = useState(pageForRecord)
+
+  // Resetovat stránku při změně souboru nebo cíle záznamu
   useEffect(() => {
-    if (fileId) fetchData({ file: fileId, location, type: fileType })
-  }, [fileId, location, fileType, fetchData])
+    setTablePage(recordIdx != null ? Math.floor(recordIdx / RECORDS_PER_PAGE) + 1 : 1)
+  }, [fileId, location, fileType, recordIdx])
+
+  // Načíst data při změně souboru nebo stránky tabulky
+  useEffect(() => {
+    if (fileId) fetchData({ file: fileId, location, type: fileType, page: tablePage, perPage: RECORDS_PER_PAGE })
+  }, [fileId, location, fileType, tablePage, fetchData])
 
   const tableColumns = useMemo(
     () => records.length > 0
@@ -332,7 +350,9 @@ export default function ChartView() {
 
   // ── Detail záznamu ────────────────────────────────────────────────
   if (recordIdx !== null) {
-    const record = records[recordIdx] ?? null
+    // recordIdx je absolutní index v celém souboru; records je stránka
+    const withinPageIdx = recordIdx % RECORDS_PER_PAGE
+    const record = records[withinPageIdx] ?? null
 
     return (
       <div>
@@ -340,7 +360,7 @@ export default function ChartView() {
           {backBtn}
           <h1 className="page-title">
             {t.chart.recordDetail} — {fileId}
-            {record && <span className="chart-header__sub">({recordIdx + 1} / {records.length})</span>}
+            {record && <span className="chart-header__sub">({recordIdx + 1} / {total})</span>}
           </h1>
         </div>
 
@@ -397,7 +417,7 @@ export default function ChartView() {
 
         {!loading && !error && (
           <>
-            {records.length > 0 && <OrderHero records={records} t={t} />}
+            {records.length > 0 && <OrderHero records={records} total={total} t={t} />}
 
             <div className="tile tile--12 mb-4">
               <Chart records={records} />
@@ -424,12 +444,16 @@ export default function ChartView() {
                 columns={tableColumns}
                 rows={records}
                 onRowClick={row => {
-                  const idx = records.findIndex(r => r.timestamp === row.timestamp)
-                  if (idx >= 0) navigate(
-                    `/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${idx}`
-                  )
+                  const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
+                  if (withinPage >= 0) {
+                    const absIdx = (tablePage - 1) * RECORDS_PER_PAGE + withinPage
+                    navigate(
+                      `/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${absIdx}`
+                    )
+                  }
                 }}
               />
+              <Pagination page={tablePage} pages={pages} onPage={setTablePage} />
             </div>
           </>
         )}

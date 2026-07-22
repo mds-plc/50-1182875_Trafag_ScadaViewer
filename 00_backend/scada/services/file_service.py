@@ -172,12 +172,17 @@ class FileService:
         file_type: str = 'production',
         from_date: str | None = None,
         to_date:   str | None = None,
-    ) -> list[dict]:
-        """Načte záznamy z daného souboru — deleguje na repozitář."""
+        page:     int = 1,
+        per_page: int = 0,     # 0 = všechny záznamy
+    ) -> tuple[list[dict], int, dict[str, int], int | None]:
+        """Načte záznamy z daného souboru — deleguje na repozitář.
+        Vrátí (records, total, group_counts, file_expected_count)."""
         path = self._repo.resolve_path(file_id, location, file_type)
         if path is None or not path.exists():
             log.warning("[SVC]   soubor nenalezen: %s (%s/%s)", file_id, location, file_type)
-            return []
-        records = self._repo.read_records(path, from_date, to_date)
-        log.debug("[SVC]   read_records %s → %d řádků", file_id, len(records))
-        return records
+            return [], 0, {}, None
+        records, total, group_counts, file_expected_count = self._repo.read_records(
+            path, from_date, to_date, page=page, per_page=per_page,
+        )
+        log.debug("[SVC]   read_records %s → %d/%d záznamů (str. %d)", file_id, len(records), total, page)
+        return records, total, group_counts, file_expected_count

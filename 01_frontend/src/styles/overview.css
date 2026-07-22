@@ -25,9 +25,10 @@
 /* Tile grid roste do zbývajícího místa po db-header + hero badge */
 .ov-page .ov-tile-grid {
   flex:               1;
-  min-height:         0;               /* nutné pro flex child s overflow */
-  /* Řádky: order+boxy | last-record | CHART plná šířka (roste) */
-  grid-template-rows: auto auto 1fr;
+  min-height:         0;
+  /* minmax(0,1fr) — explicitně dovolí řádku se smrsknout na nulu;
+     bez toho by grid mohl ignorovat flex-určenou výšku kontejneru */
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 /* Chart tile musí být flex column aby ov-chart-wrap mohl flex: 1 */
@@ -236,8 +237,9 @@
   /* flex + grid-template-rows doplňuje .ov-page .ov-tile-grid výše */
 }
 
-/* KPI tile (zakázka) — flex column pro margin-top: auto na meta */
-.tile-grid.ov-tile-grid .tile--5 {
+/* KPI/Last-record (tile--5) + Boxy/Chart (tile--7) — flex column */
+.tile-grid.ov-tile-grid .tile--5,
+.tile-grid.ov-tile-grid .tile--7 {
   display:        flex;
   flex-direction: column;
 }
@@ -274,7 +276,11 @@
 .ov-boxes {
   display:               grid;
   grid-template-columns: repeat(3, 1fr);
-  gap:                   var(--space-3);
+  grid-template-rows:    1fr 1fr;   /* 2 řady roste rovnoměrně */
+  flex:                  1;
+  min-height:            0;
+  gap:                   var(--space-5);   /* větší mezery mezi boxy */
+  padding:               var(--space-2) 0; /* vzduch od horního/spodního okraje tile */
 }
 
 /* Zašedlé boxy — zakázka není platná */
@@ -284,24 +290,26 @@
   box-shadow:   none !important;
   opacity:      0.45;
 }
-.ov-boxes--dim .ov-box__dot  { background: var(--color-border) !important; box-shadow: none !important; animation: none !important; }
-.ov-boxes--dim .ov-box__count { display: none; }
-.ov-boxes--dim .ov-box__chip  { background: var(--color-surface-2) !important; color: var(--color-text-muted) !important; }
+.ov-boxes--dim .ov-box__dot                { background: var(--color-border) !important; box-shadow: none !important; animation: none !important; }
+.ov-boxes--dim .ov-box__count              { display: none; }
+.ov-boxes--dim .ov-box__chip,
+.ov-boxes--dim .ov-box__chip--empty,
+.ov-boxes--dim .ov-box__chip--present,
+.ov-boxes--dim .ov-box__chip--full         { background: var(--color-surface-2) !important; color: var(--color-text-muted) !important; }
 
 .ov-box {
   display:         flex;
   flex-direction:  column;
   align-items:     center;
   justify-content: center;
-  gap:             var(--space-1);
-  padding:         var(--space-1) var(--space-2);
-  min-height:      60px;
+  gap:             var(--space-2);
+  padding:         var(--space-4) var(--space-3);
+  min-height:      0;
   border-radius:   var(--radius-md);
-  border:          1.5px solid var(--color-border);
+  border:          1px solid var(--color-border);
   background:      var(--color-surface);
-  box-shadow:      0 1px 4px rgba(0, 0, 0, 0.05);
   text-align:      center;
-  transition:      border-color 0.3s, background 0.3s, box-shadow 0.3s;
+  transition:      border-color 0.3s, background 0.3s;
 }
 
 .ov-box__number {
@@ -313,20 +321,20 @@
 }
 
 .ov-box__dot {
-  width:         16px;
-  height:        16px;
+  width:         14px;
+  height:        14px;
   border-radius: 50%;
   background:    var(--color-border);
   flex-shrink:   0;
-  margin:        var(--space-1) 0;
   transition:    background 0.3s, box-shadow 0.3s;
 }
 
 .ov-box__count {
-  font-size:   var(--font-size-sm);
-  font-weight: 600;
+  font-size:   var(--font-size-xl);
+  font-weight: 800;
   font-family: var(--font-mono);
-  color:       var(--color-text-muted);
+  color:       var(--color-text-primary);
+  line-height: 1;
 }
 
 .ov-box__chip {
@@ -340,34 +348,48 @@
   color:          var(--color-text-muted);
 }
 
-/* Přítomen */
-.ov-box--present {
-  border-color: var(--color-success);
-  box-shadow:   0 1px 8px rgba(22, 163, 74, 0.14);
-}
-.ov-box--present .ov-box__dot   {
-  background: var(--color-success);
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.18);
-}
+/* Přítomen — k dispozici */
+.ov-box--present { border-color: rgba(22, 163, 74, 0.35); }
+.ov-box--present .ov-box__dot   { background: var(--color-success); }
 .ov-box--present .ov-box__count { color: var(--color-success); }
-.ov-box--present .ov-box__chip  {
-  background: rgba(22, 163, 74, 0.12);
-  color:      var(--color-success);
-}
 
 /* Plný */
 .ov-box--full {
   border-color: var(--color-warning);
-  background:   rgba(217, 119, 6, 0.05);
-  box-shadow:   0 1px 8px rgba(217, 119, 6, 0.15);
+  background:   rgba(217, 119, 6, 0.04);
 }
-.ov-box--full .ov-box__dot   {
+.ov-box--full .ov-box__dot {
   background: var(--color-warning);
-  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.20);
-  animation:  ov-pulse 1s infinite;
+  animation:  ov-pulse 1.2s ease-in-out infinite;
 }
 .ov-box--full .ov-box__count { color: var(--color-warning); }
-.ov-box--full .ov-box__chip  {
+
+/* ── Chip — stav boxu (3 varianty) ──────────────────────────────────────── */
+
+.ov-box__chip {
+  font-size:      10px;
+  font-weight:    700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding:        3px 9px;
+  border-radius:  100px;
+  white-space:    nowrap;
+}
+
+/* Nepřítomna */
+.ov-box__chip--empty {
+  background: var(--color-surface-2);
+  color:      var(--color-text-muted);
+}
+
+/* K dispozici */
+.ov-box__chip--present {
+  background: rgba(22, 163, 74, 0.12);
+  color:      var(--color-success);
+}
+
+/* Plná */
+.ov-box__chip--full {
   background: rgba(217, 119, 6, 0.15);
   color:      var(--color-warning);
 }
@@ -509,6 +531,77 @@
 
 .ov-last-record__value--mono {
   font-family: var(--font-mono);
+}
+
+/* ── Seznam posledních záznamů (tile--4 vedle grafu) ────────────────────── */
+
+.ov-rec-list {
+  display:        flex;
+  flex-direction: column;
+  flex:           1;
+  min-height:     0;
+  overflow:       hidden;
+}
+
+.ov-rec-list__header {
+  display:               grid;
+  grid-template-columns: 56px 1fr 32px;
+  gap:                   var(--space-3);
+  padding:               var(--space-2) var(--space-5);
+  font-size:             var(--font-size-xs);
+  font-weight:           700;
+  text-transform:        uppercase;
+  letter-spacing:        0.05em;
+  color:                 var(--color-text-muted);
+  border-bottom:         1px solid var(--color-border);
+}
+
+.ov-rec-item {
+  display:               grid;
+  grid-template-columns: 56px 1fr 32px;
+  align-items:           center;
+  gap:                   var(--space-3);
+  padding:               var(--space-3) var(--space-5);
+  border-bottom:         1px solid var(--color-border);
+  transition:            background 0.15s;
+}
+
+.ov-rec-item--latest {
+  background: rgba(22, 163, 74, 0.06);
+}
+
+.ov-rec-item__ts {
+  font-size:   var(--font-size-xs);
+  font-family: var(--font-mono);
+  color:       var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.ov-rec-item__id {
+  font-size:     var(--font-size-sm);
+  font-weight:   700;
+  font-family:   var(--font-mono);
+  color:         var(--color-text-primary);
+  overflow:      hidden;
+  text-overflow: ellipsis;
+  white-space:   nowrap;
+}
+
+.ov-rec-item--latest .ov-rec-item__id {
+  color: var(--color-success);
+}
+
+.ov-rec-item__grp {
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  font-size:       var(--font-size-xs);
+  font-weight:     700;
+  min-width:       22px;
+  height:          22px;
+  border-radius:   50%;
+  background:      var(--color-accent-muted);
+  color:           var(--color-accent);
 }
 
 /* ── Placeholder — neplatná zakázka (ikona + text uvnitř tile) ─────────── */

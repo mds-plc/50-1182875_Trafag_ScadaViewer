@@ -39,4 +39,6 @@ export interface DataFilter {
   type?:     string
   from?:     string
   to?:       string
+  page?:     number   // stránka (od 1); default 1
+  perPage?:  number   // počet záznamů; 0 = vše; default 200
 }

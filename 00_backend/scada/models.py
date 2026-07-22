@@ -86,8 +86,13 @@ class CsvRecordModel(BaseModel):
 
 class DataResponse(BaseModel):
     """Odpověď GET /api/data."""
-    records: list[CsvRecordModel]
-    total:   int
+    records:              list[CsvRecordModel]
+    total:                int    # celkový počet záznamů po filtrech
+    page:                 int = 1
+    pages:                int = 1
+    per_page:             int = 0   # 0 = vše (bez stránkování)
+    group_counts:         dict[str, int] | None = None   # agregace skupin přes celý soubor
+    file_expected_count:  int | None            = None   # expected_count z CSV (celá zakázka)
 
 
 # ======================================================================
