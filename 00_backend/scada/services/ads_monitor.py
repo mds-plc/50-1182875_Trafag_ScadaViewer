@@ -296,7 +296,7 @@ class AdsMonitor:
             return
         for handle in self._handles:
             try:
-                self._plc.del_device_notification(handle)
+                self._plc.del_device_notification(*handle)   # handle = (notification_handle, user_handle)
             except Exception as exc:
                 log.debug("[ADS]   del_notification selhal: %s", exc)
         self._handles.clear()
