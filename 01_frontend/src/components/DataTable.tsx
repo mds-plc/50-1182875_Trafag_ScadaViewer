@@ -10,7 +10,12 @@ interface Props {
   onRowClick?: (row: Record<string, unknown>) => void
 }
 
-/** DataTable — generická tabulka dat */
+/**
+ * Generická tabulka dat s volitelným klikatelným řádkem.
+ * @param columns     seznam klíčů — určuje pořadí i viditelné sloupce
+ * @param rows        pole objektů — hodnoty jsou přístupné přes columns klíče
+ * @param onRowClick  volitelný callback při kliknutí na řádek (navigace do detailu)
+ */
 export default function DataTable({ columns, rows, onRowClick }: Props) {
   return (
     <table className="data-table">

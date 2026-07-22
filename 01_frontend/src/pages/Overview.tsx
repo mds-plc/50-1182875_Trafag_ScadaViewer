@@ -40,10 +40,11 @@ type ModeClass =
   | 'auto-stop' | 'auto-run'
   | 'service' | 'test'
 
+/** Popis jednoho stavu stroje — CSS varianta a bilingvní texty pro hero badge. */
 interface ModeInfo {
-  cls:   ModeClass
-  label: Record<'cs' | 'en', string>
-  sub:   Record<'cs' | 'en', string>
+  cls:   ModeClass   // CSS modifikátor (.ov-mode--{cls})
+  label: Record<'cs' | 'en', string>   // hlavní nadpis hero badge
+  sub:   Record<'cs' | 'en', string>   // podnadpis hero badge
 }
 
 // E_APP_ModeManager_Mode — hodnoty z TwinCAT ENUM + bilingvní texty
@@ -161,6 +162,11 @@ function _fmtHHMM(iso: string): string {
   } catch { return '' }
 }
 
+/**
+ * Hlavní dashboard (/) — live status stroje, aktuální zakázka, boxy a WIP záznamy.
+ * PLC data přijímá z PlcContext (WebSocket /ws/plc).
+ * Live CSV záznamy přijímá z useOrderWatcher (WebSocket /ws/orders).
+ */
 export default function Overview() {
   const { status, adsConnected } = usePlc()
   const { t, lang } = useLang()

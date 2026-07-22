@@ -42,6 +42,12 @@ interface Props {
   plcLoggedIn: boolean
 }
 
+/**
+ * Provider autentizačního kontextu.
+ * Spravuje lokální přihlášení (token v sessionStorage) i PLC přihlášení (ADS příznak).
+ * @param children     React strom chráněný přihlášením
+ * @param plcLoggedIn  true = operátor přihlášen přes PLC terminál (ADS příznak in_ready)
+ */
 export function AuthProvider({ children, plcLoggedIn }: Props) {
   const [localLogin, setLocalLogin] = useState(
     () => Boolean(sessionStorage.getItem(TOKEN_KEY))
@@ -105,6 +111,11 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
   )
 }
 
+/**
+ * Hook pro přístup k autentizačnímu kontextu.
+ * @returns {AuthContextType} stav přihlášení, login/logout funkce, token, username
+ * @throws {Error} pokud je použit mimo AuthProvider
+ */
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider')

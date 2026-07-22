@@ -23,6 +23,11 @@ const ToastContext = createContext<ToastContextType | null>(null)
 
 const DISMISS_MS = 4500
 
+/**
+ * Provider toast notifikací — renderuje .toast-container ve spodní části DOM.
+ * Každá notifikace se automaticky zavře po DISMISS_MS (4500 ms).
+ * @param children React strom
+ */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const counter = useRef(0)
@@ -57,6 +62,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Hook pro zobrazení toast notifikací.
+ * @returns {{ addToast }} funkce pro přidání notifikace (message, type)
+ * @throws {Error} pokud je použit mimo ToastProvider
+ */
 export function useToast(): ToastContextType {
   const ctx = useContext(ToastContext)
   if (!ctx) throw new Error('useToast must be used inside ToastProvider')

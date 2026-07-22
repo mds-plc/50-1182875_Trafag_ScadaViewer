@@ -24,6 +24,11 @@ import { useEffect, useRef } from 'react'
 
 type ShortcutMap = Partial<Record<string, (e: KeyboardEvent) => void>>
 
+/**
+ * Registruje globální klávesové zkratky pro aktuální komponentu.
+ * Listener je přidán při mountu a odstraněn při unmountu.
+ * @param shortcuts mapa { [KeyboardEvent.key]: handler }, např. { F5: () => reload(), Escape: close }
+ */
 export function useKeyShortcuts(shortcuts: ShortcutMap): void {
   // Ref: vždy aktuální callbacks bez nutnosti re-registrace event listeneru
   const ref = useRef(shortcuts)

@@ -32,6 +32,20 @@ async def get_data(
     page:      int        = Query(1,   ge=1,           description="Stránka (od 1)"),
     per_page:  int        = Query(200, ge=0, le=5000,  description="Počet záznamů na stránku; 0 = vše"),
 ) -> DataResponse:
+    """
+    Vrátí záznamy z CSV souboru s volitelným filtrováním a stránkováním.
+
+    Datumové filtry (from/to) jsou inclusive a porovnávají se s hodnotou
+    sloupce Timestamp. per_page=0 vrátí všechny záznamy bez stránkování.
+
+    Odpověď obsahuje:
+      records            — záznamy aktuální stránky
+      total              — celkový počet záznamů po filtrech (před stránkováním)
+      group_counts       — agregace {skupina: počet} přes celý soubor (nebo null)
+      file_expected_count — expected_count z CSV (celá zakázka, nebo null)
+
+    HTTP 503 při I/O chybě (nedostupný disk / NAS).
+    """
     reader: DataReader = request.app.state.csv_reader
     try:
         records, total, group_counts, file_expected_count = await asyncio.to_thread(

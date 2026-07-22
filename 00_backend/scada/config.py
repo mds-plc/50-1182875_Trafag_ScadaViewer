@@ -26,6 +26,14 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ServerConfig:
+    """
+    Konfigurace HTTP serveru.
+
+    host:         bind adresa; "0.0.0.0" = dostupné z LAN, "127.0.0.1" = jen localhost
+    port:         TCP port (1–65535); výchozí 8080
+    cors_origins: povolené Origins pro CORS middleware i WebSocket origin check;
+                  [] = bez omezení (dev), ["*"] = vše, ["http://host:8080"] = konkrétní
+    """
     host: str
     port: int
     cors_origins: list[str] = field(default_factory=list)
@@ -33,12 +41,26 @@ class ServerConfig:
 
 @dataclass
 class AdsConfig:
+    """
+    Konfigurace ADS připojení k TwinCAT 3 PLC.
+
+    net_id: AMS Net ID PLC runtime (formát X.X.X.X.1.1); zjistit v TwinCAT → System → Routes
+    port:   ADS port runtime (851 = TwinCAT PLC výchozí)
+    """
     net_id: str
     port: int
 
 
 @dataclass
 class DataConfig:
+    """
+    Konfigurace datových zdrojů (CSV soubory z DatabaseGateway).
+
+    local_path:    cesta ke sdílené složce; DatabaseGateway sem zapisuje, ScadaViewer čte
+    remote_path:   UNC cesta k NAS (např. \\\\server\\share); prázdná = Remote záložka nedostupná
+    csv_separator: oddělovač sloupců (musí být přesně 1 znak, obvykle ";")
+    csv_encoding:  kódování CSV souborů (obvykle "utf-8-sig" — BOM pro Excel kompatibilitu)
+    """
     local_path: Path
     remote_path: str
     csv_separator: str
@@ -65,6 +87,7 @@ class AuthConfig:
 
 @dataclass
 class AppConfig:
+    """Kořenová konfigurace aplikace — agreguje všechny dílčí konfigurace."""
     server: ServerConfig
     ads:    AdsConfig
     data:   DataConfig

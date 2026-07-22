@@ -10,6 +10,10 @@ import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
 import DeleteModal from '../components/DeleteModal'
 
+/**
+ * Stránka prohlížeče CSV databáze (/database) — tenký presentační container.
+ * Veškerá logika (state, fetch, auto-refresh, klávesové zkratky) je v useDatabaseState.
+ */
 export default function Database() {
   const { t } = useLang()
   const {

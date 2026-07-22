@@ -22,12 +22,20 @@ const GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#e
 // ExpandedRow — záznamy jednoho souboru
 // ------------------------------------------------------------------
 
+/** Props pro rozbalený řádek tabulky souborů. */
 interface ExpandedRowProps {
-  file:     OrderFile
-  location: Location
-  dataType: DataType
+  file:     OrderFile   // metadata souboru z /api/files
+  location: Location    // 'local' | 'remote'
+  dataType: DataType    // 'production' | 'testing'
 }
 
+/**
+ * Rozbalený řádek tabulky — záznamy zvoleného souboru, stránkování, skupinový BarChart.
+ * Při kliknutí na záznam naviguje na /chart?...&record=N (detail záznamu).
+ * @param file      metadata souboru (file_id, order, microswitch_name…)
+ * @param location  'local' | 'remote'
+ * @param dataType  'production' | 'testing'
+ */
 function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const navigate = useNavigate()
   const { t } = useLang()

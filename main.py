@@ -18,6 +18,16 @@ log = logging.getLogger(__name__)
 
 
 def main() -> None:
+    """
+    Entry point — parsuje CLI argumenty, načte konfiguraci a spustí uvicorn server.
+
+    CLI argumenty:
+      --config PATH   cesta ke konfiguračnímu souboru TOML (výchozí: Config.toml)
+      --debug         zapne DEBUG loglevel a podrobné uvicorn výstupy
+
+    Při chybě konfigurace (soubor nenalezen, chybný klíč) vypíše srozumitelnou
+    zprávu na stderr a ukončí proces kódem 1.
+    """
     parser = argparse.ArgumentParser(description="ScadaViewer")
     parser.add_argument("--config", default="Config.toml")
     parser.add_argument("--debug", action="store_true")

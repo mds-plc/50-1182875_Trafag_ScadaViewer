@@ -19,6 +19,17 @@ router = APIRouter()
 
 @router.websocket("/plc")
 async def plc_websocket(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint pro live PLC hodnoty (/ws/plc).
+
+    Server broadcastuje JSON zprávy při každé změně ADS notifikace:
+      {"symbol": "in_ready", "value": true, "ts": "2026-07-17T10:00:00+00:00"}
+    Při změně stavu ADS připojení:
+      {"type": "ads_status", "connected": true}
+
+    Origin check: odmítne (code 1008 – Policy Violation) pokud origin není
+    v server.cors_origins, ledaže cors_origins je prázdný nebo obsahuje "*".
+    """
     origin  = websocket.headers.get("origin", "")
     allowed = websocket.app.state.config.server.cors_origins
     if allowed and "*" not in allowed and origin and origin not in allowed:

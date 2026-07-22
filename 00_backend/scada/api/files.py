@@ -38,6 +38,18 @@ async def list_files(
     from_date: str|None = Query(None, alias="from", description="Filtr od (YYYY-MM-DD inclusive)"),
     to_date:   str|None = Query(None, alias="to",   description="Filtr do (YYYY-MM-DD inclusive)"),
 ) -> FilesResponse:
+    """
+    Vrátí stránkovaný seznam CSV souborů (zakázek).
+
+    location: local = lokální disk; remote = NAS / UNC cesta
+    type:     production | testing — volí složku na disku
+    page / per_page: server-side stránkování (max 200 položek na stránku)
+    from / to: volitelný datumový filtr — vychází z názvu souboru (YYYY-MM-DD)
+
+    Remote (NAS): I/O běží v asyncio.to_thread() s timeoutem 30 s —
+    Windows může blokovat desítky sekund při nedostupném UNC cíli.
+    HTTP 503 při timeoutu nebo I/O chybě.
+    """
     reader: DataReader = request.app.state.csv_reader
     # Remote (NAS/UNC) — Windows může blokovat desítky sekund při nedostupném NAS.
     # Timeout 30 s pro remote, 10 s pro local (měl by být okamžitý, ale obezřetnost).
@@ -77,7 +89,14 @@ async def delete_file(
     location:  str = Query('local',      alias="location"),
     file_type: str = Query('production', alias="type"),
 ) -> None:
-    """Smaže soubor z lokálního úložiště. Remote soubory jsou zakázány (403)."""
+    """
+    Smaže lokální CSV soubor zakázky. Vrátí 204 při úspěchu.
+
+    Chybové stavy:
+      403  vzdálené (NAS) soubory nelze smazat přes API
+      404  soubor s daným file_id nenalezen
+      503  I/O chyba (disk nedostupný, chybí oprávnění)
+    """
     reader: DataReader = request.app.state.csv_reader
     try:
         result = await asyncio.to_thread(reader.delete_file, file_id, location, file_type)
@@ -97,6 +116,7 @@ async def get_file(
     location:  str = Query('local',      alias="location"),
     file_type: str = Query('production', alias="type"),
 ) -> OrderFileModel:
+    """Vrátí metadata jednoho souboru. HTTP 404 pokud soubor neexistuje."""
     reader: DataReader = request.app.state.csv_reader
     try:
         meta = await asyncio.to_thread(reader.get_file, file_id, location, file_type)

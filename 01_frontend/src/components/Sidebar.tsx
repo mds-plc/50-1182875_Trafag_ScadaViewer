@@ -8,6 +8,10 @@ import { Monitor, Database, Settings, Info } from 'lucide-react'
 import AppLogo from './AppLogo'
 import { useLang } from '../context/LangContext'
 
+/**
+ * Levá navigační lišta — logo aplikace, 4 NavLink položky, zákaznická loga v patičce.
+ * Označí aktivní záložku i pro vnořené cesty (extraPaths) — Database je aktivní i na /chart.
+ */
 export default function Sidebar() {
   const { t } = useLang()
   const location = useLocation()

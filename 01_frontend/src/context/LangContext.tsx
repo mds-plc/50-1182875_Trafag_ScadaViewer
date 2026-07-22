@@ -21,6 +21,11 @@ const defaultValue: LangContextValue = { lang: 'en', setLang: () => {}, t: en }
 
 export const LangContext = createContext<LangContextValue>(defaultValue)
 
+/**
+ * Provider internacionalizace — musí obalovat celý strom aplikace (outermost provider).
+ * Jazyk je persistován v localStorage ('scada_lang'); výchozí = 'en'.
+ * @param children React strom
+ */
 export function LangProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() =>
     (localStorage.getItem('scada_lang') as Lang) ?? 'en'
@@ -40,6 +45,10 @@ export function LangProvider({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * Hook pro přístup k i18n kontextu.
+ * @returns {{ lang, setLang, t }} aktivní jazyk, setter a typovaný objekt překladu
+ */
 export function useLang(): LangContextValue {
   return useContext(LangContext)
 }

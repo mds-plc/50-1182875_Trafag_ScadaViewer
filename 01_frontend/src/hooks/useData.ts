@@ -30,6 +30,16 @@ interface FilesParams {
   dateTo?:   string   // YYYY-MM-DD — server-side filtr
 }
 
+/**
+ * Načte stránkovaný seznam CSV souborů ze serveru (/api/files).
+ * @param params.location  'local' (lokální disk) | 'remote' (NAS)
+ * @param params.type      'production' | 'testing'
+ * @param params.page      číslo stránky (od 1)
+ * @param params.perPage   záznamů na stránku (výchozí 50)
+ * @param params.dateFrom  volitelný filtr od (YYYY-MM-DD)
+ * @param params.dateTo    volitelný filtr do (YYYY-MM-DD)
+ * @returns {{ files, total, pages, loading, error, fetchFiles }}
+ */
 export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo }: FilesParams) {
   const { t } = useLang()
   const tRef = useRef(t)

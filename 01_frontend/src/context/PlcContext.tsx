@@ -20,7 +20,12 @@ interface PlcContextType {
 
 const PlcContext = createContext<PlcContextType | null>(null)
 
-/** Jeden WebSocket pro celou aplikaci — obaluje kořen stromu. */
+/**
+ * Provider PLC WebSocket kontextu — obaluje kořen stromu aplikace.
+ * Otevírá jediné WebSocket spojení (/ws/plc) sdílené celou aplikací.
+ * Po odpojení se automaticky znovu připojí s exponential backoff (1 s → 30 s).
+ * @param children React strom pod providerm
+ */
 export function PlcProvider({ children }: { children: React.ReactNode }) {
   const [status,       setStatus]       = useState<Record<string, PlcStatus>>({})
   const [connected,    setConnected]    = useState(false)
@@ -90,6 +95,11 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Hook pro přístup k live PLC datům z WebSocket.
+ * @returns {{ status, connected, adsConnected }} aktuální stav PLC
+ * @throws {Error} pokud je použit mimo PlcProvider
+ */
 export function usePlc(): PlcContextType {
   const ctx = useContext(PlcContext)
   if (!ctx) throw new Error('usePlc must be used inside PlcProvider')

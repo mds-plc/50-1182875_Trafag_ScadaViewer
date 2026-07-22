@@ -22,6 +22,10 @@ import { useState, useEffect, useRef } from 'react'
 
 const POLL_MS = 10_000
 
+/**
+ * Polling /api/health každých 10 s — indikátor dostupnosti backendu.
+ * @returns {boolean} true = backend online, false = offline (síťová chyba nebo !res.ok)
+ */
 export function useBackendOnline(): boolean {
   const [online, setOnline] = useState(true)
   const abortRef = useRef<AbortController | null>(null)

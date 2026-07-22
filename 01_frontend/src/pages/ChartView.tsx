@@ -20,12 +20,19 @@ const GROUP_COLORS   = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '
 
 // ── Metrické dlaždice (Production detail) ───────────────────────────────────
 
+/** Props pro metrické dlaždice v detailu produkční zakázky. */
 interface MetricsProps {
   records: Record<string, unknown>[]
-  total?:  number   // skutečný celkový počet (po stránkování může být > records.length)
+  total?:  number   // celkový počet záznamů (po stránkování může být > records.length)
   t:       ReturnType<typeof import('../context/LangContext').useLang>['t']
 }
 
+/**
+ * Metrické dlaždice v horní části detailu produkční zakázky —
+ * počet záznamů, expected count progress, skupiny.
+ * @param records  záznamy aktuální stránky (pro výpočet skupin)
+ * @param t        překladový objekt z useLang()
+ */
 export function OrderMetrics({ records, t }: MetricsProps) {
   const first = records[0] ?? {}
 
