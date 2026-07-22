@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  ScadaViewer — generování dokumentace kódu
-REM  Spustit z kořene projektu: 06_build\generate-docs.bat
+REM  Spustit z libovolného místa: 06_build\docs\generate-docs.bat
 REM
 REM  Výstup:
 REM    06_build/docs/backend/   ← Python (pdoc)
@@ -10,7 +10,7 @@ REM ============================================================
 
 setlocal EnableDelayedExpansion
 
-set "ROOT=%~dp0.."
+set "ROOT=%~dp0..\.."
 set "BACKEND_DIR=%ROOT%\00_backend"
 set "FRONTEND_DIR=%ROOT%\01_frontend"
 set "OUT_BACKEND=%ROOT%\06_build\docs\backend"
