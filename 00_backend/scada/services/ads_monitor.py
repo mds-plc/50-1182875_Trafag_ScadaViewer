@@ -294,14 +294,9 @@ class AdsMonitor:
         self._read_and_broadcast_initial()
 
     def _disconnect(self) -> None:
-        """Odregistruje notifikace a zavře spojení. Bezpečné i při výpadku."""
+        """Zavře ADS spojení. Notifikace jsou zrušeny automaticky AMS routerem při close()."""
         if self._plc is None:
             return
-        for handle in self._handles:
-            try:
-                self._plc.del_device_notification(*handle)   # handle = (notification_handle, user_handle)
-            except Exception as exc:
-                log.debug("[ADS]   del_notification selhal: %s", exc)
         self._handles.clear()
         self._callback_refs.clear()
 
