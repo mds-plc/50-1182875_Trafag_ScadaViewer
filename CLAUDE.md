@@ -131,7 +131,9 @@ CLAUDE.md                  ← tento soubor
 04_docs/
 ├── architecture.md            ← tok dat, vrstvy, API formáty, CSS, provider strom
 ├── audit_log.md               ← záznamy auditů (/audit)
-└── project_reviews.md         ← průběžná hodnocení profesionality projektu
+├── project_reviews.md         ← průběžná hodnocení profesionality projektu
+├── roadmap.md                 ← plán dodělávek, sprint backlog, otázky pro Trafag
+└── deployment.md              ← průvodce produkčním nasazením (exe / Python / NSSM / HTTPS)
 
 05_user_data/
 └── test_db_output/            ← testovací data (local_path v Config.toml)
@@ -687,11 +689,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 
 | Soubor | Obsah |
 |--------|-------|
-| `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — krok za krokem: nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč, CSS komponenta |
-| `04_docs/professional_improvements.md` | **Roadmapa profesionálního projektu** — bezpečnost (JWT, HTTPS), stabilita, UX, observability, deployment; s prioritami a odhadem náročnosti |
+| `04_docs/roadmap.md` | **Plán dodělávek** — sprinty, acceptance criteria, otázky pro Trafag; aktualizovat při každé změně stavu |
+| `04_docs/deployment.md` | **Průvodce produkčním nasazením** — exe / Python / NSSM / HTTPS / firewall / ověřovací checklist / troubleshooting |
+| `04_docs/architecture.md` | Detailní popis architektury, datového toku, API formátů |
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
-| `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem; přidávat nové záznamy při každém hodnocení |
-| `04_docs/architecture.md` | Detailní popis architekury, datového toku, API formátů |
+| `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |
+| `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč |
+| `04_docs/professional_improvements.md` | Roadmapa bezpečnosti, stability, UX, observability |
 
 > **Pravidlo:** Při každém rozšíření aktualizuj i příslušnou dokumentaci.
 > Pokud přidáváš nový vzor rozšíření, doplň ho do `how_to_extend.md`.
