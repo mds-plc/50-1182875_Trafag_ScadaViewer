@@ -90,12 +90,44 @@ class CsvRepository:
         Přečte metadata jednoho CSV souboru — první řádek + počet řádků.
         Čistá I/O operace: otevři soubor → přečti → zavři.
         O(1) paměť (nepočítá záznamy do listu).
+
+        Podporuje dva formáty:
+          Starý (jednodílný): Timestamp;Order;Microswitch_ID;...  → data od řádku 1
+          Nový (dvoudílný):   metadata sekce (řádky 1–3) + data sekce (řádek 4+)
+            Řádek 1: Order;Microswitch_ID;Microswitch_Name
+            Řádek 2: {hodnoty}
+            Řádek 3: (prázdný)
+            Řádek 4: Timestamp;OF_OperatingForce;...  ← data header
         """
         with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+            line1 = f.readline().strip()
+            first_col = line1.split(self._cfg.csv_separator)[0].strip()
+
+            if first_col.lower() == 'timestamp':
+                # Starý jednodílný formát — první řádek je datový header
+                f.seek(0)
+                order_id    = None
+                switch_name = ''
+            else:
+                # Nový dvoudílný formát — přečíst metadata sekci
+                meta_header = [c.strip() for c in line1.split(self._cfg.csv_separator)]
+                meta_vals   = [v.strip() for v in f.readline().strip().split(self._cfg.csv_separator)]
+                meta_row    = dict(zip(meta_header, meta_vals))
+                f.readline()   # přeskočit prázdný oddělovací řádek
+                order_id    = meta_row.get('Order')
+                switch_name = meta_row.get('Microswitch_Name', '')
+                # f je nyní na datovém headeru (řádek 4) — DictReader ho použije jako sloupce
+
             reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
             first = next(iter(reader), None)
             if first is None:
                 return None
+
+            # Ve starém formátu jsou Order/Microswitch_Name v datových řádcích
+            if first_col.lower() == 'timestamp':
+                order_id    = first.get('Order') if file_type == 'production' else None
+                switch_name = first.get('Microswitch_Name', '')
+
             record_count = 1 + sum(1 for _ in reader)   # O(1) paměť
 
         meta: dict = {
@@ -103,8 +135,8 @@ class CsvRepository:
             'name':         path.stem,
             'type':         file_type,
             'location':     location,
-            'order_id':     first.get('Order') if file_type == 'production' else None,
-            'switch_name':  first.get('Microswitch_Name', ''),
+            'order_id':     order_id if file_type == 'production' else None,
+            'switch_name':  switch_name,
             'created_at':   first.get('Timestamp', ''),
             'record_count': record_count,
         }
@@ -145,6 +177,16 @@ class CsvRepository:
         offset   = (page - 1) * per_page if per_page > 0 else 0
         try:
             with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+                # Detekce formátu (totožná logika jako v read_file_meta)
+                line1     = f.readline().strip()
+                first_col = line1.split(self._cfg.csv_separator)[0].strip()
+                if first_col.lower() == 'timestamp':
+                    f.seek(0)   # starý formát — vrátit se na začátek pro DictReader
+                else:
+                    f.readline()   # přeskočit řádek 2 (metadata hodnoty)
+                    f.readline()   # přeskočit řádek 3 (prázdný)
+                    # f je nyní na datovém headeru (řádek 4)
+
                 reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
                 for row in reader:
                     rec = {k.lower(): v for k, v in row.items()}

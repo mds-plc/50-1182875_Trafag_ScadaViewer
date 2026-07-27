@@ -19,8 +19,10 @@ interface Props {
 /** Sloupce, které nikdy nejsou numerická měření — vyloučit z automatické detekce. */
 const EXCLUDE_KEYS = new Set([
   'timestamp', 'microswitch_id', 'microswitch_name', 'order',
-  'group',          // kategorické metadata (1–6), ne měření
-  'expected_count', // plánovaný počet vzorků, ne měření
+  'group',            // kategorické metadata (1–6), ne měření
+  'expected_count',   // plánovaný počet vzorků, ne měření
+  'status',           // stavový kód (2=OK, 5=NOK) — kategorie, ne měření
+  'sortingcategory',  // třídící kategorie (1–6) — kategorie, ne měření
 ])
 
 /** Barvy pro jednotlivé datové řady (cyklicky). */
