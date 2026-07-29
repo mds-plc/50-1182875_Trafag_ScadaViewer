@@ -93,6 +93,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…"
     │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář)
     │   ├── PlcWatcher.tsx     ← side-effect: toast při změně PLC connected
+    │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable
     │   ├── Sidebar.tsx        ← levá navigace (4 NavLink), company logo v patičce
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
     ├── i18n/
@@ -106,6 +107,9 @@ CLAUDE.md                  ← tento soubor
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
     ├── hooks/
     │   └── useData.ts         ← 4 hooks: useFiles, useFileRecords, useRemoteStatus, useData
+    ├── utils/
+    │   ├── paramMeta.ts       ← PARAM_LABELS (zkratky), PARAM_TOOLTIPS (popis+jednotka) — sdíleno Chart/RecordDiagram
+    │   └── exportCsv.ts       ← CSV export s BOM, sdíleno v Database
     ├── styles/
     │   ├── variables.css      ← design tokeny (barvy, fonty, mezery, stíny, přechody)
     │   ├── reset.css          ← normalizace, box-sizing, base typography
@@ -146,8 +150,9 @@ CLAUDE.md                  ← tento soubor
 
 06_build/
 ├── exe/
-│   ├── build.bat              ← npm run build + PyInstaller + ZIP + git tag (TODO)
-│   ├── scada.spec             ← PyInstaller spec: frontend dist jako datas (TODO)
+│   ├── build.bat              ← npm run build + PyInstaller + ZIP + git tag
+│   ├── scada.spec             ← PyInstaller spec: frontend dist jako datas (frontend_dist/)
+│   ├── kiosk_start.bat        ← kiosk startup: Screen1=ScadaViewer, Screen2=TcHmiClient
 │   └── nssm_install.bat       ← Windows service instalátor (vzor z DatabaseGateway)
 └── pdf/
     ├── build_pdf.bat          ← pandoc PDF export
@@ -400,7 +405,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV download |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
-| ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | — | ✅ key-value grid + params placeholder |
+| ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | — | — | ✅ Předvolby + Připojení + folder picker |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
 
@@ -633,7 +638,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
 | Stránka Overview | ✅ | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
 | Stránka ChartView — order detail | ✅ | Production: OrderHero (tmavý panel) + Chart + klikací tabulka → record detail; Testing: summary + chart + placeholder |
-| Stránka ChartView — record detail (?record=N) | ✅ | key-value grid všech polí záznamu + params placeholder; tlačítko Zpět (navigate(-1)) |
+| Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin: forces/positions/travel/times/electric); rd-meta badge; maximize modal |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
 | WebSocket /ws/orders + OrderWatcher | ✅ | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
 | Stránka Info | ✅ | 2 záložky Projekt/Dokumentace; verze z /api/health; info.css |
@@ -643,12 +648,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
 | Docker | ✅ | Dockerfile (multi-stage) + docker-compose.yml |
-| Build (build.bat + scada.spec) | ❌ | TODO: npm build + PyInstaller |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller; kiosk_start.bat pro 2 obrazovky |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy | ✅ | 128 testů — config+logging, CsvReader, API integration (Health/Status/Files/GetFile/Data/Delete/Pagination/Auth) |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — config+logging, API integration (Health/Status/Files/GetFile/Data/Delete/Pagination/Auth/DateValidation) |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 7 souborů) — useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
 
@@ -661,10 +667,9 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 2. Doplnit zákaznické CSV sloupce do ChartView (AnalyzedParams — upřesnit s Trafag)
 
 ### Střednědobé
-3. `build.bat` — npm run build + PyInstaller (vzor z Analyzing/06_build)
-4. `scada.spec` — frontend dist jako `datas` (vzor z db_gateway.spec)
-5. Odkomentovat StaticFiles v app.py po prvním build
-6. Frontend testy (Vitest + React Testing Library) — klíčové komponenty Database a ChartView
+3. ~~`build.bat` — npm run build + PyInstaller~~ ✅ HOTOVO (2026-07-29) — `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`
+4. Odkomentovat StaticFiles v app.py po prvním build (hotovo automaticky — StaticFiles je aktivní v `create_app()`)
+6. ~~Frontend testy (Vitest + React Testing Library)~~ ✅ HOTOVO (2026-07-29) — 48 testů, 7 souborů
 
 ### Dlouhodobé
 7. CORS konfigurace pro produkci — omezit `cors_origins` z `["*"]` na konkrétní původy

@@ -4,6 +4,7 @@ FastAPI aplikace — factory + lifespan.
 from __future__ import annotations
 
 import logging
+import sys as _sys
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -16,8 +17,15 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-# Cesta k frontend build (relativní k working directory — vždy kořen projektu)
-_FRONTEND_DIST = Path("01_frontend/dist")
+
+def _get_frontend_dist() -> Path:
+    """Vrátí cestu k React buildu — funguje v dev módu i v PyInstaller exe."""
+    if getattr(_sys, 'frozen', False):
+        return Path(_sys._MEIPASS) / 'frontend_dist'
+    return Path('01_frontend/dist')
+
+
+_FRONTEND_DIST = _get_frontend_dist()
 
 from scada.config import AppConfig
 from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip

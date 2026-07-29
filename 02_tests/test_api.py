@@ -752,3 +752,24 @@ class TestDeleteFile:
     def test_delete_remote_returns_403(self) -> None:
         r = self.c.delete(f"/api/files/{self.fname}?location=remote&type=production")
         assert r.status_code == 403
+
+
+# ======================================================================
+# GET /api/data — datumová validace
+# ======================================================================
+
+class TestDateValidation:
+    """
+    Neplatný formát datumového parametru (from/to) musí vrátit HTTP 422,
+    ne nekontrolovaný HTTP 500 z ValueError.
+    """
+
+    def test_invalid_from_date_returns_422(self, client) -> None:
+        r, _ = client
+        resp = r.get("/api/data?file=test_DONE.csv&location=local&type=production&from=notadate")
+        assert resp.status_code == 422
+
+    def test_invalid_to_date_returns_422(self, client) -> None:
+        r, _ = client
+        resp = r.get("/api/data?file=test_DONE.csv&location=local&type=production&to=31-12-2026")
+        assert resp.status_code == 422

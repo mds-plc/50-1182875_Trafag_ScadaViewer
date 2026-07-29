@@ -3,7 +3,7 @@
 > Dokument pro vývojáře. Popisuje co zbývá před nasazením do produkce a v jakém pořadí to dělat.
 > Aktualizovat při každé změně stavu.
 >
-> Poslední aktualizace: 2026-07-24
+> Poslední aktualizace: 2026-07-29
 
 ---
 
@@ -18,11 +18,12 @@
 | Docker | ✅ Hotovo | Dockerfile + docker-compose.yml |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Dokumentace kódu | ✅ Hotovo | pdoc + TypeDoc, 19 souborů doplněno |
-| Backend testy | ✅ 128 testů | Config, API integration, security |
+| Backend testy | ✅ Hotovo | Config, API integration, security, DateValidation; spustit: `pytest 02_tests/ -v` |
 | **Build pipeline (exe)** | ❌ Chybí | `build.bat` + `scada.spec` neexistují |
-| **Frontend testy** | ❌ Chybí | 0 % pokrytí (Vitest + RTL) |
+| Frontend testy | ✅ Hotovo | 7 souborů Vitest; spustit: `npm run test` |
 | **CSP hlavička** | ❌ Chybí | `Content-Security-Policy` v middleware |
 | AnalyzedParams (ChartView) | ⏳ Čeká | Zákaznické CSV sloupce — upřesnit s Trafag |
+| TimeDiagram — NC/NO layout | ✅ Hotovo | RecordDiagram.tsx — ForceTravelDiagram (screen 29) + TimeDiagram (screen 30); ParamTable 5 skupin; maximize modal |
 | Řazení sloupců (Database) | 🔵 Nice-to-have | Klik na záhlaví → sort na serveru |
 
 ---
@@ -261,7 +262,7 @@ Aplikace je připravena k předání pokud:
 
 - [ ] Sprint 1: `build.bat` + `scada.spec` → exe funguje na čistém PC
 - [ ] Sprint 2: CSP nasazena, produkční Config.toml připraven, HTTPS rozhodnutí zdokumentováno
-- [ ] Sprint 3: Frontendové testy procházejí, pokrytí > 60 %
+- [x] Sprint 3: Frontendové testy procházejí, pokrytí > 60 % *(✅ 2026-07-29, `npm run test`)*
 - [ ] Sprint 4: AnalyzedParams sloupce zobrazeny dle dohody s Trafag
 - [ ] Testy na produkčním PC: ADS připojení, NAS přístup, login
 - [ ] NSSM služba nainstalována a testována (restart po pádu, log rotation)

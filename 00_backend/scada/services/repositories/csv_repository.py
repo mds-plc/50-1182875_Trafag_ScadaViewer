@@ -180,16 +180,28 @@ class CsvRepository:
                 # Detekce formátu (totožná logika jako v read_file_meta)
                 line1     = f.readline().strip()
                 first_col = line1.split(self._cfg.csv_separator)[0].strip()
+                meta_inject: dict[str, str] = {}
                 if first_col.lower() == 'timestamp':
                     f.seek(0)   # starý formát — vrátit se na začátek pro DictReader
                 else:
-                    f.readline()   # přeskočit řádek 2 (metadata hodnoty)
+                    # Nový dvoudílný formát — přečíst metadata sekci
+                    meta_header = [c.strip() for c in line1.split(self._cfg.csv_separator)]
+                    meta_vals   = [v.strip() for v in f.readline().strip().split(self._cfg.csv_separator)]
+                    meta_inject = {
+                        k.lower(): v
+                        for k, v in zip(meta_header, meta_vals)
+                        if v   # přeskočit prázdné hodnoty
+                    }
                     f.readline()   # přeskočit řádek 3 (prázdný)
                     # f je nyní na datovém headeru (řádek 4)
 
                 reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
                 for row in reader:
                     rec = {k.lower(): v for k, v in row.items()}
+                    # Injektovat metadata pole chybějící v datových řádcích (nový dvoudílný formát)
+                    for mk, mv in meta_inject.items():
+                        if mk not in rec:
+                            rec[mk] = mv
                     if from_day or to_day:
                         try:
                             ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
@@ -202,7 +214,8 @@ class CsvRepository:
                                 continue
                     # Záznam prošel filtry — počítáme (1-based) + agregujeme skupiny
                     total += 1
-                    grp = str(rec.get('group', '') or '').strip()
+                    # Starý formát: 'group'; nový formát: 'sortingcategory' — oba = kategorie 1–6
+                    grp = str(rec.get('group', '') or rec.get('sortingcategory', '') or '').strip()
                     if grp:
                         group_counts[grp] = group_counts.get(grp, 0) + 1
                     if file_expected_count is None:

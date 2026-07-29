@@ -82,6 +82,13 @@ export const en: Translations = {
     backToDatabase:    'Back to database',
     recordDetail:      'Record detail',
     paramsPlaceholder: 'Parameter chart will be available after AnalyzedParams definition with Trafag.',
+    categoryDistribution:  'Category distribution',
+    categoryNote:          '1–4 OK · 5 NOK Trafag · 6 NOK Manufacturer',
+    paramsTitle:           'Parameters',
+    paramAbbr:             'Abbr.',
+    paramName:             'Name',
+    paramValue:            'Value',
+    maximize:              'Maximize',
   },
   settings: {
     title:           'Settings',

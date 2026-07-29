@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import date as _date
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -46,6 +47,17 @@ async def get_data(
 
     HTTP 503 při I/O chybě (nedostupný disk / NAS).
     """
+    # Validace formátu datumových parametrů — HTTP 422 pro neplatný vstup
+    # (dříve než zavoláme service, kde by neexistující soubor zkratoval logiku)
+    for _pname, _pval in (('from', from_date), ('to', to_date)):
+        if _pval is not None:
+            try:
+                _date.fromisoformat(_pval)
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Neplatný formát parametru '{_pname}', očekáváno YYYY-MM-DD: {_pval!r}",
+                )
     reader: DataReader = request.app.state.csv_reader
     try:
         records, total, group_counts, file_expected_count = await asyncio.to_thread(
@@ -54,6 +66,11 @@ async def get_data(
             from_date=from_date, to_date=to_date,
             page=page, per_page=per_page,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Neplatný formát data, očekáváno YYYY-MM-DD: {exc}",
+        ) from exc
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/data I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc

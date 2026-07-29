@@ -5,6 +5,147 @@
 
 ---
 
+## Aktuálně otevřené nálezy
+
+> Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-29**.
+
+### ⚠️ MEDIUM
+
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| M1 | SVG `<marker>` ID kolize při otevřeném modálu; fix: `instanceId` prop prefix | `components/RecordDiagram.tsx` | [2026-07-28 fe-audit #1] |
+| M2 | `order` parametr v `/api/wip` bez sanitizace | `api/wip.py` | [2026-07-28 hloubkový #2] |
+| M3 | `groupCounts` + `fileExpectedCount` z hook nepoužity v ChartView UI | `pages/ChartView.tsx` | [2026-07-22 #9] |
+| M4 | `CatAxisTick` + `renderLabel` přijímají `props: any` | `pages/ChartView.tsx` | [2026-07-28 hloubkový #7] |
+| M5 | `GROUP_COLORS` duplikace — identická definice v ChartView + FileTable | `pages/ChartView.tsx`, `components/FileTable.tsx` | [2026-07-22 #11] |
+| M6 | `_RateLimitMiddleware._hits` dict roste neomezeně bez GC | `app.py` | [2026-07-28 hloubkový #15] |
+| M7 | Chybí test pro `group_counts` + `file_expected_count` v `/api/data` response | `02_tests/test_api.py` | [2026-07-22 #15] |
+
+### 🔵 LOW
+
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| L1 | `TITLE_FORCE`/`TITLE_TIME` hardcoded anglicky bez i18n | `components/RecordDiagram.tsx` | [2026-07-28 fe-audit #4] |
+| L2 | `_update_config_file()` regex nepodporuje TOML multiline stringy | `api/auth.py` | [2026-07-22 #5] |
+| L3 | Logging prefix `[OW]` nekonzistentní se 7-znakovou konvencí | `services/order_watcher.py` | [2026-07-22 #6] |
+| L4 | `_list_children()` může blokovat na mapped drives i přes `to_thread` | `api/config_api.py` | [2026-07-28 hloubkový #4] |
+| L5 | `SUMMARY_FIELDS` vs `EXCLUDE_KEYS` — duplicita vyloučení polí na 2 místech | `pages/ChartView.tsx`, `components/Chart.tsx` | [2026-07-28 hloubkový #11] |
+| L6 | `_disconnect()`: `handles.clear()` před `close()` — pořadí opačné k intuici | `services/ads_monitor.py` | [2026-07-28 hloubkový #13] |
+| L7 | `_read_and_broadcast_initial()` nečeká na Future při shutdown | `services/ads_monitor.py` | [2026-07-28 hloubkový #14] |
+| L8 | Chybí per-endpoint lockout po N selháních přihlášení | `api/auth.py` | [2026-07-28 hloubkový #16] |
+| L9 | CSP hlavička (`Content-Security-Policy`) v middleware chybí | `app.py` | [2026-07-28 hloubkový #17] |
+
+### 📄 DOCS
+
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-07-29] Oprava + frontend testovací pokrytí (Sprint 3)
+
+Implementace testovací strategie dle plánu Sprint 3. Oprava audit nálezu #1 z 2026-07-28 (`data.py` — nekontrolovaný ValueError).
+
+### Backend — oprava
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ⚠️ MEDIUM | **Oprava audit 2026-07-28 #1:** `data.py` — přidána early validace `from`/`to` parametrů před voláním service vrstvy. `_date.fromisoformat()` s neplatným vstupem vyhazuje `ValueError` jen pokud soubor existuje (service vrací prázdný výsledek pokud ne) → dříve silent HTTP 200 nebo 500. Fix: import `_date`, validace v API vrstvě → `HTTPException(422)` vždy | `api/data.py` | ✅ Opraveno (2026-07-29) |
+
+### Nové testy
+
+| Soubor | Testy | Co pokrývá |
+|--------|-------|-----------|
+| `02_tests/test_api.py::TestDateValidation` | 2 | `?from=notadate` → 422; `?to=31-12-2026` → 422 |
+| `src/test/useData.test.tsx` | 6 | úspěšný fetch → records+groupCounts, HTTP error, loading state, URL params (file/location/type/from/to), AbortController (race condition), neplatná JSON struktura |
+| `src/test/AuthContext.test.tsx` | 7 | výchozí stav, login OK→sessionStorage, login 401→invalid, síťová chyba→error, prázdné přihlašovací údaje (bez fetch), logout→sessionStorage clear, plcLoggedIn=true, obnovení ze sessionStorage při F5 |
+| `src/test/FileTable.test.tsx` | 8 | prázdný stav ("No files"), switch_name+count badge, klik production row→onExpandToggle, klik testing row→navigate /chart, Delete button→onDeleteRequest, Download button→onDownload, "Show records" expand button, sync badge Synced/Local, Pagination viditelná při pages>1 |
+| `src/test/Database.test.tsx` | 7 | nadpis "Database", Remote tab→setLocation('remote'), Testing tab→setDataType('testing'), date From input→setDateFrom, date To input→setDateTo, Clear button→setDateFrom('')+setDateTo(''), remote alert viditelný jen při location=remote+remoteAvailable=false, Refresh button→fetchFiles() |
+
+**Výsledky testů:** Backend 91/91 ✅ · Frontend 48/48 ✅ (7 souborů Vitest)
+
+**Sprint 3 akceptační kritérium:** `npm run test` prochází ✅. Pokrytí klíčových komponent > 60 % ✅.
+
+**Otevřené nálezy z tohoto záznamu:** 0.
+
+---
+
+## [2026-07-28] Audit — backend + frontend + ads + security + docs (hloubkový)
+
+Hloubkový audit celého projektu po implementaci `RecordDiagram.tsx`, `paramMeta.ts`, 2-sekčního CSV formátu, `useData` hook rozšíření a cleanup auditu 2026-07-28. Zahrnuje analýzu všech relevantních souborů dle zadání.
+
+### Backend
+
+| # | Závažnost | Popis | Soubor:Řádek | Status |
+|---|-----------|-------|-------------|--------|
+| 1 | ⚠️ MEDIUM | `data.py` — výjimka `ValueError` z `_date.fromisoformat(from_date)` není zachycena. Pokud klient pošle neplatné datum (`from=abc`), Pydantic `str | None` to propustí, `fromisoformat()` vyhodí `ValueError` → nekontrolovaný 500. Mělo by vrátit HTTP 422 nebo explicitní try/except | `api/data.py:51` → `csv_repository.py:175` | ✅ Opraveno (2026-07-29) — early validace v API vrstvě, `HTTPException(422)` |
+| 2 | ⚠️ MEDIUM | `wip.py` — parametr `order` je volný string bez jakékoli sanitizace. Hodnota `order_name` z PLC (ADS) může obsahovat speciální znaky nebo být prázdný řetězec `""`. Prázdný string vstoupí do `if order:` jako falsy → fallback (OK), ale netestovaný edge case | `api/wip.py:89` | ⬜ Otevřeno — nízká priorita v intranet kontextu |
+| 3 | ⚠️ MEDIUM | `csv_repository.py:read_records()` — při neparsovatelném timestampu (řádek 207–209) záznam tiše projde filtrem (`pass` větev). Komentář říká "neparsovatelný projde filtrem — count + collect", ale takový záznam se započítá do `total` a `group_counts`, pak se vrátí klientovi. U nového 2-sekčního formátu se metadata injektují i do `rec`, takže timestamp může být skutečně prázdný v datových řádcích — nejedná se o chybu | `services/repositories/csv_repository.py:207-209` | ⬜ Otevřeno (nízká priorita, záměrné chování) |
+| 4 | 🔵 LOW | `config_api.py:_list_children()` — na Windows prochází všechna písmena A–Z a testuje existenci disku. Při síťových discích (mapped drives) může `d.exists()` blokovat až desítky sekund. Funkce je obalena v `asyncio.to_thread()`, takže event loop není blokován, ale request může trvat neúměrně dlouho | `api/config_api.py:129-135` | ⬜ Otevřeno — přijatelné pro Settings UI (volá se uživatelem, ne automaticky) |
+| 5 | 🔵 LOW | `auth.py:_update_config_file()` — regex `r'(password_hash\s*=\s*)"[^"]*"'` nepodporuje TOML multiline stringy (`"""..."""`). Pokud by Config.toml obsahoval password_hash jako multiline, regex neprojde a hash se nezapíše. Aktuálně nehrozí (formát je vždy single-line string), ale stale risk | `api/auth.py:53-57` | ⬜ Otevřeno — viz audit 2026-07-22 #5 (nízká priorita) |
+| 6 | 🔵 LOW | `order_watcher.py` — logging prefix `[OW]` je 4 znaky, ostatní moduly `[APP]`, `[ADS]`, `[CSV]`, `[WS]` jsou 3–4 znaky, ale `[API]` v jiných souborech je 5 znaků s mezerami zarovnanými na 7. Nekonzistentní s komentářem v CLAUDE.md o 7-znakovém prefixu | `services/order_watcher.py:53` | ⬜ Otevřeno — viz audit 2026-07-22 #6 |
+
+### Frontend
+
+| # | Závažnost | Popis | Soubor:Řádek | Status |
+|---|-----------|-------|-------------|--------|
+| 7 | ⚠️ MEDIUM | `ChartView.tsx` — `CatAxisTick` komponenta přijímá `props: any` s `// eslint-disable-next-line @typescript-eslint/no-explicit-any` na řádku 46. Stejný pattern je u `renderLabel` na řádku 78. Recharts neposkytuje typizaci pro custom tickcomponents, ale `any` přesto porušuje TypeScript pravidla projektu | `pages/ChartView.tsx:47,78` | ⬜ Otevřeno — Recharts API omezení; extrahovat `RechartTickProps` interface jako workaround |
+| 8 | ⚠️ MEDIUM | `ChartView.tsx` — `GROUP_COLORS` duplikátu v `ChartView.tsx:25` a `FileTable.tsx:19` stále existuje — otevřený nález z auditu 2026-07-22 #11. Obě definice jsou identické (`['#3b82f6', '#10b981', ...]`). Pokud by se změnila barva pro skupinu 5 (NOK), musí se upravit na 2 místech | `pages/ChartView.tsx:25`, `components/FileTable.tsx:19` | ⬜ Otevřeno — viz audit 2026-07-22 #11 |
+| 9 | ⚠️ MEDIUM | `ChartView.tsx` — `TABLE_TABS` a `PARAM_GROUPS` v `RecordDiagram.tsx` definují totožné skupiny parametrů (keys: forces, positions, travel, times, electric) na dvou místech. Přidání nového parametru vyžaduje aktualizaci v obou souborech — riziko desynchronizace | `pages/ChartView.tsx:37-43`, `components/RecordDiagram.tsx:82-98` | ✅ Opraveno (2026-07-28) — `PARAM_GROUPS` extrahováno do `paramMeta.ts`; ChartView i RecordDiagram importují sdílenou definici |
+| 10 | 🔵 LOW | `RecordDiagram.tsx` — SVG `<marker>` ID kolize (viz audit 2026-07-28 #1 — stále otevřeno). Při otevřeném modálu jsou v DOM 2 instance `ForceTravelDiagram` s identickými marker ID (`ftF`, `ftFR`, `ftB`, `ftBL`, `dfA`, `dfAR`). HTML spec violation — prohlížeče berou první výskyt | `components/RecordDiagram.tsx:173-185` | ⬜ Otevřeno — viz audit 2026-07-28 #1 |
+| 11 | 🔵 LOW | `ChartView.tsx` — `SUMMARY_FIELDS` set (`order`, `microswitch_id`, `microswitch_name`) není importován z centrálního místa; opakuje se logika vyloučení polí, která existuje v `Chart.tsx:EXCLUDE_KEYS`. Pole `timestamp` je v `FIXED_COLS` ale ne v `SUMMARY_FIELDS`. Dvě místa s podobnou ale mírně odlišnou logikou | `pages/ChartView.tsx:23,28` | ⬜ Otevřeno — nízká priorita, různé účely |
+| 12 | 🔵 LOW | `paramMeta.ts` — překlep v klíči `rp_realeasingposition` (dvojité 'e' ve "realeasing"). Stejný překlep existuje v CSV sloupcích z DatabaseGateway, takže je to záměrné — klíč musí odpovídat CSV datům. Přesto matoucí při čtení kódu | `utils/paramMeta.ts:25,59` | ⬜ Otevřeno — záměrné (odpovídá CSV formátu z DatabaseGateway) |
+
+### ADS / Thread safety
+
+| # | Závažnost | Popis | Soubor:Řádek | Status |
+|---|-----------|-------|-------------|--------|
+| 13 | 🔵 LOW | `ads_monitor.py:_disconnect()` — po `self._handles.clear()` a `self._callback_refs.clear()` se volá `self._plc.close()`. V případě výjimky v `close()` se `self._plc = None` na řádku 308 stejně provede (je mimo try). Cleanup je korektní, ale pořadí clear vs. close je opačné k intuici — handles by měly zůstat platné dokud close() neskončí. Funkčně OK, protože close() zruší AMS subscriptions automaticky | `services/ads_monitor.py:300-308` | ⬜ Otevřeno — nízká priorita, funkčně správně |
+| 14 | 🔵 LOW | `ads_monitor.py:_read_and_broadcast_initial()` — volá `run_coroutine_threadsafe()` a **nečeká na Future**. Pokud loop skončí (shutdown) před dokončením broadcastu, Future tiše selže. Pro počáteční snapshot je to přijatelné (klient dostane stav z první notifikace), ale log o tom nic neříká | `services/ads_monitor.py:328-330` | ⬜ Otevřeno — nízká priorita, přijatelné pro initial snapshot |
+
+### Security
+
+| # | Závažnost | Popis | Soubor:Řádek | Status |
+|---|-----------|-------|-------------|--------|
+| 15 | ⚠️ MEDIUM | `app.py:_RateLimitMiddleware` — `self._hits` dict roste neomezeně (jedna entry per unique IP). Na localhostu (intranet) to není problém, ale v nasazení dostupném z celé LAN může dict dorůst na stovky IP. Bez garbage collection starých entries (IP, která se nepřihlásila 24h, zůstane v dictu navždy) | `app.py:106` | ⬜ Otevřeno — nízká priorita pro intranet; fix: periodic cleanup nebo LRU cache |
+| 16 | 🔵 LOW | `auth.py` — brute-force rate limiting chybí na `/api/auth/login`. Globální rate limit (120 req/min per IP) poskytuje ochranu, ale útočník může zkusit 120 různých hesel za minutu opakovaně. Bez lockout nebo per-endpoint limitu je slovníkový útok přes LAN pomalý, ale nezablokovaný | `api/auth.py:76-99` | ⬜ Otevřeno — nízká priorita pro intranet deployment; pro produkci přidat lockout po N selháních |
+| 17 | 🔵 LOW | Content-Security-Policy hlavička stále chybí (TODO z CLAUDE.md sekce 14). `_SecurityHeadersMiddleware` má X-Frame-Options, nosniff, Referrer-Policy, ale CSP není nastavena | `app.py:33-67` | ⬜ Otevřeno — viz TODO v CLAUDE.md; záměrně odloženo kvůli nutnosti zmapovat assety |
+
+### Docs
+
+| # | Závažnost | Popis | Soubor:Řádek | Status |
+|---|-----------|-------|-------------|--------|
+| 18 | 📄 DOCS | `CLAUDE.md sekce 13` (stav implementace) — `RecordDiagram.tsx` není uveden v tabulce stavu, přestože je plně implementován. `paramMeta.ts` také chybí. Sekce 2 (soubory projektu) neuvádí `RecordDiagram.tsx` ani `paramMeta.ts` v seznamu komponent | `CLAUDE.md:sekce 2, sekce 13` | ✅ Opraveno (2026-07-28) — sekce 2, 7, 13 aktualizovány |
+| 19 | 📄 DOCS | `CLAUDE.md sekce 7` (stránky) — ChartView "record detail" popis říká "key-value grid všech polí záznamu + params placeholder", ale implementace nyní zobrazuje `RecordDiagram` (2 SVG diagramy + parametrická tabulka). Popis je zastaralý | `CLAUDE.md:sekce 7` | ✅ Opraveno (2026-07-28) |
+| 20 | 📄 DOCS | `architecture.md` — poslední aktualizace `2026-07-21`, neobsahuje zmínku o `RecordDiagram`, `paramMeta.ts`, 2-sekčním Production CSV formátu (Fáze implementace chybí). Architektura stránky ChartView je popsána bez diagramových komponent | `04_docs/architecture.md:3` | ⬜ Otevřeno — architecture.md vyžaduje větší update |
+| 21 | 📄 DOCS | `roadmap.md` — neověřena aktuálnost. Po poslední implementaci (RecordDiagram, paramMeta, 2-sekční CSV) nebylo roadmap.md aktualizováno — hotové položky pravděpodobně stále označeny jako TODO | `04_docs/roadmap.md` | ✅ Opraveno (2026-07-28) — TimeDiagram/RecordDiagram označen jako hotovo |
+
+**Celkem:** 21 nálezů | 4 opraveno | 17 otevřeno
+
+---
+
+## [2026-07-28] Audit — frontend
+
+Audit po implementaci `RecordDiagram.tsx` (ForceTravelDiagram + TimeDiagram + ParamTable) a úpravách `ChartView.tsx` (record detail). Zaměřeno na mrtvý kód, osiřelé CSS a SVG specifikaci.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ⚠️ MEDIUM | SVG `<marker>` ID kolize — `ForceTravelDiagram` i `TimeDiagram` renderují markery s pevnými ID (`ftF`, `ftFR`, `ftB`, `arrowF`...). Při otevřeném modálu jsou v DOM 2 instance → duplicitní ID (HTML spec violation). Prohlížeče berou první výskyt — vizuálně funkční, ale spec-nekonformní. Fix: přidat `instanceId?: string` prop a prefixovat všechna marker ID | `components/RecordDiagram.tsx` | ⬜ Otevřeno |
+| 2 | 🔵 LOW | Stale komentář v hlavičce `RecordDiagram.tsx` (řádek 5–6) uváděl `viewBox 0 0 840 470` pro oba SVG; `ForceTravelDiagram` byl mezitím změněn na 500 | `components/RecordDiagram.tsx:5` | ✅ Opraveno (2026-07-28) |
+| 3 | 🔵 LOW | Stale komentář na řádku 120 uváděl `// viewBox: 0 0 840 470` uvnitř `ForceTravelDiagram` | `components/RecordDiagram.tsx:120` | ✅ Opraveno (2026-07-28) |
+| 4 | 🔵 LOW | `TITLE_FORCE` / `TITLE_TIME` v `RecordDiagram.tsx` jsou hardcoded anglické řetězce (`'Force–Travel diagram'`, `'Time diagram'`), ne z i18n | `components/RecordDiagram.tsx` | ⬜ Otevřeno (nízká priorita — plán dlaždic je jen schéma) |
+| 5 | 🔵 LOW | `OrderMetrics` — React komponenta exportována ale nikde neimportována; mrtvý kód z předchozí layout iterace. Záznam z auditu 2026-07-22 #10 zůstal otevřený | `pages/ChartView.tsx` | ✅ Opraveno (2026-07-28) — komponenta smazána |
+| 6 | 🔵 LOW | `OrderSplitInfo` — React komponenta exportována ale nikde neimportována; mrtvý kód z „Varianta C" layout experimentu | `pages/ChartView.tsx` | ✅ Opraveno (2026-07-28) — komponenta smazána |
+| 7 | 🔵 LOW | Osiřelé CSS třídy `.order-metrics`, `.order-metric-tile*`, `.order-metric-bar*` (~98 řádků) — odpovídaly smazané `OrderMetrics` komponentě | `styles/chart.css` | ✅ Opraveno (2026-07-28) — smazáno |
+| 8 | 🔵 LOW | Osiřelé CSS třídy `.order-split*`, `.split-info__*`, `.order-groups-mini*` (~175 řádků) — odpovídaly smazané `OrderSplitInfo` komponentě | `styles/chart.css` | ✅ Opraveno (2026-07-28) — smazáno |
+| 9 | 🔵 LOW | Osiřelé CSS třídy `.chart-record-fields`, `.chart-record-field*` (~33 řádků) — původní key/value grid pro record detail; nahrazen `RecordDiagram` | `styles/chart.css` | ✅ Opraveno (2026-07-28) — smazáno |
+
+**Celkem:** 9 nálezů | 7 opraveno | 2 otevřeno
+
+---
+
 ## [2026-07-22] Audit — full (backend + frontend + ads + security + docs)
 
 Hloubkový audit po přidání server-side stránkování (`/api/data`), agregace skupin (`group_counts`), fixu blikání expand tabulky a ADS reconnect logiky.

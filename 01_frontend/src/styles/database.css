@@ -305,6 +305,42 @@
 .db-subtable__th--num     { width: 40px; text-align: right; }
 .db-subtable__th--center  { text-align: center; }
 .db-subtable__th--actions { width: 52px; }
+.db-subtable__th--param {
+  position: relative;
+  text-align: right;
+  min-width: 42px;
+  padding: var(--space-1) var(--space-2);
+  line-height: 1.2;
+  cursor: help;
+  user-select: none;
+}
+
+.db-subtable__unit {
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-muted);
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Klikací tooltip pro nápovědu k parametrům (funguje na dotyku i myši) */
+.db-param-tooltip {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 200;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: var(--font-weight-regular);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .db-subtable__td {
   padding: var(--space-3) var(--space-3);
@@ -321,6 +357,7 @@
 
 .db-subtable__td--center  { text-align: center; }
 .db-subtable__td--actions { text-align: right; padding: var(--space-1) var(--space-2); }
+.db-subtable__td--param   { text-align: right; padding: var(--space-1) var(--space-2); font-size: 11px; color: var(--color-text-secondary); }
 
 .db-subtable__row {
   cursor: pointer;
@@ -504,3 +541,41 @@
   color: #fff;
   font-family: var(--font-mono);
 }
+
+/* STATUS BADGE — OK / NOK výsledek měření */
+.db-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+}
+.db-status-badge--ok  { background: #dcfce7; color: #166534; }
+.db-status-badge--nok { background: #fee2e2; color: #991b1b; }
+
+/* CATEGORY BADGE — výsledná kategorie 1–6 s barevným pozadím */
+.db-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  color: #fff;
+  background: var(--color-accent);
+}
+.db-cat-badge[data-cat="1"] { background: #16a34a; }
+.db-cat-badge[data-cat="2"] { background: #65a30d; }
+.db-cat-badge[data-cat="3"] { background: #ca8a04; }
+.db-cat-badge[data-cat="4"] { background: #ea580c; }
+.db-cat-badge[data-cat="5"] { background: #dc2626; }
+.db-cat-badge[data-cat="6"] { background: #9f1239; }

@@ -18,6 +18,40 @@ import type { Location, DataType } from '../hooks/useDatabaseState'
 
 const GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 
+/** Všechny měřené parametry se zkratkami, jednotkami a anglickým popisem (tooltip). */
+interface ExpandParam { key: string; label: string; unit: string; description: string }
+
+const EXPAND_PARAMS: ExpandParam[] = [
+  // Forces
+  { key: 'of_operatingforce',          label: 'OF',   unit: 'N',  description: 'Operating Force'               },
+  { key: 'rf_realisingforce',          label: 'RF',   unit: 'N',  description: 'Realising Force'               },
+  { key: 'ttf_totaltravelforce',       label: 'TTF',  unit: 'N',  description: 'Total Travel Force'            },
+  // Distances
+  { key: 'pt_pretravel',               label: 'PT',   unit: 'mm', description: 'Pre-travel'                    },
+  { key: 'ot_overtravel',              label: 'OvT',  unit: 'mm', description: 'Overtravel'                    },
+  { key: 'rt_realisingtravel',         label: 'RvT',  unit: 'mm', description: 'Realising Travel'              },
+  { key: 'md_movementdifferential',    label: 'MD',   unit: 'mm', description: 'Movement Differential'         },
+  { key: 'tt_totaltravel',             label: 'TT',   unit: 'mm', description: 'Total Travel'                  },
+  { key: 'fp_freeposition',            label: 'FP',   unit: 'mm', description: 'Free Position'                 },
+  { key: 'op_operatingposition',       label: 'OP',   unit: 'mm', description: 'Operating Position'            },
+  { key: 'rp_realeasingposition',      label: 'RP',   unit: 'mm', description: 'Releasing Position'            },
+  { key: 'ttp_totaltravelposition',    label: 'TTP',  unit: 'mm', description: 'Total Travel Position'         },
+  // Times
+  { key: 'ut_unstabletime',            label: 'UT',   unit: 'ms', description: 'Unstable Time'                 },
+  { key: 'rt_reversetime',             label: 'RevT', unit: 'ms', description: 'Reverse Time'                  },
+  { key: 'bt_bouncetime',              label: 'BT',   unit: 'ms', description: 'Bounce Time'                   },
+  { key: 'ot_operatingtime',           label: 'OpT',  unit: 'ms', description: 'Operating Time'                },
+  // Contacts — 999.9 = sensor not connected → filtered (value > 500)
+  { key: 'r_nc_operatingposition_neg', label: 'NCo−', unit: 'mΩ', description: 'NC — Operating Position Neg'  },
+  { key: 'r_nc_operatingposition_pos', label: 'NCo+', unit: 'mΩ', description: 'NC — Operating Position Pos'  },
+  { key: 'r_nc_releasingposition_neg', label: 'NCr−', unit: 'mΩ', description: 'NC — Releasing Position Neg'  },
+  { key: 'r_nc_releasingposition_pos', label: 'NCr+', unit: 'mΩ', description: 'NC — Releasing Position Pos'  },
+  { key: 'r_no_operatingposition_neg', label: 'NOo−', unit: 'mΩ', description: 'NO — Operating Position Neg'  },
+  { key: 'r_no_operatingposition_pos', label: 'NOo+', unit: 'mΩ', description: 'NO — Operating Position Pos'  },
+  { key: 'r_no_releasingposition_neg', label: 'NOr−', unit: 'mΩ', description: 'NO — Releasing Position Neg'  },
+  { key: 'r_no_releasingposition_pos', label: 'NOr+', unit: 'mΩ', description: 'NO — Releasing Position Pos'  },
+]
+
 // ------------------------------------------------------------------
 // ExpandedRow — záznamy jednoho souboru
 // ------------------------------------------------------------------
@@ -42,6 +76,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords } = useFileRecords()
 
   const [recordPage, setRecordPage] = useState(1)
+  const [tooltipKey, setTooltipKey] = useState<string | null>(null)
 
   const chartUrl = `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
 
@@ -74,6 +109,19 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
     () => records.some(r => r.group != null),
     [records]
   )
+
+  // Výsledkové sloupce — zobrazit jen pokud CSV obsahuje tato pole
+  const hasStatusCol   = useMemo(() => records.some(r => r.status          != null && String(r.status          ?? '') !== ''), [records])
+  const hasCategoryCol = useMemo(() => records.some(r => r.sortingcategory != null && String(r.sortingcategory ?? '') !== ''), [records])
+
+  // Měřené parametry — zobrazit jen ty, které existují a mají platnou hodnotu (≤ 500, 999.9 = senzor off)
+  const activeParams = useMemo(() => EXPAND_PARAMS.filter(p =>
+    records.some(r => {
+      const v = String(r[p.key] ?? '')
+      const n = Number(v)
+      return v !== '' && !isNaN(n) && n <= 500
+    })
+  ), [records])
 
   // Absolutní index záznamu v celém souboru (0-based) — pro navigaci do ChartView
   const absIdx = (i: number) => (recordPage - 1) * RECORDS_PER_PAGE + i
@@ -155,9 +203,21 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                 <tr>
                   <th className="db-subtable__th db-subtable__th--num">#</th>
                   <th className="db-subtable__th">{t.db.colTimestamp}</th>
-                  {hasGroupCol && (
-                    <th className="db-subtable__th db-subtable__th--center">{t.db.colGroup}</th>
-                  )}
+                  {hasGroupCol    && <th className="db-subtable__th db-subtable__th--center">{t.db.colGroup}</th>}
+                  {hasStatusCol   && <th className="db-subtable__th db-subtable__th--center">STATUS</th>}
+                  {hasCategoryCol && <th className="db-subtable__th db-subtable__th--center">KAT.</th>}
+                  {activeParams.map(p => (
+                    <th
+                      key={p.key}
+                      className="db-subtable__th db-subtable__th--param"
+                      onClick={() => setTooltipKey(tooltipKey === p.key ? null : p.key)}
+                    >
+                      {p.label}<br /><span className="db-subtable__unit">{p.unit}</span>
+                      {tooltipKey === p.key && (
+                        <div className="db-param-tooltip">{p.description} [{p.unit}]</div>
+                      )}
+                    </th>
+                  ))}
                   <th className="db-subtable__th db-subtable__th--actions"></th>
                 </tr>
               </thead>
@@ -185,6 +245,35 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                         }
                       </td>
                     )}
+                    {hasStatusCol && (
+                      <td className="db-subtable__td db-subtable__td--center">
+                        {(() => {
+                          // OK/NOK primárně z sortingcategory (1–4 OK, 5–6 NOK),
+                          // fallback na status pole pokud sortingcategory chybí.
+                          const cat = Number(r.sortingcategory ?? 0)
+                          if (cat >= 1) {
+                            const isNok = cat >= 5
+                            return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
+                          }
+                          const st = String(r.status ?? '')
+                          if (st === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
+                          if (st === '5' || st === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
+                          return <span className="db-status-badge">{st || '—'}</span>
+                        })()}
+                      </td>
+                    )}
+                    {hasCategoryCol && (
+                      <td className="db-subtable__td db-subtable__td--center">
+                        <span className="db-cat-badge" data-cat={String(r.sortingcategory ?? '')}>
+                          {String(r.sortingcategory ?? '—')}
+                        </span>
+                      </td>
+                    )}
+                    {activeParams.map(p => (
+                      <td key={p.key} className="db-subtable__td db-subtable__td--param">
+                        {r[p.key] != null && String(r[p.key]) !== '' ? String(r[p.key]) : '—'}
+                      </td>
+                    ))}
                     <td className="db-subtable__td db-subtable__td--actions">
                       <button
                         className="db-icon-btn"

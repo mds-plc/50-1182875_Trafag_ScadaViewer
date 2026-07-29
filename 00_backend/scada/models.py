@@ -77,8 +77,8 @@ class CsvRecordModel(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     timestamp:        str
-    microswitch_id:   str
-    microswitch_name: str
+    microswitch_id:   str | None = None   # None v novém dvoudílném formátu (je v metadata sekci)
+    microswitch_name: str | None = None   # None v novém dvoudílném formátu (je v metadata sekci)
     order:            str | None = None   # jen production; testing sloupec Order nemá
     group:            int | None = None   # skupina třídění 1–6
     expected_count:   int | None = None   # očekávaný počet mikrospínačů v zakázce

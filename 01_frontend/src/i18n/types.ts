@@ -83,6 +83,13 @@ export interface Translations {
     backToDatabase: string
     recordDetail: string
     paramsPlaceholder: string
+    categoryDistribution: string
+    categoryNote: string
+    paramsTitle: string
+    paramAbbr: string
+    paramName: string
+    paramValue: string
+    maximize: string
   }
   settings: {
     title: string

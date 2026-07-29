@@ -102,6 +102,79 @@
   white-space: nowrap;
 }
 
+/* Wrapper pro tabulky s fixními sloupci — horizontální scroll */
+.data-table-scroll {
+  overflow-x: auto;
+}
+
+/*
+ * Sticky pevné sloupce — left hodnoty musí odpovídat FIXED_COL_WIDTHS v DataTable.tsx:
+ *   index 0 (timestamp):       width 220px → left 0
+ *   index 1 (sortingcategory): width  76px → left 220px
+ *   index 2 (status):          width  76px → left 296px (220+76)
+ */
+.data-table-scroll [data-fixed-index="0"] {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--color-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table-scroll [data-fixed-index="1"] {
+  position: sticky;
+  left: 220px;
+  z-index: 2;
+  background: var(--color-surface);
+}
+.data-table-scroll [data-fixed-index="2"] {
+  position: sticky;
+  left: 296px;
+  z-index: 2;
+  background: var(--color-surface);
+}
+
+/* Hover řádku zachovává viditelnost sticky buněk */
+.data-table__row--clickable:hover [data-fixed-index] {
+  background: var(--color-surface-2);
+}
+
+/* Svislý oddělovač — tenká čára za posledním pevným sloupcem */
+.data-table__th--fixed + .data-table__th:not(.data-table__th--fixed) {
+  border-left: 1px solid var(--color-border);
+}
+
+.data-table__td--fixed + .data-table__td:not(.data-table__td--fixed) {
+  border-left: 1px solid var(--color-border);
+}
+
+/* Záhlaví s tooltipem — klik zobrazí popis parametru */
+.data-table__th--tip {
+  position: relative;
+  cursor: help;
+  user-select: none;
+}
+
+/* Klikací tooltip (DataTable) — anglický popis parametru */
+.dt-tooltip {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 200;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: var(--font-weight-regular);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .data-table__td {
   padding: var(--space-4) var(--space-4);
   font-size: var(--font-size-sm);

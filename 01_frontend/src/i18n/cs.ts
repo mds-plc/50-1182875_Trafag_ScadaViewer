@@ -82,6 +82,13 @@ export const cs: Translations = {
     backToDatabase:    'Zpět na databázi',
     recordDetail:      'Detail záznamu',
     paramsPlaceholder: 'Graf parametrů bude doplněn po finalizaci AnalyzedParams s Trafag.',
+    categoryDistribution:  'Rozložení kategorií',
+    categoryNote:          '1–4 OK · 5 NOK Trafag · 6 NOK výrobce',
+    paramsTitle:           'Parametry',
+    paramAbbr:             'Zkr.',
+    paramName:             'Název',
+    paramValue:            'Hodnota',
+    maximize:              'Maximalizovat',
   },
   settings: {
     title:           'Nastavení',
