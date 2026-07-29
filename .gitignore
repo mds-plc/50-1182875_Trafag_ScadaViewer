@@ -10,6 +10,9 @@ build/
 # Frontend
 01_frontend/node_modules/
 01_frontend/dist/
+# TypeScript kompilační artefakty — tsc v build.bat produkuje .js vedle .ts souborů
+01_frontend/src/**/*.js
+01_frontend/src/**/*.js.map
 
 # Build artifacts
 06_build/dist/
@@ -29,8 +32,10 @@ Config.toml
 # Claude Code — lokální oprávnění (machine-specific, nepatří do repozitáře)
 .claude/settings.local.json
 
-# Vnořené repozitáře v 05_user_data
+# 05_user_data — testovací a lokální data (nepatří do repozitáře)
 05_user_data/scada_example/
+05_user_data/screens/
+05_user_data/test_db_output/
 
 # IDE
 .vscode/
