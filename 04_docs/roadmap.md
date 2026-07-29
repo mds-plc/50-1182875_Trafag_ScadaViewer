@@ -15,7 +15,6 @@
 | Frontend (všechny stránky) | ✅ Hotovo | 5 stránek, i18n CS/EN |
 | Autentizace (PBKDF2) | ✅ Hotovo | Login, logout, change-password |
 | Security middleware | ✅ Hotovo | SecurityHeaders, RateLimit, CORS, WS origin |
-| Docker | ✅ Hotovo | Dockerfile + docker-compose.yml |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Dokumentace kódu | ✅ Hotovo | pdoc + TypeDoc, 19 souborů doplněno |
 | Backend testy | ✅ Hotovo | Config, API integration, security, DateValidation; spustit: `pytest 02_tests/ -v` |

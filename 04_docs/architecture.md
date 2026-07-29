@@ -107,21 +107,19 @@ Detailní záznamy (bug-fixes, opravy) viz [`audit_log.md`](audit_log.md).
 
 ---
 
-### Fáze 6 — Docker + Offline indikátor + Klávesové zkratky + Dark mode — 2026-07-19
+### Fáze 6 — Offline indikátor + Klávesové zkratky + Dark mode — 2026-07-19
 
-**Podnět:** Moderní nasazení, UX pro operátory, přístupnost v průmyslovém prostředí.
+**Podnět:** UX pro operátory, přístupnost v průmyslovém prostředí.
 
 **Co bylo implementováno:**
 
 | Funkce | Soubory | Popis |
 |--------|---------|-------|
-| **Docker** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Multi-stage build (node:20-slim → python:3.11-slim); auto-detect `01_frontend/dist/` v `app.py` |
 | **Offline indikátor** | `hooks/useBackendOnline.ts`, `layout.css`, `App.tsx` | Polling `/api/health` každých 10 s; červený fixed banner pokud backend nedostupný |
 | **Klávesové zkratky** | `hooks/useKeyShortcuts.ts`, `pages/Database.tsx` | Generický hook; `F5` = refresh, `Escape` = zavřít rozbalený řádek + modal; skip inputs |
 | **Dark mode** | `styles/variables.css`, `components/Topbar.tsx`, `styles/topbar.css` | CSS tokeny přes media query + `data-theme` atribut; localStorage persistence; Moon/Sun toggle |
 
 **Klíčová rozhodnutí:**
-- **Multi-stage Docker** — node:20-slim pro build (nesmí se dostat do produkce), python:3.11-slim pro runtime; výsledný image bez node_modules
 - **Auto-detect StaticFiles** — `if Path("01_frontend/dist").is_dir(): app.mount(...)` — jeden kód, funguje v dev i produkci
 - **Dark mode: dvě CSS pravidla** — `@media (prefers-color-scheme: dark)` pro systémové nastavení + `:root[data-theme="dark"]` pro manuální přepínač; `data-theme="light"` přebíjí systém
 

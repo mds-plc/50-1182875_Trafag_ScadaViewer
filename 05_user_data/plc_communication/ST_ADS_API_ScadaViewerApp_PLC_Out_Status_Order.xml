@@ -1,0 +1,97 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-21T08:44:36.7013981" />
+  <contentHeader name="PLC" modificationDateTime="2026-07-21T08:44:36.7013981">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation />
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order">
+        <baseType>
+          <struct>
+            <variable name="Valid">
+              <type>
+                <BOOL />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |1| Platnost zakázky</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Name">
+              <type>
+                <string />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |2| Platnost zakázky	</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Count_Expected">
+              <type>
+                <UINT />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |3| Očekávaný počet roztříděných mikrospínačů v rámci zakázky</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Count_Actual">
+              <type>
+                <UINT />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |4| Aktuální pčoet roztříděných mikrospínačů v rámci zakázky</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/interfaceasplaintext" handleUnknown="implementation">
+            <InterfaceAsPlainText>
+              <xhtml xmlns="http://www.w3.org/1999/xhtml">TYPE ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order :
+
+STRUCT
+	
+	Valid				:	BOOL;		// |1| Platnost zakázky
+	Name				:	STRING;		// |2| Platnost zakázky	
+	Count_Expected		:	UINT;		// |3| Očekávaný počet roztříděných mikrospínačů v rámci zakázky
+	Count_Actual		:	UINT;		// |4| Aktuální pčoet roztříděných mikrospínačů v rámci zakázky
+	
+END_STRUCT
+
+END_TYPE
+</xhtml>
+            </InterfaceAsPlainText>
+          </data>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>269bcd0d-3f9b-42fe-befb-c13850f45772</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+    </dataTypes>
+    <pous />
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order" ObjectId="269bcd0d-3f9b-42fe-befb-c13850f45772" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

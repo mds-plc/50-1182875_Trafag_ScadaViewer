@@ -116,6 +116,14 @@ echo  Kopiruji soubory do dist\...
 copy /Y "%PROJECT_DIR%Config.toml.example" "%DIST_DIR%\Config.toml.example" > nul
 copy /Y "%BUILD_DIR%nssm_install.bat"      "%DIST_DIR%\nssm_install.bat"    > nul
 copy /Y "%BUILD_DIR%kiosk_start.bat"       "%DIST_DIR%\kiosk_start.bat"     > nul
+copy /Y "%BUILD_DIR%start.bat"             "%DIST_DIR%\start.bat"           > nul
+
+if exist "%PROJECT_DIR%Config.toml" (
+    copy /Y "%PROJECT_DIR%Config.toml" "%DIST_DIR%\Config.toml" > nul
+    echo  Config.toml zkopirovan z projektu.
+) else (
+    echo  [WARN] Config.toml nenalezen -- zkopiruj Config.toml.example a vyplnuj rucne.
+)
 
 :: Vytvořit výstupní složky
 mkdir "%DIST_DIR%\03_output\logs" 2>nul

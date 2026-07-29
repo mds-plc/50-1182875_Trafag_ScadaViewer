@@ -1,0 +1,88 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-21T08:44:31.5140354" />
+  <contentHeader name="PLC" modificationDateTime="2026-07-21T08:44:31.5140354">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation />
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status">
+        <baseType>
+          <struct>
+            <variable name="Mode">
+              <type>
+                <UINT />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |1| Hlavní režim stroje</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Order">
+              <type>
+                <derived name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order" />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |2| Informace o zakázce</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Boxes">
+              <type>
+                <derived name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes" />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |3| Informace o třídícícíh boxech</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/interfaceasplaintext" handleUnknown="implementation">
+            <InterfaceAsPlainText>
+              <xhtml xmlns="http://www.w3.org/1999/xhtml">TYPE ST_ADS_API_ScadaViewerApp_PLC_Out_Status :
+
+STRUCT
+
+	Mode				:	UINT;												// |1| Hlavní režim stroje
+	Order				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order;		// |2| Informace o zakázce
+	Boxes				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes;		// |3| Informace o třídícícíh boxech
+	
+END_STRUCT
+
+END_TYPE
+</xhtml>
+            </InterfaceAsPlainText>
+          </data>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>2f12eac8-b377-4aaa-b7cf-3f8c5512cc26</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+    </dataTypes>
+    <pous />
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status" ObjectId="2f12eac8-b377-4aaa-b7cf-3f8c5512cc26" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

@@ -34,6 +34,7 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
   const wsRef     = useRef<WebSocket | null>(null)
   const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const destroyed = useRef(false)
+  
 
   useEffect(() => {
     destroyed.current = false

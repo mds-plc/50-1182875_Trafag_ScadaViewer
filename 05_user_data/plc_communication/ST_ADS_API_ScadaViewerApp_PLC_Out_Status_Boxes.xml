@@ -1,0 +1,103 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-21T08:44:33.9440189" />
+  <contentHeader name="PLC" modificationDateTime="2026-07-21T08:44:33.9440189">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation />
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes">
+        <baseType>
+          <struct>
+            <variable name="Presence">
+              <type>
+                <array>
+                  <dimension lower="1" upper="6" />
+                  <baseType>
+                    <BOOL />
+                  </baseType>
+                </array>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |1| Přítomnsot boxu 1-6</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Full">
+              <type>
+                <array>
+                  <dimension lower="1" upper="6" />
+                  <baseType>
+                    <BOOL />
+                  </baseType>
+                </array>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |2| Zaúlnění boxu 1-6</xhtml>
+              </documentation>
+            </variable>
+            <variable name="Count">
+              <type>
+                <array>
+                  <dimension lower="1" upper="6" />
+                  <baseType>
+                    <UINT />
+                  </baseType>
+                </array>
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |3| Počet v boxu 1-6</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/interfaceasplaintext" handleUnknown="implementation">
+            <InterfaceAsPlainText>
+              <xhtml xmlns="http://www.w3.org/1999/xhtml">TYPE ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes :
+
+STRUCT
+
+	Presence				:	ARRAY [1..6] OF BOOL;	// |1| Přítomnsot boxu 1-6
+	Full					:	ARRAY [1..6] OF BOOL;	// |2| Zaúlnění boxu 1-6
+	Count					:	ARRAY [1..6] OF UINT;	// |3| Počet v boxu 1-6
+	
+END_STRUCT
+
+END_TYPE
+</xhtml>
+            </InterfaceAsPlainText>
+          </data>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>f7f0dfd1-a0a6-4698-959e-c7e5538bbabd</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+    </dataTypes>
+    <pous />
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes" ObjectId="f7f0dfd1-a0a6-4698-959e-c7e5538bbabd" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>

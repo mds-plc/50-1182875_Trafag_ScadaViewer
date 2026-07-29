@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0200">
+  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-21T08:44:21.1643744" />
+  <contentHeader name="PLC" modificationDateTime="2026-07-21T08:44:21.1643744">
+    <coordinateInfo>
+      <fbd>
+        <scaling x="1" y="1" />
+      </fbd>
+      <ld>
+        <scaling x="1" y="1" />
+      </ld>
+      <sfc>
+        <scaling x="1" y="1" />
+      </sfc>
+    </coordinateInfo>
+    <addData>
+      <data name="http://www.3s-software.com/plcopenxml/projectinformation" handleUnknown="implementation">
+        <ProjectInformation />
+      </data>
+    </addData>
+  </contentHeader>
+  <types>
+    <dataTypes>
+      <dataType name="ST_ADS_API_ScadaViewerApp_PLC_In">
+        <baseType>
+          <struct>
+            <variable name="Status">
+              <type>
+                <derived name="ST_ADS_API_ScadaViewerApp_PLC_In_Status" />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |1| Status PC aplikace</xhtml>
+              </documentation>
+            </variable>
+          </struct>
+        </baseType>
+        <addData>
+          <data name="http://www.3s-software.com/plcopenxml/interfaceasplaintext" handleUnknown="implementation">
+            <InterfaceAsPlainText>
+              <xhtml xmlns="http://www.w3.org/1999/xhtml">TYPE ST_ADS_API_ScadaViewerApp_PLC_In :
+
+STRUCT
+
+	Status				:	ST_ADS_API_ScadaViewerApp_PLC_In_Status;	// |1| Status PC aplikace
+	
+END_STRUCT
+
+END_TYPE
+</xhtml>
+            </InterfaceAsPlainText>
+          </data>
+          <data name="http://www.3s-software.com/plcopenxml/objectid" handleUnknown="discard">
+            <ObjectId>d1b9d84d-5b03-45a6-a362-17c56f41d8ef</ObjectId>
+          </data>
+        </addData>
+      </dataType>
+    </dataTypes>
+    <pous />
+  </types>
+  <instances>
+    <configurations />
+  </instances>
+  <addData>
+    <data name="http://www.3s-software.com/plcopenxml/projectstructure" handleUnknown="discard">
+      <ProjectStructure>
+        <Object Name="ST_ADS_API_ScadaViewerApp_PLC_In" ObjectId="d1b9d84d-5b03-45a6-a362-17c56f41d8ef" />
+      </ProjectStructure>
+    </data>
+  </addData>
+</project>
