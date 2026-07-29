@@ -4,8 +4,14 @@ FastAPI aplikace — factory + lifespan.
 from __future__ import annotations
 
 import logging
+import mimetypes
 import sys as _sys
 import time
+
+# Windows registr občas mapuje .js jako text/plain — explicitně nastavit správné MIME typy.
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('application/javascript', '.mjs')
+mimetypes.add_type('text/css', '.css')
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
