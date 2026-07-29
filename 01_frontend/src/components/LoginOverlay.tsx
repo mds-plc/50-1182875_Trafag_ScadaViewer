@@ -18,7 +18,7 @@ import { useLang } from '../context/LangContext'
  * Zmizí automaticky při PLC přihlášení nebo po úspěšném lokálním přihlášení.
  */
 export default function LoginOverlay() {
-  const { connected } = usePlc()
+  const { adsConnected } = usePlc()
   const { login }     = useAuth()
   const { t }         = useLang()
 
@@ -55,7 +55,7 @@ export default function LoginOverlay() {
 
         <div className="login-card__divider" />
 
-        <AdsStatus connected={connected} />
+        <AdsStatus connected={adsConnected} />
 
         <div className="login-card__waiting">
           <Loader size={14} className="login-card__spinner" />
