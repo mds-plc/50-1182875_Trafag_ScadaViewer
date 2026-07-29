@@ -20,16 +20,13 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
 import RecordDiagram  from '../components/RecordDiagram'
 
-const SUMMARY_FIELDS = new Set(['order', 'microswitch_id', 'microswitch_name'])
-
 const GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku. */
 const FIXED_COLS = ['timestamp', 'sortingcategory', 'status']
 
-// Barvy a popisky kategorií 1–6 (1–4 OK, 5 NOK Trafag, 6 NOK výrobce)
+// Barvy kategorií 1–6 (1–4 OK, 5 NOK Trafag, 6 NOK výrobce)
 const CAT_COLORS = ['#16a34a', '#4ade80', '#65a30d', '#ca8a04', '#ea580c', '#dc2626']
-const CAT_LABELS = ['1 – OK', '2 – OK', '3 – OK', '4 – OK', '5 – NOK Trafag', '6 – NOK Výrobce']
 
 /** Záložky tabulky parametrů v detailu zakázky — odvozeno z PARAM_GROUPS v paramMeta.ts. */
 type TabId = 'forces' | 'positions' | 'travel' | 'times' | 'electric'

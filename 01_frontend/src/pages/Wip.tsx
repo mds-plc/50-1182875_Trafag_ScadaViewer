@@ -33,7 +33,7 @@ export default function Wip() {
     fetch('/api/wip', { signal: ctrl.signal })
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
       .then((d: WipData) => { setData(d); setLoading(false) })
-      .catch(e => {
+      .catch(() => {
         if (ctrl.signal.aborted) return
         setError(t.common.errorLoading)
         setLoading(false)

@@ -85,7 +85,7 @@ const PARAM_DESC: Record<string, string> = {
 
 function PointLabel({ x, y, label, value, dx = 8, dy = 0, anchor = 'start', color = '#374151' }: {
   x: number; y: number; label: string; value?: string
-  dx?: number; dy?: number; anchor?: string; color?: string
+  dx?: number; dy?: number; anchor?: 'start' | 'middle' | 'end'; color?: string
 }) {
   return (
     <g>

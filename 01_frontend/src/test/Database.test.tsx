@@ -35,7 +35,7 @@ const mockDownloadCsv     = vi.fn()
 
 /** Výchozí return hodnota useDatabaseState. */
 const defaultState = {
-  location:       'local'      as const,
+  location:       'local'      as 'local' | 'remote',
   setLocation:    mockSetLocation,
   dataType:       'production' as const,
   setDataType:    mockSetDataType,
