@@ -5,7 +5,7 @@
  *   2. TimeDiagram        — průběhy NC + NO kontaktu (screen 30)   viewBox 0 0 840 470
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useId } from 'react'
 import { PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS } from '../utils/paramMeta'
 import { useLang } from '../context/LangContext'
 
@@ -104,6 +104,7 @@ function PointLabel({ x, y, label, value, dx = 8, dy = 0, anchor = 'start', colo
 
 function ForceTravelDiagram({ record }: Props) {
   const val = makeVal(record)
+  const uid = useId()
 
   // Pevné souřadnice (schéma, neškálováno)
   const FP_x  = 200
@@ -154,17 +155,17 @@ function ForceTravelDiagram({ record }: Props) {
     <svg className="rd-svg" viewBox="0 0 840 500" xmlns="http://www.w3.org/2000/svg"
       aria-label="Force–Travel hysteresis diagram">
       <defs>
-        <marker id="ftB"  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <marker id={uid + 'ftB'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TRAVEL} /></marker>
-        <marker id="ftBL" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+        <marker id={uid + 'ftBL'} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TRAVEL} /></marker>
-        <marker id="ftF"  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <marker id={uid + 'ftF'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_FORCE} /></marker>
-        <marker id="ftFR" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+        <marker id={uid + 'ftFR'} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_FORCE} /></marker>
-        <marker id="dfA"  markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+        <marker id={uid + 'dfA'}  markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
           <path d="M0,0 L5,2.5 L0,5 Z" fill={C_FORCE} /></marker>
-        <marker id="dfAR" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto-start-reverse">
+        <marker id={uid + 'dfAR'} markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto-start-reverse">
           <path d="M0,0 L5,2.5 L0,5 Z" fill={C_FORCE} /></marker>
       </defs>
 
@@ -235,13 +236,13 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* ── Kóta silového diferenciálu ΔF u OP ── */}
       <line x1={OP_x+18} y1={y_OF+4}  x2={OP_x+18} y2={y_RF-4}
-        stroke={C_FORCE} strokeWidth={1.2} markerEnd="url(#dfA)" markerStart="url(#dfAR)" />
+        stroke={C_FORCE} strokeWidth={1.2} markerEnd={`url(#${uid}dfA)`} markerStart={`url(#${uid}dfAR)`} />
       <text x={OP_x+24} y={(y_OF+y_RF)/2+4} fontSize={9} fill={C_FORCE} fontWeight="700">ΔF</text>
 
       {/* ── Silové kóty na Y-ose — 3 dvojité šipky (screen 29 styl) ── */}
       {/* TTF — x=30, nejdelší šipka (y_zero → y_TTF) */}
       <line x1={30} y1={y_zero - 5} x2={30} y2={y_TTF + 5}
-        stroke={C_FORCE} strokeWidth={1.5} markerEnd="url(#ftF)" markerStart="url(#ftFR)" />
+        stroke={C_FORCE} strokeWidth={1.5} markerEnd={`url(#${uid}ftF)`} markerStart={`url(#${uid}ftFR)`} />
       <text x={30} y={(y_zero + y_TTF) / 2}
         transform={`rotate(-90, 30, ${(y_zero + y_TTF) / 2})`}
         dy="-8" textAnchor="middle" fontSize={8} fontWeight="700" fill={C_FORCE}>TTF</text>
@@ -250,7 +251,7 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* OF — x=52 (y_zero → y_OF) */}
       <line x1={52} y1={y_zero - 5} x2={52} y2={y_OF + 5}
-        stroke={C_FORCE} strokeWidth={1.5} markerEnd="url(#ftF)" markerStart="url(#ftFR)" />
+        stroke={C_FORCE} strokeWidth={1.5} markerEnd={`url(#${uid}ftF)`} markerStart={`url(#${uid}ftFR)`} />
       <text x={52} y={(y_zero + y_OF) / 2}
         transform={`rotate(-90, 52, ${(y_zero + y_OF) / 2})`}
         dy="-8" textAnchor="middle" fontSize={8} fontWeight="700" fill={C_FORCE}>OF</text>
@@ -259,7 +260,7 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* RF — x=74 (y_zero → y_RF) */}
       <line x1={74} y1={y_zero - 5} x2={74} y2={y_RF + 5}
-        stroke={C_FORCE} strokeWidth={1.5} markerEnd="url(#ftF)" markerStart="url(#ftFR)" />
+        stroke={C_FORCE} strokeWidth={1.5} markerEnd={`url(#${uid}ftF)`} markerStart={`url(#${uid}ftFR)`} />
       <text x={74} y={(y_zero + y_RF) / 2}
         transform={`rotate(-90, 74, ${(y_zero + y_RF) / 2})`}
         dy="-8" textAnchor="middle" fontSize={8} fontWeight="700" fill={C_FORCE}>RF</text>
@@ -268,7 +269,7 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* ΔF boční kóta na Y-ose (x=96) — diferenciál OF−RF */}
       <line x1={96} y1={y_OF + 4} x2={96} y2={y_RF - 4}
-        stroke={C_FORCE} strokeWidth={1.2} markerEnd="url(#dfA)" markerStart="url(#dfAR)" />
+        stroke={C_FORCE} strokeWidth={1.2} markerEnd={`url(#${uid}dfA)`} markerStart={`url(#${uid}dfAR)`} />
       <text x={103} y={(y_OF + y_RF) / 2 + 4} textAnchor="start" fontSize={8} fontWeight="700" fill={C_FORCE}>ΔF</text>
 
       {/* ── Popisky pozic pod X-osou — posunuty dál od osy ── */}
@@ -281,7 +282,7 @@ function ForceTravelDiagram({ record }: Props) {
       {/* ── Zdvihové kóty pod osou (modrá) — 4 řady dle screen 29 ── */}
       {/* Řada 1 (y=400): MD (RP→OP) — Differenzweg */}
       <line x1={RP_x+4} y1={400} x2={OP_x-4} y2={400}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(RP_x+OP_x)/2} y={397} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>MD</text>
       <text x={(RP_x+OP_x)/2} y={412} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val('md_movementdifferential')}
@@ -289,13 +290,13 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* Řada 2 (y=425): PT (FP→OP) + OT (OP→TTP) — Vorlaufweg + Nachlaufweg */}
       <line x1={FP_x+4} y1={425} x2={OP_x-4} y2={425}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(FP_x+OP_x)/2} y={422} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>PT</text>
       <text x={(FP_x+OP_x)/2} y={437} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val('pt_pretravel')}
       </text>
       <line x1={OP_x+4} y1={425} x2={TTP_x-4} y2={425}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(OP_x+TTP_x)/2} y={422} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>OT</text>
       <text x={(OP_x+TTP_x)/2} y={437} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val('ot_overtravel')}
@@ -303,13 +304,13 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* Řada 3 (y=450): RT (FP→RP) + RL (RP→TTP) — Leerlaufweg + Rücklaufweg */}
       <line x1={FP_x+4} y1={450} x2={RP_x-4} y2={450}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(FP_x+RP_x)/2} y={447} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>RT</text>
       <text x={(FP_x+RP_x)/2} y={462} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val('rt_realisingtravel')}
       </text>
       <line x1={RP_x+4} y1={450} x2={TTP_x-4} y2={450}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(RP_x+TTP_x)/2} y={447} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>RL</text>
       <text x={(RP_x+TTP_x)/2} y={462} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {rl_str}
@@ -317,7 +318,7 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* Řada 4 (y=475): TT (FP→TTP) — Gesamtweg */}
       <line x1={FP_x+4} y1={475} x2={TTP_x-4} y2={475}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd="url(#ftB)" markerStart="url(#ftBL)" />
+        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(FP_x+TTP_x)/2} y={472} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>TT</text>
       <text x={(FP_x+TTP_x)/2} y={487} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val('tt_totaltravel')}
@@ -387,6 +388,7 @@ function ForceTravelDiagram({ record }: Props) {
 
 function TimeDiagram({ record }: Props) {
   const val = makeVal(record)
+  const uid = useId()
 
   const C_NC   = '#1e293b'
   const C_NO   = '#2563eb'
@@ -452,9 +454,9 @@ function TimeDiagram({ record }: Props) {
     <svg className="rd-svg" viewBox="0 0 840 470" xmlns="http://www.w3.org/2000/svg"
       aria-label="Contact switching time — NC and NO signals">
       <defs>
-        <marker id="tmG"  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <marker id={uid + 'tmG'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TIME} /></marker>
-        <marker id="tmGL" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
+        <marker id={uid + 'tmGL'} markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto-start-reverse">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TIME} /></marker>
       </defs>
 
@@ -501,28 +503,28 @@ function TimeDiagram({ record }: Props) {
       {/* ── Časové šipky ── */}
       {/* UT: t_act → t_ut */}
       <line x1={t_act+4} y1={R1} x2={t_ut-4} y2={R1}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd="url(#tmG)" markerStart="url(#tmGL)" />
+        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
       <text x={(t_act+t_ut)/2} y={R1-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>UT</text>
       <text x={(t_act+t_ut)/2} y={R1+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
         {val('ut_unstabletime')}
       </text>
       {/* RevT: t_ut → t_revt */}
       <line x1={t_ut+4} y1={R1} x2={t_revt-4} y2={R1}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd="url(#tmG)" markerStart="url(#tmGL)" />
+        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
       <text x={(t_ut+t_revt)/2} y={R1-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>RevT</text>
       <text x={(t_ut+t_revt)/2} y={R1+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
         {val('rt_reversetime')}
       </text>
       {/* BT: t_act → t_bt */}
       <line x1={t_act+4} y1={R2} x2={t_bt-4} y2={R2}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd="url(#tmG)" markerStart="url(#tmGL)" />
+        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
       <text x={(t_act+t_bt)/2} y={R2-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>BT</text>
       <text x={(t_act+t_bt)/2} y={R2+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
         {val('bt_bouncetime')}
       </text>
       {/* OpT: t_act → t_opt */}
       <line x1={t_act+4} y1={R3} x2={t_opt-4} y2={R3}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd="url(#tmG)" markerStart="url(#tmGL)" />
+        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
       <text x={(t_act+t_opt)/2} y={R3-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>OpT</text>
       <text x={(t_act+t_opt)/2} y={R3+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
         {val('ot_operatingtime')}

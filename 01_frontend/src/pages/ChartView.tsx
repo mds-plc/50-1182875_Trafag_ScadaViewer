@@ -19,8 +19,7 @@ import DataTable      from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
 import RecordDiagram  from '../components/RecordDiagram'
-
-const GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+import { GROUP_COLORS } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku. */
 const FIXED_COLS = ['timestamp', 'sortingcategory', 'status']

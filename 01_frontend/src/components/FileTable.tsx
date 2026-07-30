@@ -15,8 +15,7 @@ import Pagination from './Pagination'
 import { formatDateTime } from '../utils/formatting'
 import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
-
-const GROUP_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+import { GROUP_COLORS } from '../utils/groupColors'
 
 /** Všechny měřené parametry se zkratkami, jednotkami a anglickým popisem (tooltip). */
 interface ExpandParam { key: string; label: string; unit: string; description: string }

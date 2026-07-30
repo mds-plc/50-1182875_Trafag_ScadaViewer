@@ -1,6 +1,6 @@
 # ScadaViewer — Architektura
 
-> Poslední aktualizace: 2026-07-21
+> Poslední aktualizace: 2026-07-30
 
 Tento dokument popisuje **strukturu a historii** projektu.
 Pro hloubkový rozbor vrstev, propojení a rozšiřitelnosti viz [`architecture_critique.md`](architecture_critique.md).
@@ -1255,3 +1255,99 @@ interface DataFilter {
 ```
 
 Typy jsou sdíleny mezi všemi stránkami a hooky. Při přidání nového CSV sloupce stačí rozšířit `CsvRecord` — TypeScript ukáže všechna místa ke změně.
+
+---
+
+### Fáze 15 — Multi-user autentizace, RBAC, Bearer token ochrana API (2026-07-29)
+
+**Motivace:** Původně existoval jeden sdílený účet (`Config.toml [auth]`). API endpointy nebyly chráněny tokenem — přihlášení chránilo jen UI, ne data. Bylo potřeba multi-user model s role-based přístupem a tokenovou ochranou všech `/api/` endpointů.
+
+**Co bylo implementováno:**
+
+#### Backend
+
+- **`config.py`** — přidán `UserEntry(username, display_name, password_hash, role)` + `load_users(path, fallback_auth)` (načte `users.toml`; fallback na `Config.toml [auth]` pro jednoho uživatele) + `save_users()` (atomický zápis přes temp soubor + `os.replace()`) + `hash_password()` + `verify_password()` (PBKDF2-HMAC-SHA256, 260 000 iterací)
+- **`models.py`** — přidáno: `UserModel` (bez hash), `CreateUserRequest`, `ChangeUserPasswordRequest`, `LoginResponse` rozšířena o `role` a `display_name`
+- **`app.py`** — `app.state.sessions: dict[str, dict]` (token → `{username, role, display_name}`), `app.state.users: list[UserEntry]`, `app.state.users_path`
+- **`api/dependencies.py`** (nový) — `require_auth()` + `require_role(min_role)` FastAPI Depends; hierarchie rolí `operator(0) < technician(1) < admin(2) < manufacturer(3)` přes `ROLE_LEVELS` dict; timing-safe autorizace
+- **`api/auth.py`** — `login()` prohledává `app.state.users` (timing-safe: celý seznam, `secrets.compare_digest()`); `plc-login()` ověřuje `monitor.current_values["plc_operator_login"]`; `change-password` zapisuje do `users.toml` (nebo `Config.toml` fallback)
+- **`api/users_api.py`** (nový) — CRUD uživatelů:
+  - `GET /api/users` (admin+) → seznam uživatelů bez hash
+  - `POST /api/users` (admin+) → přidat; nelze přidat roli vyšší než vlastní
+  - `DELETE /api/users/{username}` (admin+) → smazat; nelze smazat sám sebe ani posledního uživatele
+  - `POST /api/users/{username}/password` (admin+ nebo vlastní) → změna hesla
+- **Existující endpointy** — přidáno `Depends(require_auth)` / `Depends(require_role(...))`:
+  - `files.py`: GET operator+, DELETE technician+
+  - `data.py`, `status.py`, `wip.py`: GET operator+
+  - `config_api.py`: GET operator+, PATCH paths admin+
+  - `health.py`, `auth.py` login/logout: veřejné (bez ochrana)
+- **`users.toml.example`** — vzorový soubor se 4 uživateli (manufacturer, admin, technician, operator); `users.toml` přidán do `.gitignore`
+- **Testy** — přidáno 28 nových testů (`TestPlcLogin` + `TestUsersApi`); celkem **119 backend testů**
+
+#### Frontend
+
+- **`AuthContext.tsx`** — `role: string|null`, `displayName: string|null` (sessionStorage), `plcLoggedIn = status[PLC_LOGIN_SYMBOL]?.value === true` (strict bool)
+- **`useData.ts`** a všechny fetch hooky — přidán `Authorization: Bearer {token}` header
+- **`App.tsx`** — `PLC_LOGIN_SYMBOL = 'plc_operator_login'` (nový ADS symbol)
+- **`Settings.tsx`** — záložka **Uživatelé** (admin+): seznam uživatelů, přidat uživatele (username/display_name/role/heslo), smazat, změnit heslo jinému; AbortController v `UsersTab.fetchUsers`
+
+**Oprávnění rolí:**
+
+| Funkce | operator | technician | admin | manufacturer |
+|--------|----------|------------|-------|--------------|
+| Číst data (files, data, wip, status) | ✅ | ✅ | ✅ | ✅ |
+| Mazat soubory | ❌ | ✅ | ✅ | ✅ |
+| Nastavení — cesty (PATCH /api/config/paths) | ❌ | ❌ | ✅ | ✅ |
+| Správa uživatelů | ❌ | ❌ | ✅ | ✅ |
+| Změna vlastního hesla | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+### Fáze 16 — Security hardening: CSP hlavička (2026-07-30)
+
+**Motivace:** Chyběla `Content-Security-Policy` hlavička — prohlížeč mohl spouštět inline skripty z libovolného zdroje.
+
+**Co bylo implementováno:**
+
+- **`app.py`** — `_build_csp(frontend_dist: Path) -> str`:
+  - Čte `index.html` ze statického buildu, extrahuje inline skripty regex `<script>([\s\S]*?)</script>`
+  - Pro každý inline skript vypočítá SHA-256 hash (base64) a přidá do `script-src` jako `'sha256-...'`
+  - Při spuštění bez buildu (dev mód) `index.html` neexistuje → CSP obsahuje jen `'self'`
+  - CSP se automaticky aktualizuje po každém `npm run build` (nový hash anti-FOUC skriptu)
+- **`_SecurityHeadersMiddleware`** — přijímá `csp: str = ""` parametr; přidává `Content-Security-Policy` header jen pokud není prázdný
+
+**Výsledná CSP pro produkci:**
+```
+default-src 'self';
+script-src  'self' 'sha256-<hash-anti-fouc>';
+style-src   'self' 'unsafe-inline' https://fonts.googleapis.com;
+img-src     'self' data:;
+connect-src 'self' ws: wss:;
+font-src    'self' https://fonts.gstatic.com;
+frame-ancestors 'none'
+```
+
+- `'unsafe-inline'` v `style-src` — nutné pro Recharts inline SVG styly a React `style={{...}}` props; akceptováno pro průmyslovou LAN aplikaci
+- `ws: wss:` v `connect-src` — WebSocket endpointy `/ws/plc` a `/ws/orders`
+- `Google Fonts` — `fonts.googleapis.com` (CSS) + `fonts.gstatic.com` (fonty)
+- **Testy** — 3 nové CSP testy; celkem **119 backend testů**
+
+---
+
+### Fáze 17 — Opravy auditních nálezů (2026-07-30)
+
+**M1 — SVG marker ID kolize v RecordDiagram (opraveno):**
+
+`ForceTravelDiagram` a `TimeDiagram` měly hardcoded SVG marker IDs (`ftB`, `ftBL`, `ftF`, `ftFR`, `dfA`, `dfAR`, `tmG`, `tmGL`). Při otevřeném maximalizačním modálu jsou obě instance (inline + modal) v DOM simultánně → prohlížeč použil špatnou definici markeru.
+
+Fix: React 18 `useId()` hook v každé komponentě — generuje unikátní prefix per instance. Všechna `id="..."` nahrazena `id={uid + '...'}`, všechna `markerEnd="url(#...)"` nahrazena `markerEnd={\`url(#${uid}...)\`}`.
+
+**M6 — RateLimitMiddleware _hits dict bez GC (opraveno):**
+
+Dict `_hits` rostl neomezeně (nová entry pro každou novou IP). Fix: při pruning použít `pop()` místo přiřazení → pokud seznam po ořezu prázdný, klíč zůstane smazaný. Na LAN s málo klienty nepodstatné, ale správný pattern pro dlouhý uptime.
+
+**M5 — GROUP_COLORS duplikace (opraveno):**
+
+Konstanta `GROUP_COLORS = ['#3b82f6', ...]` byla definována identicky v `ChartView.tsx` i `FileTable.tsx`. Extrahována do `src/utils/groupColors.ts`, oba soubory importují z ní.
+
+**Stav testů po fázi 17:** Backend 119/119, Frontend 51/51.

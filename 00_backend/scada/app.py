@@ -182,10 +182,12 @@ class _RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.monotonic()
         cutoff = now - self._window
 
-        # Odstraň záznamy mimo sliding window
-        self._hits[ip] = [t for t in self._hits[ip] if t > cutoff]
+        # Odstraň záznamy mimo sliding window; prázdné záznamy smaž (GC — dict neroste)
+        pruned = [t for t in self._hits.pop(ip, []) if t > cutoff]
+        if pruned:
+            self._hits[ip] = pruned
 
-        if len(self._hits[ip]) >= self._max:
+        if len(self._hits.get(ip, [])) >= self._max:
             log.warning(
                 "[APP]   rate limit překročen: %s (%d req/min, max %d)",
                 ip, len(self._hits[ip]), self._max,
