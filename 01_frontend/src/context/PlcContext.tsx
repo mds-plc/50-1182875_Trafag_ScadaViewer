@@ -56,7 +56,9 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
         try {
           const msg = JSON.parse(e.data)
           if (msg.type === 'ads_status') {
-            setAdsConnected(Boolean(msg.connected))
+            const adsOk = Boolean(msg.connected)
+            setAdsConnected(adsOk)
+            if (!adsOk) setStatus({})   // ADS výpadek: stará data nejsou aktuální (SCADA safety + auto-logout PLC)
           } else {
             const plcMsg: PlcStatus = msg
             setStatus(prev => ({ ...prev, [plcMsg.symbol]: plcMsg }))

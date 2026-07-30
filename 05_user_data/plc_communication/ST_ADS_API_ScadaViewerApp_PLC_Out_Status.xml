@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <project xmlns="http://www.plcopen.org/xml/tc6_0200">
-  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-21T08:44:31.5140354" />
-  <contentHeader name="PLC" modificationDateTime="2026-07-21T08:44:31.5140354">
+  <fileHeader companyName="Beckhoff Automation GmbH" productName="TwinCAT PLC Control" productVersion="3.5.20.60" creationDateTime="2026-07-30T07:42:55.3025569" />
+  <contentHeader name="PLC" modificationDateTime="2026-07-30T07:42:55.3065571">
     <coordinateInfo>
       <fbd>
         <scaling x="1" y="1" />
@@ -32,12 +32,20 @@
                 <xhtml xmlns="http://www.w3.org/1999/xhtml"> |1| Hlavní režim stroje</xhtml>
               </documentation>
             </variable>
+            <variable name="UserLoggedIn">
+              <type>
+                <BOOL />
+              </type>
+              <documentation>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |2| Hlavní režim stroje</xhtml>
+              </documentation>
+            </variable>
             <variable name="Order">
               <type>
                 <derived name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order" />
               </type>
               <documentation>
-                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |2| Informace o zakázce</xhtml>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |3| Informace o zakázce</xhtml>
               </documentation>
             </variable>
             <variable name="Boxes">
@@ -45,7 +53,7 @@
                 <derived name="ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes" />
               </type>
               <documentation>
-                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |3| Informace o třídícícíh boxech</xhtml>
+                <xhtml xmlns="http://www.w3.org/1999/xhtml"> |4| Informace o třídícícíh boxech</xhtml>
               </documentation>
             </variable>
           </struct>
@@ -58,8 +66,9 @@
 STRUCT
 
 	Mode				:	UINT;												// |1| Hlavní režim stroje
-	Order				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order;		// |2| Informace o zakázce
-	Boxes				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes;		// |3| Informace o třídícícíh boxech
+	UserLoggedIn		:	BOOL;												// |2| Hlavní režim stroje
+	Order				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Order;		// |3| Informace o zakázce
+	Boxes				:	ST_ADS_API_ScadaViewerApp_PLC_Out_Status_Boxes;		// |4| Informace o třídícícíh boxech
 	
 END_STRUCT
 

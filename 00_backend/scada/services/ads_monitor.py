@@ -122,6 +122,8 @@ class AdsMonitor:
         self._handles:          list = []   # notification handles pro del_device_notification
         self._callback_refs:    list = []   # drží Python closures naživu (GC prevence)
         self._reconnect_task:   asyncio.Task | None = None   # reconnect + heartbeat loop
+        # Cache posledních hodnot symbolů — čtena z endpointů (GIL chrání dict ops)
+        self.current_values: dict[str, bool | int | str] = {}
 
     @property
     def connected(self) -> bool:
@@ -299,6 +301,7 @@ class AdsMonitor:
             return
         self._handles.clear()
         self._callback_refs.clear()
+        self.current_values.clear()
 
         try:
             self._plc.close()
@@ -324,6 +327,7 @@ class AdsMonitor:
             try:
                 raw   = self._plc.read_by_name(symbol, pt)
                 value = _decode_read(raw, pt)
+                self.current_values[name] = value
                 payload = {"symbol": name, "value": value, "ts": ts}
                 asyncio.run_coroutine_threadsafe(
                     self._manager.broadcast(payload), self._loop
@@ -367,6 +371,7 @@ class AdsMonitor:
                 data_addr = ctypes.addressof(hdr) + type(hdr).data.offset   # hdr.data = int → addressof přes struct
                 raw       = bytes((ctypes.c_ubyte * n_bytes).from_address(data_addr))
                 value     = _decode_raw(raw, pt)
+                self.current_values[name] = value
                 log.debug("[ADS]   callback %s = %r", name, value)
             except Exception as exc:
                 log.warning("[ADS]   callback decode [%s]: %s", name, exc)

@@ -19,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from scada.api.dependencies import require_auth, require_role
 from scada.models import FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
 
@@ -28,7 +29,7 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
-@router.get("/files", response_model=FilesResponse)
+@router.get("/files", response_model=FilesResponse, dependencies=[Depends(require_auth)])
 async def list_files(
     request:   Request,
     location:  str      = Query('local',      description="local | remote"),
@@ -82,7 +83,7 @@ async def list_files(
     )
 
 
-@router.delete("/files/{file_id}", status_code=204)
+@router.delete("/files/{file_id}", status_code=204, dependencies=[Depends(require_role("technician"))])
 async def delete_file(
     file_id:   str,
     request:   Request,
@@ -109,7 +110,7 @@ async def delete_file(
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
 
-@router.get("/files/{file_id}", response_model=OrderFileModel)
+@router.get("/files/{file_id}", response_model=OrderFileModel, dependencies=[Depends(require_auth)])
 async def get_file(
     file_id: str,
     request: Request,

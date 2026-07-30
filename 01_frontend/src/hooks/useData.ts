@@ -16,6 +16,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord, DataFilter, OrderFile } from '../types'
 import { useLang } from '../context/LangContext'
+import { useAuth } from '../context/AuthContext'
 
 // ------------------------------------------------------------------
 // useFiles — seznam souborů dle location + type + stránka
@@ -45,6 +46,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
   const { t } = useLang()
   const tRef = useRef(t)
   tRef.current = t
+  const { token } = useAuth()
 
   const [files,   setFiles]   = useState<OrderFile[]>([])
   const [total,   setTotal]   = useState(0)
@@ -78,7 +80,8 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
       })
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo)   params.set('to',   dateTo)
-      const res = await fetch(`/api/files?${params}`, { signal: ctrl.signal })
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res = await fetch(`/api/files?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.files)) throw new Error(tRef.current.common.errorInvalidResponse)
@@ -91,7 +94,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
       setError(e instanceof Error ? e.message : tRef.current.common.errorLoading)
       setLoading(false)
     }
-  }, [location, type, page, perPage, dateFrom, dateTo])
+  }, [location, type, page, perPage, dateFrom, dateTo, token])
 
   return { files, total, pages, loading, error, fetchFiles }
 }
@@ -110,6 +113,7 @@ function useDataFetch() {
   const { t } = useLang()
   const tRef = useRef(t)
   tRef.current = t
+  const { token } = useAuth()
 
   const [records,           setRecords]           = useState<CsvRecord[]>([])
   const [total,             setTotal]             = useState(0)
@@ -135,7 +139,8 @@ function useDataFetch() {
       if (filter.to)        params.set('to',       filter.to)
       if (filter.page     != null) params.set('page',     String(filter.page))
       if (filter.perPage  != null) params.set('per_page', String(filter.perPage))
-      const res = await fetch(`/api/data?${params}`, { signal: ctrl.signal })
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res = await fetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.records)) throw new Error(tRef.current.common.errorInvalidResponse)
@@ -150,7 +155,7 @@ function useDataFetch() {
       setError(e instanceof Error ? e.message : tRef.current.common.errorLoading)
       setLoading(false)
     }
-  }, [])
+  }, [token])
 
   return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData }
 }
@@ -184,20 +189,22 @@ const REMOTE_POLL_MS = 30_000
 export function useRemoteStatus() {
   const [available, setAvailable] = useState<boolean | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const { token } = useAuth()
 
   const check = useCallback(async () => {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      const res  = await fetch('/api/status', { signal: ctrl.signal })
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res  = await fetch('/api/status', { signal: ctrl.signal, headers })
       const json = await res.json()
       setAvailable(Boolean(json.remote_available))
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       setAvailable(false)
     }
-  }, [])
+  }, [token])
 
   useEffect(() => {
     check()

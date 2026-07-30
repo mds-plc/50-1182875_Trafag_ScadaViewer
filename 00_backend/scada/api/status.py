@@ -15,8 +15,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
+from scada.api.dependencies import require_auth
 from scada.models import StatusResponse
 
 router = APIRouter()
@@ -24,7 +25,7 @@ router = APIRouter()
 _NAS_TIMEOUT_S = 3.0   # max čekání na UNC cestu; kratší = rychlejší odezva
 
 
-@router.get("/status", response_model=StatusResponse)
+@router.get("/status", response_model=StatusResponse, dependencies=[Depends(require_auth)])
 async def get_status(request: Request) -> StatusResponse:
     """
     Ověří dostupnost vzdáleného úložiště (NAS).

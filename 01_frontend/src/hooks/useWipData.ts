@@ -14,6 +14,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord } from '../types'
+import { useAuth } from '../context/AuthContext'
 
 /** Data z /api/wip — snapshot WIP záznamy aktuální zakázky. */
 export interface WipData {
@@ -26,6 +27,7 @@ export function useWipData(enabled: boolean, orderName: string | undefined) {
   const [data,    setData]    = useState<WipData | null>(null)
   const [loading, setLoading] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const { token } = useAuth()
 
   const fetchData = useCallback(async (order: string) => {
     abortRef.current?.abort()
@@ -34,8 +36,9 @@ export function useWipData(enabled: boolean, orderName: string | undefined) {
 
     setLoading(true)
     try {
-      const params = new URLSearchParams({ order })
-      const res = await fetch(`/api/wip?${params}`, { signal: ctrl.signal })
+      const params  = new URLSearchParams({ order })
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res = await fetch(`/api/wip?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json() as WipData
       setData(json)
@@ -44,7 +47,7 @@ export function useWipData(enabled: boolean, orderName: string | undefined) {
       if (ctrl.signal.aborted) return   // přerušeno — ignorovat
       setLoading(false)
     }
-  }, [])
+  }, [token])
 
   useEffect(() => {
     if (enabled && orderName) {

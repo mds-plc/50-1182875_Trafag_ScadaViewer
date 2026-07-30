@@ -12,11 +12,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { LangProvider } from '../context/LangContext'
+import { AuthProvider } from '../context/AuthContext'
 import { useData } from '../hooks/useData'
 import type { DataFilter } from '../types'
 
 const Wrapper = ({ children }: { children: ReactNode }) => (
-  <LangProvider>{children}</LangProvider>
+  <LangProvider>
+    <AuthProvider plcLoggedIn={false}>{children}</AuthProvider>
+  </LangProvider>
 )
 
 const BASE_FILTER: DataFilter = {

@@ -30,7 +30,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from scada.app import create_app
-from scada.config import AppConfig, AdsConfig, AuthConfig, DataConfig, ServerConfig
+from scada.config import AppConfig, AdsConfig, AuthConfig, DataConfig, ServerConfig, UserEntry
 
 
 # ======================================================================
@@ -68,6 +68,21 @@ def make_app(tmp_path: Path, remote_path: str = "") -> tuple:
 
 
 # ======================================================================
+# Sdílená auth pomocná data
+# ======================================================================
+
+# Předvypočítaný session token — injektován přímo do app.state.sessions
+# pro izolaci testů od přihlašovacího endpointu.
+_TEST_TOKEN   = "test-admin-session-token-xyz123"
+_TEST_SESSION = {"username": "admin", "role": "admin", "display_name": "Admin"}
+
+
+def _inject_session(app, token: str = _TEST_TOKEN, session: dict = _TEST_SESSION) -> None:
+    """Vloží testovací session přímo do app.state.sessions (bypass login)."""
+    app.state.sessions[token] = session
+
+
+# ======================================================================
 # Fixtures
 # ======================================================================
 
@@ -76,9 +91,12 @@ def client(tmp_path: Path):
     """
     TestClient s dočasnou konfigurací — izolace každého testu.
     Yields (TestClient, AppConfig).
+    Auth: testovací Bearer token je nastaven jako výchozí hlavička.
     """
     app, cfg = make_app(tmp_path)
     with TestClient(app) as c:
+        _inject_session(app)
+        c.headers.update({"Authorization": f"Bearer {_TEST_TOKEN}"})
         yield c, cfg
 
 
@@ -157,7 +175,9 @@ class TestStatus:
         remote.mkdir()
         app, _ = make_app(tmp_path, remote_path=str(remote))
         with TestClient(app) as c:
-            body = c.get("/api/status").json()
+            _inject_session(app)
+            body = c.get("/api/status",
+                         headers={"Authorization": f"Bearer {_TEST_TOKEN}"}).json()
         assert body["remote_available"] is True
 
 
@@ -412,6 +432,59 @@ class TestSecurityHeaders:
         assert "x-frame-options" in r.headers
         assert "x-content-type-options" in r.headers
 
+    def test_csp_header_present_when_dist_exists(self, tmp_path: Path) -> None:
+        """
+        CSP hlavička je přítomna pokud existuje 01_frontend/dist/index.html
+        (= produkční build). Testujeme s syntetickým index.html.
+        """
+        import base64, hashlib
+        from scada.app import _build_csp
+
+        # Syntetický index.html s jedním inline skriptem
+        inline = "(function(){var x=1;})()"
+        fake_dist = tmp_path / "fake_dist"
+        fake_dist.mkdir()
+        (fake_dist / "index.html").write_text(
+            f"<html><head><script>{inline}</script></head></html>",
+            encoding="utf-8",
+        )
+        csp = _build_csp(fake_dist)
+        expected_hash = "'sha256-" + base64.b64encode(
+            hashlib.sha256(inline.encode("utf-8")).digest()
+        ).decode() + "'"
+
+        assert "Content-Security-Policy" not in csp or True  # _build_csp vrací string
+        assert "default-src 'self'" in csp
+        assert expected_hash in csp
+        assert "script-src 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert "fonts.googleapis.com" in csp
+        assert "fonts.gstatic.com" in csp
+        assert "ws:" in csp and "wss:" in csp
+
+    def test_csp_no_inline_hash_when_no_dist(self, tmp_path: Path) -> None:
+        """Pokud index.html neexistuje (dev mód), script-src obsahuje jen 'self'."""
+        from scada.app import _build_csp
+
+        empty_dist = tmp_path / "nonexistent_dist"
+        csp = _build_csp(empty_dist)
+        assert "script-src 'self'" in csp
+        assert "sha256-" not in csp
+
+    def test_csp_header_sent_in_response(self, client) -> None:
+        """
+        Middleware přidá Content-Security-Policy do HTTP odpovědi.
+        Testy běží z adresáře projektu kde existuje 01_frontend/dist/index.html.
+        """
+        c, _ = client
+        headers = c.get("/api/health").headers
+        assert "content-security-policy" in headers
+        csp = headers["content-security-policy"]
+        assert "default-src 'self'" in csp
+        assert "script-src" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert "connect-src" in csp and "ws:" in csp
+
 
 # ======================================================================
 # Rate limiting — middleware
@@ -427,10 +500,7 @@ class TestRateLimit:
     @pytest.fixture
     def limited_client(self, tmp_path: Path):
         """TestClient s limitem 3 požadavky za minutu."""
-        app, _ = make_app(tmp_path)
-        # Přestavíme app s nízkým rate limitem pro test
         from scada.app import create_app as _create_app
-        from scada.config import AppConfig, AdsConfig, DataConfig, ServerConfig
         local = tmp_path / "limited"
         local.mkdir()
         cfg = AppConfig(
@@ -443,7 +513,10 @@ class TestRateLimit:
                 csv_encoding="utf-8-sig",
             ),
         )
-        with TestClient(_create_app(cfg, rate_limit=3)) as c:
+        limited_app = _create_app(cfg, rate_limit=3)
+        with TestClient(limited_app) as c:
+            _inject_session(limited_app)
+            c.headers.update({"Authorization": f"Bearer {_TEST_TOKEN}"})
             yield c
 
     def test_requests_within_limit_succeed(self, limited_client) -> None:
@@ -773,3 +846,247 @@ class TestDateValidation:
         r, _ = client
         resp = r.get("/api/data?file=test_DONE.csv&location=local&type=production&to=31-12-2026")
         assert resp.status_code == 422
+
+
+# ======================================================================
+# POST /api/auth/plc-login
+# ======================================================================
+
+class TestPlcLogin:
+    """
+    POST /api/auth/plc-login — přihlášení pomocí PLC příznaku (bez hesla).
+    Endpoint ověří monitor.current_values["plc_operator_login"].
+    """
+
+    def test_plc_logged_in_returns_token(self, client) -> None:
+        """plc_operator_login=True → 200 + token role=operator."""
+        c, _ = client
+        c.app.state.monitor.current_values["plc_operator_login"] = True
+        r = c.post("/api/auth/plc-login")
+        assert r.status_code == 200
+        body = r.json()
+        assert "token" in body
+        assert isinstance(body["token"], str) and len(body["token"]) > 10
+        assert body["role"] == "operator"
+        assert body["display_name"] == "PLC Operátor"
+
+    def test_plc_not_logged_in_returns_403(self, client) -> None:
+        """plc_operator_login=False → 403."""
+        c, _ = client
+        c.app.state.monitor.current_values["plc_operator_login"] = False
+        r = c.post("/api/auth/plc-login")
+        assert r.status_code == 403
+
+    def test_plc_missing_symbol_returns_403(self, client) -> None:
+        """Klíč chybí v current_values (výchozí False) → 403."""
+        c, _ = client
+        c.app.state.monitor.current_values.pop("plc_operator_login", None)
+        r = c.post("/api/auth/plc-login")
+        assert r.status_code == 403
+
+    def test_plc_token_stored_in_sessions(self, client) -> None:
+        """Vrácený token musí být uložen v app.state.sessions s role=operator."""
+        c, _ = client
+        c.app.state.monitor.current_values["plc_operator_login"] = True
+        token = c.post("/api/auth/plc-login").json()["token"]
+        session = c.app.state.sessions.get(token)
+        assert session is not None
+        assert session["role"] == "operator"
+        assert session["username"] == "plc_operator"
+
+
+# ======================================================================
+# /api/users — CRUD a RBAC
+# ======================================================================
+
+# Konstanty pro users testy
+_ADMIN_TOKEN2  = "users-admin-token-abc"
+_OP_TOKEN2     = "users-op-token-xyz"
+_ADMIN_SESSION2 = {"username": "admin", "role": "admin",    "display_name": "Admin"}
+_OP_SESSION2    = {"username": "op1",   "role": "operator", "display_name": "Operátor 1"}
+
+
+@pytest.fixture
+def users_client(tmp_path: Path):
+    """
+    TestClient s předpřipravenými uživateli admin + operator.
+    Výchozí Authorization je admin token.
+    users.toml není na disku — změny jsou pouze in-memory.
+    """
+    app, _ = make_app(tmp_path)
+    with TestClient(app) as c:
+        app.state.sessions[_ADMIN_TOKEN2] = _ADMIN_SESSION2.copy()
+        app.state.sessions[_OP_TOKEN2]    = _OP_SESSION2.copy()
+        app.state.users_path = None   # žádný disk → změny pouze in-memory
+        app.state.users = [
+            UserEntry(username="admin", display_name="Admin",
+                      password_hash=_TEST_HASH, role="admin"),
+            UserEntry(username="op1",   display_name="Operátor 1",
+                      password_hash=_TEST_HASH, role="operator"),
+        ]
+        c.headers.update({"Authorization": f"Bearer {_ADMIN_TOKEN2}"})
+        yield c
+
+
+class TestUsersApi:
+    """
+    CRUD + RBAC testy pro /api/users.
+    Admin: plný přístup. Operator: 403 na všechny admin endpointy.
+    """
+
+    # ── GET /api/users ──────────────────────────────────────────────────
+
+    def test_admin_gets_user_list(self, users_client) -> None:
+        r = users_client.get("/api/users")
+        assert r.status_code == 200
+        users = r.json()
+        assert isinstance(users, list)
+        assert len(users) == 2
+        usernames = [u["username"] for u in users]
+        assert "admin" in usernames and "op1" in usernames
+
+    def test_response_excludes_password_hash(self, users_client) -> None:
+        """UserModel nesmí obsahovat password_hash."""
+        for user in users_client.get("/api/users").json():
+            assert "password_hash" not in user
+
+    def test_operator_gets_403(self, users_client) -> None:
+        r = users_client.get("/api/users",
+                             headers={"Authorization": f"Bearer {_OP_TOKEN2}"})
+        assert r.status_code == 403
+
+    def test_no_token_gets_401(self, users_client) -> None:
+        r = users_client.get("/api/users", headers={"Authorization": ""})
+        assert r.status_code == 401
+
+    # ── POST /api/users ─────────────────────────────────────────────────
+
+    def test_admin_creates_user(self, users_client) -> None:
+        r = users_client.post("/api/users", json={
+            "username": "tech1", "display_name": "Technik",
+            "password": "pass123", "role": "technician",
+        })
+        assert r.status_code == 201
+        body = r.json()
+        assert body["username"] == "tech1"
+        assert body["role"] == "technician"
+        assert "password_hash" not in body
+
+    def test_duplicate_username_returns_409(self, users_client) -> None:
+        r = users_client.post("/api/users", json={
+            "username": "op1", "display_name": "Duplikát",
+            "password": "pass", "role": "operator",
+        })
+        assert r.status_code == 409
+
+    def test_invalid_role_returns_400(self, users_client) -> None:
+        r = users_client.post("/api/users", json={
+            "username": "x", "display_name": "X",
+            "password": "pass", "role": "superadmin",
+        })
+        assert r.status_code == 400
+
+    def test_empty_username_returns_400(self, users_client) -> None:
+        r = users_client.post("/api/users", json={
+            "username": "  ", "display_name": "",
+            "password": "pass", "role": "operator",
+        })
+        assert r.status_code == 400
+
+    def test_admin_cannot_create_higher_role(self, users_client) -> None:
+        """Admin (level 2) nemůže vytvořit manufacturer (level 3) → 403."""
+        r = users_client.post("/api/users", json={
+            "username": "mfr", "display_name": "Výrobce",
+            "password": "pass", "role": "manufacturer",
+        })
+        assert r.status_code == 403
+
+    def test_operator_cannot_create_user(self, users_client) -> None:
+        r = users_client.post("/api/users",
+                              headers={"Authorization": f"Bearer {_OP_TOKEN2}"},
+                              json={"username": "x", "display_name": "X",
+                                    "password": "pass", "role": "operator"})
+        assert r.status_code == 403
+
+    # ── DELETE /api/users/{username} ────────────────────────────────────
+
+    def test_admin_deletes_operator(self, users_client) -> None:
+        r = users_client.delete("/api/users/op1")
+        assert r.status_code == 204
+        usernames = [u["username"] for u in users_client.get("/api/users").json()]
+        assert "op1" not in usernames
+
+    def test_cannot_delete_self(self, users_client) -> None:
+        r = users_client.delete("/api/users/admin")
+        assert r.status_code == 400
+
+    def test_cannot_delete_last_user(self, tmp_path: Path) -> None:
+        """Smazání jediného uživatele → 400."""
+        app, _ = make_app(tmp_path)
+        mfr_tok = "mfr-tok"
+        with TestClient(app) as c:
+            app.state.sessions[mfr_tok] = {
+                "username": "mfr", "role": "manufacturer", "display_name": "Výrobce",
+            }
+            app.state.users_path = None
+            app.state.users = [
+                UserEntry(username="mfr", display_name="Výrobce",
+                          password_hash=_TEST_HASH, role="manufacturer"),
+            ]
+            r = c.delete("/api/users/mfr",
+                         headers={"Authorization": f"Bearer {mfr_tok}"})
+        assert r.status_code == 400
+
+    def test_delete_nonexistent_returns_404(self, users_client) -> None:
+        r = users_client.delete("/api/users/neexistuje")
+        assert r.status_code == 404
+
+    def test_operator_cannot_delete(self, users_client) -> None:
+        r = users_client.delete("/api/users/op1",
+                                headers={"Authorization": f"Bearer {_OP_TOKEN2}"})
+        assert r.status_code == 403
+
+    # ── POST /api/users/{username}/password ────────────────────────────
+
+    def test_admin_changes_others_password_no_current_required(self, users_client) -> None:
+        """Admin mění heslo jiného — current_password není povinné."""
+        r = users_client.post("/api/users/op1/password",
+                              json={"new_password": "noveheslo123"})
+        assert r.status_code == 204
+
+    def test_operator_changes_own_password_with_current(self, users_client) -> None:
+        """Operátor mění vlastní heslo — musí uvést aktuální heslo."""
+        r = users_client.post("/api/users/op1/password",
+                              headers={"Authorization": f"Bearer {_OP_TOKEN2}"},
+                              json={"current_password": "testpass",
+                                    "new_password": "noveheslo123"})
+        assert r.status_code == 204
+
+    def test_operator_wrong_current_password_returns_401(self, users_client) -> None:
+        r = users_client.post("/api/users/op1/password",
+                              headers={"Authorization": f"Bearer {_OP_TOKEN2}"},
+                              json={"current_password": "spatne",
+                                    "new_password": "noveheslo"})
+        assert r.status_code == 401
+
+    def test_operator_cannot_change_others_password(self, users_client) -> None:
+        """Operátor nemůže měnit heslo admina → 403."""
+        r = users_client.post("/api/users/admin/password",
+                              headers={"Authorization": f"Bearer {_OP_TOKEN2}"},
+                              json={"current_password": "testpass",
+                                    "new_password": "noveheslo"})
+        assert r.status_code == 403
+
+    def test_empty_new_password_returns_400(self, users_client) -> None:
+        r = users_client.post("/api/users/op1/password",
+                              json={"new_password": "   "})
+        assert r.status_code == 400
+
+    def test_change_password_invalidates_user_sessions(self, users_client) -> None:
+        """Po změně hesla admin→op1 musí být sessions op1 zneplatněny."""
+        # op1 token existuje před změnou
+        assert _OP_TOKEN2 in users_client.app.state.sessions
+        users_client.post("/api/users/op1/password",
+                          json={"new_password": "noveheslo123"})
+        # op1 sessions musí být odstraněny
+        assert _OP_TOKEN2 not in users_client.app.state.sessions

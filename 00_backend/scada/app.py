@@ -3,8 +3,11 @@ FastAPI aplikace — factory + lifespan.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import mimetypes
+import re
 import sys as _sys
 import time
 
@@ -33,8 +36,57 @@ def _get_frontend_dist() -> Path:
 
 _FRONTEND_DIST = _get_frontend_dist()
 
-from scada.config import AppConfig
-from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip
+# Externé CDN zdroje povolené v CSP
+_CSP_GOOGLE_FONTS_CSS = "https://fonts.googleapis.com"
+_CSP_GOOGLE_FONTS_SRC = "https://fonts.gstatic.com"
+
+
+def _build_csp(frontend_dist: Path) -> str:
+    """
+    Sestaví hodnotu hlavičky Content-Security-Policy.
+
+    Inline skripty (anti-FOUC v index.html) nelze pokrýt 'self' — jsou bez src atributu.
+    SHA-256 hash každého inline skriptu je výpočten z index.html a přidán do script-src.
+    Pokud index.html neexistuje (dev mód bez buildu), script-src obsahuje jen 'self'.
+
+    Direktivy:
+      default-src 'self'          — vše ostatní jen ze stejného originu
+      script-src  'self' 'sha256-…' — bundlovaný JS + inline anti-FOUC skript
+      style-src   'self' 'unsafe-inline' fonts.googleapis.com
+                                  — bundlované CSS + Recharts inline styly + Google Fonts CSS
+      img-src     'self' data:    — PNG loga + případné data: URI obrázků
+      connect-src 'self' ws: wss: — fetch + WebSocket (/ws/plc, /ws/orders) pro ws i wss
+      font-src    'self' fonts.gstatic.com — bundlované fonty + Google Fonts
+      frame-ancestors 'none'      — zabrání vložení do iframe (doplňuje X-Frame-Options)
+    """
+    script_hashes: list[str] = []
+    index_html = frontend_dist / "index.html"
+    if index_html.exists():
+        try:
+            html = index_html.read_text(encoding="utf-8")
+            # Inline skripty nemají atributy — zachytit jen <script>...</script> (ne type=module)
+            for script_body in re.findall(r"<script>([\s\S]*?)</script>", html):
+                digest = hashlib.sha256(script_body.encode("utf-8")).digest()
+                script_hashes.append("'sha256-" + base64.b64encode(digest).decode() + "'")
+        except OSError as exc:
+            log.warning("[APP]   CSP: nelze číst index.html: %s", exc)
+
+    script_src_extra = (" " + " ".join(script_hashes)) if script_hashes else ""
+
+    directives = [
+        "default-src 'self'",
+        f"script-src 'self'{script_src_extra}",
+        f"style-src 'self' 'unsafe-inline' {_CSP_GOOGLE_FONTS_CSS}",
+        "img-src 'self' data:",
+        "connect-src 'self' ws: wss:",
+        f"font-src 'self' {_CSP_GOOGLE_FONTS_SRC}",
+        "frame-ancestors 'none'",
+    ]
+    return "; ".join(directives)
+
+
+from scada.config import AppConfig, load_users
+from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip, users_api
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
 from scada.services.order_watcher import OrderWatcher
@@ -49,32 +101,34 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     Přidá bezpečnostní HTTP hlavičky ke každé odpovědi.
 
     PROČ:
+      Content-Security-Policy (CSP)
+        Zabrání XSS útokům — prohlížeč spustí jen skripty ze schválených zdrojů.
+        Inline skripty jsou povoleny pouze přes SHA-256 hash (anti-FOUC skript).
+
       X-Frame-Options: DENY
-        Zabrání vložení aplikace do <iframe> na cizí stránce (clickjacking).
-        Útočník by jinak mohl překrýt UI a zmást operátora.
+        Starší prohlížeče bez podpory frame-ancestors — záložní ochrana proti clickjacking.
 
       X-Content-Type-Options: nosniff
         Zakáže prohlížeči hádat MIME typ (content sniffing).
-        Bez této hlavičky může prohlížeč interpretovat CSV export jako HTML
-        a spustit případný škodlivý obsah v datovém souboru.
+        Bez této hlavičky může prohlížeč interpretovat CSV export jako HTML.
 
       Referrer-Policy: strict-origin-when-cross-origin
         Při přechodu na jinou doménu pošle jen origin (ne celou URL včetně
         query parametrů). Chrání případné tokeny nebo ID zakázek v URL.
 
-    ROZSAH:
-      Platí pro všechny HTTP odpovědi (API + statické soubory).
-      WebSocket upgrade request je transparentně propuštěn beze změny.
-
-    JAK ROZŠÍŘIT:
-      Přidat další hlavičky přímo do metody dispatch:
-        response.headers["Permissions-Policy"] = "camera=(), microphone=()"
-      Pro Content-Security-Policy (CSP) je potřeba nejprve zmapovat
-      všechny zdroje skriptů, stylů a fontů ve frontend buildu.
+    PARAMETRY:
+      csp: předpočítaná hodnota Content-Security-Policy; prázdný řetězec = CSP nepřidat
+           (výchozí pro testy nebo dev mód bez buildu).
     """
+
+    def __init__(self, app, csp: str = "") -> None:
+        super().__init__(app)
+        self._csp = csp
 
     async def dispatch(self, request: Request, call_next) -> Response:
         response = await call_next(request)
+        if self._csp:
+            response.headers["Content-Security-Policy"] = self._csp
         response.headers["X-Frame-Options"]        = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
@@ -151,10 +205,9 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     Vytvoří FastAPI aplikaci.
 
     Args:
-        cfg:        Konfigurace aplikace (načtená z Config.toml).
-        rate_limit: Max požadavků za minutu na IP. Výchozí 120.
-                    Pro testy předat nízkou hodnotu (např. 3) pro rychlé
-                    otestování chování při překročení limitu.
+        cfg:         Konfigurace aplikace (načtená z Config.toml).
+        rate_limit:  Max požadavků za minutu na IP. Výchozí 120.
+        config_path: Cesta ke Config.toml; users.toml se hledá ve stejném adresáři.
     """
     monitor       = AdsMonitor(cfg, manager)
     csv_reader    = FileService(CsvRepository(cfg.data))
@@ -164,13 +217,17 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         csv_encoding=cfg.data.csv_encoding,
     )
 
+    users_path = config_path.parent / "users.toml" if config_path else None
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.csv_reader   = csv_reader
         app.state.monitor      = monitor
         app.state.config       = cfg
-        app.state.config_path  = config_path   # pro change-password (zápis do souboru)
-        app.state.sessions: set[str] = set()   # in-memory session tokeny
+        app.state.config_path  = config_path   # pro zápis Config.toml
+        app.state.users_path   = users_path    # pro zápis users.toml
+        app.state.users        = load_users(users_path, cfg.auth)
+        app.state.sessions: dict[str, dict] = {}   # token → {username, role, display_name}
         log.info("[APP]   ScadaViewer start")
         try:
             await monitor.start()
@@ -186,14 +243,14 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     # Middleware — starlette aplikuje v opačném pořadí přidání (LIFO):
     # požadavek projde: CORS → RateLimit → SecurityHeaders → router
     # odpověď projde:   router → SecurityHeaders → RateLimit → CORS
-    app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_SecurityHeadersMiddleware, csp=_build_csp(_FRONTEND_DIST))
     app.add_middleware(_RateLimitMiddleware, max_per_minute=rate_limit)
     if cfg.server.cors_origins:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cfg.server.cors_origins,
             allow_methods=["GET", "POST", "DELETE", "PATCH"],
-            allow_headers=["Content-Type"],
+            allow_headers=["Content-Type", "Authorization"],
             allow_credentials=False,
         )
 
@@ -201,6 +258,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app.include_router(orders_ws.router,  prefix="/ws",  tags=["orders"])
     app.include_router(health.router,     prefix="/api", tags=["health"])
     app.include_router(auth.router,       prefix="/api", tags=["auth"])
+    app.include_router(users_api.router,  prefix="/api", tags=["users"])
     app.include_router(config_api.router, prefix="/api", tags=["config"])
     app.include_router(files.router,      prefix="/api", tags=["files"])
     app.include_router(data.router,       prefix="/api", tags=["data"])

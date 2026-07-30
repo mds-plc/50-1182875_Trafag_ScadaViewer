@@ -26,8 +26,9 @@ build/
 03_output/logs/*.log
 03_output/logs/*.log.*
 
-# Konfigurace — obsahuje síťové údaje a hash hesla; nikdy do repozitáře
+# Konfigurace — obsahuje síťové údaje, hesla a hash hesla; nikdy do repozitáře
 Config.toml
+users.toml
 
 # Claude Code — lokální oprávnění (machine-specific, nepatří do repozitáře)
 .claude/settings.local.json

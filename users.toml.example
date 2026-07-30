@@ -1,0 +1,43 @@
+# users.toml.example — vzorová konfigurace uživatelů ScadaViewer
+#
+# Zkopírovat jako users.toml do stejného adresáře jako Config.toml.
+# Soubor NIKDY necommitovat do Gitu (je v .gitignore).
+#
+# Role (hierarchie):
+#   operator     — prohlížení dat, WIP monitoring
+#   technician   — operator + mazání souborů
+#   admin        — technician + správa cest a uživatelů
+#   manufacturer — vše (nejvyšší práva)
+#
+# Hash hesla vygenerovat:
+#   python -c "
+#     import hashlib, secrets
+#     s = secrets.token_hex(16)
+#     h = hashlib.pbkdf2_hmac('sha256', b'HESLO', bytes.fromhex(s), 260_000).hex()
+#     print(f'{s}:{h}')
+#   "
+# Nebo přes API: POST /api/users (admin přidá uživatele se zadaným heslem).
+
+[[users]]
+username     = "manufacturer"
+display_name = "Výrobce"
+password_hash = ""
+role         = "manufacturer"
+
+[[users]]
+username     = "admin"
+display_name = "Správce"
+password_hash = ""
+role         = "admin"
+
+[[users]]
+username     = "technician"
+display_name = "Technik"
+password_hash = ""
+role         = "technician"
+
+[[users]]
+username     = "operator"
+display_name = "Operátor"
+password_hash = ""
+role         = "operator"

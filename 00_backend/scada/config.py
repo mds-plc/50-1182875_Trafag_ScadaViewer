@@ -94,6 +94,103 @@ class AppConfig:
     auth:   AuthConfig = field(default_factory=AuthConfig)
 
 
+# ── Uživatelé (multi-user) ───────────────────────────────────────────────────
+
+VALID_ROLES = frozenset({"operator", "technician", "admin", "manufacturer"})
+
+
+@dataclass
+class UserEntry:
+    """
+    Jeden uživatel aplikace.
+
+    Uloženo v users.toml vedle Config.toml.
+    role: operator | technician | admin | manufacturer
+    """
+    username:      str
+    display_name:  str
+    password_hash: str   # formát "{salt_hex}:{hash_hex}" — stejný jako AuthConfig
+    role:          str
+
+
+def hash_password(password: str) -> str:
+    """
+    Vygeneruje nový PBKDF2-HMAC-SHA256 hash hesla.
+    Formát: "{salt_hex}:{hash_hex}" — stejný jako AuthConfig.password_hash.
+    """
+    salt     = secrets.token_bytes(16)
+    hash_hex = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 260_000).hex()
+    return f"{salt.hex()}:{hash_hex}"
+
+
+def _toml_escape(s: str) -> str:
+    """Escapuje řetězec pro TOML basic string (dvojité uvozovky)."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def save_users(users: list[UserEntry], path: Path) -> None:
+    """
+    Zapíše seznam uživatelů do users.toml.
+
+    Atomický zápis: nejdřív do .tmp souboru, pak os.replace() — odolné vůči
+    výpadkům napájení a kill signálům (users.toml nikdy nebude corrupted).
+    """
+    import os
+    lines: list[str] = ["# users.toml — ScadaViewer uživatelé\n\n"]
+    for u in users:
+        lines.append("[[users]]\n")
+        lines.append(f'username     = "{_toml_escape(u.username)}"\n')
+        lines.append(f'display_name = "{_toml_escape(u.display_name)}"\n')
+        lines.append(f'password_hash = "{_toml_escape(u.password_hash)}"\n')
+        lines.append(f'role         = "{_toml_escape(u.role)}"\n')
+        lines.append("\n")
+    tmp = path.with_suffix(".toml.tmp")
+    tmp.write_text("".join(lines), encoding="utf-8")
+    os.replace(tmp, path)   # atomické na stejném filesystému (Windows i POSIX)
+    log.info("[CFG]   uloženo %d uživatelů do %s", len(users), path)
+
+
+def load_users(users_path: Path | None, fallback_auth: AuthConfig) -> list[UserEntry]:
+    """
+    Načte seznam uživatelů z users.toml.
+
+    Pokud soubor neexistuje nebo je prázdný → fallback:
+    jeden uživatel 'admin' z Config.toml [auth].
+    """
+    if users_path is not None and users_path.exists():
+        try:
+            with open(users_path, "rb") as f:
+                raw = tomllib.load(f)
+            valid_roles = {"operator", "technician", "admin", "manufacturer"}
+            users = []
+            for u in raw.get("users", []):
+                raw_role = u.get("role", "operator")
+                if raw_role not in valid_roles:
+                    log.warning("[CFG]   uživatel %r má neplatnou roli %r → fallback operator",
+                                u.get("username", "?"), raw_role)
+                    raw_role = "operator"
+                users.append(UserEntry(
+                    username=u["username"],
+                    display_name=u.get("display_name", u["username"]),
+                    password_hash=u.get("password_hash", ""),
+                    role=raw_role,
+                ))
+            if users:
+                log.info("[CFG]   načteno %d uživatelů z %s", len(users), users_path)
+                return users
+        except Exception as exc:
+            log.error("[CFG]   chyba při čtení %s: %s — fallback na Config.toml [auth]", users_path, exc)
+
+    # Fallback — jeden admin z Config.toml [auth]
+    log.info("[CFG]   users.toml nenalezeno nebo prázdné — fallback na Config.toml [auth]")
+    return [UserEntry(
+        username=fallback_auth.username,
+        display_name=fallback_auth.username,
+        password_hash=fallback_auth.password_hash,
+        role="admin",
+    )]
+
+
 def _validate_config(cfg: AppConfig) -> None:
     """Ověří hodnoty konfigurace — vyhodí ValueError při chybě."""
     if not (1 <= cfg.server.port <= 65535):
@@ -112,17 +209,23 @@ def verify_password(password: str, stored_hash: str) -> bool:
     """
     Ověří heslo vůči uloženému PBKDF2-HMAC-SHA256 hashi.
 
-    stored_hash: "{salt_hex}:{hash_hex}" — formát z AuthConfig.password_hash.
-    Prázdný stored_hash vždy vrátí False (auth není nakonfigurována).
-    Časově konstantní porovnání (secrets.compare_digest) — ochrana před timing útoky.
+    stored_hash: "{salt_hex}:{hash_hex}" — formát z hash_password().
+    Prázdný stored_hash vždy vrátí False — ale PBKDF2 se stejně spustí
+    (dummy výpočet), aby byl čas odpovědi konzistentní a neumožnil
+    timing side-channel detekci prázdného hashe.
+    Porovnání probíhá na bytes (ne hex) — robustnější vůči case variantám.
     """
+    _DUMMY_SALT = b'\x00' * 16   # fixní salt pro dummy výpočet
     if not stored_hash:
+        # Timing-safe: vždy spustit PBKDF2 i pro prázdný hash
+        hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), _DUMMY_SALT, 260_000)
         return False
     try:
         salt_hex, hash_hex = stored_hash.split(':', 1)
-        salt     = bytes.fromhex(salt_hex)
-        expected = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 260_000)
-        return secrets.compare_digest(expected.hex(), hash_hex)
+        salt          = bytes.fromhex(salt_hex)
+        stored_bytes  = bytes.fromhex(hash_hex)
+        expected      = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 260_000)
+        return secrets.compare_digest(expected, stored_bytes)
     except (ValueError, UnicodeEncodeError):
         return False
 

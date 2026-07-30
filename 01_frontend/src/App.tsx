@@ -25,13 +25,13 @@ import { useBackendOnline } from './hooks/useBackendOnline'
 import { useLang } from './context/LangContext'
 import { WifiOff } from 'lucide-react'
 
-/** Symbol PLC přihlášení operátora. TODO: upřesnit po finalizaci GVL. */
-const PLC_LOGIN_SYMBOL = 'in_ready'
+/** Symbol PLC přihlášení uživatele (Out.Status.UserLoggedIn BOOL). */
+const PLC_LOGIN_SYMBOL = 'plc_operator_login'
 
 /** Čte PLC přihlášení z kontextu — musí být uvnitř PlcProvider. */
 function PlcAuth({ children }: { children: React.ReactNode }) {
   const { status } = usePlc()
-  const plcLoggedIn = Boolean(status[PLC_LOGIN_SYMBOL]?.value)
+  const plcLoggedIn = status[PLC_LOGIN_SYMBOL]?.value === true
   return <AuthProvider plcLoggedIn={plcLoggedIn}>{children}</AuthProvider>
 }
 

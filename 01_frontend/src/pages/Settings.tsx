@@ -5,9 +5,10 @@
  *   Připojení rozděleno na PLC/ADS a Úložiště s editací cest.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, Folder, FolderOpen, HardDrive, Info, Cpu, Network, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronRight, Folder, FolderOpen, HardDrive, Info, Cpu, Network, SlidersHorizontal, Users, X } from 'lucide-react'
 import { useLang }     from '../context/LangContext'
 import { useToast }    from '../context/ToastContext'
+import { useAuth }     from '../context/AuthContext'
 import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
 import LoadingSpinner  from '../components/LoadingSpinner'
@@ -192,7 +193,286 @@ interface StatusData {
   remote_available: boolean
 }
 
-type Tab = 'preferences' | 'connection'
+type Tab = 'preferences' | 'connection' | 'users'
+
+// ---------------------------------------------------------------------------
+// UsersTab — správa uživatelů (admin+)
+// ---------------------------------------------------------------------------
+
+interface UserEntry {
+  username:     string
+  display_name: string
+  role:         string
+}
+
+interface UsersTabProps {
+  token: string | null
+}
+
+function UsersTab({ token }: UsersTabProps) {
+  const { t }         = useLang()
+  const { addToast }  = useToast()
+  const { username: selfUsername, role: selfRole } = useAuth()
+
+  const ROLE_LEVELS: Record<string, number> = {
+    operator: 0, technician: 1, admin: 2, manufacturer: 3,
+  }
+  const ROLE_LABELS: Record<string, string> = {
+    operator:     t.users.roleOperator,
+    technician:   t.users.roleTechnician,
+    admin:        t.users.roleAdmin,
+    manufacturer: t.users.roleManufacturer,
+  }
+  const selfLevel = ROLE_LEVELS[selfRole ?? 'operator'] ?? 0
+
+  const [users,   setUsers]   = useState<UserEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const fetchAbortRef = useRef<AbortController | null>(null)
+
+  // Formulář přidání uživatele
+  const [newUsername,    setNewUsername]    = useState('')
+  const [newDisplayName, setNewDisplayName] = useState('')
+  const [newRole,        setNewRole]        = useState('operator')
+  const [newPassword,    setNewPassword]    = useState('')
+  const [addBusy,        setAddBusy]        = useState(false)
+
+  // Inline změna hesla
+  const [pwdTarget,   setPwdTarget]   = useState<string | null>(null)
+  const [pwdValue,    setPwdValue]    = useState('')
+  const [pwdCurrent,  setPwdCurrent]  = useState('')
+  const [pwdBusy,     setPwdBusy]     = useState(false)
+
+  const authHeaders = useCallback((): HeadersInit => {
+    return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+  }, [token])
+
+  const fetchUsers = useCallback(async () => {
+    fetchAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    fetchAbortRef.current = ctrl
+    setLoading(true)
+    try {
+      const res = await fetch('/api/users', { headers: authHeaders(), signal: ctrl.signal })
+      if (res.ok) setUsers(await res.json() as UserEntry[])
+      setLoading(false)
+    } catch (e) {
+      if (ctrl.signal.aborted) return
+      setLoading(false)
+    }
+  }, [authHeaders])
+
+  useEffect(() => { fetchUsers() }, [fetchUsers])
+
+  async function handleAdd() {
+    if (!newUsername.trim() || !newPassword.trim()) {
+      addToast(t.users.errEmptyField, 'warning')
+      return
+    }
+    setAddBusy(true)
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          username:     newUsername.trim(),
+          display_name: newDisplayName.trim() || newUsername.trim(),
+          password:     newPassword,
+          role:         newRole,
+        }),
+      })
+      if (res.status === 409) { addToast(t.users.errUserExists, 'danger'); return }
+      if (res.status === 403) { addToast(t.users.errHigherRole, 'danger');  return }
+      if (!res.ok)             { addToast(t.common.errorLoading, 'danger'); return }
+      addToast(t.users.successAdded, 'success')
+      setNewUsername(''); setNewDisplayName(''); setNewPassword(''); setNewRole('operator')
+      await fetchUsers()
+    } finally {
+      setAddBusy(false)
+    }
+  }
+
+  async function handleDelete(username: string) {
+    if (confirmDelete !== username) { setConfirmDelete(username); return }
+    setConfirmDelete(null)
+    const res = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    if (res.status === 400) { addToast(t.users.errLastUser, 'danger');  return }
+    if (res.status === 403) { addToast(t.users.errSelf,     'danger');  return }
+    if (!res.ok)             { addToast(t.common.errorLoading, 'danger'); return }
+    addToast(t.users.successDeleted, 'success')
+    await fetchUsers()
+  }
+
+  async function handleChangePwd(username: string) {
+    if (!pwdValue.trim()) { addToast(t.users.errEmptyField, 'warning'); return }
+    setPwdBusy(true)
+    try {
+      const isSelf = username === selfUsername
+      const body: Record<string, string> = { new_password: pwdValue }
+      if (isSelf) body.current_password = pwdCurrent
+      const res = await fetch(`/api/users/${encodeURIComponent(username)}/password`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      })
+      if (res.status === 401) { addToast(t.settings.accountPwdWrong, 'danger'); return }
+      if (!res.ok)             { addToast(t.common.errorLoading, 'danger');      return }
+      addToast(t.users.successPassword, 'success')
+      setPwdTarget(null); setPwdValue(''); setPwdCurrent('')
+    } finally {
+      setPwdBusy(false)
+    }
+  }
+
+  if (loading) return <LoadingSpinner />
+
+  return (
+    <div>
+      {/* Seznam uživatelů */}
+      <table className="data-table" style={{ marginBottom: 'var(--space-6)' }}>
+        <thead>
+          <tr>
+            <th className="data-table__th">{t.users.username}</th>
+            <th className="data-table__th">{t.users.displayName}</th>
+            <th className="data-table__th">{t.users.role}</th>
+            <th className="data-table__th" style={{ width: 120 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.length === 0 && (
+            <tr><td colSpan={4} className="data-table__td" style={{ textAlign: 'center' }}>{t.users.noUsers}</td></tr>
+          )}
+          {users.map(u => (
+            <>
+              <tr key={u.username}>
+                <td className="data-table__td">{u.username}</td>
+                <td className="data-table__td">{u.display_name}</td>
+                <td className="data-table__td">{ROLE_LABELS[u.role] ?? u.role}</td>
+                <td className="data-table__td" style={{ whiteSpace: 'nowrap' }}>
+                  <button
+                    className="btn btn--secondary btn--sm"
+                    style={{ marginRight: 'var(--space-2)' }}
+                    onClick={() => {
+                      setPwdTarget(pwdTarget === u.username ? null : u.username)
+                      setPwdValue(''); setPwdCurrent('')
+                    }}
+                  >{t.users.changePassword}</button>
+                  {/* Smazat — jen pokud má admin vyšší roli než cíl */}
+                  {(ROLE_LEVELS[selfRole ?? ''] ?? 0) > (ROLE_LEVELS[u.role] ?? 0) && (
+                    <button
+                      className="btn btn--danger btn--sm"
+                      onClick={() => handleDelete(u.username)}
+                    >
+                      {confirmDelete === u.username ? t.users.deleteConfirm : t.users.deleteUser}
+                    </button>
+                  )}
+                </td>
+              </tr>
+              {pwdTarget === u.username && (
+                <tr key={`${u.username}-pwd`}>
+                  <td colSpan={4} className="data-table__td" style={{ background: 'var(--color-surface-2)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {u.username === selfUsername && (
+                        <input
+                          className="settings-path-input"
+                          type="password"
+                          placeholder={t.users.currentPassword}
+                          value={pwdCurrent}
+                          onChange={e => setPwdCurrent(e.target.value)}
+                          style={{ width: 160 }}
+                        />
+                      )}
+                      <input
+                        className="settings-path-input"
+                        type="password"
+                        placeholder={t.users.newPassword}
+                        value={pwdValue}
+                        onChange={e => setPwdValue(e.target.value)}
+                        style={{ width: 160 }}
+                      />
+                      <button
+                        className="btn btn--primary btn--sm"
+                        disabled={pwdBusy}
+                        onClick={() => handleChangePwd(u.username)}
+                      >{t.settings.accountSave}</button>
+                      <button
+                        className="btn btn--secondary btn--sm"
+                        onClick={() => { setPwdTarget(null); setPwdValue(''); setPwdCurrent('') }}
+                      >{t.common.cancel}</button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Přidat uživatele */}
+      <div className="settings-section-header settings-section-header--first">
+        <Users size={13} />
+        {t.users.addUser}
+      </div>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'flex-end', paddingBottom: 'var(--space-4)' }}>
+        <div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t.users.username}</div>
+          <input
+            className="settings-path-input"
+            placeholder={t.users.username}
+            value={newUsername}
+            onChange={e => setNewUsername(e.target.value)}
+            style={{ width: 140 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t.users.displayName}</div>
+          <input
+            className="settings-path-input"
+            placeholder={t.users.displayName}
+            value={newDisplayName}
+            onChange={e => setNewDisplayName(e.target.value)}
+            style={{ width: 160 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t.users.role}</div>
+          <select
+            className="settings-path-input"
+            value={newRole}
+            onChange={e => setNewRole(e.target.value)}
+            style={{ width: 130 }}
+          >
+            {Object.entries(ROLE_LABELS)
+              .filter(([role]) => (ROLE_LEVELS[role] ?? 0) <= selfLevel)
+              .map(([role, label]) => (
+                <option key={role} value={role}>{label}</option>
+              ))}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>{t.users.password}</div>
+          <input
+            className="settings-path-input"
+            type="password"
+            placeholder={t.users.password}
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            style={{ width: 140 }}
+          />
+        </div>
+        <button
+          className="btn btn--primary btn--sm"
+          disabled={addBusy}
+          onClick={handleAdd}
+          style={{ alignSelf: 'flex-end' }}
+        >{t.users.addUserBtn}</button>
+      </div>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Komponenta Settings
@@ -203,6 +483,9 @@ export default function Settings() {
   const { addToast }         = useToast()
   const { dark, toggle: toggleTheme } = useTheme()
   const { perPage, setPerPage, refreshMs, setRefreshMs } = useSettings()
+  const { token, role } = useAuth()
+
+  const isAdmin = ['admin', 'manufacturer'].includes(role ?? '')
 
   const [activeTab, setActiveTab] = useState<Tab>('preferences')
   const [openHelp,  setOpenHelp]  = useState<string | null>(null)
@@ -237,11 +520,12 @@ export default function Settings() {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setLoading(true)
+    const authHdr: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
     try {
       // health + config jsou rychlé — stránka se zobrazí okamžitě
       const [hRes, cRes] = await Promise.all([
         fetch('/api/health', { signal: ctrl.signal }),
-        fetch('/api/config', { signal: ctrl.signal }),
+        fetch('/api/config', { signal: ctrl.signal, headers: authHdr }),
       ])
       if (ctrl.signal.aborted) return
       const [h, c] = await Promise.all([hRes.json(), cRes.json()])
@@ -257,12 +541,12 @@ export default function Settings() {
     // nezablokuje zobrazení stránky
     if (abortRef.current?.signal.aborted) return
     setStatusChecking(true)
-    fetch('/api/status', { signal: abortRef.current?.signal })
+    fetch('/api/status', { signal: abortRef.current?.signal, headers: authHdr })
       .then(r => r.ok ? r.json() : null)
       .then((data: StatusData | null) => { if (data) setStatus(data) })
       .catch(() => {})
       .finally(() => setStatusChecking(false))
-  }, [])
+  }, [token])
 
   useEffect(() => {
     fetchAll()
@@ -285,7 +569,10 @@ export default function Settings() {
     try {
       const res = await fetch('/api/config/paths', {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body:    JSON.stringify({ local_path: localPath, remote_path: remotePath }),
       })
       if (res.ok) {
@@ -293,7 +580,7 @@ export default function Settings() {
         // Po uložení okamžitě ověř dostupnost vzdáleného úložiště
         setStatus(null)
         setStatusChecking(true)
-        fetch('/api/status')
+        fetch('/api/status', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
           .then(r => r.ok ? r.json() : null)
           .then((data: StatusData | null) => { if (data) setStatus(data) })
           .catch(() => {})
@@ -355,6 +642,15 @@ export default function Settings() {
             <Network size={13} />
             {t.settings.connTile}
           </button>
+          {isAdmin && (
+            <button
+              className={`db-tab${activeTab === 'users' ? ' db-tab--active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <Users size={13} />
+              {t.users.title}
+            </button>
+          )}
         </div>
       </div>
 
@@ -429,6 +725,11 @@ export default function Settings() {
               <HelpButton id="refresh" text={t.settings.helpRefresh} {...hp} />
             </div>
           </>
+        )}
+
+        {/* ── Uživatelé ── */}
+        {activeTab === 'users' && isAdmin && (
+          <UsersTab token={token} />
         )}
 
         {/* ── Připojení ── */}

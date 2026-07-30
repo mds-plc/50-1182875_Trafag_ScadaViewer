@@ -216,4 +216,32 @@ export interface Translations {
     message: string
     retry: string
   }
+  users: {
+    title:           string
+    addUser:         string
+    addUserBtn:      string
+    username:        string
+    displayName:     string
+    role:            string
+    password:        string
+    changePassword:  string
+    newPassword:     string
+    currentPassword: string
+    deleteUser:      string
+    deleteConfirm:   string
+    noUsers:         string
+    roleOperator:    string
+    roleTechnician:  string
+    roleAdmin:       string
+    roleManufacturer: string
+    errUserExists:   string
+    errInvalidRole:  string
+    errEmptyField:   string
+    errHigherRole:   string
+    errLastUser:     string
+    errSelf:         string
+    successAdded:    string
+    successDeleted:  string
+    successPassword: string
+  }
 }

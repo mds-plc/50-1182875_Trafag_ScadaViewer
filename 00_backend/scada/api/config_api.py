@@ -12,9 +12,10 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada import __version__
+from scada.api.dependencies import require_auth, require_role
 from scada.models import (
     ConfigAuthInfo,
     ConfigAdsInfo,
@@ -28,7 +29,7 @@ router = APIRouter()
 log    = logging.getLogger(__name__)
 
 
-@router.get("/config", response_model=ConfigResponse)
+@router.get("/config", response_model=ConfigResponse, dependencies=[Depends(require_auth)])
 async def get_config(request: Request) -> ConfigResponse:
     """Vrátí bezpečnou podmnožinu konfigurace pro Settings UI."""
     cfg = request.app.state.config
@@ -76,7 +77,7 @@ def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
     config_path.write_text(text, encoding="utf-8")
 
 
-@router.patch("/config/paths", status_code=204)
+@router.patch("/config/paths", status_code=204, dependencies=[Depends(require_role("admin"))])
 async def update_paths(body: UpdatePathsRequest, request: Request) -> None:
     """
     Aktualizuje cesty k úložišti v Config.toml a v in-memory konfiguraci.
@@ -158,7 +159,7 @@ def _list_children(path_str: str) -> dict[str, object]:
     return {"path": _norm(p), "parent": parent, "children": children}
 
 
-@router.get("/config/fs")
+@router.get("/config/fs", dependencies=[Depends(require_auth)])
 async def list_fs(path: str = "") -> dict[str, object]:
     """
     Vrátí seznam podsložek pro folder picker v Settings UI.

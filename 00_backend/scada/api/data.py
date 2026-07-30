@@ -13,8 +13,9 @@ import asyncio
 import logging
 from datetime import date as _date
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from scada.api.dependencies import require_auth
 from scada.models import DataResponse
 from scada.services.protocols import DataReader
 
@@ -22,7 +23,7 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
-@router.get("/data", response_model=DataResponse)
+@router.get("/data", response_model=DataResponse, dependencies=[Depends(require_auth)])
 async def get_data(
     request:   Request,
     file:      str        = Query(...,           description="Název souboru (file_id)"),

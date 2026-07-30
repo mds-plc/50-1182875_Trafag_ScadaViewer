@@ -25,8 +25,9 @@ import csv
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
+from scada.api.dependencies import require_auth
 from scada.models import CsvRecordModel, WipResponse
 
 router = APIRouter()
@@ -83,7 +84,7 @@ def _find_and_read_wip(
     return newest.name, rows
 
 
-@router.get("/wip", response_model=WipResponse)
+@router.get("/wip", response_model=WipResponse, dependencies=[Depends(require_auth)])
 async def get_wip(
     request: Request,
     order: str | None = Query(default=None, description="Číslo zakázky z PLC (filtr dle názvu souboru)"),

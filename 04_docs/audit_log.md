@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-29**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-30**.
 
 ### ⚠️ MEDIUM
 
@@ -41,6 +41,96 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-07-30] Content-Security-Policy (Sprint 2 — security hardening)
+
+### Implementace
+
+| # | Soubor | Změna |
+|---|--------|-------|
+| 1 | `app.py` | Přidána funkce `_build_csp(frontend_dist)` — čte `index.html`, extrahuje inline skripty, vypočítá SHA-256 hash, sestaví CSP direktivu |
+| 2 | `app.py` | `_SecurityHeadersMiddleware` rozšířen o parametr `csp: str`; CSP přidána jako první hlavička (před ostatní) |
+| 3 | `app.py` | `create_app()` volá `_build_csp(_FRONTEND_DIST)` a předává do middleware |
+
+### Výsledná CSP direktiva
+
+```
+default-src 'self';
+script-src  'self' 'sha256-8RbLcaTWggjJIHiGHsrQyjgTHeUTYnEB4Xo+ck8WZeE=';
+style-src   'self' 'unsafe-inline' https://fonts.googleapis.com;
+img-src     'self' data:;
+connect-src 'self' ws: wss:;
+font-src    'self' https://fonts.gstatic.com;
+frame-ancestors 'none'
+```
+
+**Hash** — SHA-256 anti-FOUC inline skriptu z `index.html`. Přepočítá se automaticky po každém `npm run build`.
+
+**`'unsafe-inline'` v style-src** — nutné pro Recharts (inline SVG styly) a React `style={{...}}` props.
+
+**Poznámka k `frame-ancestors`** — nahrazuje `X-Frame-Options: DENY` pro moderní prohlížeče. Obě hlavičky jsou zachovány pro kompatibilitu se staršími klienty.
+
+### Nové testy (3)
+
+| Test | Co ověřuje |
+|------|-----------|
+| `test_csp_header_present_when_dist_exists` | SHA-256 hash inline skriptu správně vypočítán a vložen do script-src |
+| `test_csp_no_inline_hash_when_no_dist` | Bez buildu = `sha256-` v CSP chybí, `'self'` zůstane |
+| `test_csp_header_sent_in_response` | Middleware opravdu přidá hlavičku do HTTP odpovědi |
+
+**Výsledky testů:** Backend **119/119** ✅
+
+---
+
+## [2026-07-30] Multi-user auth, PLC auto-login, bezpečnostní opravy + testy
+
+### Nové funkce
+
+| Funkce | Soubory | Popis |
+|--------|---------|-------|
+| `POST /api/auth/plc-login` | `api/auth.py` | Přihlášení přes PLC příznak bez hesla — ověří `monitor.current_values["plc_operator_login"]`, vrátí Bearer token s role=operator |
+| `ads_monitor.current_values` | `services/ads_monitor.py` | Cache posledních hodnot ADS symbolů — čtena v `plc-login` endpointu; mazána při `_disconnect()` |
+| Ochrana endpointů Bearer tokenem | `api/dependencies.py`, `api/files.py`, `api/data.py`, `api/status.py`, `api/wip.py`, `api/config_api.py` | `require_auth` / `require_role` Depends; `/api/health` a `/api/auth/*` zůstávají veřejné |
+| `GET/POST/DELETE /api/users` | `api/users_api.py` | CRUD správa uživatelů (admin+); RBAC ochrana rolí |
+| `users.toml` multi-user úložiště | `config.py` | Atomický zápis (`os.replace`); fallback na Config.toml `[auth]` |
+
+### Bezpečnostní opravy
+
+| # | Závažnost | Popis | Soubor |
+|---|-----------|-------|--------|
+| A-01 | 🔴 HIGH | **Timing attack — username lookup**: `next()` s early return → útočník mohl změřit dobu odpovědi a odhalit platná jména. Fix: full list iteration + `secrets.compare_digest()` | `api/auth.py` |
+| A-02 | 🔴 HIGH | **`verify_password` bytes vs hex**: porovnání probíhalo na hex stringách (`str`) místo na `bytes` → `compare_digest` mohl být méně odolný. Fix: `bytes.fromhex()` pro obě strany | `config.py` |
+| A-04 | ⚠️ MEDIUM | **`change_password` pořadí validací**: PBKDF2 (drahý výpočet) probíhal před kontrolou prázdného nového hesla. Fix: validace nového hesla PRVNÍ, pak PBKDF2 | `api/auth.py` |
+| A-07 | ⚠️ MEDIUM | **`Request = None` anti-pattern** v `list_users`: FastAPI framework nikdy nepředá `None`; pattern klame type checker. Fix: `request: Request` bez výchozí hodnoty | `api/users_api.py` |
+| A-08 | ⚠️ MEDIUM | **Neatomický zápis `users.toml`**: přímý `write_text()` může zanechat koruptovaný soubor při výpadku napájení. Fix: tmp soubor + `os.replace()` | `config.py` |
+| A-09 | 🔵 LOW | **Chybí validace role v `load_users`**: neplatná role z TOML tiše procházela. Fix: whitelist check + fallback "operator" + warning log | `config.py` |
+| A-10 | ⚠️ MEDIUM | **Timing side-channel pro prázdný hash**: při `stored_hash=""` se PBKDF2 nepouštělo → rychlejší odpověď prozradí, zda účet má nastavené heslo. Fix: dummy PBKDF2 i pro prázdný hash | `config.py` |
+| B-07 | 🔵 LOW | **`UsersTab.fetchUsers` bez AbortController**: při rychlém unmount komponent mohlo `setUsers/setLoading` volat na unmountnutou komponentu. Fix: AbortController pattern dle `frontend-patterns.md` | `pages/Settings.tsx` |
+| B-08 | 🔵 LOW | **`Boolean(status[PLC_LOGIN_SYMBOL]?.value)` vs `=== true`**: truthy hodnoty (číslo `1`, string) mohly nečekaně triggerovat PLC přihlášení. Fix: striktní `=== true` | `App.tsx` |
+| D-01 | ⚠️ MEDIUM | **`AuthContext` logout nerozlišoval lokální vs PLC token**: `logout()` vždy invalidoval `localToken`, ale při aktivní PLC session byl `localToken=null` → server neobdržel logout. Fix: `tokenToInvalidate = localToken ?? plcToken` | `context/AuthContext.tsx` |
+
+### Frontend refaktoring AuthContext
+
+| # | Popis |
+|---|-------|
+| B-01 | `localToken` jako React state (ne `sessionStorage.getItem()` na každém renderu) |
+| B-02 | `plcLoginInFlightRef` (useRef) — zabraňuje dvojitému fetchi v React 18 Strict Mode double-invoke |
+| B-03 | `isLoginResponse()` runtime type guard — bezpečná validace tvaru backen response |
+| B-04 | `cancelled` flag v useEffect cleanup — zahodí odpověď in-flight requestu při re-renderu |
+| B-05 | PlcContext: reset `setStatus({})` i při ADS výpadku (ne jen při WS disconnect) — auto-logout PLC operátora |
+| B-06 | `useDatabaseState.ts`: Bearer token headers v `downloadCsv` + `deleteFile` |
+
+### Nové testy
+
+| Soubor | Nové testy | Co pokrývá |
+|--------|-----------|-----------|
+| `02_tests/test_api.py::TestPlcLogin` | 4 | plc=True→200+token, plc=False→403, missing symbol→403, token uložen v sessions |
+| `02_tests/test_api.py::TestUsersApi` | 21 | GET seznam (admin/operator/no-token), POST create (admin/duplicate/invalid-role/empty-username/higher-role/operator), DELETE (admin/self/last-user/notfound/operator), POST password (admin-no-current/op-with-current/wrong-current/op-cannot-change-others/empty/sessions-invalidated) |
+| `src/test/AuthContext.test.tsx` | 3 | PLC login→token, plcLoggedIn true→false→logout+token null, logout s PLC session invaliduje plcToken |
+
+**Výsledky testů:** Backend **116/116** ✅ · Frontend **51/51** ✅
 
 ---
 

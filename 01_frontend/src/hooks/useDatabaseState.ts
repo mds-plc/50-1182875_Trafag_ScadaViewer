@@ -10,6 +10,7 @@ import { useKeyShortcuts } from './useKeyShortcuts'
 import { useSettings } from './useSettings'
 import { useToast } from '../context/ToastContext'
 import { useLang } from '../context/LangContext'
+import { useAuth } from '../context/AuthContext'
 import { exportCsv } from '../utils/exportCsv'
 import type { OrderFile } from '../types'
 
@@ -29,6 +30,7 @@ function defaultDateFrom(): string {
 export function useDatabaseState() {
   const { addToast } = useToast()
   const { t }        = useLang()
+  const { token }    = useAuth()
   const { perPage, refreshMs } = useSettings()
 
   const [location,     setLocation]     = useState<Location>('local')
@@ -69,21 +71,23 @@ export function useDatabaseState() {
   const downloadCsv = useCallback(async (file: OrderFile): Promise<void> => {
     try {
       const url = `/api/data?file=${encodeURIComponent(file.file_id)}&location=${file.location}&type=${file.type}`
-      const res = await fetch(url)
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+      const res = await fetch(url, { headers })
       if (!res.ok) throw new Error()
       const data = await res.json() as { records: Record<string, unknown>[] }
       await exportCsv(data.records, file.file_id)
     } catch {
       addToast(t.common.errorLoading, 'danger')
     }
-  }, [addToast, t.common.errorLoading])
+  }, [addToast, t.common.errorLoading, token])
 
   // Smazání souboru — volá DELETE /api/files/{id}, zobrazí toast, refreshne seznam
   const deleteFile = useCallback(async (file: OrderFile): Promise<void> => {
     setDeleteTarget(null)
     try {
       const url = `/api/files/${encodeURIComponent(file.file_id)}?location=${file.location}&type=${file.type}`
-      const res = await fetch(url, { method: 'DELETE' })
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+      const res = await fetch(url, { method: 'DELETE', headers })
       if (res.ok) {
         addToast(t.db.deleteSuccess, 'success')
         fetchFiles()
@@ -93,7 +97,7 @@ export function useDatabaseState() {
     } catch {
       addToast(t.db.deleteError, 'danger')
     }
-  }, [addToast, fetchFiles, t.db.deleteError, t.db.deleteSuccess])
+  }, [addToast, fetchFiles, t.db.deleteError, t.db.deleteSuccess, token])
 
   // Odvozené hodnoty
   const showSync     = location === 'local'

@@ -9,6 +9,7 @@ Struktura ADS rozhraní (ST_ADS_API_ScadaViewerApp):
   In.Status.Heartbeat               BOOL   — Heartbeat ScadaViewer → PLC
   In.Status.Ready                   BOOL   — Aplikace připravena
   Out.Status.Mode                   UINT   — Hlavní režim (E_APP_ModeManager_Mode)
+  Out.Status.UserLoggedIn           BOOL   — Uživatel přihlášen z PLC terminálu
   Out.Status.Order.Valid            BOOL   — Platnost zakázky
   Out.Status.Order.Name             STRING — Název zakázky
   Out.Status.Order.Count_Expected   UINT   — Očekávaný počet mikrospínačů
@@ -41,6 +42,9 @@ SYM: dict[str, str] = {
     "order_name":           f"{GVL_SV}.Out.Status.Order.Name",                 # STRING
     "order_count_expected": f"{GVL_SV}.Out.Status.Order.Count_Expected",       # UINT
     "order_count_actual":   f"{GVL_SV}.Out.Status.Order.Count_Actual",         # UINT
+
+    # Přihlášení uživatele z PLC terminálu (BOOL) — zdroj auto-login v App.tsx
+    "plc_operator_login": f"{GVL_SV}.Out.Status.UserLoggedIn",
 
     # Boxy — Presence[1..6] (BOOL)
     "box_1_present": f"{GVL_SV}.Out.Status.Boxes.Presence[1]",

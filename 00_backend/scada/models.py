@@ -116,7 +116,34 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     """Odpověď POST /api/auth/login při úspěchu."""
-    token: str
+    token:        str
+    role:         str   # operator | technician | admin | manufacturer
+    display_name: str
+
+
+# ======================================================================
+# /api/users — správa uživatelů
+# ======================================================================
+
+class UserModel(BaseModel):
+    """Uživatel — response bez hash."""
+    username:     str
+    display_name: str
+    role:         str
+
+
+class CreateUserRequest(BaseModel):
+    """Tělo požadavku POST /api/users."""
+    username:     str
+    display_name: str
+    password:     str
+    role:         str
+
+
+class ChangeUserPasswordRequest(BaseModel):
+    """Tělo požadavku POST /api/users/{username}/password."""
+    new_password:     str
+    current_password: str | None = None   # povinné jen při změně vlastního hesla
 
 
 class LogoutRequest(BaseModel):
