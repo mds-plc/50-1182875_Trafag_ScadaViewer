@@ -156,6 +156,14 @@ async def change_user_password(
     if not is_self and not is_admin:
         raise HTTPException(status_code=403, detail="Nedostatečná oprávnění")
 
+    # Admin nemůže změnit heslo uživatele s vyšší nebo stejnou rolí
+    # (shodný vzor s create_user a delete_user — ochrana manufacturera před adminem)
+    if is_admin and not is_self:
+        caller_level = ROLE_LEVELS.get(session["role"], -1)
+        target_level = ROLE_LEVELS.get(target.role, -1)
+        if target_level >= caller_level:
+            raise HTTPException(status_code=403, detail="Nelze změnit heslo uživatele se stejnou nebo vyšší rolí")
+
     # Při změně vlastního hesla je povinné aktuální heslo
     if is_self and not is_admin:
         if not body.current_password:

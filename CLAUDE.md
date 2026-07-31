@@ -58,15 +58,23 @@ CLAUDE.md                  ← tento soubor
     ├── app.py                 ← FastAPI factory create_app() + lifespan (start/stop AdsMonitor, app.state)
     ├── api/
     │   ├── __init__.py
-    │   ├── plc_ws.py          ← WebSocket /ws/plc — accept, receive_text loop, disconnect
-    │   ├── files.py           ← GET /api/files + GET /api/files/{id}
+    │   ├── plc_ws.py          ← WebSocket /ws/plc
+    │   ├── orders_ws.py       ← WebSocket /ws/orders (OrderWatcher live záznamy)
+    │   ├── files.py           ← GET /api/files + GET /api/files/{id} + DELETE + POST batch-delete
     │   ├── data.py            ← GET /api/data s filtry from/to
-    │   └── status.py          ← GET /api/status → remote_available (Path.exists na UNC)
+    │   ├── status.py          ← GET /api/status → remote_available
+    │   ├── health.py          ← GET /api/health → {status, version, checks}
+    │   ├── auth.py            ← POST /api/auth/login + logout + change-password + plc-login
+    │   ├── users_api.py       ← CRUD /api/users (admin+)
+    │   ├── config_api.py      ← GET/PATCH /api/config + GET /api/config/fs (folder picker)
+    │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot)
+    │   └── dependencies.py    ← require_auth(), require_role() Depends factories
     └── services/
         ├── __init__.py
-        ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS (TODO: pyads connect)
-        ├── csv_reader.py      ← CsvReader: list_files() + read_records(), vstupní validace
-        └── ws_manager.py      ← ConnectionManager singleton `manager` + broadcast()
+        ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
+        ├── file_service.py    ← list_files(), list_files_paginated(), sort + stránkování
+        ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast
+        └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast()
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
 ├── package.json           ← závislosti (viz sekce Závislosti)
@@ -81,7 +89,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── Overview.tsx    ← / — live PLC status grid (PlcContext)
     │   ├── Database.tsx    ← /database — local/remote×production/testing, expand, delete
     │   ├── ChartView.tsx   ← /chart?file=&location=&type= — graf + tabulka
-    │   ├── Settings.tsx    ← /settings — placeholder
+    │   ├── Settings.tsx    ← /settings — Předvolby + Připojení + Uživatelé (admin+)
     │   └── Info.tsx        ← /info — verze v0.1.0, Trafag AG
     ├── components/
     │   ├── PlcStatus.tsx      ← SCADA grid: symbol + hodnota (bool/num/text) + timestamp
@@ -98,18 +106,28 @@ CLAUDE.md                  ← tento soubor
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
     ├── i18n/
     │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en'
-    │   ├── cs.ts              ← České překlady (~40 klíčů, nested objekt)
-    │   └── en.ts              ← Anglické překlady (~40 klíčů, nested objekt)
+    │   ├── cs.ts              ← České překlady (~160 klíčů, nested objekt)
+    │   └── en.ts              ← Anglické překlady (~160 klíčů, nested objekt)
     ├── context/
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
     │   ├── PlcContext.tsx     ← WebSocket singleton, status: Record<symbol, PlcStatus>, connected: bool
     │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, login(), logout() + sessionStorage
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
     ├── hooks/
-    │   └── useData.ts         ← 4 hooks: useFiles, useFileRecords, useRemoteStatus, useData
+    │   ├── useData.ts          ← useFiles, useFileRecords, useRemoteStatus, useData
+    │   ├── useDatabaseState.ts ← veškerá logika stránky Database (state, fetch, sort, batch)
+    │   ├── useSettings.ts      ← perPage, refreshMs; localStorage persistence
+    │   ├── useTheme.ts         ← dark/light toggle; localStorage scada_theme
+    │   ├── useKeyShortcuts.ts  ← F5/Escape generický hook; skip inputs
+    │   ├── useBackendOnline.ts ← polling /api/health 10 s; vrací boolean
+    │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders; max 200 záznamů; backoff reconnect
+    │   └── useWipData.ts       ← REST /api/wip?order=X; historický snapshot WIP
     ├── utils/
-    │   ├── paramMeta.ts       ← PARAM_LABELS (zkratky), PARAM_TOOLTIPS (popis+jednotka) — sdíleno Chart/RecordDiagram
-    │   └── exportCsv.ts       ← CSV export s BOM, sdíleno v Database
+    │   ├── paramMeta.ts        ← PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS — sdíleno Chart/RecordDiagram
+    │   ├── groupColors.ts      ← GROUP_COLORS (barvy skupin 1–6) — sdíleno FileTable/ChartView
+    │   ├── exportCsv.ts        ← CSV export s BOM; showSaveFilePicker fallback
+    │   ├── exportXlsx.ts       ← XLSX export (SheetJS) — Database download tlačítko
+    │   └── formatting.ts       ← formatDateTime — sdíleno FileTable/ExpandedRow
     ├── styles/
     │   ├── variables.css      ← design tokeny (barvy, fonty, mezery, stíny, přechody)
     │   ├── reset.css          ← normalizace, box-sizing, base typography
@@ -305,12 +323,23 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/ws/orders` | WebSocket | Live CSV záznamy z wip/ složek — OrderWatcher broadcastuje nové řádky |
 | `/api/health` | GET | Zdravotní stav aplikace — `{status, version, checks}` (NSSM watchdog, diagnostika) |
 | `/api/config` | GET | Bezpečná podmnožina konfigurace — `{server, ads, data, auth}` (bez hash) |
+| `/api/auth/login` | POST | Přihlášení; vrátí `{token, role, display_name}` |
+| `/api/auth/logout` | POST | Odhlášení; zneplatní session token |
 | `/api/auth/change-password` | POST | Změní heslo; ověří token+aktuální heslo; zneplatní session |
-| `/api/files` | GET | Seznam zakázek (`?location=local\|remote&type=production\|testing`) |
+| `/api/auth/plc-login` | GET | PLC auto-login check (symbol `plc_operator_login`) |
+| `/api/users` | GET / POST | Seznam uživatelů / přidání nového (admin+) |
+| `/api/users/{username}` | DELETE | Smazání uživatele (admin+) |
+| `/api/users/{username}/password` | POST | Změna hesla jiného uživatele (admin+) |
+| `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
+| `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`) |
+| `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
 | `/api/wip` | GET | Záznamy aktuální WIP zakázky — `?order=X` → `{file, records[], total}` |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
+| `/api/config` | GET | Bezpečná podmnožina konfigurace (bez password_hash) |
+| `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
+| `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
 ### /api/health — formát odpovědi
@@ -403,10 +432,10 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
-| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV download |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
-| Settings | `/settings` | — | — | ✅ Předvolby + Připojení + folder picker |
+| Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
 
 ---
@@ -458,6 +487,9 @@ Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart
 | `react-router-dom` | ^6.24 | SPA routing (BrowserRouter, NavLink, useSearchParams) |
 | `recharts` | ^2.12 | Declarativní React grafy (LineChart, ResponsiveContainer) |
 | `lucide-react` | ^1.25 | SVG ikony (HardDrive, Server, ChevronDown, …) |
+| `xlsx` | ^0.18 | SheetJS — XLSX export (Database + ChartView) |
+| `@fontsource-variable/dm-sans` | ^5.3 | Self-hosted DM Sans (variabilní, opsz osa) — bez Google Fonts CDN |
+| `@fontsource/dm-mono` | ^5.3 | Self-hosted DM Mono (monospacový font) — bez Google Fonts CDN |
 | `vite` + `@vitejs/plugin-react` | ^5.3 | Build tool + HMR dev server |
 | `typescript` | ^5.5 | Statické typy |
 
@@ -627,7 +659,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | REST /api/data | ✅ | data.py — filtry from/to (datetime.date, ne string prefix) |
 | REST /api/status | ✅ | status.py — `{ remote_available: bool }` (UNC Path.exists, timeout 3 s) |
 | REST /api/health | ✅ | health.py — status/version/checks; NSSM watchdog URL |
-| REST /api/auth/login + logout | ✅ | auth.py — PBKDF2-HMAC-SHA256; session tokeny v app.state.sessions |
+| REST /api/auth/login + logout | ✅ | auth.py — PBKDF2-HMAC-SHA256; session tokeny v app.state.sessions; TTL 8 h (lazy GC) |
 | REST /api/auth/change-password | ✅ | auth.py — ověří token+heslo, hash nového, zápis do Config.toml, invaliduje sessions |
 | REST /api/config | ✅ | config_api.py — bezpečná podmnožina AppConfig (bez hash); server/ads/data/auth |
 | CORS | ✅ | CORSMiddleware v app.py; `cors_origins` v Config.toml [server] |
@@ -652,8 +684,11 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — config+logging, API integration (Health/Status/Files/GetFile/Data/Delete/Pagination/Auth/DateValidation) |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 7 souborů) — useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **146 testů**: config, API integration, security, ADS monitor, users |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 7 souborů) — **51 testů**: useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
+| Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
+| Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
+| Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
 

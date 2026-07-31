@@ -71,6 +71,12 @@ export const cs: Translations = {
     groupDistribution: 'Rozložení skupin',
     totalVsExpected:   'Celkem / Očekáváno',
     orderDetail:       'Detail zakázky',
+    downloadXlsx:      'Stáhnout XLSX',
+    selectedCount:     'vybraných',
+    deleteSelected:    'Smazat vybrané',
+    clearSelection:    'Zrušit výběr',
+    batchConfirmTitle: 'Smazat vybrané soubory?',
+    batchConfirmBody:  'Tato akce je nevratná.',
   },
   chart: {
     title:          'Graf',

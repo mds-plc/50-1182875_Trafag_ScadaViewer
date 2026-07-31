@@ -8,19 +8,23 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-30**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-31**.
+
+### 🔴 HIGH
+
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| H1 | Session tokeny bez TTL — tokeny platí neomezeně dlouho; dict roste při každém loginu | `api/auth.py`, `api/dependencies.py` | [2026-07-31 kritický #1] |
 
 ### ⚠️ MEDIUM
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| M1 | SVG `<marker>` ID kolize při otevřeném modálu; fix: `instanceId` prop prefix | `components/RecordDiagram.tsx` | [2026-07-28 fe-audit #1] |
 | M2 | `order` parametr v `/api/wip` bez sanitizace | `api/wip.py` | [2026-07-28 hloubkový #2] |
 | M3 | `groupCounts` + `fileExpectedCount` z hook nepoužity v ChartView UI | `pages/ChartView.tsx` | [2026-07-22 #9] |
 | M4 | `CatAxisTick` + `renderLabel` přijímají `props: any` | `pages/ChartView.tsx` | [2026-07-28 hloubkový #7] |
-| M5 | `GROUP_COLORS` duplikace — identická definice v ChartView + FileTable | `pages/ChartView.tsx`, `components/FileTable.tsx` | [2026-07-22 #11] |
-| M6 | `_RateLimitMiddleware._hits` dict roste neomezeně bez GC | `app.py` | [2026-07-28 hloubkový #15] |
 | M7 | Chybí test pro `group_counts` + `file_expected_count` v `/api/data` response | `02_tests/test_api.py` | [2026-07-22 #15] |
+| M8 | `downloadCsv`/`downloadXlsx`: chybí AbortController (one-shot handler, nízká priorita) | `hooks/useDatabaseState.ts` | [2026-07-30 full-audit FE#5] |
 
 ### 🔵 LOW
 
@@ -34,13 +38,93 @@
 | L6 | `_disconnect()`: `handles.clear()` před `close()` — pořadí opačné k intuici | `services/ads_monitor.py` | [2026-07-28 hloubkový #13] |
 | L7 | `_read_and_broadcast_initial()` nečeká na Future při shutdown | `services/ads_monitor.py` | [2026-07-28 hloubkový #14] |
 | L8 | Chybí per-endpoint lockout po N selháních přihlášení | `api/auth.py` | [2026-07-28 hloubkový #16] |
-| L9 | CSP hlavička (`Content-Security-Policy`) v middleware chybí | `app.py` | [2026-07-28 hloubkový #17] |
+| L9 | `useFiles`: chybí validace tvaru response (přístup na `json.files` bez existence check) | `hooks/useData.ts` | [2026-07-30 full-audit FE#16] |
 
 ### 📄 DOCS
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-07-31] Kritický audit — kompletní kódová základna
+
+### Scope
+Hloubkový audit celé kódové základny (backend + frontend + konfigurace) před předáním Trafag.
+Zaměření na bezpečnost autentizace, autorizaci, CORS, session management a edge case handling.
+
+### Nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | Session tokeny bez TTL — dict roste bez omezení, tokeny platí věčně | `api/auth.py`, `api/dependencies.py` | ✅ Opraveno (TTL 8 h + GC) |
+| 2 | 🔴 HIGH | `sessions.clear()` při změně hesla odhlásí VŠECHNY uživatele, nejen daného | `api/auth.py` | ✅ Opraveno (filter by username) |
+| 3 | 🔴 HIGH | Privilege escalation — admin může změnit heslo manufacturera bez role check | `api/users_api.py` | ✅ Opraveno (caller_level > target_level) |
+| 4 | 🔴 HIGH | CORS middleware se neregistruje při `cors_origins = []` — bez varování | `app.py` | ⬜ Otevřeno (dokumentováno v Config.toml.example) |
+| 5 | ⚠️ MEDIUM | `Authorization` header malformed — log ukazuje `None` místo "chybí hlavička" | `api/dependencies.py` | ⬜ Otevřeno |
+| 6 | ⚠️ MEDIUM | PLC data (`status {}`) se nepromazávají při normálním logout uživatele | `context/AuthContext.tsx`, `context/PlcContext.tsx` | ⬜ Otevřeno (akceptováno — PLC patří stroji, ne uživateli) |
+| 7 | ⚠️ MEDIUM | WS origin check — porovnává jen hostname bez portu; dev proxy projde | `api/plc_ws.py` | ⬜ Otevřeno |
+| 8 | ⚠️ MEDIUM | `style-src 'unsafe-inline'` v CSP — Recharts inline styly vyžadují uvolnění | `app.py` | ⬜ Otevřeno (akceptováno — nonce by vyžadoval SSR) |
+| 9 | ⚠️ MEDIUM | Heartbeat loop loguje každou iteraci na DEBUG — při 6 symbolech 6 × msg/s | `services/ads_monitor.py` | ⬜ Otevřeno |
+| 10 | ⚠️ MEDIUM | Auth události (login/logout/fail) nejsou auditovatelné — mixují se s app logy | `api/auth.py` | ⬜ Otevřeno |
+| 11 | ⚠️ MEDIUM | `useRemoteStatus` — `token` chybí v dep array; stale token po plc-login | `hooks/useData.ts` | ⬜ Otevřeno → M10 |
+| 12 | ⚠️ MEDIUM | WS broadcast error při `ConnectionReset` pohlcen; klient zůstane v `manager.active` | `services/ws_manager.py` | ⬜ Otevřeno |
+| 13 | 🔵 LOW | `AbortController` handling: `ctrl.signal.aborted` check chybí v 2 místech | `hooks/useDatabaseState.ts` | ⬜ Otevřeno |
+| 14 | 🔵 LOW | `Config.toml.example` — chybí pole `[auth] password_hash` (jen komentář) | `Config.toml.example` | ⬜ Otevřeno |
+| 15 | 🔵 LOW | `microswitch_id` nullable v `CsvRecordModel` — důvod není zdokumentován | `models.py` | ⬜ Otevřeno |
+| 16 | 🔵 LOW | Nepoužité importy v `services/ws_manager.py` | `services/ws_manager.py` | ⬜ Otevřeno |
+
+**Celkem:** 16 nálezů | 3 opraveno | 13 otevřeno
+
+### Opravené bugy v tomto auditu
+- `api/dependencies.py`: TTL kontrola — `created_at` v session dict; expirace po 8 h; expired tokeny se odstraní z dict
+- `api/auth.py` (`change_password`): `sessions.clear()` → filtruje jen sessions daného uživatele
+- `api/users_api.py` (`change_user_password`): přidána kontrola caller_level > target_level pro admin→jiný uživatel
+
+---
+
+## [2026-07-30] Full audit — backend + frontend + docs
+
+### Scope
+Hloubkový audit po implementaci 4 nice-to-have funkcí (řazení, XLSX, batch-delete, ADS testy).
+Pokrytí: 8 backend souborů, 7 frontend souborů, CLAUDE.md, architecture.md.
+
+### Nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | `BatchDeleteRequest.file_ids` bez limitu — DoS: 1M ID iterací | `models.py` | ✅ Opraveno `Field(max_length=200)` |
+| 2 | 🔴 HIGH | `batchDelete`: chybí `res.ok` check — 4xx/5xx se parsuje jako `{deleted,failed}` | `hooks/useDatabaseState.ts` | ✅ Opraveno `if (!res.ok) throw` |
+| 3 | 🔴 HIGH | `batchDelete`: `clearSelect()` volán i při síťové chybě — výběr ztracen bez možnosti opakovat | `hooks/useDatabaseState.ts` | ✅ Opraveno — přesunuto do try bloku |
+| 4 | ⚠️ MEDIUM | `downloadCsv`/`downloadXlsx`: chybí AbortController | `hooks/useDatabaseState.ts` | ⬜ Otevřeno → nové M8 |
+| 5 | ⚠️ MEDIUM | `exportXlsx.ts`: `XLSX.writeFile()` bez try-catch — tichá chyba při I/O selhání | `utils/exportXlsx.ts` | ⬜ Otevřeno → nové M9 |
+| 6 | ⚠️ MEDIUM | `useRemoteStatus`: chybí `token` v deps — polling po přihlášení stale token | `hooks/useData.ts` | ⬜ Otevřeno → nové M10 |
+| 7 | ⚠️ MEDIUM | `PlcContext.onmessage` catch příliš broad — swallows všechny chyby | `context/PlcContext.tsx` | ⬜ Otevřeno → nové M11 |
+| 8 | ⚠️ MEDIUM | `isLoginResponse()` type guard: `null` projde jako string | `context/AuthContext.tsx` | ⬜ Otevřeno → nové M12 |
+| 9 | ⚠️ MEDIUM | Timing attack: `dummy_hash = ""` při prázdném users listu | `api/auth.py` | ⬜ Otevřeno → nové M13 |
+| 10 | ⚠️ MEDIUM | TOML regex injection: `re.sub` neescapuje `new_hash` | `api/auth.py` | ⬜ Otevřeno → nové M14 |
+| 11 | 🔵 LOW | `useFiles`: přístup `json.files` bez existence check | `hooks/useData.ts` | ⬜ Otevřeno → nové L9 |
+| 12 | 📄 DOCS | CLAUDE.md: API tabulce chybí 10 endpointů (batch-delete, users CRUD, auth…) | `CLAUDE.md` sec. 5 | ✅ Opraveno |
+| 13 | 📄 DOCS | CLAUDE.md: `utils/` chybí exportXlsx.ts, groupColors.ts, formatting.ts | `CLAUDE.md` sec. 2 | ✅ Opraveno |
+| 14 | 📄 DOCS | CLAUDE.md: `api/` chybí 7 souborů (health, auth, users_api, config_api…) | `CLAUDE.md` sec. 2 | ✅ Opraveno |
+| 15 | 📄 DOCS | CLAUDE.md: Settings popsán jako "placeholder" místo 3 záložek vč. Uživatelé | `CLAUDE.md` sec. 7 | ✅ Opraveno |
+| 16 | 📄 DOCS | CLAUDE.md: `hooks/` chybí 7 nových hooků (useDatabaseState, useSettings…) | `CLAUDE.md` sec. 2 | ✅ Opraveno |
+| 17 | 📄 DOCS | CLAUDE.md: i18n ~40 klíčů → skutečných ~160 | `CLAUDE.md` sec. 2 | ✅ Opraveno |
+| 18 | 📄 DOCS | CLAUDE.md: Database stránka nemá zmínku o XLSX / řazení / batch-delete | `CLAUDE.md` sec. 7 | ✅ Opraveno |
+
+**Celkem:** 18 nálezů | 10 opraveno | 8 otevřeno
+
+### Opravené bugy v tomto auditu
+- `models.py`: `file_ids = Field(max_length=200)` — Pydantic vrátí 422 při překročení
+- `useDatabaseState.ts`: `if (!res.ok) throw new Error(...)` před `res.json()`
+- `useDatabaseState.ts`: `clearSelect()` přesunut do `try` bloku (po úspěšném HTTP)
+
+### Uzavřené nálezy z předchozích auditů (nyní potvrzeně opraveny)
+- ~~M1~~ SVG marker ID kolize → opraveno `useId()` (2026-07-30 commit)
+- ~~M5~~ GROUP_COLORS duplikace → opraveno `utils/groupColors.ts` (2026-07-30 commit)
+- ~~M6~~ RateLimitMiddleware dict GC → opraveno `pop()+get()` (2026-07-30 commit)
+- ~~L9~~ CSP v middleware chybí → opraveno `_build_csp()` (2026-07-30 commit)
 
 ---
 

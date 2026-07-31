@@ -1,8 +1,29 @@
 """
-WebSocket connection manager — registr připojených klientů + broadcast.
+WebSocket connection manager — registr klientů, broadcast a cache stavu.
 
-Cache: poslední hodnota každého symbolu se ukládá do _cache.
-Nový klient dostane okamžitě celý aktuální stav PLC (ne až při první změně).
+Účel: Sdílený mechanismus pro distribuci zpráv všem připojeným WebSocket klientům.
+      Nový klient dostane okamžitý snapshot posledního stavu bez čekání na příští
+      ADS notifikaci nebo OrderWatcher tick.
+
+Zodpovědnost:
+  - Udržuje seznam aktivních WebSocket spojení a broadcastuje JSON zprávy.
+  - Aktualizuje cache (symbol nebo type klíč → poslední JSON) při každém broadcast.
+  - Při připojení nového klienta odešle celý snapshot z cache (connect()).
+  - Automaticky odstraní nefunkční spojení pokud send_text() vyhodí výjimku.
+  - Není zodpovědný za parsování nebo generování zpráv — jen přenos.
+
+Rozhraní:
+  ConnectionManager.connect(ws)           — přijme nové WS, pošle snapshot
+  ConnectionManager.disconnect(ws)        — odstraní ze seznamu
+  ConnectionManager.broadcast(message)    — pošle dict všem klientům, uloží do cache
+  manager        = ConnectionManager()    — singleton pro /ws/plc (ADS notifikace)
+  orders_manager = ConnectionManager()    — singleton pro /ws/orders (CSV záznamy)
+
+Napojení:
+  Závisí na: fastapi.WebSocket, json
+  Broadcastováno z: services/ads_monitor.py (ADS notifikace),
+                    services/order_watcher.py (nové CSV záznamy)
+  Konzumováno z: api/plc_ws.py a api/orders_ws.py (connect/disconnect)
 """
 from __future__ import annotations
 

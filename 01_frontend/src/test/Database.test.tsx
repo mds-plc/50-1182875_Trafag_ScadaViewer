@@ -60,6 +60,17 @@ const defaultState = {
   totalRecords:   0,
   deleteFile:     mockDeleteFile,
   downloadCsv:    mockDownloadCsv,
+  downloadXlsx:   vi.fn(),
+  sortBy:         'created_at',
+  sortDir:        'desc' as const,
+  onSort:         vi.fn(),
+  selectedIds:    new Set<string>(),
+  toggleSelect:   vi.fn(),
+  selectAll:      vi.fn(),
+  clearSelect:    vi.fn(),
+  batchDelete:    vi.fn(),
+  batchConfirm:   false,
+  setBatchConfirm: vi.fn(),
 }
 
 vi.mock('../hooks/useDatabaseState', () => ({

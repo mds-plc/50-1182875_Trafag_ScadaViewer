@@ -12,7 +12,8 @@ import {
 } from 'recharts'
 import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
-import { exportCsv } from '../utils/exportCsv'
+import { exportCsv }  from '../utils/exportCsv'
+import { exportXlsx } from '../utils/exportXlsx'
 import { PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS } from '../utils/paramMeta'
 import Chart          from '../components/Chart'
 import DataTable      from '../components/DataTable'
@@ -400,14 +401,24 @@ export default function ChartView() {
                 <div className="tile__header-actions">
                   <span className="badge badge--neutral">{total}</span>
                   {records.length > 0 && (
-                    <button
-                      className="btn btn--secondary btn--sm"
-                      onClick={() => void exportCsv(records as Record<string, unknown>[], fileId)}
-                      title={t.chart.exportCsv}
-                    >
-                      <Download size={13} />
-                      {t.chart.exportCsv}
-                    </button>
+                    <>
+                      <button
+                        className="btn btn--secondary btn--sm"
+                        onClick={() => void exportCsv(records as Record<string, unknown>[], fileId)}
+                        title={t.chart.exportCsv}
+                      >
+                        <Download size={13} />
+                        CSV
+                      </button>
+                      <button
+                        className="btn btn--secondary btn--sm"
+                        onClick={() => void exportXlsx(records as Record<string, unknown>[], fileId)}
+                        title={t.db.downloadXlsx}
+                      >
+                        <Download size={13} />
+                        XLSX
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

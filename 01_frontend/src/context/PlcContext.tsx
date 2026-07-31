@@ -1,10 +1,26 @@
 /**
- * @file PlcContext.tsx
- * @description React Context pro WebSocket připojení k PLC.
- *   PlcProvider otevírá jeden WebSocket (ws://host/ws/plc) pro celý strom,
- *   distribuuje live PLC hodnoty (status) a stav připojení (connected).
- *   Po odpojení se automaticky znovu připojí (exponential backoff: 1 s → 30 s).
- *   usePlc() hook vrací kontext — musí být použit uvnitř PlcProvider.
+ * Kontext pro real-time PLC data přes WebSocket.
+ *
+ * Účel: Distribuje live hodnoty PLC symbolů a stav ADS spojení do celého stromu
+ *       aplikace bez prop drillingu. Jedno WS spojení sdílí všechny komponenty.
+ *
+ * Zodpovědnost:
+ *   - Otevírá a udržuje WebSocket spojení (/ws/plc) po celou dobu životnosti aplikace.
+ *   - Po odpojení spouští exponential backoff reconnect (1 s → 30 s).
+ *   - Rozlišuje dva typy zpráv: PLC symbol update a ads_status (ADS backend↔PLC).
+ *   - Při odpojení nebo ADS výpadku resetuje status na {} — SCADA bezpečnost
+ *     (nezobrazovat stará data jako aktuální).
+ *   - Není zodpovědný za interpretaci hodnot — to je Overview.tsx.
+ *
+ * Rozhraní:
+ *   PlcProvider({ children })   — obaluje kořen aplikace pod LangProvider
+ *   usePlc()                    — { status, connected, adsConnected } hook
+ *   PlcContextType              — TypeScript interface hodnoty kontextu
+ *
+ * Napojení:
+ *   Závisí na: WebSocket /ws/plc (backend api/plc_ws.py), types.PlcStatus
+ *   Používáno: pages/Overview.tsx (live dashboard), context/AuthContext.tsx
+ *              (plcLoggedIn → auto PLC login), components/PlcWatcher.tsx (toast)
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { PlcStatus } from '../types'
@@ -14,9 +30,12 @@ const RECONNECT_MAX_MS  = 30_000
 
 /** Tvar hodnoty PlcContext — vrácený z {@link usePlc}. */
 export interface PlcContextType {
+  /** Posledně přijaté hodnoty PLC symbolů, klíčováno názvem symbolu. */
   status:       Record<string, PlcStatus>
-  connected:    boolean   // WebSocket frontend↔backend
-  adsConnected: boolean   // ADS backend↔PLC (broadcastováno serverem)
+  /** `true` pokud je WebSocket frontend↔backend otevřený. */
+  connected:    boolean
+  /** `true` pokud ADS backend↔PLC je připojen (přijato přes `ads_status` zprávu). */
+  adsConnected: boolean
 }
 
 const PlcContext = createContext<PlcContextType | null>(null)
@@ -63,8 +82,11 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
             const plcMsg: PlcStatus = msg
             setStatus(prev => ({ ...prev, [plcMsg.symbol]: plcMsg }))
           }
-        } catch {
-          // neplatný JSON — ignorovat
+        } catch (e) {
+          if (!(e instanceof SyntaxError)) {
+            console.error('[WS] onmessage handler error:', e)
+          }
+          // neplatný JSON nebo jiná chyba — ignorovat (WebSocket nesmí crashnout)
         }
       }
 

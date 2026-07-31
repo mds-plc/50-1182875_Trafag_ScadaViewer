@@ -1,14 +1,23 @@
 """
-REST endpoint — stav systému (vzdálené úložiště apod.)
+REST endpoint — dostupnost vzdáleného úložiště (/api/status).
 
-GET /api/status  → { remote_available: bool }
+Účel: Poskytuje frontendu informaci o tom, zda je NAS/UNC cesta právě dostupná,
+      aby Database stránka mohla zobrazit/skrýt záložku Remote nebo banner o nedostupnosti.
 
-POZOR: Path.exists() na UNC cestě (NAS) je synchronní blokující volání.
-Pokud NAS není dostupný, Windows čeká na síťový timeout (60+ s) a blokuje
-celý event loop — žádný jiný request (včetně /api/files) nemůže být zpracován.
+Zodpovědnost:
+  - Jedinou zodpovědností je ověřit Path.exists() na remote_path z konfigurace.
+  - Nespravuje NAS připojení ani autentizaci — jen testuje existenci cesty.
+  - Path.exists() na UNC cestě (NAS) je synchronní blokující volání; Windows čeká
+    na síťový timeout (60+ s) při nedostupném NAS. Proto asyncio.to_thread() +
+    asyncio.wait_for(3 s) — event loop nesmí blokovat.
 
-Proto: asyncio.to_thread() (thread pool, nablokuje event loop) +
-asyncio.wait_for() s timeoutem 3 s.
+Rozhraní:
+  GET /api/status → StatusResponse { remote_available: bool }
+  Vyžaduje autentizaci: Depends(require_auth)
+
+Napojení:
+  Závisí na: config.AppConfig.data.remote_path, models.StatusResponse
+  Používáno: frontend hooks/useData.ts useRemoteStatus() — polling každých 30 s
 """
 from __future__ import annotations
 

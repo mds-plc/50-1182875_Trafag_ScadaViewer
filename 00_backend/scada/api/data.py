@@ -1,11 +1,27 @@
 """
-REST endpoint — záznamy z CSV souboru.
+REST endpoint pro čtení záznamů z CSV souboru (/api/data).
 
-GET /api/data?file=ORDER_DONE.csv&location=local&type=production&from=2026-07-01&to=2026-07-17
+Účel: Poskytuje filtrovaná a stránkovaná data z jednoho CSV souboru zakázky.
+      Slouží pro zobrazení záznamů v Database (rozbalený řádek), ChartView (graf)
+      a pro CSV/XLSX export (per_page=0 = všechny záznamy najednou).
 
-read_records() běží v asyncio.to_thread() — nablokuje event loop při čtení souborů
-(včetně přístupu na NAS pro location=remote).
-Selhání I/O vrátí HTTP 503 s popisnou zprávou (ne holý 500).
+Zodpovědnost:
+  - Validuje formát datumových parametrů (from/to) explicitně před voláním service.
+    Důvod: ValueError ze service by mohl mít více příčin — explicitní validace
+    vrátí HTTP 422 s přesnou zprávou o špatném datu dřív než začneme číst soubor.
+  - Deleguje čtení na DataReader service (asyncio.to_thread — synchronní I/O).
+  - Počítá počet stránek ze serveru — klient nezná total a per_page zároveň.
+
+Rozhraní:
+  GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count)
+  Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše)
+  Vyžaduje autentizaci: Depends(require_auth)
+
+Napojení:
+  Závisí na: services (DataReader protokol), models.DataResponse, api/dependencies.require_auth
+  Datový zdroj: CSV soubory zapsané DatabaseGateway (lokální disk nebo NAS)
+  Používáno: frontend hooks/useData.ts {useFileRecords, useData},
+             hooks/useDatabaseState.ts {downloadCsv, downloadXlsx}
 """
 from __future__ import annotations
 
@@ -37,16 +53,25 @@ async def get_data(
     """
     Vrátí záznamy z CSV souboru s volitelným filtrováním a stránkováním.
 
-    Datumové filtry (from/to) jsou inclusive a porovnávají se s hodnotou
-    sloupce Timestamp. per_page=0 vrátí všechny záznamy bez stránkování.
+    Filtry from/to jsou inclusive, porovnávají se s Timestamp sloupcem. per_page=0 vrátí
+    všechny záznamy najednou — slouží pro CSV/XLSX export, kde stránkování nedává smysl.
+    group_counts a file_expected_count jsou dostupné jen pro production soubory.
 
-    Odpověď obsahuje:
-      records            — záznamy aktuální stránky
-      total              — celkový počet záznamů po filtrech (před stránkováním)
-      group_counts       — agregace {skupina: počet} přes celý soubor (nebo null)
-      file_expected_count — expected_count z CSV (celá zakázka, nebo null)
+    Args:
+        file: Identifikátor souboru (bez přípony .csv).
+        location: 'local' nebo 'remote' (NAS/UNC cesta).
+        file_type: 'production' nebo 'testing'.
+        from_date: Filtr od data (YYYY-MM-DD, inclusive). Volitelný.
+        to_date: Filtr do data (YYYY-MM-DD, inclusive). Volitelný.
+        page: Číslo stránky (od 1).
+        per_page: Počet záznamů na stránku; 0 = vrátit vše najednou.
 
-    HTTP 503 při I/O chybě (nedostupný disk / NAS).
+    Returns:
+        DataResponse — záznamy, total, stránkování a volitelné skupinové statistiky.
+
+    Raises:
+        HTTPException(422): neplatný formát datumu (from/to).
+        HTTPException(503): I/O chyba na disku nebo nedostupné úložiště.
     """
     # Validace formátu datumových parametrů — HTTP 422 pro neplatný vstup
     # (dříve než zavoláme service, kde by neexistující soubor zkratoval logiku)

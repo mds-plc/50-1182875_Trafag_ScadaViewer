@@ -39,6 +39,8 @@ class FileService:
         file_type: str = 'production',
         from_date: str | None = None,
         to_date:   str | None = None,
+        sort_by:   str = 'created_at',
+        sort_dir:  str = 'desc',
     ) -> list[dict]:
         """
         Vrátí seznam souborů s volitelným datumovým filtrem.
@@ -72,6 +74,16 @@ class FileService:
                 filtered.append(f)
             files = filtered
 
+        # Řazení — BUSINESS PRAVIDLO (pořadí závisí na sortovací volbě uživatele)
+        _SORT_KEYS = {'created_at', 'switch_name', 'record_count', 'order_id'}
+        if sort_by in _SORT_KEYS:
+            reverse = (sort_dir == 'desc')
+            def _sort_key(f: dict) -> tuple:
+                v = f.get(sort_by)
+                # None vždy na konec (False < True, proto None → True = "vyšší" při asc)
+                return (v is None, v if v is not None else '')
+            files = sorted(files, key=_sort_key, reverse=reverse)
+
         return files
 
     def list_files_paginated(
@@ -82,6 +94,8 @@ class FileService:
         per_page:  int = 50,
         from_date: str | None = None,
         to_date:   str | None = None,
+        sort_by:   str = 'created_at',
+        sort_dir:  str = 'desc',
     ) -> PagedResult:
         """
         Vrátí stránkovaný seznam souborů.
@@ -89,7 +103,7 @@ class FileService:
         Stránkování je BUSINESS PRAVIDLO (kolik záznamů uživatel vidí najednou),
         proto patří do service vrstvy, ne do API vrstvy.
         """
-        all_files = self.list_files(location, file_type, from_date, to_date)
+        all_files = self.list_files(location, file_type, from_date, to_date, sort_by, sort_dir)
         total = len(all_files)
         pages = max(1, math.ceil(total / per_page))
         page  = min(page, pages)          # clamp — stránka mimo rozsah → poslední

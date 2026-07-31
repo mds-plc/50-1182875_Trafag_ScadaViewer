@@ -1,18 +1,28 @@
 """
-REST endpoint — seznam souborů / zakázek.
+REST endpointy pro správu CSV souborů zakázek (/api/files).
 
-GET /api/files?location=local&type=production  → seznam souborů
-GET /api/files?page=2&per_page=50              → stránkování
-GET /api/files/{file_id}?location=local&type=production → metadata souboru
+Účel: Poskytuje stránkovaný přehled zakázek z lokálního disku nebo NAS a umožňuje
+      jejich mazání. Je to vstupní brána frontendu do CSV dat produkovaných DatabaseGateway.
 
-Všechna disk I/O (list_files, get_file) běží v asyncio.to_thread() —
-nablokuje event loop při přístupu na NAS nebo pomalý disk.
-Selhání I/O vrátí HTTP 503 s popisnou zprávou (ne holý 500).
+Zodpovědnost:
+  - GET /api/files: stránkovaný seznam zakázek s filtry (datum, typ, umístění) a řazením.
+  - GET /api/files/{file_id}: metadata konkrétního souboru.
+  - DELETE /api/files/{file_id}: smazání lokálního souboru (NAS mazání zakázáno — 403).
+  - POST /api/files/batch-delete: hromadné mazání (max 200 souborů, HTTP 200 vždy).
+  - Veškeré I/O jde přes asyncio.to_thread() — event loop nesmí čekat na disk.
+  - UNC cesty (NAS) mají timeout 30 s; lokální disk 10 s (pojistka).
 
-Stránkování — proč server-side (ne klient):
-  - Při stovkách zakázek klient nepotřebuje stahovat vše najednou.
-  - total v odpovědi = celkový počet (před stránkováním) → klient zobrazí "X souborů celkem".
-  - page se clampe na platný rozsah (nevyhodí chybu při page > pages).
+Rozhraní:
+  GET    /api/files             → FilesResponse (files[], total, page, pages)
+  GET    /api/files/{file_id}   → OrderFileModel
+  DELETE /api/files/{file_id}   → 204 / 403 / 404 / 503
+  POST   /api/files/batch-delete → BatchDeleteResult (deleted, failed, errors[])
+
+Napojení:
+  Závisí na: services (DataReader protokol), models.{FilesResponse, OrderFileModel,
+             BatchDeleteRequest, BatchDeleteResult}, api/dependencies.{require_auth, require_role}
+  Datový zdroj: DatabaseGateway zapisuje soubory; ScadaViewer jen čte a maže
+  Používáno: frontend hooks/useDatabaseState.ts, pages/Database.tsx
 """
 from __future__ import annotations
 
@@ -22,7 +32,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from scada.api.dependencies import require_auth, require_role
-from scada.models import FilesResponse, OrderFileModel
+from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
 
 router = APIRouter()
@@ -38,18 +48,22 @@ async def list_files(
     per_page:  int      = Query(50,  ge=1, le=200, description="Položek na stránku (max 200)"),
     from_date: str|None = Query(None, alias="from", description="Filtr od (YYYY-MM-DD inclusive)"),
     to_date:   str|None = Query(None, alias="to",   description="Filtr do (YYYY-MM-DD inclusive)"),
+    sort_by:   str      = Query('created_at', pattern=r'^(created_at|switch_name|record_count|order_id)$', description="Sloupec řazení"),
+    sort_dir:  str      = Query('desc',       pattern=r'^(asc|desc)$',                                    description="Směr řazení"),
 ) -> FilesResponse:
-    """
-    Vrátí stránkovaný seznam CSV souborů (zakázek).
+    """Stránkovaný výpis zakázek.
 
-    location: local = lokální disk; remote = NAS / UNC cesta
-    type:     production | testing — volí složku na disku
-    page / per_page: server-side stránkování (max 200 položek na stránku)
-    from / to: volitelný datumový filtr — vychází z názvu souboru (YYYY-MM-DD)
+    Args:
+        location: 'local' (disk) nebo 'remote' (NAS/UNC cesta).
+        per_page: max. 200 na stránku; ``total`` v odpovědi říká celkový počet.
+        from_date: filtr od data (YYYY-MM-DD, inclusive).
+        to_date: filtr do data (YYYY-MM-DD, inclusive).
 
-    Remote (NAS): I/O běží v asyncio.to_thread() s timeoutem 30 s —
-    Windows může blokovat desítky sekund při nedostupném UNC cíli.
-    HTTP 503 při timeoutu nebo I/O chybě.
+    Returns:
+        FilesResponse — pole souborů, total, aktuální stránka a celkový počet stránek.
+
+    Raises:
+        HTTPException(503): timeout (NAS nedostupný) nebo I/O chyba na disku.
     """
     reader: DataReader = request.app.state.csv_reader
     # Remote (NAS/UNC) — Windows může blokovat desítky sekund při nedostupném NAS.
@@ -65,6 +79,8 @@ async def list_files(
                 per_page=per_page,
                 from_date=from_date,
                 to_date=to_date,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
             ),
             timeout=timeout,
         )
@@ -91,12 +107,10 @@ async def delete_file(
     file_type: str = Query('production', alias="type"),
 ) -> None:
     """
-    Smaže lokální CSV soubor zakázky. Vrátí 204 při úspěchu.
+    Smaže lokální CSV soubor zakázky.
 
-    Chybové stavy:
-      403  vzdálené (NAS) soubory nelze smazat přes API
-      404  soubor s daným file_id nenalezen
-      503  I/O chyba (disk nedostupný, chybí oprávnění)
+    NAS soubory mazat přes API nejde — sdílená složka je určena pro zápis ze strany
+    DatabaseGateway, ne pro přímé mazání přes HTTP. Proto 403 (ne 405 nebo 500).
     """
     reader: DataReader = request.app.state.csv_reader
     try:
@@ -110,6 +124,38 @@ async def delete_file(
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
 
+@router.post("/files/batch-delete", response_model=BatchDeleteResult)
+async def batch_delete_files(
+    body:    BatchDeleteRequest,
+    request: Request,
+    session: dict = Depends(require_role("technician")),
+) -> BatchDeleteResult:
+    """
+    Hromadné mazání souborů (max. 200 najednou, limit v BatchDeleteRequest.file_ids).
+
+    Chyby se sbírají per soubor v poli `errors` — endpoint vždy vrátí HTTP 200
+    s výsledkem { deleted, failed, errors }. Výhodou je, že úspěšně smazané soubory
+    zůstanou smazány i při částečném selhání a caller vidí přesně co se povedlo.
+    """
+    reader: DataReader = request.app.state.csv_reader
+    deleted, failed, errors = 0, 0, []
+    for fid in body.file_ids:
+        try:
+            result = await asyncio.to_thread(reader.delete_file, fid, body.location, body.file_type)
+        except (OSError, PermissionError) as exc:
+            log.error("[API]   batch-delete %s I/O chyba: %s", fid, exc)
+            failed += 1
+            errors.append({"file_id": fid, "error": str(exc)})
+            continue
+        if result == "ok":
+            deleted += 1
+        else:
+            failed += 1
+            errors.append({"file_id": fid, "error": result})
+    log.info("[API]   batch-delete: %d smazáno, %d selhání", deleted, failed)
+    return BatchDeleteResult(deleted=deleted, failed=failed, errors=errors)
+
+
 @router.get("/files/{file_id}", response_model=OrderFileModel, dependencies=[Depends(require_auth)])
 async def get_file(
     file_id: str,
@@ -117,7 +163,15 @@ async def get_file(
     location:  str = Query('local',      alias="location"),
     file_type: str = Query('production', alias="type"),
 ) -> OrderFileModel:
-    """Vrátí metadata jednoho souboru. HTTP 404 pokud soubor neexistuje."""
+    """Vrátí metadata jednoho souboru zakázky.
+
+    Returns:
+        OrderFileModel — metadata souboru (file_id, location, type, dates, record_count).
+
+    Raises:
+        HTTPException(404): soubor s daným file_id neexistuje.
+        HTTPException(503): I/O chyba nebo nedostupné úložiště.
+    """
     reader: DataReader = request.app.state.csv_reader
     try:
         meta = await asyncio.to_thread(reader.get_file, file_id, location, file_type)
@@ -127,3 +181,5 @@ async def get_file(
     if not meta:
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
     return OrderFileModel(**meta)
+
+

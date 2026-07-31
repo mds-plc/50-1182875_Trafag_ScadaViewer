@@ -1,34 +1,40 @@
 """
-Pydantic response modely pro ScadaViewer API.
+Pydantic response a request modely pro ScadaViewer API.
 
-PROČ EXISTUJE:
-  Bez response_model FastAPI vrací raw Python dicts bez validace struktury.
-  Pydantic zaručí na API hranici:
-    1. Správné typy — int zůstane int, None zůstane None (ne prázdný string)
-    2. Swagger UI zobrazí kompletní schéma každého endpointu (pole, typy, nullable)
-    3. TypeScript typy lze vygenerovat přímo z OpenAPI schématu pomocí
-       `npx openapi-typescript http://localhost:8080/openapi.json` místo ručního
-       psaní v src/types/index.ts — schéma je pak single source of truth
-    4. Chyba v datech (překlep klíče, změna typu) se odhalí okamžitě při restartu,
-       ne až v UI operátora za provozu
+Účel: Definuje datové kontrakty mezi backendem a frontendem. Každý endpoint
+      deklaruje response_model — FastAPI validuje výstup a generuje OpenAPI schéma
+      pro Swagger UI a případnou auto-generaci TypeScript typů.
 
-PYDANTIC V2 syntaxe (FastAPI ≥ 0.111):
-  - model_config = ConfigDict(...) místo zastaralého class Config
-  - extra='allow'  → zachová neznámá pole (CsvRecordModel pro budoucí CSV sloupce)
-  - extra='ignore' → ořízne neznámá pole (OrderFileModel — definovaný kontrakt)
+Zodpovědnost:
+  - Definuje modely pro všechny API endpointy (/api/files, /api/data, /api/auth,
+    /api/users, /api/health, /api/status, /api/config, /api/wip, batch-delete).
+  - Pydantic v2 ConfigDict: extra='allow' pro CsvRecordModel (zachová budoucí CSV
+    sloupce bez změny modelu), extra='ignore' pro OrderFileModel (striktní kontrakt).
+  - Není zodpovědný za business logiku ani transformaci dat — jen datový kontrakt.
+  - Změna pole v modelu vyžaduje synchronizaci s 01_frontend/src/types/index.ts.
 
-JAK ROZŠÍŘIT:
-  1. Nové pole v CsvReader._file_meta() → přidat sem do OrderFileModel
-     + aktualizovat OrderFile v 01_frontend/src/types/index.ts (synchronizovat ručně)
-  2. Nový endpoint → přidat nový Response model zde, použít jako response_model v api/*.py
-  3. Nové CSV sloupce (AnalyzedParams) → CsvRecordModel s extra='allow' je zachová automaticky,
-     stačí přidat volitelná pole pro dokumentaci/Swagger (order: str | None = None vzor)
+Rozhraní:
+  /api/files:        OrderFileModel, FilesResponse
+  /api/data:         CsvRecordModel, DataResponse
+  /api/auth:         LoginRequest, LoginResponse, LogoutRequest, ChangePasswordRequest
+  /api/users:        UserModel, CreateUserRequest, ChangeUserPasswordRequest
+  /api/health:       HealthResponse, HealthChecks
+  /api/status:       StatusResponse
+  /api/config:       ConfigResponse, ConfigServerInfo, ConfigAdsInfo, ConfigDataInfo, ConfigAuthInfo
+  /api/config/paths: UpdatePathsRequest
+  batch-delete:      BatchDeleteRequest, BatchDeleteResult
+  /api/wip:          WipResponse
+
+Napojení:
+  Závisí na: pydantic (BaseModel, ConfigDict, Field)
+  Používáno: všechny api/*.py soubory jako response_model= a request body typy
+  Frontendový protějšek: 01_frontend/src/types/index.ts (synchronizovat ručně)
 """
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ======================================================================
@@ -220,6 +226,26 @@ class UpdatePathsRequest(BaseModel):
     """Tělo požadavku PATCH /api/config/paths."""
     local_path:  str
     remote_path: str
+
+
+# ======================================================================
+# /api/files/batch-delete — hromadné mazání souborů
+# ======================================================================
+
+class BatchDeleteRequest(BaseModel):
+    """Tělo požadavku POST /api/files/batch-delete."""
+    file_ids:  list[str] = Field(max_length=200)   # max 200 souborů najednou (DoS prevence)
+    location:  str
+    file_type: str = Field(alias="type")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BatchDeleteResult(BaseModel):
+    """Odpověď POST /api/files/batch-delete."""
+    deleted: int
+    failed:  int
+    errors:  list[dict]
 
 
 # ======================================================================

@@ -1,26 +1,26 @@
 """
-REST endpoint — zdravotní stav aplikace.
+REST endpoint — zdravotní stav aplikace (/api/health).
 
-GET /api/health  →  { status, version, checks }
+Účel: Jednotný bod pro monitoring dostupnosti a stavu aplikace — NSSM watchdog,
+      operátorská diagnostika a integrační monitoring (curl, Uptime Robot, Settings UI).
 
-PROČ EXISTUJE:
-  1. NSSM watchdog — Windows služba umí periodicky volat URL a restartovat
-     proces pokud nedostane HTTP 200. Bez tohoto endpointu watchdog nefunguje.
-  2. Okamžitá diagnostika — operátor nebo správce vidí na první pohled co
-     funguje a co ne (disk dostupný? ADS připojen?) bez přístupu k logům.
-  3. Monitoring — jednoduchý nástroj (curl, Uptime Robot) ověří dostupnost
-     aplikace bez nutnosti parsovat HTML nebo jiné endpointy.
+Zodpovědnost:
+  - Ověří dostupnost lokálního disku (local_path) a stav ADS spojení (monitor.connected).
+  - Vrátí HTTP 200 vždy — rozlišení "ok" vs "degraded" je v těle odpovědi, ne v HTTP kódu.
+    NSSM watchdog restartuje proces pouze při HTTP chybě (4xx/5xx nebo timeout), ne při
+    "degraded" — to je záměrné, degraded = aplikace funguje, ale má problém.
+  - Nikdy nekontroluje NAS (může trvat 3 s při výpadku; watchdog by timeout).
+  - Nevyžaduje autentizaci — musí být dostupný i před přihlášením a pro NSSM.
 
-CHOVÁNÍ:
-  status = "ok"       pokud lokální úložiště existuje
-  status = "degraded" pokud lokální úložiště chybí (nelze číst žádná data)
+Rozhraní:
+  GET /api/health → HealthResponse { status: "ok"|"degraded", version, checks }
+  Veřejný endpoint — bez require_auth
 
-  ADS "connected: false" je OČEKÁVANÝ stav do implementace AdsMonitor.start().
-  Neovlivňuje celkový status — Database a ChartView fungují i bez ADS.
-
-RYCHLOST:
-  Endpoint nesmí blokovat — žádná kontrola NAS (může trvat 3 s).
-  Lokální Path.exists() je v asyncio.to_thread() pro konzistenci s ostatními endpointy.
+Napojení:
+  Závisí na: app.state.{config, monitor}, models.HealthResponse, scada.__version__
+  Používáno: NSSM watchdog (Windows service konfigurace v nssm_install.bat),
+             frontend hooks/useBackendOnline.ts (polling 10 s),
+             pages/Info.tsx (zobrazení verze), pages/Settings.tsx (záložka Připojení)
 """
 from __future__ import annotations
 

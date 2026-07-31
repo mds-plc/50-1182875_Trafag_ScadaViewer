@@ -1,22 +1,29 @@
 """
-ADS symboly pro monitoring.
+ADS symboly a PLC typové informace pro ScadaViewer monitoring.
 
-SYM      — všechny sledované symboly: name → ADS path
-SYM_TYPES — override PLC typu a byte-velikosti pro ne-BOOL symboly.
-             Vše neuvedené v SYM_TYPES se předpokládá BOOL (1 byte).
+Účel: Centrální registr všech sledovaných ADS proměnných — mapuje přátelské
+      jméno (např. "mode") na plnou ADS cestu v GVL (GV_IO_ADS_API.ScadaViewerApp).
+      Jedno místo pro správu symbolů minimalizuje riziko překlepů v ads_monitor.py.
 
-Struktura ADS rozhraní (ST_ADS_API_ScadaViewerApp):
-  In.Status.Heartbeat               BOOL   — Heartbeat ScadaViewer → PLC
-  In.Status.Ready                   BOOL   — Aplikace připravena
-  Out.Status.Mode                   UINT   — Hlavní režim (E_APP_ModeManager_Mode)
-  Out.Status.UserLoggedIn           BOOL   — Uživatel přihlášen z PLC terminálu
-  Out.Status.Order.Valid            BOOL   — Platnost zakázky
-  Out.Status.Order.Name             STRING — Název zakázky
-  Out.Status.Order.Count_Expected   UINT   — Očekávaný počet mikrospínačů
-  Out.Status.Order.Count_Actual     UINT   — Aktuální počet mikrospínačů
-  Out.Status.Boxes.Presence[1..6]   BOOL   — Přítomnost boxu
-  Out.Status.Boxes.Full[1..6]       BOOL   — Box plný
-  Out.Status.Boxes.Count[1..6]      UINT   — Počet kusů v boxu
+Zodpovědnost:
+  - SYM: Out symboly (PLC → ScadaViewer) — ADS notifikace, pouze čtení; 23 symbolů.
+  - SYM_WRITE: In symboly (ScadaViewer → PLC) — sv_heartbeat, sv_ready; 2 symboly.
+  - SYM_TYPES: override PLC typů a byte-velikostí pro ne-BOOL symboly (UINT, STRING).
+    Vše neuvedené se předpokládá BOOL (1 byte) — výchozí v ads_monitor._DEFAULT_TYPE.
+  - GVL strukturu (ST_ADS_API_ScadaViewerApp) udržuje PLC program — konzultovat
+    změny s automatizačním inženýrem před úpravou symbolů.
+
+Rozhraní:
+  GVL_SV: str                              — prefix GVL cesty
+  SYM: dict[str, str]                      — {friendly_name: ads_path} (23 Out symbolů)
+  SYM_WRITE: dict[str, str]                — {friendly_name: ads_path} (2 In symboly)
+  SYM_TYPES: dict[str, tuple[type, int]]   — override typů pro ads_monitor.py
+
+Napojení:
+  Závisí na: pyads (PLCTYPE_* konstanty)
+  Používáno: services/ads_monitor.py (všechny tři slovníky)
+  GVL sdíleno s DatabaseGateway projektem (GV_IO_ADS_API) — viz
+  11.Parallel scripts/DatabaseGateway/00_src/db_gateway/constants.py
 """
 from __future__ import annotations
 

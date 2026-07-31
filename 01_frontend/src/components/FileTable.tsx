@@ -4,7 +4,7 @@
  *   (ExpandedRow), stránkování a footer se součty.
  *   Čistá prezentační komponenta — veškerá logika žije v useDatabaseState.
  */
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import React, { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, Trash2, BarChart2, Download } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -332,23 +332,48 @@ interface Props {
   total:           number
   totalRecords:    number
   expandedId:      string | null
-  onExpandToggle:  (fileId: string) => void
-  onDeleteRequest: (file: OrderFile) => void
-  onDownload:      (file: OrderFile) => void
-  onPageChange:    (page: number) => void
+  onExpandToggle:   (fileId: string) => void
+  onDeleteRequest:  (file: OrderFile) => void
+  onDownload:       (file: OrderFile) => void
+  onDownloadXlsx:   (file: OrderFile) => void
+  onPageChange:     (page: number) => void
+  sortBy:           string
+  sortDir:          'asc' | 'desc'
+  onSort:           (col: string) => void
+  selectedIds:      Set<string>
+  onToggleSelect:   (id: string) => void
+  onSelectAll:      () => void
+  onClearSelect:    () => void
+  onBatchDelete:    () => void
 }
 
 export default function FileTable({
   files, loading, error,
   dataType, location, showSync,
   page, pages, total, totalRecords,
-  expandedId, onExpandToggle, onDeleteRequest, onDownload, onPageChange,
+  expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
+  sortBy, sortDir, onSort,
+  selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
 
-  // colspan: # + created + [order] + switch + records + [sync] + actions
-  const colSpan = (dataType === 'production' ? 5 : 4) + (showSync ? 1 : 0) + 1
+  // colspan: checkbox + # + created + [order] + switch + records + [sync] + actions
+  const colSpan = (dataType === 'production' ? 5 : 4) + (showSync ? 1 : 0) + 2  // +2: checkbox col
+
+  /** Sortovatelný záhlaví sloupce */
+  function SortTh({ col, children, className }: { col: string; children: React.ReactNode; className?: string }) {
+    const active = sortBy === col
+    return (
+      <th
+        className={`db-th db-th--sortable${active ? ' db-th--sort-active' : ''}${className ? ` ${className}` : ''}`}
+        onClick={() => onSort(col)}
+      >
+        {children}
+        <span className="db-sort-icon">{active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}</span>
+      </th>
+    )
+  }
 
   return (
     <>
@@ -357,14 +382,37 @@ export default function FileTable({
 
       {(files.length > 0 || (!loading && !error)) && (
         <>
+          {/* Batch toolbar — viditelný jen pokud je něco vybráno */}
+          {selectedIds.size > 0 && (
+            <div className="db-batch-toolbar">
+              <span className="db-batch-toolbar__count">
+                <strong>{selectedIds.size}</strong> {t.db.selectedCount}
+              </span>
+              <button className="btn btn--danger btn--sm" onClick={onBatchDelete}>
+                {t.db.deleteSelected}
+              </button>
+              <button className="btn btn--secondary btn--sm" onClick={onClearSelect}>
+                {t.db.clearSelection}
+              </button>
+            </div>
+          )}
+
           <table className="db-table">
             <thead>
               <tr>
+                <th className="db-th db-td--check" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={files.length > 0 && files.every(f => selectedIds.has(f.file_id))}
+                    onChange={() => files.every(f => selectedIds.has(f.file_id)) ? onClearSelect() : onSelectAll()}
+                    title="Vybrat vše"
+                  />
+                </th>
                 <th className="db-th db-th--num">#</th>
-                <th className="db-th">{t.db.colCreated}</th>
-                {dataType === 'production' && <th className="db-th">{t.db.colOrder}</th>}
-                <th className="db-th">{t.db.colSwitchType}</th>
-                <th className="db-th db-th--center">{t.db.colRecords}</th>
+                <SortTh col="created_at">{t.db.colCreated}</SortTh>
+                {dataType === 'production' && <SortTh col="order_id">{t.db.colOrder}</SortTh>}
+                <SortTh col="switch_name">{t.db.colSwitchType}</SortTh>
+                <SortTh col="record_count" className="db-th--center">{t.db.colRecords}</SortTh>
                 {showSync && <th className="db-th db-th--center">{t.db.colSync}</th>}
                 <th className="db-th db-th--actions"></th>
               </tr>
@@ -386,6 +434,13 @@ export default function FileTable({
                       : () => navigate(`/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`)
                     }
                   >
+                    <td className="db-td db-td--check" onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(file.file_id)}
+                        onChange={() => onToggleSelect(file.file_id)}
+                      />
+                    </td>
                     <td className="db-td db-td--num">{i + 1}</td>
                     <td className="db-td">{formatDateTime(file.created_at)}</td>
                     {dataType === 'production' && (
@@ -423,12 +478,20 @@ export default function FileTable({
                           <ChevronDown size={18} />
                         </button>
                       )}
+                      {/* Stahování — vždy vedle sebe */}
                       <button
-                        className="db-icon-btn"
+                        className="db-download-btn"
                         title={t.chart.exportCsv}
                         onClick={() => onDownload(file)}
                       >
-                        <Download size={18} />
+                        <Download size={14} /> CSV
+                      </button>
+                      <button
+                        className="db-download-btn"
+                        title={t.db.downloadXlsx}
+                        onClick={() => onDownloadXlsx(file)}
+                      >
+                        <Download size={14} /> XLSX
                       </button>
                       <button
                         className="db-icon-btn db-icon-btn--danger"

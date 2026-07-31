@@ -1,9 +1,26 @@
 """
-WebSocket endpoint — live PLC hodnoty.
+WebSocket endpoint pro live PLC hodnoty (/ws/plc).
 
-Připojení: ws://host:8080/ws/plc
-Server broadcastuje JSON zprávy při každé změně ADS hodnoty:
-  { "symbol": "in_ready", "value": true, "ts": "2026-07-17T10:00:00" }
+Účel: Umožní prohlížeči přijímat real-time PLC data bez pollingu — server pushuje
+      každou změnu ADS notifikace okamžitě všem připojeným klientům.
+
+Zodpovědnost:
+  - Přijme WS připojení, ověří origin a deleguje na ConnectionManager (manager singleton).
+  - Drží spojení otevřené (receive_text loop) a korektně detekuje WebSocketDisconnect.
+  - Provede origin check: odmítne připojení (code 1008) pokud origin není v cors_origins
+    (ledaže cors_origins je prázdný nebo obsahuje "*" — dev mód).
+  - Neparsuje ani negeneruje zprávy — to je zodpovědnost AdsMonitor a ws_manager.
+
+Rozhraní:
+  WebSocket /ws/plc
+    server → klient: {"symbol": "mode", "value": 2, "ts": "2026-07-17T10:00:00+00:00"}
+    server → klient: {"type": "ads_status", "connected": true}
+    klient → server: libovolný text (ping/keep-alive, ignorováno)
+
+Napojení:
+  Závisí na: services/ws_manager.manager (singleton ConnectionManager)
+  Broadcastováno z: services/ads_monitor.py přes ws_manager.broadcast()
+  Konzumováno z: frontend context/PlcContext.tsx (WS klient s exponential backoff reconnect)
 """
 from __future__ import annotations
 

@@ -87,7 +87,12 @@ def _find_and_read_wip(
 @router.get("/wip", response_model=WipResponse, dependencies=[Depends(require_auth)])
 async def get_wip(
     request: Request,
-    order: str | None = Query(default=None, description="Číslo zakázky z PLC (filtr dle názvu souboru)"),
+    order: str | None = Query(
+        default=None,
+        description="Číslo zakázky z PLC (filtr dle názvu souboru)",
+        max_length=100,
+        pattern=r'^[\w\-\.]+$',   # jen alfanumerické, pomlčka, tečka — žádný path traversal
+    ),
 ) -> WipResponse:
     """
     Vrátí aktuální záznamy z otevřené zakázky (WIP souboru).

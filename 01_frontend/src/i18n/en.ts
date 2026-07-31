@@ -71,6 +71,12 @@ export const en: Translations = {
     groupDistribution: 'Group distribution',
     totalVsExpected:   'Total / Expected',
     orderDetail:       'Order detail',
+    downloadXlsx:      'Download XLSX',
+    selectedCount:     'selected',
+    deleteSelected:    'Delete selected',
+    clearSelection:    'Clear selection',
+    batchConfirmTitle: 'Delete selected files?',
+    batchConfirmBody:  'This action is irreversible.',
   },
   chart: {
     title:          'Chart',

@@ -1,28 +1,42 @@
 /**
- * @file useData.ts
- * @description Custom React hooks pro načítání dat ze ScadaViewer REST API.
+ * Hooky pro přístup k REST API ScadaViewer: useFiles, useFileRecords, useRemoteStatus, useData.
  *
- *   useFiles(params)       — seznam CSV souborů (/api/files?location=&type=)
- *   useFileRecords()       — záznamy jednoho souboru pro rozbalený řádek (/api/data)
- *   useRemoteStatus()      — dostupnost NAS; polling každých 30 s (/api/status)
- *   useData()              — filtrovaná data pro ChartView (/api/data?file=&from=&to=)
+ * Účel: Abstrahuje fetch logiku pro /api/files a /api/data — správa loading/error stavu,
+ *       AbortController a parsování odpovědi na jednom místě.
  *
- * Překlady chybových zpráv jsou drženy v useRef — změna jazyka nerekonstruuje
- * useCallback a nezpůsobuje zbytečný restart auto-refresh intervalu.
+ * Zodpovědnost:
+ *   - useFiles: stránkovaný seznam zakázek (/api/files) s filtry a řazením.
+ *   - useFileRecords: záznamy jednoho souboru (/api/data) pro rozbalený řádek v Database.
+ *   - useRemoteStatus: polling dostupnosti NAS (/api/status) každých 30 s.
+ *   - useData: filtrovaná data pro ChartView (/api/data s libovolným filtrem).
+ *   - useDataFetch: interní sdílená fetch logika pro useFileRecords a useData.
+ *   - AbortController: přeruší předchozí in-flight request při každém novém volání
+ *     (React Strict Mode double-invoke, rychlé přepínání záložek).
+ *   - Překlady v useRef: nerekonstruuje useCallback při přepnutí jazyka.
  *
- * AbortController: každé nové volání fetch() přeruší předchozí in-flight request.
- * Zabraňuje race conditions při souběžných voláních (React 18 Strict Mode, interval).
+ * Rozhraní:
+ *   useFiles(params: FilesParams)    — { files, total, pages, loading, error, fetchFiles }
+ *   useFileRecords()                 — { records, total, pages, ..., fetchRecords }
+ *   useRemoteStatus()                — boolean | null
+ *   useData()                        — { records, total, pages, ..., fetchData }
+ *   FilesParams                      — interface parametrů useFiles
+ *   RECORDS_PER_PAGE                 — 200 (konstanta shodná s api/data.py výchozím per_page)
+ *
+ * Napojení:
+ *   Závisí na: context/LangContext.tsx (překlady chybových hlášek),
+ *              context/AuthContext.tsx (Bearer token)
+ *   Volá: GET /api/files, GET /api/data, GET /api/status
+ *   Používáno: hooks/useDatabaseState.ts, pages/ChartView.tsx
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord, DataFilter, OrderFile } from '../types'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 
-// ------------------------------------------------------------------
+// ---
 // useFiles — seznam souborů dle location + type + stránka
-// ------------------------------------------------------------------
+// ---
 
-/** Parametry pro {@link useFiles} hook. */
 export interface FilesParams {
   location: 'local' | 'remote'
   type:     'production' | 'testing'
@@ -30,19 +44,17 @@ export interface FilesParams {
   perPage?: number
   dateFrom?: string   // YYYY-MM-DD — server-side filtr
   dateTo?:   string   // YYYY-MM-DD — server-side filtr
+  sortBy?:  string    // sloupec řazení (created_at | switch_name | record_count | order_id)
+  sortDir?: 'asc' | 'desc'
 }
 
 /**
- * Načte stránkovaný seznam CSV souborů ze serveru (/api/files).
- * @param params.location  'local' (lokální disk) | 'remote' (NAS)
- * @param params.type      'production' | 'testing'
- * @param params.page      číslo stránky (od 1)
- * @param params.perPage   záznamů na stránku (výchozí 50)
- * @param params.dateFrom  volitelný filtr od (YYYY-MM-DD)
- * @param params.dateTo    volitelný filtr do (YYYY-MM-DD)
- * @returns {{ files, total, pages, loading, error, fetchFiles }}
+ * Načte stránkovaný seznam zakázek ze serveru (/api/files).
+ *
+ * @param params - Umístění, typ, číslo stránky, datumové filtry a řazení.
+ * @returns `files`, `total`, `pages`, `loading`, `error` a `fetchFiles` pro manuální refresh.
  */
-export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo }: FilesParams) {
+export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo, sortBy = 'created_at', sortDir = 'desc' }: FilesParams) {
   const { t } = useLang()
   const tRef = useRef(t)
   tRef.current = t
@@ -77,6 +89,8 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
         location, type,
         page:     String(page),
         per_page: String(perPage),
+        sort_by:  sortBy,
+        sort_dir: sortDir,
       })
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo)   params.set('to',   dateTo)
@@ -94,7 +108,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
       setError(e instanceof Error ? e.message : tRef.current.common.errorLoading)
       setLoading(false)
     }
-  }, [location, type, page, perPage, dateFrom, dateTo, token])
+  }, [location, type, page, perPage, dateFrom, dateTo, sortBy, sortDir, token])
 
   return { files, total, pages, loading, error, fetchFiles }
 }
@@ -102,9 +116,9 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo 
 /** Počet záznamů na stránku — musí odpovídat výchozímu per_page v api/data.py */
 export const RECORDS_PER_PAGE = 200
 
-// ------------------------------------------------------------------
+// ---
 // useDataFetch — sdílená fetch logika pro /api/data (interní)
-// ------------------------------------------------------------------
+// ---
 // Oba veřejné hooky (useFileRecords + useData) dělaly totéž:
 // abort, loading, fetch, parse, error handling. Extrahováno sem,
 // aby přidání nového parametru (limit, sort) bylo jen na jednom místě.
@@ -160,10 +174,16 @@ function useDataFetch() {
   return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData }
 }
 
-// ------------------------------------------------------------------
+// ---
 // useFileRecords — záznamy jednoho souboru (pro rozbalený řádek)
-// ------------------------------------------------------------------
+// ---
 
+/**
+ * Načte záznamy jednoho CSV souboru (/api/data) — používá rozbalený řádek v Database.
+ *
+ * @returns `records`, `total`, `pages`, skupinové statistiky, loading/error
+ *          a `fetchRecords(fileId, location, fileType, page?)` pro spuštění dotazu.
+ */
 export function useFileRecords() {
   const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData } = useDataFetch()
 
@@ -180,12 +200,17 @@ export function useFileRecords() {
   return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords }
 }
 
-// ------------------------------------------------------------------
+// ---
 // useRemoteStatus — dostupnost vzdáleného úložiště (polling 30s)
-// ------------------------------------------------------------------
+// ---
 
 const REMOTE_POLL_MS = 30_000
 
+/**
+ * Sleduje dostupnost vzdáleného úložiště (NAS) — polling každých 30 s přes /api/status.
+ *
+ * @returns `true` pokud NAS odpovídá, `false` pokud ne, `null` před první odpovědí.
+ */
 export function useRemoteStatus() {
   const [available, setAvailable] = useState<boolean | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -218,10 +243,16 @@ export function useRemoteStatus() {
   return available
 }
 
-// ------------------------------------------------------------------
+// ---
 // useData — filtrovaná data pro ChartView
-// ------------------------------------------------------------------
+// ---
 
+/**
+ * Sdílený stav pro filtrovaná data v ChartView — deleguje na interní `useDataFetch`.
+ *
+ * @returns `records`, `total`, `pages`, skupinové statistiky, loading/error
+ *          a `fetchData(filter)` pro spuštění dotazu s libovolným filtrem.
+ */
 export function useData() {
   return useDataFetch()
 }

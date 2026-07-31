@@ -1,23 +1,37 @@
 """
-Autentizační endpoint — lokální přihlášení operátora.
+Autentizační endpointy (/api/auth).
 
-POST /api/auth/login           — ověří username/password vůči app.state.users
-                                  (z users.toml nebo fallback Config.toml [auth]),
-                                  vrátí session token + role + display_name.
-POST /api/auth/plc-login       — bez hesla; ověří Out.Status.UserLoggedIn přes
-                                  ads_monitor.current_values; vrátí token s role=operator.
-POST /api/auth/logout          — invaliduje token (odstraní z app.state.sessions).
-POST /api/auth/change-password — operátor změní vlastní heslo; ověří aktuální heslo.
+Účel: Správa přihlášení a odhlášení operátorů. Vydává session tokeny (Bearer)
+      pro následné volání chráněných API endpointů.
 
-Session tokeny jsou uloženy v paměti (app.state.sessions: dict[str, dict]).
-Hodnota: {username, role, display_name}.
-Při restartu serveru jsou všechny session zneplatněny — operátor se znovu přihlásí.
+Zodpovědnost:
+  - login: ověří username + heslo vůči app.state.users (PBKDF2-HMAC-SHA256),
+    vydá session token. Chrání brute-force útok: lockout po 5 pokusech / 10 min.
+  - plc-login: bez hesla — autenticitu zajišťuje PLC příznak UserLoggedIn z ADS monitoru.
+    Vydá token s rolí "operator"; token žije jen v paměti prohlížeče (ne sessionStorage).
+  - logout: invaliduje token v app.state.sessions (fire-and-forget, vždy 204).
+  - change-password: ověří aktuální heslo, přepíše hash v users.toml / Config.toml
+    a invaliduje VŠECHNY aktivní sessions (bezpečnostní opatření po změně hesla).
+  - Nevytváří ani nevaliduje tokeny při příchodu requestů — to dělá api/dependencies.py.
+
+Rozhraní:
+  POST /api/auth/login           → LoginResponse { token, role, display_name }
+  POST /api/auth/plc-login       → LoginResponse { token, role="operator", display_name }
+  POST /api/auth/logout          → 204 (vždy, i pro neznámý token)
+  POST /api/auth/change-password → 204 / 400 / 401
+
+Napojení:
+  Závisí na: config.{hash_password, verify_password, save_users}, models.{Login*, Logout*, ChangePassword*}
+  Používáno: frontend context/AuthContext.tsx (login, plcLogin, logout, changePassword)
 """
 from __future__ import annotations
 
 import logging
 import re
 import secrets
+import time
+
+from scada.api.dependencies import SESSION_TTL_SECS
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -27,6 +41,50 @@ from scada.models import ChangePasswordRequest, LoginRequest, LoginResponse, Log
 router = APIRouter()
 log    = logging.getLogger(__name__)
 
+# Pre-computed dummy hash — zabraňuje timing útoku když je users list prázdný.
+# verify_password() vždy provede plný PBKDF2 výpočet (~100 ms), i bez uživatelů.
+_DUMMY_HASH: str = hash_password("__dummy_never_matches__")
+
+# ── Login lockout per IP ────────────────────────────────────────────────────
+# Po _MAX_FAILURES neúspěšných pokusech v okně _WINDOW_SECS je IP zablokována
+# na zbývající délku okna (sliding window). Úspěšné přihlášení čítač vymaže.
+_MAX_FAILURES = 5      # počet pokusů před lockout
+_WINDOW_SECS  = 600   # 10 minut — délka okna i lockoutu
+
+# IP → timestampy neúspěšných pokusů (monotonic); čišštění probíhá průběžně při každém volání
+_FAILURES: dict[str, list[float]] = {}
+_MAX_TRACKED = 5_000   # GC: při překročení smaž vše starší než okno
+
+
+def _prune(ip: str) -> list[float]:
+    """Vrátí aktuální seznam selhání pro IP po odebrání starých záznamů."""
+    if len(_FAILURES) > _MAX_TRACKED:
+        cutoff = time.monotonic() - _WINDOW_SECS
+        for k in list(_FAILURES):
+            _FAILURES[k] = [t for t in _FAILURES[k] if t > cutoff]
+            if not _FAILURES[k]:
+                del _FAILURES[k]
+    now   = time.monotonic()
+    times = [t for t in _FAILURES.get(ip, []) if now - t < _WINDOW_SECS]
+    _FAILURES[ip] = times
+    return times
+
+
+def _is_locked(ip: str) -> bool:
+    return len(_prune(ip)) >= _MAX_FAILURES
+
+
+def _record_failure(ip: str) -> None:
+    times = _prune(ip)
+    times.append(time.monotonic())
+    _FAILURES[ip] = times
+    if len(times) >= _MAX_FAILURES:
+        log.warning("[AUTH]  IP %r zablokována (%d pokusů / %d s okno)", ip, len(times), _WINDOW_SECS)
+
+
+def _clear_failures(ip: str) -> None:
+    _FAILURES.pop(ip, None)
+
 
 def _update_config_file(config_path, new_hash: str) -> bool:
     """
@@ -34,14 +92,19 @@ def _update_config_file(config_path, new_hash: str) -> bool:
     Fallback pro případ, kdy users.toml neexistuje (legacy single-user).
 
     Vrátí True pokud soubor byl úspěšně aktualizován.
+
+    Poznámka k L2: regex `"[^"]*"` nepokrývá TOML multiline stringy (\"\"\"...\"\"\").
+    PBKDF2 hashe jsou vždy ve formátu `salt:hexdigest` (žádné newlines) — multiline
+    formát se v praxi nevyskytuje. Při chybějící shodě padá regex přes větev `'[auth]'`.
     """
     if config_path is None:
         return False
     try:
         text     = config_path.read_text(encoding='utf-8')
+        # Lambda jako replacement zabraňuje interpretaci escape sekvencí (\1, \2…) v new_hash.
         new_text = re.sub(
             r'(password_hash\s*=\s*)"[^"]*"',
-            f'\\1"{new_hash}"',
+            lambda m: f'{m.group(1)}"{new_hash}"',
             text,
         )
         if new_text == text:
@@ -66,12 +129,28 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
     """
     Ověří přihlašovací údaje vůči app.state.users a vrátí session token.
 
-    HTTP 401 — neplatné přihlašovací údaje.
-    HTTP 422 — chybějící/prázdné pole (Pydantic validace).
+    Záměrně vrací stejnou chybovou zprávu pro neplatné jméno i heslo — útočník
+    nemůže rozlišit, které pole je špatně.
 
-    Úmyslně STEJNÁ chybová zpráva pro špatné jméno i špatné heslo —
-    útočník neví, co je špatně.
+    Args:
+        body: Přihlašovací údaje (username + password).
+        request: FastAPI request — čteme IP klienta pro lockout.
+
+    Returns:
+        LoginResponse — session token, role a display_name.
+
+    Raises:
+        HTTPException(401): neplatné přihlašovací údaje.
+        HTTPException(422): chybějící nebo prázdné pole (Pydantic validace).
+        HTTPException(429): příliš mnoho neúspěšných pokusů (lockout 10 min).
     """
+    client_ip = request.client.host if request.client else "0.0.0.0"
+
+    # Lockout check — PŘED ověřením hesla
+    if _is_locked(client_ip):
+        log.warning("[AUTH]  zablokovaný pokus o přihlášení z %r", client_ip)
+        raise HTTPException(status_code=429, detail="Příliš mnoho neúspěšných pokusů — zkuste za 10 minut")
+
     users = request.app.state.users
 
     # Projít CELÝ seznam — zabraňuje timing útoku podle pozice uživatele v listu.
@@ -81,14 +160,21 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
         if secrets.compare_digest(body.username.encode(), u.username.encode()):
             found_user = u
 
-    dummy_hash = users[0].password_hash if users else ""
+    dummy_hash = users[0].password_hash if users else _DUMMY_HASH
     valid = verify_password(body.password, found_user.password_hash if found_user else dummy_hash)
     if found_user is None or not valid:
-        log.warning("[AUTH]  neplatné přihlášení: username=%r", body.username)
+        _record_failure(client_ip)
+        log.warning("[AUTH]  neplatné přihlášení: username=%r ip=%r", body.username, client_ip)
         raise HTTPException(status_code=401, detail="Neplatné přihlašovací údaje")
 
+    _clear_failures(client_ip)
     token        = secrets.token_urlsafe(32)
-    session_info = {"username": found_user.username, "role": found_user.role, "display_name": found_user.display_name}
+    session_info = {
+        "username":    found_user.username,
+        "role":        found_user.role,
+        "display_name": found_user.display_name,
+        "created_at":  time.time(),
+    }
     request.app.state.sessions[token] = session_info
 
     log.info("[AUTH]  přihlášen: %r role=%r (sessions celkem: %d)",
@@ -102,9 +188,14 @@ async def plc_login(request: Request) -> LoginResponse:
     Přihlásí uživatele pomocí PLC příznaku (Out.Status.UserLoggedIn).
 
     Žádné heslo není vyžadováno — autenticita je zajištěna PLC programem.
-    Endpoint ověří, že ADS monitor eviduje UserLoggedIn = True v current_values.
+    ADS monitor musí evidovat UserLoggedIn = True v current_values; pokud ne,
+    přihlášení selže (ADS výpadek nebo operátor není přihlášen na terminálu).
 
-    HTTP 403 — ADS není připojeno nebo PLC příznak není nastaven.
+    Returns:
+        LoginResponse — session token s rolí 'operator' a display_name 'PLC Operátor'.
+
+    Raises:
+        HTTPException(403): ADS není připojeno nebo PLC příznak není nastaven.
     """
     monitor = request.app.state.monitor
     plc_logged_in = bool(monitor.current_values.get("plc_operator_login", False))
@@ -112,7 +203,12 @@ async def plc_login(request: Request) -> LoginResponse:
         raise HTTPException(status_code=403, detail="PLC uživatel není přihlášen")
 
     token        = secrets.token_urlsafe(32)
-    session_info = {"username": "plc_operator", "role": "operator", "display_name": "PLC Operátor"}
+    session_info = {
+        "username":    "plc_operator",
+        "role":        "operator",
+        "display_name": "PLC Operátor",
+        "created_at":  time.time(),
+    }
     request.app.state.sessions[token] = session_info
 
     log.info("[AUTH]  PLC přihlášení: plc_operator (sessions celkem: %d)",
@@ -123,9 +219,13 @@ async def plc_login(request: Request) -> LoginResponse:
 @router.post("/auth/logout", status_code=204)
 async def logout(body: LogoutRequest, request: Request) -> None:
     """
-    Invaliduje session token.
+    Invaliduje session token (odstraní z app.state.sessions).
 
-    Vždy vrátí 204 — i pro neznámé tokeny (prevence information leakage).
+    Vždy vrátí 204 — i pro neznámé tokeny, aby nebylo možné zjistit,
+    zda token vůbec existoval (information leakage prevention).
+
+    Args:
+        body: Request body s tokenem ke zneplatnění.
     """
     token   = body.token
     removed = request.app.state.sessions.pop(token, None) is not None
@@ -138,13 +238,19 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
     """
     Změní heslo přihlášeného operátora (vlastní heslo).
 
-    HTTP 401 — token není platný nebo aktuální heslo je špatné.
-    HTTP 400 — nové heslo je prázdné.
-    HTTP 204 — heslo úspěšně změněno.
+    Heslo se persistuje do users.toml (pokud existuje) nebo do Config.toml
+    (fallback pro starší single-user konfiguraci). Po úspěšné změně jsou
+    invalidovány VŠECHNY aktivní session tokeny — operátor se znovu přihlásí.
+    Pro admin operaci (změna hesla jiného uživatele) slouží
+    POST /api/users/{username}/password.
 
-    Heslo se zapíše do users.toml (pokud existuje) nebo do Config.toml (fallback).
-    Po úspěchu jsou VŠECHNY session tokeny zneplatněny.
-    Pro změnu hesla jiného uživatele: POST /api/users/{username}/password (admin+).
+    Args:
+        body: Obsahuje aktivní token, aktuální heslo a nové heslo.
+        request: FastAPI request — přístup k app.state (sessions, users, paths).
+
+    Raises:
+        HTTPException(400): nové heslo je prázdné.
+        HTTPException(401): token není platný nebo aktuální heslo je špatné.
     """
     # Validuj nové heslo jako první — levná operace, odhalí chybu před PBKDF2 výpočtem
     if not body.new_password or not body.new_password.strip():
@@ -185,6 +291,9 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
         # Synchronizuj i in-memory AuthConfig (legacy cesta)
         request.app.state.config.auth.password_hash = new_hash
 
-    # Zneplatni všechny session tokeny
-    request.app.state.sessions.clear()
-    log.info("[AUTH]  heslo změněno pro %r; všechny sessions zneplatněny", username)
+    # Zneplatni jen session tokeny daného uživatele (ne ostatní přihlášené uživatele)
+    sessions   = request.app.state.sessions
+    to_remove  = [tok for tok, sess in sessions.items() if sess["username"] == username]
+    for tok in to_remove:
+        del sessions[tok]
+    log.info("[AUTH]  heslo změněno pro %r; %d sessions zneplatněno", username, len(to_remove))

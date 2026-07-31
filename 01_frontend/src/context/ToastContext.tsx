@@ -1,9 +1,24 @@
 /**
- * @file ToastContext.tsx
- * @description React Context pro toast notifikace.
- *   addToast(message, type) přidá notifikaci; auto-dismiss po DISMISS_MS (4500 ms).
- *   Typy: success | danger | warning | info. Renderuje .toast-container v DOM.
- *   useToast() hook — musí být použit uvnitř ToastProvider.
+ * Kontext pro neperzistentní toast notifikace.
+ *
+ * Účel: Globální mechanismus pro zobrazení krátkých zpráv o výsledku akcí
+ *       (smazání souboru, chyba sítě, přihlášení) bez prop drillingu.
+ *
+ * Zodpovědnost: Přidává notifikace do seznamu a auto-dimsissuje je po DISMISS_MS (4500 ms).
+ *               Renderuje .toast-container přímo v provideru — spotřebitelé ho nemusí zahrnovat.
+ *               Není zodpovědný za stylování — to je styles/toast.css.
+ *
+ * Rozhraní:
+ *   ToastProvider({ children })   — obaluje strom aplikace; renderuje .toast-container
+ *   useToast()                    — { addToast(message, type) } hook; throws mimo provider
+ *   ToastType                     — 'success' | 'danger' | 'warning' | 'info'
+ *   Toast                         — { id: number, message: string, type: ToastType }
+ *   ToastContextType              — interface hodnoty kontextu
+ *
+ * Napojení:
+ *   Závisí na: React (createContext, useState, useCallback, useRef)
+ *   Používáno: hooks/useDatabaseState.ts, components/PlcWatcher.tsx a další přes useToast()
+ *   Styly: styles/toast.css (.toast-container, .toast--success/danger/warning/info)
  */
 import { createContext, useCallback, useContext, useRef, useState } from 'react'
 

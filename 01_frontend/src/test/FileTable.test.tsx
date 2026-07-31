@@ -86,7 +86,16 @@ const DEFAULT_PROPS = {
   onExpandToggle:  vi.fn(),
   onDeleteRequest: vi.fn(),
   onDownload:      vi.fn(),
+  onDownloadXlsx:  vi.fn(),
   onPageChange:    vi.fn(),
+  sortBy:          'created_at',
+  sortDir:         'desc' as const,
+  onSort:          vi.fn(),
+  selectedIds:     new Set<string>(),
+  onToggleSelect:  vi.fn(),
+  onSelectAll:     vi.fn(),
+  onClearSelect:   vi.fn(),
+  onBatchDelete:   vi.fn(),
 }
 
 beforeEach(() => {

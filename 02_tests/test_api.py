@@ -27,6 +27,8 @@ import csv
 from pathlib import Path
 
 import pytest
+import time
+
 from fastapi.testclient import TestClient
 
 from scada.app import create_app
@@ -78,8 +80,9 @@ _TEST_SESSION = {"username": "admin", "role": "admin", "display_name": "Admin"}
 
 
 def _inject_session(app, token: str = _TEST_TOKEN, session: dict = _TEST_SESSION) -> None:
-    """Vloží testovací session přímo do app.state.sessions (bypass login)."""
-    app.state.sessions[token] = session
+    """Vloží testovací session přímo do app.state.sessions (bypass login).
+    Přidá created_at = now, aby session prošla TTL kontrolou v require_auth."""
+    app.state.sessions[token] = {**session, "created_at": time.time()}
 
 
 # ======================================================================
@@ -458,8 +461,10 @@ class TestSecurityHeaders:
         assert expected_hash in csp
         assert "script-src 'self'" in csp
         assert "frame-ancestors 'none'" in csp
-        assert "fonts.googleapis.com" in csp
-        assert "fonts.gstatic.com" in csp
+        # Fonty jsou self-hosted (@fontsource) — Google Fonts CDN již není v CSP
+        assert "fonts.googleapis.com" not in csp
+        assert "fonts.gstatic.com" not in csp
+        assert "font-src 'self'" in csp
         assert "ws:" in csp and "wss:" in csp
 
     def test_csp_no_inline_hash_when_no_dist(self, tmp_path: Path) -> None:
@@ -915,8 +920,9 @@ def users_client(tmp_path: Path):
     """
     app, _ = make_app(tmp_path)
     with TestClient(app) as c:
-        app.state.sessions[_ADMIN_TOKEN2] = _ADMIN_SESSION2.copy()
-        app.state.sessions[_OP_TOKEN2]    = _OP_SESSION2.copy()
+        now = time.time()
+        app.state.sessions[_ADMIN_TOKEN2] = {**_ADMIN_SESSION2, "created_at": now}
+        app.state.sessions[_OP_TOKEN2]    = {**_OP_SESSION2,    "created_at": now}
         app.state.users_path = None   # žádný disk → změny pouze in-memory
         app.state.users = [
             UserEntry(username="admin", display_name="Admin",
@@ -1027,6 +1033,7 @@ class TestUsersApi:
         with TestClient(app) as c:
             app.state.sessions[mfr_tok] = {
                 "username": "mfr", "role": "manufacturer", "display_name": "Výrobce",
+                "created_at": time.time(),
             }
             app.state.users_path = None
             app.state.users = [

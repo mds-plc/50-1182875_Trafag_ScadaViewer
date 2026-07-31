@@ -72,6 +72,12 @@ export interface Translations {
     groupDistribution: string
     totalVsExpected: string
     orderDetail: string
+    downloadXlsx: string
+    selectedCount: string
+    deleteSelected: string
+    clearSelection: string
+    batchConfirmTitle: string
+    batchConfirmBody: string
   }
   chart: {
     title: string

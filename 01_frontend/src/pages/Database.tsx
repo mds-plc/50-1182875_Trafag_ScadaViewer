@@ -24,10 +24,12 @@ export default function Database() {
     page,     setPage,
     expandedId,   setExpandedId,
     deleteTarget, setDeleteTarget,
+    sortBy, sortDir, onSort,
     files, total, pages, loading, error, fetchFiles,
     remoteAvailable,
     showSync, totalRecords,
-    deleteFile, downloadCsv,
+    deleteFile, downloadCsv, downloadXlsx,
+    selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   } = useDatabaseState()
 
   return (
@@ -138,7 +140,16 @@ export default function Database() {
           onExpandToggle={id => setExpandedId(prev => prev === id ? null : id)}
           onDeleteRequest={file => setDeleteTarget(file)}
           onDownload={file => { void downloadCsv(file) }}
+          onDownloadXlsx={file => { void downloadXlsx(file) }}
           onPageChange={setPage}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSort={onSort}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onSelectAll={selectAll}
+          onClearSelect={clearSelect}
+          onBatchDelete={() => setBatchConfirm(true)}
         />
       </div>
 
@@ -149,6 +160,29 @@ export default function Database() {
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { void deleteFile(deleteTarget) }}
         />
+      )}
+
+      {/* Potvrzovací dialog hromadného smazání */}
+      {batchConfirm && (
+        <div className="db-overlay" onClick={() => setBatchConfirm(false)}>
+          <div className="db-modal" onClick={e => e.stopPropagation()}>
+            <div className="db-modal__title">{t.db.batchConfirmTitle}</div>
+            <div className="db-modal__body">
+              {t.db.batchConfirmBody}
+              <div style={{ marginTop: 'var(--space-3)', fontWeight: 600 }}>
+                ({selectedIds.size} {t.db.selectedCount})
+              </div>
+            </div>
+            <div className="db-modal__actions">
+              <button className="btn btn--secondary" onClick={() => setBatchConfirm(false)}>
+                {t.common.cancel}
+              </button>
+              <button className="btn btn--danger" onClick={() => { void batchDelete() }}>
+                {t.db.deleteSelected}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

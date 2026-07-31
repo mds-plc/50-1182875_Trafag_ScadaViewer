@@ -165,7 +165,12 @@
 
 .db-th--num     { width: 48px; text-align: right; }
 .db-th--center  { text-align: center; }
-.db-th--actions { width: 140px; }
+.db-th--actions { width: 220px; }
+
+.db-th--sortable { cursor: pointer; user-select: none; }
+.db-th--sortable:hover { background: var(--color-surface-2); }
+.db-th--sort-active { color: var(--color-accent); }
+.db-sort-icon { font-size: 10px; opacity: 0.7; }
 
 .db-td {
   padding: var(--space-4) var(--space-4);
@@ -220,6 +225,31 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* DOWNLOAD BUTTONS — CSV / XLSX vedle sebe v actions sloupci */
+
+.db-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  min-height: 36px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font-primary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.db-download-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 .db-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -255,6 +285,32 @@
   text-align: center;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+/* BATCH TOOLBAR */
+
+.db-batch-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent-muted);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.db-batch-toolbar__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  margin-right: var(--space-2);
+}
+
+/* Checkbox column */
+
+.db-td--check {
+  width: 40px;
+  text-align: center;
+  padding: var(--space-2) var(--space-2);
 }
 
 .db-footer {

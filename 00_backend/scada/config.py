@@ -1,11 +1,29 @@
 """
-Konfigurace ScadaViewer — dataclasses + load_config.
+Konfigurace ScadaViewer — datové třídy, načítání z TOML, správa uživatelů.
 
-Validace při načtení:
-  - port serveru a ADS musí být v rozsahu 1–65535
-  - ADS net_id nesmí být prázdný
-  - csv_separator musí být jeden znak
-  Varování (ne chyba): remote_path prázdný → Remote záložka trvale nedostupná.
+Účel: Centrální místo pro veškerou konfiguraci aplikace. Načte Config.toml a users.toml,
+      validuje hodnoty a vrátí typované datové třídy (AppConfig, UserEntry) pro zbytek kódu.
+
+Zodpovědnost:
+  - Definuje datové třídy ServerConfig, AdsConfig, DataConfig, AuthConfig, AppConfig, UserEntry.
+  - Načítá a validuje Config.toml přes load_config() — ValueError s čitelnou zprávou při chybě.
+  - Načítá users.toml přes load_users(); fallback na [auth] z Config.toml pokud soubor chybí.
+  - Poskytuje kryptografické utility: hash_password() a verify_password() (PBKDF2-HMAC-SHA256,
+    260 000 iterací, timing-safe porovnání přes secrets.compare_digest).
+  - Atomický zápis users.toml přes save_users() (tmp soubor + os.replace — odolné vůči
+    výpadkům napájení, users.toml nikdy nebude v nekonzistentním stavu).
+
+Rozhraní:
+  load_config(path) → AppConfig
+  load_users(users_path, fallback_auth) → list[UserEntry]
+  save_users(users, path) → None
+  hash_password(password) → str          # formát "{salt_hex}:{pbkdf2_hex}"
+  verify_password(password, stored) → bool
+  VALID_ROLES: frozenset[str]            # operator | technician | admin | manufacturer
+
+Napojení:
+  Závisí na: tomllib (Python 3.11+) / tomli (fallback), hashlib, secrets, pathlib
+  Používáno: app.py (create_app), api/auth.py, api/users_api.py, api/config_api.py
 """
 from __future__ import annotations
 

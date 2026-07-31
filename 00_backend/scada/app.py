@@ -1,5 +1,27 @@
 """
-FastAPI aplikace — factory + lifespan.
+FastAPI factory — sestavení instance aplikace, middleware a lifecycle services.
+
+Účel: Jediné místo, kde se váže konfigurace, services a HTTP vrstva dohromady.
+      create_app() vrátí plně nakonfigurovanou FastAPI instanci připravenou ke spuštění.
+
+Zodpovědnost:
+  - Inicializuje AdsMonitor, FileService a OrderWatcher při startu (lifespan).
+  - Konfiguruje middleware stack: CORS → RateLimit → SecurityHeaders (LIFO pořadí Starlette).
+  - Sestavuje CSP hlavičku: inline skripty z index.html se zahashují (SHA-256) a přidají
+    do script-src — zabrání spuštění cizího JavaScriptu bez whitelistování.
+  - Registruje všechny API routery pod /api a WS routery pod /ws.
+  - Servíruje statický React build (01_frontend/dist/) pokud adresář existuje.
+
+Rozhraní:
+  create_app(cfg, rate_limit, config_path) → FastAPI
+    cfg:         AppConfig načtený z Config.toml
+    rate_limit:  max požadavků za minutu na IP (výchozí 120)
+    config_path: cesta ke Config.toml; users.toml se hledá ve stejném adresáři
+
+Napojení:
+  Závisí na: config.AppConfig, services.{AdsMonitor, FileService, OrderWatcher},
+             services.ws_manager.{manager, orders_manager}, všechny api/* routery
+  Používáno: main.py (uvicorn.run(create_app(...)))
 """
 from __future__ import annotations
 
@@ -36,9 +58,7 @@ def _get_frontend_dist() -> Path:
 
 _FRONTEND_DIST = _get_frontend_dist()
 
-# Externé CDN zdroje povolené v CSP
-_CSP_GOOGLE_FONTS_CSS = "https://fonts.googleapis.com"
-_CSP_GOOGLE_FONTS_SRC = "https://fonts.gstatic.com"
+# Fonty jsou self-hosted (@fontsource) — žádné CDN zdroje nejsou potřeba.
 
 
 def _build_csp(frontend_dist: Path) -> str:
@@ -52,11 +72,11 @@ def _build_csp(frontend_dist: Path) -> str:
     Direktivy:
       default-src 'self'          — vše ostatní jen ze stejného originu
       script-src  'self' 'sha256-…' — bundlovaný JS + inline anti-FOUC skript
-      style-src   'self' 'unsafe-inline' fonts.googleapis.com
-                                  — bundlované CSS + Recharts inline styly + Google Fonts CSS
+      style-src   'self' 'unsafe-inline'
+                                  — bundlované CSS + Recharts inline styly
       img-src     'self' data:    — PNG loga + případné data: URI obrázků
       connect-src 'self' ws: wss: — fetch + WebSocket (/ws/plc, /ws/orders) pro ws i wss
-      font-src    'self' fonts.gstatic.com — bundlované fonty + Google Fonts
+      font-src    'self'          — fonty jsou self-hosted (@fontsource, bundlovány Vitem)
       frame-ancestors 'none'      — zabrání vložení do iframe (doplňuje X-Frame-Options)
     """
     script_hashes: list[str] = []
@@ -76,10 +96,10 @@ def _build_csp(frontend_dist: Path) -> str:
     directives = [
         "default-src 'self'",
         f"script-src 'self'{script_src_extra}",
-        f"style-src 'self' 'unsafe-inline' {_CSP_GOOGLE_FONTS_CSS}",
+        "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "connect-src 'self' ws: wss:",
-        f"font-src 'self' {_CSP_GOOGLE_FONTS_SRC}",
+        "font-src 'self'",
         "frame-ancestors 'none'",
     ]
     return "; ".join(directives)

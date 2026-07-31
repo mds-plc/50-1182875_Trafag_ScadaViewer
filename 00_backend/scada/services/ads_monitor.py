@@ -1,37 +1,36 @@
 """
-ADS monitor — sleduje PLC hodnoty přes notifikace a broadcastuje přes WebSocket.
+ADS monitor — asyncio bridge mezi pyads notifikacemi a WebSocket broadcastem.
 
-Flow:
-  TwinCAT PLC → ADS notification callback (jiné vlákno)
-              → asyncio.run_coroutine_threadsafe()   ← vlákno → asyncio bridge
-              → ws_manager.broadcast()
-              → všechny připojené prohlížeče
+Účel: Sleduje live hodnoty PLC symbolů přes ADS notifikace a distribuuje je
+      všem připojeným WebSocket klientům. Spravuje reconnect při výpadku PLC
+      bez přerušení ostatních funkcí aplikace (CSV, Database, ChartView).
 
-Počáteční snapshot:
-  Po připojení se přečtou aktuální hodnoty všech symbolů (read_by_name) a
-  odešlou klientům přes WebSocket. Nový klient dostane snapshot okamžitě
-  z cache ws_manager — bez dalšího ADS dotazu.
+Zodpovědnost:
+  - Udržuje jedno ADS spojení (pyads.Connection) s notifikacemi pro každý symbol
+    z constants.SYM (ADSTRANS_SERVERONCHA — server-on-change, žádný polling).
+  - Přemosťuje ADS vlákno do asyncio event loopu přes run_coroutine_threadsafe().
+  - Detekuje výpadek PLC přes heartbeat loop (sv_heartbeat + read_state()) a
+    zahajuje exponential backoff reconnect (1→2→4→…→30 s).
+  - Udržuje current_values cache pro endpointy (health.py, auth.py plc-login).
+  - Po připojení odešle počáteční snapshot všech hodnot — nový WS klient dostane
+    aktuální stav bez čekání na příští ADS notifikaci.
 
-Chybové chování — automatický reconnect:
-  Pokud PLC není dostupné při startu (nebo se odpojí za běhu), monitor
-  čeká a opakuje pokus o připojení (exponential backoff 1→2→4→…→30 s).
-  CSV data, Database a ChartView fungují normálně celou dobu.
-  connected → False, /api/health vrátí checks.ads = False.
+Rozhraní:
+  AdsMonitor(cfg, ws_manager)   — injectuje konfiguraci a WS manager
+  start() / stop()              — async; volány z lifespan v app.py
+  connected: bool               — property; True pokud ADS spojení je aktivní
+  current_values: dict          — cache posledních hodnot symbolů {name: value}
 
-  Odpojení za běhu se detekuje přes heartbeat: po _HB_MAX_FAILURES
-  consecutive selháních write_by_name() se heartbeat loop ukončí výjimkou
-  → reconnect loop zahájí nový pokus.
+Napojení:
+  Závisí na: pyads, constants.{SYM, SYM_WRITE, SYM_TYPES}, services/ws_manager.py
+  Používáno: app.py (lifespan), api/health.py (connected), api/auth.py (plc-login)
+  Datový tok: TwinCAT PLC → ADS notifikace → ws_manager.broadcast() → prohlížeče
 
-Typy symbolů:
-  Podporované typy: BOOL (1 B), INT (2 B), UINT (2 B), DINT (4 B), STRING (n B).
-  Typy jsou definovány v constants.SYM_TYPES; vše ostatní = BOOL.
-
-Ctypes poznámka (data.offset):
-  notification.contents.data je deklarováno jako c_ubyte — přístup přes
-  .contents jej automaticky konvertuje na Python int. ctypes.addressof()
-  vyžaduje _CData objekt, ne int.
-  Správný postup: ctypes.addressof(hdr) + type(hdr).data.offset
-  kde type(hdr).data.offset vrátí byte-offset pole data v SAdsNotificationHeader.
+Technické poznámky:
+  Ctypes: notification.contents.data je c_ubyte (.contents vrátí int, ne _CData).
+    Pro addressof() nutno: ctypes.addressof(hdr) + type(hdr).data.offset.
+  GC prevence: callback closures ukládány do self._callback_refs — bez toho pyads
+    ztratí referenci a notifikace přestanou fungovat bez chybové zprávy.
 """
 from __future__ import annotations
 
