@@ -8,13 +8,11 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-07-31**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-08-01 (architektonický audit)**.
 
 ### 🔴 HIGH
 
-| # | Popis | Soubor | Zdroj |
-|---|-------|--------|-------|
-| H1 | Session tokeny bez TTL — tokeny platí neomezeně dlouho; dict roste při každém loginu | `api/auth.py`, `api/dependencies.py` | [2026-07-31 kritický #1] |
+(žádné otevřené)
 
 ### ⚠️ MEDIUM
 
@@ -45,6 +43,117 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-08-01] Architektonický audit — backend + frontend
+
+### Scope
+Hloubkový architektonický audit celého projektu proti průmyslovým standardům SCADA aplikací.
+Backend: vrstvy, DI, async vzory, lifecycle, observability. Frontend: komponenty, hooks, i18n, export.
+
+### Hodnocení
+- **Backend: 8.5/10** — solidní vrstvení (API → Service → Repository), správné async vzory, konzistentní DI
+- **Frontend: 7.5/10** — funkční hooks/context architektura, čisté oddělení logiky od UI
+
+### Nálezy a opravy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| B1 | 🔴 HIGH | OrderWatcher `_loop()` bez timeoutu — NAS I/O blokuje polling | `services/order_watcher.py` | ✅ Opraveno — `asyncio.wait_for(..., timeout=10.0)` |
+| B3 | ⚠️ MEDIUM | `read_records` bez timeoutu na remote CSV | `api/data.py` | ✅ Opraveno — `asyncio.wait_for(timeout=30/10)` + HTTP 504 |
+| B4 | ⚠️ MEDIUM | Chybí request ID (correlation) v logách | `app.py`, `logging_setup.py` | ✅ Opraveno — `_RequestIdMiddleware` + `contextvars` + JSON `"rid"` |
+| B6 | 🔵 LOW | Folder picker neloguje `OSError` | `api/config_api.py` | ✅ Opraveno — `OSError` catch + `log.warning` |
+| F1 | ⚠️ MEDIUM | Overview.tsx 631 řádků — MODE_MAP + helpery inline | `pages/Overview.tsx` | ✅ Opraveno — extrakce do `utils/overviewHelpers.ts` (631→491 řádků) |
+| F4 | ⚠️ MEDIUM | 15 hardcoded i18n řetězců v Overview.tsx | `pages/Overview.tsx` | ✅ Opraveno — přesunuto do `types.ts` + `cs.ts` + `en.ts` |
+| F5 | 🔵 LOW | exportXlsx bez SaveAs dialogu a error handling | `utils/exportXlsx.ts` | ✅ Opraveno — `showSaveFilePicker` + try/catch + AbortError guard |
+
+### False positives (kód je v pořádku)
+
+| # | Původní nález | Proč false positive |
+|---|---------------|---------------------|
+| F2 | ChartView.tsx "god component" — inline sub-komponenty | Sub-komponenty (CategoryChart, OrderHero, OrderSummary) jsou správný vzor, kolocace je záměrná |
+| F3 | `useFiles` nemá retry logiku | Auto-refresh `setInterval(fetchFiles, refreshMs)` efektivně funguje jako retry |
+| F6 | Recharts `any` typy v renderech | Omezení Recharts API — `eslint-disable` komentáře dokumentují důvod |
+| SC1 | Heartbeat vs connected race condition | `_heartbeat_loop` běží sekvenčně, žádný race |
+| SC2 | Chybí offline CSV cache | SCADA čte live data, offline cache nemá smysl pro tento use case |
+| D1 | "No React Query / Zod" | Zbytečná závislost pro scope projektu (1–3 klienti, ~10 endpointů) |
+
+### Přeskočeno (rozhodnutí uživatele)
+
+| # | Závažnost | Popis | Důvod |
+|---|-----------|-------|-------|
+| B2 | ⚠️ MEDIUM | `app.state` singletons bez explicitního typování | Rozsáhlá změna, nízký přínos pro runtime |
+
+**Celkem:** 7 nálezů | 7 opraveno | 6 false positives | 1 přeskočeno
+
+---
+
+## [2026-08-01] Bezpečnostní a stabilitní audit — backend + frontend
+
+### Scope
+Paralelní hloubkový audit backendu a frontendu zaměřený na bezpečnost, stabilitu a neočekávané stavy.
+Backend: všechny soubory v `00_backend/scada/`. Frontend: všechny soubory v `01_frontend/src/`.
+
+### Verifikace — false positives (kód je v pořádku)
+
+| # | Původní nález | Proč false positive |
+|---|---------------|---------------------|
+| FP1 | Session fixation — token v URL | Token je VÝHRADNĚ v Authorization header, nikdy v URL |
+| FP2 | WS Origin bypass při prázdném cors_origins | Záměr — dev mód; Config.toml.example dokumentuje produkční nastavení |
+| FP3 | Brute force login bypass | `_is_locked()` + `_record_failure()` + `_clear_failures()` je korektní vzor |
+| FP4 | CSV encoding mismatch | Dokumentováno v CLAUDE.md; shodné s DatabaseGateway |
+| FP5 | Path traversal `/api/wip` | Pydantic pattern `^[\w\-\.]+$` + substring match (ne regex) |
+| FP6 | PLC login `plcLoginInFlightRef` stuck | `.finally()` vždy resetuje na `false` |
+| FP7 | Open redirect v ChartView | `location`/`dataType` z React state, vždy `'local'|'remote'` / `'production'|'testing'` |
+| FP8 | FolderPicker path traversal | Backend `_list_children()` + `update_paths()` validuje; frontend jen zobrazuje |
+| FP9 | Token v sessionStorage XSS | Akceptované riziko: SCADA LAN, CSP, HttpOnly cookies vyžadují CSRF — zbytečná složitost |
+| FP10 | PlcContext stale closure | React `setState` je safe; `destroyed.current` guard zabraňuje post-unmount |
+| FP11 | useOrderWatcher memory leak | GC zlikviduje staré WS objekty; `destroyed.current` guard; max 5 reconnectů |
+| FP12 | Config update TOCTOU | Admin operace; restart aplikace detekuje neplatnou cestu |
+
+### Reálné nálezy + opravy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | `LoginRequest` bez `max_length` — PBKDF2 na MB stringu = CPU DoS | `models.py` | ✅ Opraveno (`username ≤150`, `password ≤1000`) |
+| 2 | ⚠️ MEDIUM | WS `broadcast()` backpressure — pomalý klient blokuje ostatní | `services/ws_manager.py` | ✅ Opraveno (`asyncio.wait_for(send_text, timeout=5)`) |
+| 3 | ⚠️ MEDIUM | `per_page=0` v `/api/data` — neomezený počet záznamů do paměti | `api/data.py` | ✅ Opraveno (cap na 100 000 záznamů) |
+| 4 | ⚠️ MEDIUM | OrderWatcher hardcoded `delimiter=";"` místo `cfg.csv_separator` | `services/order_watcher.py` | ✅ Opraveno (parametr `csv_separator`) |
+| 5 | 🔵 LOW | `exportCsv` nevaliduje `rows[0]` na null/undefined | `utils/exportCsv.ts` | ✅ Opraveno (null/typeof check) |
+| 6 | 🔵 LOW | ADS callback `run_coroutine_threadsafe` po zavření loop → RuntimeError | `services/ads_monitor.py` | ✅ Opraveno (`try/except RuntimeError`) |
+
+**Celkem:** 18 prověřeno | 12 false positive | 6 opraveno | 0 otevřeno
+
+---
+
+## [2026-07-31] Hloubková analýza (Opus) — verifikace předchozích nálezů + 3 opravy
+
+### Scope
+Hloubková analýza celé kódové základny pomocí Opus modelu. Verifikace 5 CRITICAL + 7 HIGH nálezů.
+Většina nálezů klasifikována jako **false positive** — kód již obsahuje příslušné ochrany.
+
+### False positives (ověřeno, že kód je v pořádku)
+
+| # | Původní nález | Proč false positive |
+|---|---------------|---------------------|
+| S2 | Username enumeration timing attack | `_DUMMY_HASH` + `secrets.compare_digest` — timing-safe |
+| S3 | WebSocket CORS bypass | Oba WS endpointy (`plc_ws.py`, `orders_ws.py`) mají origin check |
+| S4 | Path traversal v CSV ops | `validate_params()`: `..`, `/`, `\`, null byte, `_DONE.csv` suffix |
+| S5 | Event loop capture race | `start()` nastaví `_loop` před `create_task(_reconnect_loop)` |
+| S10 | Login rate limit mezery | `_is_locked()` + `_record_failure()` s 5/10min oknem |
+| S11 | Hash parsing errors | `verify_password()` chytá `ValueError, UnicodeEncodeError` |
+| S12 | Null byte injection | `validate_params()` kontroluje `\x00` v `file_id` |
+
+### Reálné nálezy + opravy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | Session dict neomezený růst — lazy GC nestačí při opakovaných loginech | `api/dependencies.py` | ✅ Opraveno (aktivní GC sweep každých 50 req) |
+| 2 | ⚠️ MEDIUM | `disconnect()` ValueError — broadcast odstraní klienta, `disconnect()` padne | `services/ws_manager.py` | ✅ Opraveno (try/except ValueError) |
+| 3 | ⚠️ MEDIUM | `_toml_str()` neescapuje `"` — TOML injection v cestách | `api/config_api.py` | ✅ Opraveno (přidán `s.replace('"', '\\"')`) |
+
+**Celkem:** 10 prověřeno | 7 false positive | 3 opraveno
 
 ---
 

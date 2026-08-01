@@ -42,7 +42,7 @@
  * Pokud uživatel dialog "Uložit jako" zavře, funkce se tiše ukončí.
  */
 export async function exportCsv(rows: Record<string, unknown>[], filename: string): Promise<void> {
-  if (rows.length === 0) return
+  if (rows.length === 0 || !rows[0] || typeof rows[0] !== 'object') return
 
   const sep     = ';'
   const headers = Object.keys(rows[0])

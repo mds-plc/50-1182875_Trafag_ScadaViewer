@@ -29,6 +29,7 @@ import base64
 import hashlib
 import logging
 import mimetypes
+import os
 import re
 import sys as _sys
 import time
@@ -105,6 +106,7 @@ def _build_csp(frontend_dist: Path) -> str:
     return "; ".join(directives)
 
 
+from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users
 from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip, users_api
 from scada.services.ads_monitor import AdsMonitor
@@ -114,6 +116,29 @@ from scada.services.repositories.csv_repository import CsvRepository
 from scada.services.ws_manager import manager, orders_manager
 
 log = logging.getLogger(__name__)
+
+
+class _RequestIdMiddleware(BaseHTTPMiddleware):
+    """
+    Přiřadí každému HTTP požadavku krátké unikátní ID (4 hex znaky).
+
+    PROČ:
+      Při paralelních požadavcích (3 záložky, auto-refresh + manuální akce) nelze
+      v logách poznat, který záznam patří ke kterému požadavku. Request ID řeší
+      korelaci — všechny logy jednoho požadavku sdílejí stejné "rid" pole.
+
+    MECHANISMUS:
+      contextvars.ContextVar — automaticky propaguje přes async/await volání.
+      Všechny logy z API, service i repository vrstvy dostanou rid bez změn v kódu.
+      ID se vrací i v response headeru X-Request-ID pro debugging z DevTools.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        rid = os.urandom(2).hex()          # 4 hex znaky, 65 536 kombinací
+        request_id_var.set(rid)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
 
 
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -237,6 +262,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         Path(cfg.data.local_path),
         orders_manager,
         csv_encoding=cfg.data.csv_encoding,
+        csv_separator=cfg.data.csv_separator,
     )
 
     users_path = config_path.parent / "users.toml" if config_path else None
@@ -263,9 +289,10 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app = FastAPI(title="ScadaViewer", version="0.1.0", lifespan=lifespan)
 
     # Middleware — starlette aplikuje v opačném pořadí přidání (LIFO):
-    # požadavek projde: CORS → RateLimit → SecurityHeaders → router
-    # odpověď projde:   router → SecurityHeaders → RateLimit → CORS
+    # požadavek projde: CORS → RateLimit → RequestId → SecurityHeaders → router
+    # odpověď projde:   router → SecurityHeaders → RequestId → RateLimit → CORS
     app.add_middleware(_SecurityHeadersMiddleware, csp=_build_csp(_FRONTEND_DIST))
+    app.add_middleware(_RequestIdMiddleware)
     app.add_middleware(_RateLimitMiddleware, max_per_minute=rate_limit)
     if cfg.server.cors_origins:
         app.add_middleware(

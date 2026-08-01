@@ -1,22 +1,74 @@
 /**
  * @file exportXlsx.ts
  * @description Export dat do XLSX souboru pomocí SheetJS (xlsx).
+ *
+ * ULOŽENÍ — "Uložit jako" dialog:
+ *   Funkce přednostně použije File System Access API (showSaveFilePicker).
+ *   Prohlížeč zobrazí nativní OS dialog "Uložit jako", kde uživatel vybere
+ *   libovolné místo — včetně externího USB flash disku nebo síťového disku.
+ *   Podporováno v Chrome a Edge (Chromium, verze 86+).
+ *
+ *   Fallback pro Firefox / Safari:
+ *   XLSX.writeFile() stáhne soubor do výchozí složky Stažené soubory.
  */
 import * as XLSX from 'xlsx'
 
 /**
- * Exportuje záznamy do XLSX souboru a stáhne ho do prohlížeče.
+ * Exportuje záznamy do XLSX souboru.
+ * Chrome/Edge: OS dialog "Uložit jako" (showSaveFilePicker).
+ * Firefox/Safari: stažení do složky Stažené soubory (XLSX.writeFile fallback).
+ *
  * @param rows    pole objektů (záznamy z CSV)
  * @param filename název souboru bez přípony (přidá se .xlsx)
  */
 export async function exportXlsx(rows: Record<string, unknown>[], filename: string): Promise<void> {
+  if (rows.length === 0 || !rows[0] || typeof rows[0] !== 'object') return
+
+  // Lokální typ pro File System Access API (není ve všech verzích lib.dom.d.ts)
+  type FSAWindow = Window & {
+    showSaveFilePicker: (opts: {
+      suggestedName?: string
+      types?: Array<{ description?: string; accept: Record<string, string[]> }>
+    }) => Promise<{
+      createWritable: () => Promise<{
+        write: (data: BufferSource) => Promise<void>
+        close: () => Promise<void>
+      }>
+    }>
+  }
+
   try {
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Data')
+
+    // File System Access API — nativní dialog "Uložit jako" (Chrome, Edge 86+)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as FSAWindow).showSaveFilePicker({
+          suggestedName: filename + '.xlsx',
+          types: [{
+            description: 'Excel soubor',
+            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+          }],
+        })
+        const writable = await handle.createWritable()
+        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+        await writable.write(buf)
+        await writable.close()
+        return
+      } catch (err) {
+        // Uživatel dialog zavřel (AbortError) — nic neděláme, tiché ukončení
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        // Jiná neočekávaná chyba — pokračovat na fallback
+        console.warn('[exportXlsx] showSaveFilePicker selhalo, fallback na download:', err)
+      }
+    }
+
+    // Fallback: standardní browser download (Firefox, Safari, starší Chrome)
     XLSX.writeFile(wb, filename + '.xlsx')
   } catch (e) {
-    console.error('[XLSX] export failed:', e)
+    console.error('[exportXlsx] export selhal:', e)
     throw e   // propaguje do downloadXlsx → toast "Chyba načítání"
   }
 }

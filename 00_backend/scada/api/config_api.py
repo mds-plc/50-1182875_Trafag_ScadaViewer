@@ -63,6 +63,7 @@ def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
     # při manuální editaci → odstraníme je.
     def _toml_str(s: str) -> str:
         s = s.replace("\\", "\\\\")          # \ → \\ (musí být první!)
+        s = s.replace('"', '\\"')            # " → \" (prevence TOML injection)
         s = "".join(c for c in s if c >= " ")  # odstraní control chars (TAB, LF, …)
         return s
 
@@ -150,7 +151,8 @@ def _list_children(path_str: str) -> dict[str, object]:
             (_norm(child) for child in p.iterdir() if child.is_dir()),
             key=str.lower,
         )
-    except PermissionError:
+    except (PermissionError, OSError) as exc:
+        log.warning("[API]   folder picker: nelze číst %s: %s", p, exc)
         children = []
 
     # Na kořeni disku (C:\) vrátíme "" jako parent → UI zobrazí seznam disků

@@ -191,6 +191,23 @@ export interface Translations {
     colGroup:       string
     noRecords:      string
     noActiveOrder:  string
+    // KPI statistiky
+    statRemaining:  string
+    statElapsed:    string
+    statRate:       string
+    statTimeLeft:   string
+    statFinish:     string
+    statFullBoxes:  string
+    // Boxy — stavy
+    boxAbsent:      string
+    boxAvailable:   string
+    // Ostatní
+    plcOffline:     string
+    plcOfflineSub:  string
+    recordsBtn:     string
+    chartTile:      string
+    chartNoData:    string
+    unitPcs:        string
   }
   info: {
     title:        string

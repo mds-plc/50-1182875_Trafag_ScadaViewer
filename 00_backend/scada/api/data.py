@@ -84,14 +84,27 @@ async def get_data(
                     status_code=422,
                     detail=f"Neplatný formát parametru '{_pname}', očekáváno YYYY-MM-DD: {_pval!r}",
                 )
+    # per_page=0 = všechny záznamy (export). Limit na 100 000 řádků
+    # zabraňuje neomezenému růstu paměti při obrovském CSV (DoS prevence).
+    effective_per_page = per_page if per_page > 0 else 100_000
+
     reader: DataReader = request.app.state.csv_reader
+    # Timeout: remote (NAS/UNC) může blokovat desítky sekund při nedostupném disku;
+    # local disk je rychlý, ale stále limitujeme pro ochranu event loopu.
+    timeout = 30.0 if location == 'remote' else 10.0
     try:
-        records, total, group_counts, file_expected_count = await asyncio.to_thread(
-            reader.read_records,
-            file_id=file, location=location, file_type=file_type,
-            from_date=from_date, to_date=to_date,
-            page=page, per_page=per_page,
+        records, total, group_counts, file_expected_count = await asyncio.wait_for(
+            asyncio.to_thread(
+                reader.read_records,
+                file_id=file, location=location, file_type=file_type,
+                from_date=from_date, to_date=to_date,
+                page=page, per_page=effective_per_page,
+            ),
+            timeout=timeout,
         )
+    except asyncio.TimeoutError:
+        log.error("[API]   /api/data timeout (%s, %s, %.0f s)", file, location, timeout)
+        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.")
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
@@ -100,7 +113,7 @@ async def get_data(
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/data I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
-    pages = max(1, (total + per_page - 1) // per_page) if per_page > 0 else 1
+    pages = max(1, (total + effective_per_page - 1) // effective_per_page) if per_page > 0 else 1
     return DataResponse(
         records=records, total=total, page=page, pages=pages, per_page=per_page,
         group_counts=group_counts or None,

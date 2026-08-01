@@ -37,13 +37,15 @@ class OrderWatcher:
         local_path: Path,
         manager: ConnectionManager,
         csv_encoding: str = "utf-8-sig",
+        csv_separator: str = ";",
     ) -> None:
         self._wip_dirs: list[Path] = [
             local_path / "production" / "wip",
             local_path / "testing"    / "wip",
         ]
-        self._manager      = manager
-        self._csv_encoding = csv_encoding
+        self._manager       = manager
+        self._csv_encoding  = csv_encoding
+        self._csv_separator = csv_separator
         self._task:    asyncio.Task | None = None
         # path → počet již zpracovaných řádků (bez hlavičky)
         self._line_count: dict[Path, int] = {}
@@ -66,11 +68,16 @@ class OrderWatcher:
     async def _loop(self) -> None:
         while True:
             try:
-                records = await asyncio.to_thread(self._read_new_rows)
+                records = await asyncio.wait_for(
+                    asyncio.to_thread(self._read_new_rows),
+                    timeout=10.0,
+                )
                 for rec in records:
                     await self._manager.broadcast({"type": "record", "data": rec})
             except asyncio.CancelledError:
                 raise
+            except asyncio.TimeoutError:
+                log.warning("[OW]    čtení wip trvá příliš dlouho (>10 s) — přeskakuji cyklus")
             except Exception as exc:
                 log.warning("[OW]    chyba při čtení wip: %s", exc)
             await asyncio.sleep(_POLL_INTERVAL)
@@ -104,7 +111,7 @@ class OrderWatcher:
         """Přečte nové řádky z jednoho CSV souboru."""
         try:
             with path.open("r", encoding=self._csv_encoding, newline="") as f:
-                reader = csv.DictReader(f, delimiter=";")
+                reader = csv.DictReader(f, delimiter=self._csv_separator)
                 all_rows = list(reader)
         except (OSError, csv.Error) as exc:
             log.warning("[OW]    nelze číst %s: %s", path.name, exc)

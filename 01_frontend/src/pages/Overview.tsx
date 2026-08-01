@@ -2,23 +2,9 @@
  * @file Overview.tsx
  * @description Hlavní dashboard (/) — gradient hero badge, zakázka, boxy, live záznamy.
  *
- * Režim stroje (E_APP_ModeManager_Mode UINT z ADS):
- *   0  = eMACHINEOFF          → šedý gradient
- *   3  = ePRESSURING          → jantarový pulzující
- *   4  = eSTARTINGAUX         → jantarový pulzující
- *   5  = eUNHOMED             → jantarový statický
- *   6  = eHOMING              → jantarový pulzující
- *   9  = eRESUMEPRODUCTION   → jantarový statický
- *  10  = eAUTOSTOP            → zelený statický
- *  11  = eDUMMYMODE           → modrý pulzující
- *  14  = eSTOPPINGMODE        → jantarový pulzující
- *  15  = eAUTOMODE            → zelený pulzující
- *  16  = eMSAMODE             → zelený pulzující
- *  17  = eLIMODE              → zelený pulzující
- *  20  = eSERVICEMODE         → oranžový statický
- *  21  = eSERVICEMODESPECIAL  → oranžový statický
- *  25  = eSTEPBYSTEP          → oranžový statický
- *  30  = eEMPTYING            → jantarový pulzující
+ * Režimy stroje (MODE_MAP) a formátovací helpery jsou v utils/overviewHelpers.ts.
+ * PLC data přijímá z PlcContext (WebSocket /ws/plc).
+ * Live CSV záznamy přijímá z useOrderWatcher (WebSocket /ws/orders).
  */
 import { useMemo, useState, useEffect } from 'react'
 import { PauseCircle, Clock, WifiOff } from 'lucide-react'
@@ -31,113 +17,7 @@ import { usePlc }          from '../context/PlcContext'
 import { useLang }         from '../context/LangContext'
 import { useOrderWatcher } from '../hooks/useOrderWatcher'
 import { useWipData }      from '../hooks/useWipData'
-
-// ── Typy ───────────────────────────────────────────────────────────────────
-
-type ModeClass =
-  | 'off' | 'wait' | 'init'
-  | 'auto-stop' | 'auto-run'
-  | 'service' | 'test'
-
-/** Popis jednoho stavu stroje — CSS varianta a bilingvní texty pro hero badge. */
-interface ModeInfo {
-  cls:   ModeClass   // CSS modifikátor (.ov-mode--{cls})
-  label: Record<'cs' | 'en', string>   // hlavní nadpis hero badge
-  sub:   Record<'cs' | 'en', string>   // podnadpis hero badge
-}
-
-// E_APP_ModeManager_Mode — hodnoty z TwinCAT ENUM + bilingvní texty
-const MODE_MAP: Record<number, ModeInfo> = {
-  0:  {
-    cls: 'off',
-    label: { cs: 'Vypnuto',           en: 'Machine Off' },
-    sub:   { cs: 'Stroj je vypnut',   en: 'Machine is powered off' },
-  },
-  3:  {
-    cls: 'init',
-    label: { cs: 'Tlakování',         en: 'Pressurizing' },
-    sub:   { cs: 'Probíhá tlakování hydrauliky', en: 'Hydraulic system pressurizing' },
-  },
-  4:  {
-    cls: 'init',
-    label: { cs: 'Spouštění',         en: 'Starting Up' },
-    sub:   { cs: 'Spouštění pomocných systémů',  en: 'Starting auxiliary systems' },
-  },
-  5:  {
-    cls: 'wait',
-    label: { cs: 'Není zahomováno',   en: 'Not Homed' },
-    sub:   { cs: 'Čekání na dokončení homování', en: 'Waiting for homing to complete' },
-  },
-  6:  {
-    cls: 'init',
-    label: { cs: 'Homování',          en: 'Homing' },
-    sub:   { cs: 'Probíhá nastavení referenčních pozic', en: 'Setting reference positions' },
-  },
-  9:  {
-    cls: 'wait',
-    label: { cs: 'Obnova výroby',     en: 'Resume Production' },
-    sub:   { cs: 'Čekání na potvrzení operátora', en: 'Waiting for operator confirmation' },
-  },
-  10: {
-    cls: 'auto-stop',
-    label: { cs: 'Auto — Stop',       en: 'Auto — Stop' },
-    sub:   { cs: 'Automatický režim — čeká na spuštění', en: 'Automatic mode — waiting to start' },
-  },
-  11: {
-    cls: 'test',
-    label: { cs: 'Dummy',             en: 'Dummy' },
-    sub:   { cs: 'Testovací průchod bez výstupu', en: 'Test run without output' },
-  },
-  14: {
-    cls: 'init',
-    label: { cs: 'Zastavování',       en: 'Stopping' },
-    sub:   { cs: 'Probíhá řízené zastavování stroje', en: 'Controlled machine shutdown in progress' },
-  },
-  15: {
-    cls: 'auto-run',
-    label: { cs: 'Auto — Run',        en: 'Auto — Run' },
-    sub:   { cs: 'Automatický provoz — třídění aktivní', en: 'Automatic operation — sorting active' },
-  },
-  16: {
-    cls: 'auto-run',
-    label: { cs: 'Režim MSA',         en: 'MSA Mode' },
-    sub:   { cs: 'Statistická analýza měřicího systému', en: 'Measurement system analysis' },
-  },
-  17: {
-    cls: 'auto-run',
-    label: { cs: 'Režim LI',          en: 'LI Mode' },
-    sub:   { cs: 'Kontrola linearity', en: 'Linearity inspection' },
-  },
-  20: {
-    cls: 'service',
-    label: { cs: 'Servis',            en: 'Service' },
-    sub:   { cs: 'Servisní zásah — výroba přerušena', en: 'Service intervention — production paused' },
-  },
-  21: {
-    cls: 'service',
-    label: { cs: 'Servis speciální',  en: 'Service Special' },
-    sub:   { cs: 'Speciální servisní operace', en: 'Special service operation' },
-  },
-  25: {
-    cls: 'service',
-    label: { cs: 'Krok za krokem',    en: 'Step by Step' },
-    sub:   { cs: 'Manuální krokový provoz', en: 'Manual step-by-step operation' },
-  },
-  30: {
-    cls: 'init',
-    label: { cs: 'Vyprazdňování',     en: 'Emptying' },
-    sub:   { cs: 'Probíhá vyprazdňování systému', en: 'System emptying in progress' },
-  },
-}
-
-/** Formátování ISO timestamp → HH:MM:SS (24h) pro badge. */
-function _fmtTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    })
-  } catch { return '' }
-}
+import { MODE_MAP, fmtTime, fmtDur, fmtHHMM } from '../utils/overviewHelpers'
 
 const BOX_COUNT = 6
 
@@ -146,26 +26,6 @@ const BOX_COUNT = 6
  * MUSÍ zůstat `undefined` v produkci.
  */
 const DEV_ORDER: string | undefined = undefined
-
-/** Formátuje ms trvání → "Xh Ym" nebo "Y min". */
-function _fmtDur(ms: number): string {
-  const h = Math.floor(ms / 3_600_000)
-  const m = Math.floor((ms % 3_600_000) / 60_000)
-  return h > 0 ? `${h}h ${m}m` : `${m} min`
-}
-
-/** Formátuje ISO timestamp → HH:MM */
-function _fmtHHMM(iso: string): string {
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-  } catch { return '' }
-}
-
-/**
- * Hlavní dashboard (/) — live status stroje, aktuální zakázka, boxy a WIP záznamy.
- * PLC data přijímá z PlcContext (WebSocket /ws/plc).
- * Live CSV záznamy přijímá z useOrderWatcher (WebSocket /ws/orders).
- */
 export default function Overview() {
   const { status, adsConnected } = usePlc()
   const { t, lang } = useLang()
@@ -275,14 +135,14 @@ export default function Overview() {
       etaStr:           eta
         ? eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
         : null,
-      remainingTimeStr: remMs != null ? _fmtDur(remMs) : null,
+      remainingTimeStr: remMs != null ? fmtDur(remMs) : null,
     }
   }, [orderValid, chartData, expectedCnt, actualCnt])
 
   // Uplynulý čas od prvního záznamu
   const elapsedStr = useMemo(() => {
     if (!orderValid || chartData.length === 0) return null
-    return _fmtDur(nowTs - chartData[0].t)
+    return fmtDur(nowTs - chartData[0].t)
   }, [orderValid, chartData, nowTs])
 
   // Plné boxy
@@ -331,10 +191,10 @@ export default function Overview() {
         <div className="ov-plc-offline">
           <WifiOff size={60} className="ov-plc-offline__icon" />
           <p className="ov-plc-offline__title">
-            {lang === 'cs' ? 'PLC není připojeno' : 'PLC not connected'}
+            {t.overview.plcOffline}
           </p>
           <p className="ov-plc-offline__sub">
-            {lang === 'cs' ? 'Čekám na připojení…' : 'Waiting for connection…'}
+            {t.overview.plcOfflineSub}
           </p>
         </div>
       )}
@@ -348,7 +208,7 @@ export default function Overview() {
               {modeInfo ? modeInfo.label[lang] : t.overview.modeUnknown}
             </span>
             {modeTs && (
-              <span className="ov-mode__ts">{_fmtTime(modeTs)}</span>
+              <span className="ov-mode__ts">{fmtTime(modeTs)}</span>
             )}
           </div>
           {modeInfo && (
@@ -421,39 +281,39 @@ export default function Overview() {
                 <div className="ov-kpi__stats-sep" />
                 <div className="ov-stats">
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Zbývá' : 'Remaining'}</span>
+                    <span className="ov-stat__label">{t.overview.statRemaining}</span>
                     <span className={`ov-stat__value${remaining == null ? ' ov-stat__value--muted' : ''}`}>
                       {remaining != null ? remaining : '—'}
                       {remaining != null && <span className="ov-stat__unit"> ks</span>}
                     </span>
                   </div>
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Uplynulo' : 'Elapsed'}</span>
+                    <span className="ov-stat__label">{t.overview.statElapsed}</span>
                     <span className={`ov-stat__value${elapsedStr == null ? ' ov-stat__value--muted' : ''}`}>
                       {elapsedStr ?? '—'}
                     </span>
                   </div>
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Rychlost' : 'Rate'}</span>
+                    <span className="ov-stat__label">{t.overview.statRate}</span>
                     <span className={`ov-stat__value${ratePerMin == null ? ' ov-stat__value--muted' : ''}`}>
                       {ratePerMin != null ? ratePerMin.toFixed(1) : '—'}
                       {ratePerMin != null && <span className="ov-stat__unit"> ks/min</span>}
                     </span>
                   </div>
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Zbývá ~' : 'Time left'}</span>
+                    <span className="ov-stat__label">{t.overview.statTimeLeft}</span>
                     <span className={`ov-stat__value${remainingTimeStr == null ? ' ov-stat__value--muted' : ''}`}>
                       {remainingTimeStr ?? '—'}
                     </span>
                   </div>
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Dokončení' : 'Est. finish'}</span>
+                    <span className="ov-stat__label">{t.overview.statFinish}</span>
                     <span className={`ov-stat__value${etaStr == null ? ' ov-stat__value--muted' : ''}`}>
                       {etaStr ?? '—'}
                     </span>
                   </div>
                   <div className="ov-stat">
-                    <span className="ov-stat__label">{lang === 'cs' ? 'Plné boxy' : 'Full boxes'}</span>
+                    <span className="ov-stat__label">{t.overview.statFullBoxes}</span>
                     <span className={`ov-stat__value${fullBoxCount == null ? ' ov-stat__value--muted' : ''}`}>
                       {fullBoxCount != null ? `${fullBoxCount}/${BOX_COUNT}` : '—'}
                     </span>
@@ -481,10 +341,10 @@ export default function Overview() {
                 const count   = orderValid ? status[`box_${n}_count`]?.value   as number  | undefined : undefined
                 const cls     = full ? 'full' : present ? 'present' : 'empty'
                 const chipLabel = full
-                  ? (lang === 'cs' ? 'Plná' : 'Full')
+                  ? t.overview.boxFull
                   : present
-                    ? (lang === 'cs' ? 'K dispozici' : 'Available')
-                    : (lang === 'cs' ? 'Nepřítomna' : 'Absent')
+                    ? t.overview.boxAvailable
+                    : t.overview.boxAbsent
                 return (
                   <div key={n} className={`ov-box ov-box--${cls}`}>
                     <span className="ov-box__number">BOX {n}</span>
@@ -505,7 +365,7 @@ export default function Overview() {
               <span className="tile__title">{t.overview.lastRecordTile}</span>
               {orderValid && wipData?.file && (
                 <Link to="/wip" className="btn btn--sm btn--primary">
-                  {lang === 'cs' ? 'Záznamy' : 'Records'}
+                  {t.overview.recordsBtn}
                 </Link>
               )}
             </div>
@@ -525,14 +385,14 @@ export default function Overview() {
             ) : (
               <div className="ov-rec-list">
                 <div className="ov-rec-list__header">
-                  <span>{lang === 'cs' ? 'Čas' : 'Time'}</span>
+                  <span>{t.overview.colTimestamp}</span>
                   <span>{t.overview.colId}</span>
                   <span>{t.overview.colGroup}</span>
                 </div>
                 {displayRecords.slice(0, 7).map((rec, i) => (
                   <div key={i} className={`ov-rec-item${i === 0 ? ' ov-rec-item--latest' : ''}`}>
                     <span className="ov-rec-item__ts">
-                      {rec.timestamp ? _fmtHHMM(rec.timestamp as string) : '—'}
+                      {rec.timestamp ? fmtHHMM(rec.timestamp as string) : '—'}
                     </span>
                     <span className="ov-rec-item__id">
                       {(rec.microswitch_id as string) ?? '—'}
@@ -551,13 +411,13 @@ export default function Overview() {
           <div className="tile tile--7 ov-chart-tile">
             <div className="tile__header">
               <span className="tile__title">
-                {lang === 'cs' ? 'Průběh výroby' : 'Production progress'}
+                {t.overview.chartTile}
               </span>
               {orderValid && orderStartTs && (
                 <span className="ov-ts-mono">
-                  {_fmtHHMM(orderStartTs)}
+                  {fmtHHMM(orderStartTs)}
                   {' — now '}
-                  {_fmtHHMM(new Date(nowTs).toISOString())}
+                  {fmtHHMM(new Date(nowTs).toISOString())}
                 </span>
               )}
             </div>
@@ -577,7 +437,7 @@ export default function Overview() {
                       scale="time"
                       ticks={hourTicks}
                       tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-                      tickFormatter={(v) => _fmtHHMM(new Date(v).toISOString())}
+                      tickFormatter={(v) => fmtHHMM(new Date(v).toISOString())}
                       axisLine={false}
                       tickLine={false}
                     />
@@ -590,8 +450,8 @@ export default function Overview() {
                     />
                     <Tooltip
                       contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                      labelFormatter={(v) => _fmtHHMM(new Date(Number(v)).toISOString())}
-                      formatter={(v: number) => [v, lang === 'cs' ? 'ks' : 'pcs']}
+                      labelFormatter={(v) => fmtHHMM(new Date(Number(v)).toISOString())}
+                      formatter={(v: number) => [v, t.overview.unitPcs]}
                     />
                     {expectedCnt != null && expectedCnt > 0 && (
                       <ReferenceLine
@@ -619,7 +479,7 @@ export default function Overview() {
               </div>
             ) : (
               <div className="ov-records__empty">
-                {lang === 'cs' ? 'Žádná data' : 'No data'}
+                {t.overview.chartNoData}
               </div>
             )}
           </div>

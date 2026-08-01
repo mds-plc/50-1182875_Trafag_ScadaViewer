@@ -116,8 +116,8 @@ class StatusResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     """Tělo požadavku POST /api/auth/login."""
-    username: str
-    password: str
+    username: str = Field(max_length=150)    # DoS prevence — PBKDF2 na MB stringu
+    password: str = Field(max_length=1000)   # limit hesla — realisticky max 128 znaků
 
 
 class LoginResponse(BaseModel):

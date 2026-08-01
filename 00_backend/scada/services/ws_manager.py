@@ -27,6 +27,7 @@ Napojení:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -65,7 +66,10 @@ class ConnectionManager:
 
     def disconnect(self, ws: WebSocket) -> None:
         """Odstraní WebSocket ze seznamu aktivních připojení."""
-        self._active.remove(ws)
+        try:
+            self._active.remove(ws)
+        except ValueError:
+            pass   # broadcast() již odstranil nefunkční spojení
         log.debug("[WS] Klient odpojen (celkem: %d)", len(self._active))
 
     async def broadcast(self, message: dict) -> None:
@@ -85,10 +89,14 @@ class ConnectionManager:
             return
         for ws in list(self._active):
             try:
-                await ws.send_text(text)
+                # Timeout 5 s — pomalý klient nesmí blokovat broadcast ostatním
+                await asyncio.wait_for(ws.send_text(text), timeout=5.0)
             except Exception as exc:
                 log.warning("[WS] odeslání selhalo, odpojuji klienta: %s", exc)
-                self._active.remove(ws)
+                try:
+                    self._active.remove(ws)
+                except ValueError:
+                    pass
 
 
 # Singletony — sdílené mezi api/ a services/

@@ -377,7 +377,10 @@ class AdsMonitor:
                 return
             ts = datetime.now(timezone.utc).isoformat()
             payload = {"symbol": name, "value": value, "ts": ts}
-            asyncio.run_coroutine_threadsafe(
-                self._manager.broadcast(payload), self._loop
-            )
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._manager.broadcast(payload), self._loop
+                )
+            except RuntimeError:
+                pass   # event loop zavřený při shutdown — ignorovat
         return callback

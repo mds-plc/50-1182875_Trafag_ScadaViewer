@@ -37,15 +37,22 @@ JAK ROZŠÍŘIT:
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 from datetime import datetime, timezone
+
+# Request ID — nastavuje _RequestIdMiddleware v app.py; čte JsonFormatter.
+# Mimo HTTP request (ADS callback, OrderWatcher) zůstává None.
+request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
 
 class JsonFormatter(logging.Formatter):
     """
     Formátuje log záznamy jako jednořádkový JSON.
     Jedno volání log.info() = jeden řádek JSON na výstupu.
+
+    Pokud je nastaven request_id_var (HTTP požadavek), přidá ho jako "rid" pole.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -55,6 +62,9 @@ class JsonFormatter(logging.Formatter):
             "mod":   record.name,
             "msg":   record.getMessage(),
         }
+        rid = request_id_var.get()
+        if rid is not None:
+            entry["rid"] = rid
         # Výjimky — stack trace jako string (komprimovaný do JSON stringu)
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)

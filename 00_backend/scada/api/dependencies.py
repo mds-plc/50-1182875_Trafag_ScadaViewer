@@ -40,6 +40,11 @@ ROLE_LEVELS: dict[str, int] = {
 # Pro SCADA terminál (kiosk) je 8 h dostatečné; PLC auto-login se obnoví automaticky.
 SESSION_TTL_SECS: int = 8 * 3600
 
+# Aktivní GC — každých _GC_EVERY požadavků projde VŠECHNY sessions a smaže expired.
+# Zabraňuje neomezenému růstu dict při opakovaných loginech bez logoutu.
+_GC_EVERY: int = 50
+_gc_counter: int = 0
+
 
 async def require_auth(
     request:       Request,
@@ -49,7 +54,7 @@ async def require_auth(
     Ověří Bearer token z Authorization hlavičky a zkontroluje TTL.
 
     Vrátí session dict: {username, role, display_name, created_at}.
-    Expired tokeny jsou odstraněny z app.state.sessions (lazy GC).
+    Expired tokeny jsou odstraněny lazy + periodický sweep každých 50 požadavků.
 
     Args:
         request: FastAPI request — přístup k app.state.sessions.
@@ -61,6 +66,8 @@ async def require_auth(
     Raises:
         HTTPException(401): token chybí, není v sessions nebo vypršel.
     """
+    global _gc_counter
+
     token: str | None = None
     if authorization and authorization.startswith("Bearer "):
         token = authorization[len("Bearer "):].strip()
@@ -70,11 +77,21 @@ async def require_auth(
     if not session:
         raise HTTPException(status_code=401, detail="Neautorizovaný přístup")
 
+    now = time.time()
+
     # TTL kontrola — expired token odstraníme a vrátíme 401
     created_at = session.get("created_at", 0.0)
-    if time.time() - created_at > SESSION_TTL_SECS:
+    if now - created_at > SESSION_TTL_SECS:
         sessions.pop(token, None)
         raise HTTPException(status_code=401, detail="Relace vypršela — přihlaste se znovu")
+
+    # Aktivní GC — periodický sweep všech expired sessions
+    _gc_counter += 1
+    if _gc_counter >= _GC_EVERY:
+        _gc_counter = 0
+        expired = [t for t, s in sessions.items() if now - s.get("created_at", 0.0) > SESSION_TTL_SECS]
+        for t in expired:
+            del sessions[t]
 
     return session
 
