@@ -26,29 +26,29 @@ const EXPAND_PARAMS: ExpandParam[] = [
   { key: 'rf_realisingforce',          label: 'RF',   unit: 'N',  description: 'Realising Force'               },
   { key: 'ttf_totaltravelforce',       label: 'TTF',  unit: 'N',  description: 'Total Travel Force'            },
   // Distances
-  { key: 'pt_pretravel',               label: 'PT',   unit: 'mm', description: 'Pre-travel'                    },
-  { key: 'ot_overtravel',              label: 'OvT',  unit: 'mm', description: 'Overtravel'                    },
-  { key: 'rt_realisingtravel',         label: 'RvT',  unit: 'mm', description: 'Realising Travel'              },
-  { key: 'md_movementdifferential',    label: 'MD',   unit: 'mm', description: 'Movement Differential'         },
-  { key: 'tt_totaltravel',             label: 'TT',   unit: 'mm', description: 'Total Travel'                  },
-  { key: 'fp_freeposition',            label: 'FP',   unit: 'mm', description: 'Free Position'                 },
-  { key: 'op_operatingposition',       label: 'OP',   unit: 'mm', description: 'Operating Position'            },
-  { key: 'rp_realeasingposition',      label: 'RP',   unit: 'mm', description: 'Releasing Position'            },
-  { key: 'ttp_totaltravelposition',    label: 'TTP',  unit: 'mm', description: 'Total Travel Position'         },
+  { key: 'pt_pretravel',               label: 'PT',   unit: 'µm', description: 'Pre-travel'                    },
+  { key: 'ot_overtravel',              label: 'OvT',  unit: 'µm', description: 'Overtravel'                    },
+  { key: 'rt_realisingtravel',         label: 'RvT',  unit: 'µm', description: 'Realising Travel'              },
+  { key: 'md_movementdifferential',    label: 'MD',   unit: 'µm', description: 'Movement Differential'         },
+  { key: 'tt_totaltravel',             label: 'TT',   unit: 'µm', description: 'Total Travel'                  },
+  { key: 'fp_freeposition',            label: 'FP',   unit: 'µm', description: 'Free Position'                 },
+  { key: 'op_operatingposition',       label: 'OP',   unit: 'µm', description: 'Operating Position'            },
+  { key: 'rp_realeasingposition',      label: 'RP',   unit: 'µm', description: 'Releasing Position'            },
+  { key: 'ttp_totaltravelposition',    label: 'TTP',  unit: 'µm', description: 'Total Travel Position'         },
   // Times
-  { key: 'ut_unstabletime',            label: 'UT',   unit: 'ms', description: 'Unstable Time'                 },
-  { key: 'rt_reversetime',             label: 'RevT', unit: 'ms', description: 'Reverse Time'                  },
-  { key: 'bt_bouncetime',              label: 'BT',   unit: 'ms', description: 'Bounce Time'                   },
-  { key: 'ot_operatingtime',           label: 'OpT',  unit: 'ms', description: 'Operating Time'                },
+  { key: 'ut_unstabletime',            label: 'UT',   unit: 'µs', description: 'Unstable Time'                 },
+  { key: 'rt_reversetime',             label: 'RevT', unit: 'µs', description: 'Reverse Time'                  },
+  { key: 'bt_bouncetime',              label: 'BT',   unit: 'µs', description: 'Bounce Time'                   },
+  { key: 'ot_operatingtime',           label: 'OpT',  unit: 'µs', description: 'Operating Time'                },
   // Contacts — 999.9 = sensor not connected → filtered (value > 500)
-  { key: 'r_nc_operatingposition_neg', label: 'NCo−', unit: 'mΩ', description: 'NC — Operating Position Neg'  },
-  { key: 'r_nc_operatingposition_pos', label: 'NCo+', unit: 'mΩ', description: 'NC — Operating Position Pos'  },
-  { key: 'r_nc_releasingposition_neg', label: 'NCr−', unit: 'mΩ', description: 'NC — Releasing Position Neg'  },
-  { key: 'r_nc_releasingposition_pos', label: 'NCr+', unit: 'mΩ', description: 'NC — Releasing Position Pos'  },
-  { key: 'r_no_operatingposition_neg', label: 'NOo−', unit: 'mΩ', description: 'NO — Operating Position Neg'  },
-  { key: 'r_no_operatingposition_pos', label: 'NOo+', unit: 'mΩ', description: 'NO — Operating Position Pos'  },
-  { key: 'r_no_releasingposition_neg', label: 'NOr−', unit: 'mΩ', description: 'NO — Releasing Position Neg'  },
-  { key: 'r_no_releasingposition_pos', label: 'NOr+', unit: 'mΩ', description: 'NO — Releasing Position Pos'  },
+  { key: 'r_nc_operatingposition_neg', label: 'NCo−', unit: 'Ω', description: 'NC — Operating Position Neg'  },
+  { key: 'r_nc_operatingposition_pos', label: 'NCo+', unit: 'Ω', description: 'NC — Operating Position Pos'  },
+  { key: 'r_nc_releasingposition_neg', label: 'NCr−', unit: 'Ω', description: 'NC — Releasing Position Neg'  },
+  { key: 'r_nc_releasingposition_pos', label: 'NCr+', unit: 'Ω', description: 'NC — Releasing Position Pos'  },
+  { key: 'r_no_operatingposition_neg', label: 'NOo−', unit: 'Ω', description: 'NO — Operating Position Neg'  },
+  { key: 'r_no_operatingposition_pos', label: 'NOo+', unit: 'Ω', description: 'NO — Operating Position Pos'  },
+  { key: 'r_no_releasingposition_neg', label: 'NOr−', unit: 'Ω', description: 'NO — Releasing Position Neg'  },
+  { key: 'r_no_releasingposition_pos', label: 'NOr+', unit: 'Ω', description: 'NO — Releasing Position Pos'  },
 ]
 
 // ------------------------------------------------------------------
@@ -113,12 +113,25 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const hasStatusCol   = useMemo(() => records.some(r => r.status          != null && String(r.status          ?? '') !== ''), [records])
   const hasCategoryCol = useMemo(() => records.some(r => r.sortingcategory != null && String(r.sortingcategory ?? '') !== ''), [records])
 
-  // Měřené parametry — zobrazit jen ty, které existují a mají platnou hodnotu (≤ 500, 999.9 = senzor off)
+  /** NOK kategorie — zobrazit jen pokud CSV obsahuje alespoň jedno nokcategory_* pole. */
+  const NOK_CATS = [
+    { key: 'nokcategory_force',    label: 'F' },
+    { key: 'nokcategory_position', label: 'P' },
+    { key: 'nokcategory_electric', label: 'E' },
+    { key: 'nokcategory_times',    label: 'T' },
+    { key: 'nokcategory_process',  label: 'Pr' },
+  ] as const
+  const activeNokCats = useMemo(
+    () => NOK_CATS.filter(c => records.some(r => r[c.key] != null && String(r[c.key] ?? '') !== '')),
+    [records]
+  )
+
+  // Měřené parametry — zobrazit jen ty, které existují a mají platnou hodnotu (ne sentinel 999.9 = senzor off)
   const activeParams = useMemo(() => EXPAND_PARAMS.filter(p =>
     records.some(r => {
       const v = String(r[p.key] ?? '')
       const n = Number(v)
-      return v !== '' && !isNaN(n) && n <= 500
+      return v !== '' && !isNaN(n) && n < 999999
     })
   ), [records])
 
@@ -205,6 +218,9 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                   {hasGroupCol    && <th className="db-subtable__th db-subtable__th--center">{t.db.colGroup}</th>}
                   {hasStatusCol   && <th className="db-subtable__th db-subtable__th--center">STATUS</th>}
                   {hasCategoryCol && <th className="db-subtable__th db-subtable__th--center">KAT.</th>}
+                  {activeNokCats.map(c => (
+                    <th key={c.key} className="db-subtable__th db-subtable__th--center" title={c.key}>{c.label}</th>
+                  ))}
                   {activeParams.map(p => (
                     <th
                       key={p.key}
@@ -268,11 +284,26 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                         </span>
                       </td>
                     )}
-                    {activeParams.map(p => (
-                      <td key={p.key} className="db-subtable__td db-subtable__td--param">
-                        {r[p.key] != null && String(r[p.key]) !== '' ? String(r[p.key]) : '—'}
-                      </td>
-                    ))}
+                    {activeNokCats.map(c => {
+                      const v = String(r[c.key] ?? '0')
+                      const isFail = v === '1'
+                      return (
+                        <td key={c.key} className="db-subtable__td db-subtable__td--center">
+                          <span className={`db-nok-icon db-nok-icon--${isFail ? 'fail' : 'ok'}`}>
+                            {isFail ? '!' : '\u2713'}
+                          </span>
+                        </td>
+                      )
+                    })}
+                    {activeParams.map(p => {
+                      const raw = r[p.key]
+                      if (raw == null || String(raw) === '') return <td key={p.key} className="db-subtable__td db-subtable__td--param">—</td>
+                      const n = Number(raw)
+                      const display = !isNaN(n) ? n.toFixed(2) : String(raw)
+                      return (
+                        <td key={p.key} className="db-subtable__td db-subtable__td--param">{display}</td>
+                      )
+                    })}
                     <td className="db-subtable__td db-subtable__td--actions">
                       <button
                         className="db-icon-btn"
@@ -358,8 +389,9 @@ export default function FileTable({
   const { t } = useLang()
   const navigate = useNavigate()
 
-  // colspan: checkbox + # + created + [order] + switch + records + [sync] + actions
-  const colSpan = (dataType === 'production' ? 5 : 4) + (showSync ? 1 : 0) + 2  // +2: checkbox col
+  // colspan: checkbox + # + created + [order] + switch + [records] + [sync] + actions
+  const showRecords = dataType === 'production'
+  const colSpan = 4 + (dataType === 'production' ? 1 : 0) + (showRecords ? 1 : 0) + (showSync ? 1 : 0) + 2
 
   /** Sortovatelný záhlaví sloupce */
   function SortTh({ col, children, className }: { col: string; children: React.ReactNode; className?: string }) {
@@ -412,7 +444,7 @@ export default function FileTable({
                 <SortTh col="created_at">{t.db.colCreated}</SortTh>
                 {dataType === 'production' && <SortTh col="order_id">{t.db.colOrder}</SortTh>}
                 <SortTh col="switch_name">{t.db.colSwitchType}</SortTh>
-                <SortTh col="record_count" className="db-th--center">{t.db.colRecords}</SortTh>
+                {showRecords && <SortTh col="record_count" className="db-th--center">{t.db.colRecords}</SortTh>}
                 {showSync && <th className="db-th db-th--center">{t.db.colSync}</th>}
                 <th className="db-th db-th--actions"></th>
               </tr>
@@ -447,9 +479,11 @@ export default function FileTable({
                       <td className="db-td db-td--mono">{file.order_id ?? '—'}</td>
                     )}
                     <td className="db-td">{file.switch_name}</td>
-                    <td className="db-td db-td--center">
-                      <span className="db-badge">{file.record_count}</span>
-                    </td>
+                    {showRecords && (
+                      <td className="db-td db-td--center">
+                        <span className="db-badge">{file.record_count}</span>
+                      </td>
+                    )}
                     {showSync && (
                       <td className="db-td db-td--center">
                         {file.sync_status === 'done_remote'

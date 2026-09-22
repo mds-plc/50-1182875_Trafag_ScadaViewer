@@ -13,10 +13,11 @@ Zodpovědnost:
   - UNC cesty (NAS) mají timeout 30 s; lokální disk 10 s (pojistka).
 
 Rozhraní:
-  GET    /api/files             → FilesResponse (files[], total, page, pages)
-  GET    /api/files/{file_id}   → OrderFileModel
-  DELETE /api/files/{file_id}   → 204 / 403 / 404 / 503
-  POST   /api/files/batch-delete → BatchDeleteResult (deleted, failed, errors[])
+  GET    /api/files                    → FilesResponse (files[], total, page, pages)
+  GET    /api/files/{file_id}          → OrderFileModel
+  GET    /api/files/{file_id}/download → FileResponse (originální CSV)
+  DELETE /api/files/{file_id}          → 204 / 403 / 404 / 503
+  POST   /api/files/batch-delete       → BatchDeleteResult (deleted, failed, errors[])
 
 Napojení:
   Závisí na: services (DataReader protokol), models.{FilesResponse, OrderFileModel,
@@ -30,6 +31,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 from scada.api.dependencies import require_auth, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
@@ -183,3 +185,32 @@ async def get_file(
     return OrderFileModel(**meta)
 
 
+@router.get("/files/{file_id}/download", dependencies=[Depends(require_auth)])
+async def download_file(
+    file_id:   str,
+    request:   Request,
+    location:  str = Query('local',      alias="location"),
+    file_type: str = Query('production', alias="type"),
+) -> FileResponse:
+    """Stáhne originální CSV soubor — přesně ve formátu, ve kterém ho zapsal DatabaseGateway."""
+    reader: DataReader = request.app.state.csv_reader
+    timeout = 30.0 if location == "remote" else 10.0
+    try:
+        path = await asyncio.wait_for(
+            asyncio.to_thread(reader.resolve_path, file_id, location, file_type),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error("[API]   download %s timeout (%ss) location=%s", file_id, timeout, location)
+        raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
+    except (OSError, PermissionError) as exc:
+        log.error("[API]   download %s I/O chyba: %s", file_id, exc)
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+    if path is None:
+        raise HTTPException(status_code=404, detail="Soubor nenalezen")
+    log.info("[API]   download %s location=%s type=%s", file_id, location, file_type)
+    return FileResponse(
+        path=path,
+        filename=file_id,
+        media_type="text/csv; charset=utf-8-sig",
+    )

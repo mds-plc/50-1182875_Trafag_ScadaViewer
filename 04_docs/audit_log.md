@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-08-01 (architektonický audit)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-22 (testing file detail + audit opravy)**.
 
 ### 🔴 HIGH
 
@@ -22,7 +22,7 @@
 | M3 | `groupCounts` + `fileExpectedCount` z hook nepoužity v ChartView UI | `pages/ChartView.tsx` | [2026-07-22 #9] |
 | M4 | `CatAxisTick` + `renderLabel` přijímají `props: any` | `pages/ChartView.tsx` | [2026-07-28 hloubkový #7] |
 | M7 | Chybí test pro `group_counts` + `file_expected_count` v `/api/data` response | `02_tests/test_api.py` | [2026-07-22 #15] |
-| M8 | `downloadCsv`/`downloadXlsx`: chybí AbortController (one-shot handler, nízká priorita) | `hooks/useDatabaseState.ts` | [2026-07-30 full-audit FE#5] |
+| M8 | `downloadXlsx`: chybí AbortController (one-shot handler, nízká priorita); `downloadCsv` opraveno (2026-09-22: přepojeno na backend download endpoint) | `hooks/useDatabaseState.ts` | [2026-07-30 full-audit FE#5] |
 
 ### 🔵 LOW
 
@@ -43,6 +43,74 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-09-22] Testing file detail + originální CSV download
+
+### Scope
+Implementace dvouúrovňového detailu testovacích souborů (sekční CSV formát) a download originálního CSV souboru přes backend endpoint.
+
+### Změny
+
+| # | Soubor | Popis |
+|---|--------|-------|
+| T1 | `services/repositories/csv_repository.py` | Merge `testingparameters` sekce do záznamů (přidáno do merge loop) |
+| T2 | `api/files.py` | Nový endpoint `GET /api/files/{id}/download` — `FileResponse` s `asyncio.wait_for` timeout |
+| T3 | `services/file_service.py` | Nová metoda `resolve_path()` — delegace na repository + `exists()` guard |
+| T4 | `services/protocols.py` | `resolve_path` přidán do `DataReader` protokolu |
+| T5 | `utils/paramMeta.ts` | `TESTING_INPUT_GROUPS` (Drive/Electric/Measuring/Limits), `METADATA_KEYS`, `MEASUREDINFO_KEYS` + labely/tooltipy |
+| T6 | `pages/ChartView.tsx` | Dvouúrovňové záložky: sekce (Test Setup/Measurement/Results/NOK) + pod-záložky (Forces/.../Electric); testing hero hlavička |
+| T7 | `utils/downloadOriginal.ts` | Nová utilita — stažení originálního CSV přes backend download endpoint |
+| T8 | `hooks/useDatabaseState.ts` | `downloadCsv` přepojeno na `downloadOriginalCsv` místo klientského `exportCsv` |
+| T9 | `i18n/types.ts` + `cs.ts` + `en.ts` | Nové klíče: `sectionTestingParams`, `sectionMeasuredInfo`, `sectionAnalyzedParams`, `sectionNokInfo` |
+| T10 | `styles/chart.css` | `.testing-hero`, `.cv-section-tabs`, `.cv-sub-tabs`, `.cv-nok-section`, `.cv-section-empty` |
+
+### Audit opravy (nalezeno a opraveno v téže session)
+
+| # | Závažnost | Nález | Oprava |
+|---|-----------|-------|--------|
+| C1 | CRITICAL | `useState` volán po early return — porušení Rules of Hooks | Přesunuty na vrch komponenty vedle ostatních hooks |
+| C2 | CRITICAL | `console.log` debug výpisy v `_lsGet`/`_lsSet` (useDatabaseState) | Odstraněny |
+| C3 | CRITICAL | Download endpoint bez `asyncio.wait_for` timeout | Přidán timeout 30s/10s (remote/local) + TimeoutError catch |
+| C4 | CRITICAL | `downloadOriginalCsv` — žádná chybová zpětná vazba uživateli | Přidán `onError` callback → toast notifikace |
+| M1 | MEDIUM | `file_service.py` — chybí `from pathlib import Path` import | Přidán import |
+| M2 | MEDIUM | `files.py` — download endpoint chybí v docstring modulu | Doplněn do rozhraní |
+| M3 | MEDIUM | `downloadOriginalCsv` — prázdný token posílá `Bearer ` header | Guard: headers jen pokud token neprázdný |
+| M4 | MEDIUM | Download endpoint bez logu úspěšného stažení | Přidán `log.info` |
+
+### Architektonická rozhodnutí
+- **Dvouúrovňové záložky** — hlavní záložky = CSV sekce (Test Setup, Measurement, Results, NOK Evaluation); pod-záložky v Results = skupiny analyzovaných parametrů (Forces/.../Electric)
+- **Metadata v hero** — informace ze sekce `[Metadata]` zobrazeny v tmavém hero panelu (switch name, ID, timestamp), ne jako záložka
+- **Originální CSV download** — endpoint `FileResponse` místo klientské rekonstrukce; zachovává přesný formát DatabaseGateway (sekce, BOM, hlavičky)
+- **`onError` callback pattern** — `downloadOriginalCsv` přijímá volitelný callback místo importu toast kontextu, aby zůstala čistou utilitou
+
+### Stav testů po fázi 19
+Backend 146/146, Frontend build OK.
+
+---
+
+## [2026-09-21] Tisk reportů z prohlížeče
+
+### Scope
+Implementace tisku zakázkových reportů přímo z prohlížeče (`window.print()` → systémový dialog).
+Dva typy reportů: detail zakázky (Production) a detail záznamu.
+
+### Změny
+
+| # | Soubor | Popis |
+|---|--------|-------|
+| P1 | `styles/layout.css` | `@media print` — skrytí sidebar/topbar/toastů; `html, body, #root, .app, .content` → `height: auto; overflow: visible` |
+| P2 | `styles/chart.css` | `@media print` — OrderHero světlé barvy; skrytí interaktivních prvků (tlačítka, tabs, pagination, maximize, help); Recharts graf skryt (jen KPI souhrn); tabulky kompaktní font; `.data-table-scroll` → `overflow-x: visible`; sticky pozice zrušeny |
+| P3 | `styles/chart.css` | `.cv-print-only` / `.cv-screen-only` — v tisku se zobrazí tabulky po skupinách (Forces → Positions → Travel → Times → Electric), na obrazovce záložkový UI |
+| P4 | `styles/chart.css` | `.cv-print-group` / `__title` — nadpis skupiny s barevným lemem |
+| P5 | `pages/ChartView.tsx` | Tlačítko Tisk (Printer icon) vedle CSV/XLSX v `tile__header-actions`; `cv-print-only` sekce: pro každou PARAM_GROUP samostatná DataTable se sloupcem `#` (číslo řádku pro propojení mezi skupinami) |
+| P6 | `pages/ChartView.tsx` | Detail záznamu: `cv-toolbar` s tlačítkem Tisk nad `rd-meta` |
+| P7 | `i18n/types.ts` + `cs.ts` + `en.ts` | Klíč `chart.print` — "Tisk" / "Print" |
+
+### Architektonické rozhodnutí
+- **Print-only rendering** — místo skrývání sloupců v jedné tabulce se v print režimu renderují **samostatné tabulky** pro každou skupinu parametrů (timestamp + kat. + status + parametry skupiny). Sloupec `#` (číslo řádku) umožňuje propojení záznamů mezi skupinami.
+- **`npm run build` nutný** — uživatel přistupuje přes backend (port 8080, `StaticFiles` z `dist/`), ne přes Vite dev server (5173). Změny se projeví až po rebuildu.
 
 ---
 

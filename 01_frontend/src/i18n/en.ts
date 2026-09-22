@@ -95,6 +95,13 @@ export const en: Translations = {
     paramName:             'Name',
     paramValue:            'Value',
     maximize:              'Maximize',
+    print:                 'Print',
+    testingInput:          'Input Parameters',
+    testingDetail:         'Measurement Detail',
+    sectionTestingParams:  'Test Setup',
+    sectionMeasuredInfo:   'Measurement',
+    sectionAnalyzedParams: 'Results',
+    sectionNokInfo:        'NOK Evaluation',
   },
   settings: {
     title:           'Settings',

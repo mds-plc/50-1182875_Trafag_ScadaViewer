@@ -4,34 +4,43 @@
  *   1. Detail zakázky (?file=&location=&type=)
  *   2. Detail záznamu  (?file=&location=&type=&record=N)
  */
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Download, ArrowLeft } from 'lucide-react'
+import { Download, ArrowLeft, Printer } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, LabelList,
 } from 'recharts'
 import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
-import { exportCsv }  from '../utils/exportCsv'
+import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import { exportXlsx } from '../utils/exportXlsx'
-import { PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS } from '../utils/paramMeta'
-import Chart          from '../components/Chart'
+import { downloadOriginalCsv } from '../utils/downloadOriginal'
+import {
+  PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
+  MEASUREDINFO_KEYS,
+} from '../utils/paramMeta'
 import DataTable      from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
 import RecordDiagram  from '../components/RecordDiagram'
 import { GROUP_COLORS } from '../utils/groupColors'
 
-/** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku. */
-const FIXED_COLS = ['timestamp', 'sortingcategory', 'status']
+/** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
+ *  NOK sloupce jsou pevné — pokud CSV je neobsahuje, existingKeys.has() je automaticky skryje. */
+const FIXED_COLS = ['timestamp', 'sortingcategory', 'status',
+  'nokcategory_force', 'nokcategory_position', 'nokcategory_electric',
+  'nokcategory_times', 'nokcategory_process']
 
 // Barvy kategorií 1–6 (1–4 OK, 5 NOK Trafag, 6 NOK výrobce)
 const CAT_COLORS = ['#16a34a', '#4ade80', '#65a30d', '#ca8a04', '#ea580c', '#dc2626']
 
 /** Záložky tabulky parametrů v detailu zakázky — odvozeno z PARAM_GROUPS v paramMeta.ts. */
 type TabId = 'forces' | 'positions' | 'travel' | 'times' | 'electric'
-
 const TABLE_TABS = PARAM_GROUPS as { id: TabId; label: string; color: string; keys: string[] }[]
+
+/** Sekce testovacího CSV souboru — hlavní úroveň záložek (metadata jsou v hero). */
+type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info'
 
 /** Custom X-axis tick — barevné rozlišení OK (zelená) / NOK (červená). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,6 +258,10 @@ function renderChartCell(col: string, value: unknown, row: Record<string, unknow
     if (!v) return null
     return <span className="db-cat-badge" data-cat={v}>{v}</span>
   }
+  if (col.startsWith('nokcategory_')) {
+    const isFail = v === '1'
+    return <span className={`db-nok-icon db-nok-icon--${isFail ? 'fail' : 'ok'}`}>{isFail ? '!' : '\u2713'}</span>
+  }
   return null
 }
 
@@ -264,8 +277,12 @@ export default function ChartView() {
 
   const { records, total, pages, groupCounts, loading, error, fetchData } = useData()
   const { t } = useLang()
+  const { token } = useAuth()
+  const { addToast } = useToast()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabId>('forces')
+  const [section, setSection] = useState<SectionId>('testing_params')
+  const [analyzedSub, setAnalyzedSub] = useState<TabId>('forces')
 
   // Absolutní index záznamu → stránka, na které leží
   const pageForRecord = recordIdx != null
@@ -293,8 +310,8 @@ export default function ChartView() {
       records.some(r => {
         const v = r[k]
         if (v == null || String(v) === '') return false
-        // Pro měřené parametry (mimo electric) filtrovat sentinel 999.9 (senzor nepřipojen)
-        if (activeTab !== 'electric' && !FIXED_COLS.includes(k) && Number(String(v)) > 500) return false
+        // Pro měřené parametry (mimo electric) filtrovat sentinel (≥999999 = otevřený kontakt)
+        if (activeTab !== 'electric' && !FIXED_COLS.includes(k) && Number(String(v)) >= 999999) return false
         return true
       })
     )
@@ -331,8 +348,18 @@ export default function ChartView() {
           <>
             <OrderSummary record={record} t={t} />
 
+            <div className="cv-toolbar">
+              <button className="btn btn--secondary btn--sm" onClick={() => window.print()}>
+                <Printer size={14} />
+                {t.chart.print}
+              </button>
+            </div>
+
             <div className="rd-meta">
               <span className="rd-meta__ts">{String(record.timestamp ?? '—')}</span>
+              {record.microswitch_id != null && (
+                <span className="rd-meta__id">ID: {String(record.microswitch_id)}</span>
+              )}
               {record.sortingcategory != null && (
                 <span className="db-cat-badge" data-cat={String(record.sortingcategory)}>
                   {String(record.sortingcategory)}
@@ -385,7 +412,8 @@ export default function ChartView() {
               <CategoryChart groupCounts={groupCounts} total={total} />
             </div>
 
-            <div className="tile tile--12">
+            {/* Obrazovka — záložková tabulka */}
+            <div className="tile tile--12 cv-screen-only">
               <div className="tile__header">
                 <div className="cv-param-tabs">
                   {TABLE_TABS.map(tab => (
@@ -404,7 +432,7 @@ export default function ChartView() {
                     <>
                       <button
                         className="btn btn--secondary btn--sm"
-                        onClick={() => void exportCsv(records as Record<string, unknown>[], fileId)}
+                        onClick={() => downloadOriginalCsv(fileId, location, fileType, token ?? '', () => addToast(t.common.errorLoading, 'danger'))}
                         title={t.chart.exportCsv}
                       >
                         <Download size={13} />
@@ -417,6 +445,14 @@ export default function ChartView() {
                       >
                         <Download size={13} />
                         XLSX
+                      </button>
+                      <button
+                        className="btn btn--secondary btn--sm cv-print-btn"
+                        onClick={() => window.print()}
+                        title={t.chart.print}
+                      >
+                        <Printer size={13} />
+                        {t.chart.print}
                       </button>
                     </>
                   )}
@@ -441,6 +477,28 @@ export default function ChartView() {
               />
               <Pagination page={tablePage} pages={pages} onPage={setTablePage} />
             </div>
+
+            {/* Tisk — jedna tabulka pro každou skupinu parametrů */}
+            <div className="cv-print-only">
+              {TABLE_TABS.map(tab => {
+                const existingKeys = records.length > 0 ? new Set(Object.keys(records[0])) : new Set<string>()
+                const tabCols = ['_row_num', 'timestamp', 'sortingcategory', 'status', ...tab.keys].filter(k => k === '_row_num' || existingKeys.has(k))
+                if (tabCols.length <= 4) return null
+                const numberedRows = records.map((r, i) => ({ ...r, _row_num: String(i + 1) }))
+                return (
+                  <div key={tab.id} className="cv-print-group">
+                    <h3 className="cv-print-group__title" style={{ borderColor: tab.color }}>{tab.label}</h3>
+                    <DataTable
+                      columns={tabCols}
+                      rows={numberedRows}
+                      columnLabels={{ ...PARAM_LABELS, _row_num: '#' }}
+                      columnTooltips={PARAM_TOOLTIPS}
+                      cellRenderer={renderChartCell}
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </>
         )}
       </div>
@@ -448,31 +506,266 @@ export default function ChartView() {
   }
 
   // ── Detail zakázky — Testing ──────────────────────────────────────
+  const record = records[0] ?? null
+
+  // Mapování sekcí → klíče a podskupiny (metadata jsou v hero panelu)
+  const sectionLabels: Record<SectionId, string> = {
+    testing_params: t.chart.sectionTestingParams,
+    measured_info:  t.chart.sectionMeasuredInfo,
+    analyzed:       t.chart.sectionAnalyzedParams,
+    nok_info:       t.chart.sectionNokInfo,
+  }
+
+  const sectionColors: Record<SectionId, string> = {
+    testing_params: '#0ea5e9',
+    measured_info:  '#64748b',
+    analyzed:       '#d97706',
+    nok_info:       '#dc2626',
+  }
+
+  /** Zjistí, zda záznam obsahuje alespoň 1 klíč dané sekce (nový sekční formát). */
+  const hasTestingParams = record != null && TESTING_INPUT_GROUPS.some(g => g.keys.some(k => record[k] != null))
+  const hasMeasuredInfo  = record != null && MEASUREDINFO_KEYS.some(k => record[k] != null)
+  const hasAnalyzed      = record != null && PARAM_GROUPS.some(g => g.keys.some(k => record[k] != null))
+  const hasNokInfo       = record != null && record.nokreason != null
+
+  /** Render key-value řádek parametru. */
+  const renderParamRow = (key: string, rec: Record<string, unknown>) => {
+    const raw = rec[key]
+    if (raw == null || String(raw).trim() === '') return null
+    const n = Number(raw)
+    const display = isNaN(n) ? String(raw) : n.toFixed(4).replace(/\.?0+$/, '')
+    const unit = PARAM_TOOLTIPS[key]?.match(/\[([^\]]+)\]$/)?.[1] ?? ''
+    return (
+      <tr key={key} className="rd-pt__row">
+        <td className="rd-pt__abbr">{PARAM_LABELS[key] ?? key}</td>
+        <td className="rd-pt__name">{PARAM_TOOLTIPS[key]?.replace(/\s*\[.*$/, '') ?? key}</td>
+        <td className="rd-pt__val">
+          {display}
+          {unit && <span className="rd-pt__unit">{unit}</span>}
+        </td>
+      </tr>
+    )
+  }
+
+  /** Render celou key-value tabulku pro flat seznam klíčů. */
+  const renderFlatTable = (keys: string[], rec: Record<string, unknown>) => (
+    <table className="rd-pt">
+      <thead>
+        <tr>
+          <th className="rd-pt__th rd-pt__th--abbr">{t.chart.paramAbbr}</th>
+          <th className="rd-pt__th">{t.chart.paramName}</th>
+          <th className="rd-pt__th rd-pt__th--val">{t.chart.paramValue}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {keys.map(k => renderParamRow(k, rec))}
+      </tbody>
+    </table>
+  )
+
+  /** Render tabulku se skupinami (barevné záhlaví skupiny + řádky). */
+  const renderGroupedTable = (
+    groups: { id: string; label: string; unit: string; color: string; keys: string[] }[],
+    rec: Record<string, unknown>,
+  ) => (
+    <table className="rd-pt">
+      <thead>
+        <tr>
+          <th className="rd-pt__th rd-pt__th--abbr">{t.chart.paramAbbr}</th>
+          <th className="rd-pt__th">{t.chart.paramName}</th>
+          <th className="rd-pt__th rd-pt__th--val">{t.chart.paramValue}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map(group => {
+          const visibleKeys = group.keys.filter(k => rec[k] != null && String(rec[k]).trim() !== '')
+          if (visibleKeys.length === 0) return null
+          return (
+            <React.Fragment key={group.id}>
+              <tr className="rd-pt__group-row">
+                <td colSpan={3} className="rd-pt__group-header" style={{ borderColor: group.color, color: group.color }}>
+                  {group.label} {group.unit && `[${group.unit}]`}
+                </td>
+              </tr>
+              {visibleKeys.map(k => renderParamRow(k, rec))}
+            </React.Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+
+  /** NOK render — speciální zobrazení s OK/NOK ikonami. */
+  const renderNokTable = (rec: Record<string, unknown>) => {
+    const reason = Number(rec.nokreason ?? 0)
+    const isNok = reason !== 0
+    const cats = ['force', 'position', 'electric', 'times', 'process'] as const
+    return (
+      <div className="cv-nok-section">
+        <div className="cv-nok-result">
+          <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'} cv-nok-result__badge`}>
+            {isNok ? 'NOK' : 'OK'}
+          </span>
+          {isNok && <span className="cv-nok-result__code">Code: {reason}</span>}
+        </div>
+        <div className="cv-nok-cats">
+          {cats.map(cat => {
+            const key = `nokcategory_${cat}`
+            const isFail = String(rec[key] ?? '0') === '1'
+            return (
+              <div key={cat} className={`cv-nok-cat cv-nok-cat--${isFail ? 'fail' : 'ok'}`}>
+                <span className={`db-nok-icon db-nok-icon--${isFail ? 'fail' : 'ok'}`}>
+                  {isFail ? '!' : '\u2713'}
+                </span>
+                <span className="cv-nok-cat__label">{cat.charAt(0).toUpperCase() + cat.slice(1)}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="chart-header">
         {backBtn}
-        <h1 className="page-title">{t.db.orderDetail} — {fileId}</h1>
+        <h1 className="page-title">{t.chart.testingDetail} — {fileId}</h1>
       </div>
 
       {loading && <LoadingSpinner />}
       {error   && <p className="error-text">{error}</p>}
 
-      {!loading && !error && (
+      {!loading && !error && record && (
         <>
-          {records.length > 0 && <OrderSummary record={records[0]} t={t} />}
-
-          <div className="tile tile--12 mb-4">
-            <Chart records={records} />
+          {/* Testing Hero — kompaktní tmavý panel */}
+          <div className="testing-hero">
+            <div className="testing-hero__left">
+              <div className="testing-hero__switch">{String(record.microswitch_name ?? '—')}</div>
+              {record.microswitch_id != null && (
+                <div className="testing-hero__id">ID: {String(record.microswitch_id)}</div>
+              )}
+            </div>
+            <div className="testing-hero__divider" />
+            <div className="testing-hero__right">
+              <div className="testing-hero__ts">{String(record.timestamp ?? '—')}</div>
+              {record.measuretime != null && (
+                <div className="testing-hero__measure">
+                  {Number(record.measuretime).toFixed(1)} s
+                </div>
+              )}
+              {/* Celkový OK/NOK */}
+              {(() => {
+                const reason = Number(record.nokreason ?? 0)
+                const isNok = reason !== 0
+                return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
+              })()}
+            </div>
           </div>
 
+          {/* Hlavní sekční záložky */}
           <div className="tile tile--12">
             <div className="tile__header">
-              <span className="tile__title">{t.chart.paramsTitle}</span>
+              <div className="cv-section-tabs">
+                {(Object.keys(sectionLabels) as SectionId[]).map(id => (
+                  <button
+                    key={id}
+                    className={`cv-section-tab${section === id ? ' cv-section-tab--active' : ''}`}
+                    style={section === id ? { borderBottomColor: sectionColors[id] } : undefined}
+                    onClick={() => setSection(id)}
+                  >
+                    {sectionLabels[id]}
+                  </button>
+                ))}
+              </div>
+              <div className="tile__header-actions">
+                <button className="btn btn--secondary btn--sm" onClick={() => downloadOriginalCsv(fileId, location, fileType, token ?? '', () => addToast(t.common.errorLoading, 'danger'))} title={t.chart.exportCsv}>
+                  <Download size={13} /> CSV
+                </button>
+                <button className="btn btn--secondary btn--sm" onClick={() => void exportXlsx(records as Record<string, unknown>[], fileId)} title={t.db.downloadXlsx}>
+                  <Download size={13} /> XLSX
+                </button>
+                <button className="btn btn--secondary btn--sm cv-print-btn" onClick={() => window.print()} title={t.chart.print}>
+                  <Printer size={13} /> {t.chart.print}
+                </button>
+              </div>
             </div>
-            <p className="chart-params-placeholder">{t.chart.paramsPlaceholder}</p>
+
+            {/* Obsah aktivní sekce */}
+            {section === 'testing_params' && (
+              hasTestingParams
+                ? renderGroupedTable(TESTING_INPUT_GROUPS, record)
+                : <p className="cv-section-empty">{t.common.noData}</p>
+            )}
+
+            {section === 'measured_info' && (
+              hasMeasuredInfo
+                ? renderFlatTable(MEASUREDINFO_KEYS, record)
+                : <p className="cv-section-empty">{t.common.noData}</p>
+            )}
+
+            {section === 'analyzed' && (
+              hasAnalyzed ? (
+                <>
+                  {/* Podzáložky — skupiny analyzovaných parametrů */}
+                  <div className="cv-sub-tabs">
+                    {TABLE_TABS.map(tab => (
+                      <button
+                        key={tab.id}
+                        className={`cv-param-tab${analyzedSub === tab.id ? ' cv-param-tab--active' : ''}`}
+                        onClick={() => setAnalyzedSub(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  {renderGroupedTable(PARAM_GROUPS.filter(g => g.id === analyzedSub), record)}
+                </>
+              ) : <p className="cv-section-empty">{t.common.noData}</p>
+            )}
+
+            {section === 'nok_info' && (
+              hasNokInfo
+                ? renderNokTable(record)
+                : <p className="cv-section-empty">{t.common.noData}</p>
+            )}
+          </div>
+
+          {/* Tisk — všechny sekce pod sebou (metadata jsou v hero) */}
+          <div className="cv-print-only">
+            {hasTestingParams && (
+              <div className="cv-print-group">
+                <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.testing_params }}>{sectionLabels.testing_params}</h3>
+                {renderGroupedTable(TESTING_INPUT_GROUPS, record)}
+              </div>
+            )}
+            {hasMeasuredInfo && (
+              <div className="cv-print-group">
+                <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.measured_info }}>{sectionLabels.measured_info}</h3>
+                {renderFlatTable(MEASUREDINFO_KEYS, record)}
+              </div>
+            )}
+            {PARAM_GROUPS.map(group => {
+              const visibleKeys = group.keys.filter(k => record[k] != null && String(record[k]).trim() !== '')
+              if (visibleKeys.length === 0) return null
+              return (
+                <div key={group.id} className="cv-print-group">
+                  <h3 className="cv-print-group__title" style={{ borderColor: group.color }}>{group.label}</h3>
+                  {renderGroupedTable([group], record)}
+                </div>
+              )
+            })}
+            <div className="cv-print-group">
+              <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.nok_info }}>{sectionLabels.nok_info}</h3>
+              {renderNokTable(record)}
+            </div>
           </div>
         </>
+      )}
+
+      {!loading && !error && !record && (
+        <p className="error-text">{t.common.noData}</p>
       )}
     </div>
   )

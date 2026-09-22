@@ -95,6 +95,13 @@ export const cs: Translations = {
     paramName:             'Název',
     paramValue:            'Hodnota',
     maximize:              'Maximalizovat',
+    print:                 'Tisk',
+    testingInput:          'Vstupní parametry',
+    testingDetail:         'Detail měření',
+    sectionTestingParams:  'Nastavení testu',
+    sectionMeasuredInfo:   'Měření',
+    sectionAnalyzedParams: 'Výsledky',
+    sectionNokInfo:        'NOK hodnocení',
   },
   settings: {
     title:           'Nastavení',

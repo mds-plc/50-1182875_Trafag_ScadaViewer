@@ -32,8 +32,8 @@ import { useSettings } from './useSettings'
 import { useToast } from '../context/ToastContext'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
-import { exportCsv } from '../utils/exportCsv'
 import { exportXlsx } from '../utils/exportXlsx'
+import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import type { OrderFile } from '../types'
 
 export type Location = 'local' | 'remote'
@@ -49,8 +49,34 @@ function defaultDateFrom(): string {
   return toIsoDate(d)
 }
 
+// ── localStorage persistence pro filtry ────────────────────────────────────
+
+const LS_PREFIX = 'scada_db_'
+
+function _lsGet<T>(key: string, fallback: T, validate?: (v: unknown) => v is T): T {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key)
+    if (raw === null) return fallback
+    const parsed: unknown = JSON.parse(raw)
+    if (validate && !validate(parsed)) return fallback
+    return parsed as T
+  } catch { return fallback }
+}
+
+function _lsSet(key: string, value: unknown): void {
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)) } catch { /* quota */ }
+}
+
+const isLocation = (v: unknown): v is Location => v === 'local' || v === 'remote'
+const isDataType = (v: unknown): v is DataType => v === 'production' || v === 'testing'
+const isSortDir  = (v: unknown): v is 'asc' | 'desc' => v === 'asc' || v === 'desc'
+const isString   = (v: unknown): v is string => typeof v === 'string'
+
 /**
  * Kompletní state management pro stránku Database.
+ *
+ * Filtry (location, dataType, dateFrom, dateTo, sortBy, sortDir) se persistují
+ * do localStorage — při návratu na stránku Database se obnoví poslední nastavení.
  *
  * @returns Veškerý state (location, dataType, filtry, stránkování, výběr)
  *          a handlery (fetchFiles, onSort, deleteFile, downloadCsv, downloadXlsx,
@@ -62,32 +88,41 @@ export function useDatabaseState() {
   const { token }    = useAuth()
   const { perPage, refreshMs } = useSettings()
 
-  const [location,     setLocation]     = useState<Location>('local')
-  const [dataType,     setDataType]     = useState<DataType>('production')
-  const [dateFrom,     setDateFrom]     = useState(defaultDateFrom)
-  const [dateTo,       setDateTo]       = useState(() => toIsoDate(new Date()))
+  const [location,     setLocationRaw]  = useState<Location>(() => _lsGet('location', 'local' as Location, isLocation))
+  const [dataType,     setDataTypeRaw]  = useState<DataType>(() => _lsGet('dataType', 'production' as DataType, isDataType))
+  const [dateFrom,     setDateFromRaw]  = useState(() => _lsGet('dateFrom', defaultDateFrom(), isString))
+  const [dateTo,       setDateToRaw]    = useState(() => _lsGet('dateTo', toIsoDate(new Date()), isString))
   const [page,         setPage]         = useState(1)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OrderFile | null>(null)
-  const [sortBy,       setSortBy]       = useState<string>('created_at')
-  const [sortDir,      setSortDir]      = useState<'asc' | 'desc'>('desc')
+  const [sortBy,       setSortByRaw]    = useState<string>(() => _lsGet('sortBy', 'created_at', isString))
+  const [sortDir,      setSortDirRaw]   = useState<'asc' | 'desc'>(() => _lsGet('sortDir', 'desc' as 'asc' | 'desc', isSortDir))
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
   const [batchConfirm, setBatchConfirm] = useState(false)
 
+  // Wrappery — setState + localStorage persist
+  const setLocation = useCallback((v: Location)      => { setLocationRaw(v); _lsSet('location', v) }, [])
+  const setDataType = useCallback((v: DataType)      => { setDataTypeRaw(v); _lsSet('dataType', v) }, [])
+  const setDateFrom = useCallback((v: string)        => { setDateFromRaw(v); _lsSet('dateFrom', v) }, [])
+  const setDateTo   = useCallback((v: string)        => { setDateToRaw(v);   _lsSet('dateTo', v) }, [])
+  const setSortBy   = useCallback((v: string)        => { setSortByRaw(v);   _lsSet('sortBy', v) }, [])
+  const setSortDir  = useCallback((v: 'asc' | 'desc') => { setSortDirRaw(v); _lsSet('sortDir', v) }, [])
+
   // Abort refs pro download: uživatel může kliknout Download dvakrát za sebou;
   // abort() zahodí předchozí request, aby se data nestahovala paralelně dvakrát
-  const csvAbortRef  = useRef<AbortController | null>(null)
+
   const xlsxAbortRef = useRef<AbortController | null>(null)
 
   const onSort = useCallback((col: string) => {
     if (col === sortBy) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+      const next = sortDir === 'asc' ? 'desc' : 'asc'
+      setSortDir(next)
     } else {
       setSortBy(col)
       setSortDir('desc')
     }
     setPage(1)
-  }, [sortBy])
+  }, [sortBy, sortDir, setSortBy, setSortDir])
 
   const remoteAvailable = useRemoteStatus()
   const { files, total, pages, loading, error, fetchFiles } = useFiles({
@@ -111,22 +146,11 @@ export function useDatabaseState() {
     Escape: () => { setExpandedId(null); setDeleteTarget(null) },
   })
 
-  const downloadCsv = useCallback(async (file: OrderFile): Promise<void> => {
-    csvAbortRef.current?.abort()
-    const ctrl = new AbortController()
-    csvAbortRef.current = ctrl
-    try {
-      const url = `/api/data?file=${encodeURIComponent(file.file_id)}&location=${file.location}&type=${file.type}`
-      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-      const res = await fetch(url, { signal: ctrl.signal, headers })
-      if (!res.ok) throw new Error()
-      const data = await res.json() as { records: Record<string, unknown>[] }
-      await exportCsv(data.records, file.file_id)
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return
+  const downloadCsv = useCallback((file: OrderFile): void => {
+    downloadOriginalCsv(file.file_id, file.location, file.type, token ?? '', () => {
       addToast(t.common.errorLoading, 'danger')
-    }
-  }, [addToast, t.common.errorLoading, token])
+    })
+  }, [token, addToast, t.common.errorLoading])
 
   const downloadXlsx = useCallback(async (file: OrderFile): Promise<void> => {
     xlsxAbortRef.current?.abort()

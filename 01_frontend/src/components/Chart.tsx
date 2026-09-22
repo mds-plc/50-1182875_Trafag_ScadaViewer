@@ -26,6 +26,9 @@ const EXCLUDE_KEYS = new Set([
   'expected_count',   // plánovaný počet vzorků, ne měření
   'status',           // stavový kód (2=OK, 5=NOK) — kategorie, ne měření
   'sortingcategory',  // třídící kategorie (1–6) — kategorie, ne měření
+  'nokreason',        // NOK diagnostika — flag, ne měření
+  'nokcategory_force', 'nokcategory_position', 'nokcategory_electric',
+  'nokcategory_times', 'nokcategory_process',
 ])
 
 /** Barvy pro jednotlivé datové řady (cyklicky). */
@@ -46,7 +49,7 @@ export default function Chart({ records, keys }: Props) {
       return keys.filter(key => {
         const v = sample[key]
         if (typeof v !== 'string' || v === '' || isNaN(Number(v))) return false
-        if (Number(v) > 500) return false   // 999.9 = sensor not connected
+        if (Number(v) >= 999999) return false   // 999.9 = sensor not connected
         return true
       })
     }
@@ -56,7 +59,7 @@ export default function Chart({ records, keys }: Props) {
       if (EXCLUDE_KEYS.has(key)) return false
       const v = sample[key]
       if (typeof v !== 'string' || v === '' || isNaN(Number(v))) return false
-      if (Number(v) > 500) return false
+      if (Number(v) >= 999999) return false
       return true
     })
   }, [records, keys])

@@ -214,6 +214,183 @@
   opacity: 0.85;
 }
 
+/* TESTING HERO — tmavá hlavička pro testing detail */
+
+.testing-hero {
+  background: #161c2d;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-8);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  border-left: 4px solid #0ea5e9;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.22);
+}
+
+.testing-hero__left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.testing-hero__ts {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: #64748b;
+}
+
+.testing-hero__switch {
+  font-size: 24px;
+  font-weight: var(--font-weight-semibold);
+  color: #e2e8f0;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.testing-hero__id {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: #4a5568;
+}
+
+.testing-hero__measure {
+  font-size: var(--font-size-xs);
+  color: #64748b;
+  margin-top: var(--space-1);
+}
+
+.testing-hero__divider {
+  width: 1px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.testing-hero__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.testing-hero__nok {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* SECTION TABS — hlavní úroveň záložek (sekce CSV souboru) */
+
+.cv-section-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.cv-section-tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.cv-section-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-2);
+}
+
+.cv-section-tab--active {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* SUB-TABS — podzáložky uvnitř sekce (AnalyzedParameters skupiny) */
+
+.cv-sub-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+/* NOK SECTION — speciální zobrazení NOK hodnocení */
+
+.cv-nok-section {
+  padding: var(--space-6) var(--space-5);
+}
+
+.cv-nok-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.cv-nok-result__badge {
+  font-size: var(--font-size-lg) !important;
+  padding: var(--space-2) var(--space-5) !important;
+}
+
+.cv-nok-result__code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.cv-nok-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.cv-nok-cat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  min-width: 120px;
+}
+
+.cv-nok-cat--ok {
+  background: rgba(22, 163, 74, 0.04);
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+.cv-nok-cat--fail {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+.cv-nok-cat__label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* SECTION EMPTY STATE */
+
+.cv-section-empty {
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 /* PARAMETER GROUP TABS — přepínač skupin parametrů */
 
 .cv-param-tabs {
@@ -327,6 +504,11 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+.rd-meta__id {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
 
 /* Diagramy vedle sebe — align-items vynechán → výchozí stretch = stejná výška */
@@ -566,4 +748,200 @@
   flex: 1;
   min-height: 0;
   max-height: calc(92vh - 52px);
+}
+
+/* NOK info panel — category badges between diagrams and ParamTable */
+.rd-nok-panel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.rd-nok-panel__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.rd-nok-panel__cats {
+  display: flex;
+  gap: var(--space-2);
+}
+.rd-nok-panel__cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+.rd-nok-panel__cat--fail {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: var(--color-danger);
+}
+.rd-nok-panel__cat--ok {
+  background: rgba(22, 163, 74, 0.06);
+  border-color: rgba(22, 163, 74, 0.2);
+  color: var(--color-success);
+}
+
+/* NOK category icon — shared across FileTable, ChartView, RecordDiagram */
+.db-nok-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.db-nok-icon--ok {
+  color: var(--color-success);
+  background: rgba(22, 163, 74, 0.1);
+}
+.db-nok-icon--fail {
+  color: #fff;
+  background: var(--color-danger);
+}
+
+/* Print toolbar — samostatný řádek nad obsahem */
+.cv-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* Print button — margin-left auto inside flex containers */
+.cv-print-btn { margin-left: auto; }
+
+/* Print-only sekce — na obrazovce skrytá */
+.cv-print-only { display: none; }
+
+/* Print group heading */
+.cv-print-group { margin-bottom: 12px; }
+.cv-print-group__title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  border-left: 3px solid;
+  color: var(--color-text-primary);
+}
+
+/* ── PRINT ─────────────────────────────────────────────────────────────── */
+
+@media print {
+  /* Přepnout obrazovkovou tabulku → tiskové tabulky */
+  .cv-screen-only { display: none !important; }
+  .cv-print-only { display: block !important; }
+
+  /* Skrýt interaktivní prvky */
+  .cv-toolbar,
+  .cv-print-btn,
+  .chart-header .btn,
+  .tile__header-actions,
+  .cv-param-tabs,
+  .pagination,
+  .rd-maximize-btn,
+  .rd-pt__help-btn,
+  .rd-pt__help-cell,
+  .rd-modal-overlay { display: none !important; }
+
+  /* OrderHero — světlé barvy pro tisk, kompaktnější */
+  .order-hero {
+    background: #f8f9fa !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db;
+    box-shadow: none;
+    padding: 12px 16px !important;
+    margin-bottom: 8px !important;
+  }
+  .order-hero__order-num { color: #111827 !important; font-size: 18px !important; }
+  .order-hero__count-main { color: #1e40af !important; font-size: 22px !important; }
+  .order-hero__switch-name { color: #111827 !important; font-size: 18px !important; }
+  .order-hero__count-total,
+  .order-hero__count-label,
+  .order-hero__switch-label,
+  .order-hero__switch-id,
+  .order-hero__progress-pct { color: #4b5563 !important; }
+  .order-hero__divider { background: #d1d5db !important; }
+  .order-hero__progress { background: #e5e7eb !important; }
+  .order-hero__progress-fill { background: #3b82f6 !important; }
+
+  /* Kategorie graf — skrýt Recharts, nechat jen KPI souhrn */
+  .cv-cat-chart .recharts-responsive-container { display: none !important; }
+  .cv-cat-chart { padding: 8px 12px !important; }
+  .cv-cat-chart__summary { margin-bottom: 0 !important; }
+
+  /* Tile — bez stínu, tenký border, stránkování povoleno */
+  .tile {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 8px !important;
+  }
+
+  /* Tabulka — zrušit horizontální scroll, menší font */
+  .data-table-scroll { overflow-x: visible !important; }
+  .data-table {
+    font-size: 11px !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  .data-table__th { font-size: 10px !important; padding: 4px 6px !important; white-space: normal !important; }
+  .data-table__td { padding: 4px 6px !important; white-space: normal !important; }
+  /* Sticky pozice nefunguje v tisku — zrušit */
+  .data-table-scroll [data-fixed-index] {
+    position: static !important;
+    left: auto !important;
+    max-width: none !important;
+  }
+
+  /* RecordDiagram — diagramy pod sebe, menší výška */
+  .rd-diagrams { grid-template-columns: 1fr !important; }
+  .rd-svg { max-height: 280px; }
+
+  /* Chart summary — border pro tisk */
+  .chart-summary {
+    border: 1px solid #d1d5db;
+    border-left: 3px solid #3b82f6;
+  }
+
+  /* Tabulka parametrů — zebra + kompaktní */
+  .rd-pt { font-size: 11px !important; }
+  .rd-pt__row:nth-child(even) { background: #f9fafb; }
+  .rd-pt__row:hover { background: inherit; }
+
+  /* NOK panel */
+  .rd-nok-panel { border: 1px solid #d1d5db; }
+
+  /* Testing Hero — světlé barvy pro tisk */
+  .testing-hero {
+    background: #f8f9fa !important;
+    border: 1px solid #d1d5db;
+    box-shadow: none;
+    padding: 12px 16px !important;
+    margin-bottom: 8px !important;
+  }
+  .testing-hero__switch { color: #111827 !important; font-size: 18px !important; }
+  .testing-hero__ts { color: #4b5563 !important; }
+  .testing-hero__id { color: #4b5563 !important; }
+  .testing-hero__measure { color: #4b5563 !important; }
+  .testing-hero__divider { background: #d1d5db !important; }
+
+  /* Chart header — kompaktnější */
+  .chart-header { margin-bottom: 8px !important; }
+  .page-title { font-size: 16px !important; }
 }

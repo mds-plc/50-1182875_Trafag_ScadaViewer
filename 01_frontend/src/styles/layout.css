@@ -59,3 +59,16 @@
   color: var(--color-text-primary);
   letter-spacing: -0.4px;
 }
+
+/* ── PRINT ─────────────────────────────────────────────────────────────── */
+
+@media print {
+  html, body, #root, .app, .content {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  html { font-size: 13px !important; }
+  .sidebar, .topbar, .toast-container, .offline-banner { display: none !important; }
+  .app { display: block !important; }
+  .content { margin: 0; padding: 8px; }
+}

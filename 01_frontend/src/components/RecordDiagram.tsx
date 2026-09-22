@@ -36,47 +36,47 @@ const PARAM_DESC: Record<string, string> = {
   ttf_totaltravelforce:
     'Maximální síla [N] na konci zdvihu (TTP). Nesmí překročit povolenou mez pro daný typ.',
   fp_freeposition:
-    'Výchozí poloha kladky [mm] bez vnější síly — referenční bod pro všechny délkové hodnoty.',
+    'Výchozí poloha kladky [µm] bez vnější síly — referenční bod pro všechny délkové hodnoty.',
   op_operatingposition:
-    'Vzdálenost [mm] od FP do bodu sepnutí kontaktu (aktivace NC→NO).',
+    'Vzdálenost [µm] od FP do bodu sepnutí kontaktu (aktivace NC→NO).',
   rp_realeasingposition:
-    'Vzdálenost [mm] od FP do bodu uvolnění kontaktu při zpáteční cestě (deaktivace NO→NC).',
+    'Vzdálenost [µm] od FP do bodu uvolnění kontaktu při zpáteční cestě (deaktivace NO→NC).',
   ttp_totaltravelposition:
-    'Maximální bezpečná vzdálenost stisku [mm]. Za tímto bodem hrozí mechanické poškození.',
+    'Maximální bezpečná vzdálenost stisku [µm]. Za tímto bodem hrozí mechanické poškození.',
   pt_pretravel:
-    'Předzdvih [mm] — dráha od FP do OP. Musí být dostatečná pro spolehlivé sepnutí.',
+    'Předzdvih [µm] — dráha od FP do OP. Musí být dostatečná pro spolehlivé sepnutí.',
   ot_overtravel:
-    'Přezdvih [mm] — rezerva za bodem sepnutí (OP→TTP). Chrání kontakt před přetížením.',
+    'Přezdvih [µm] — rezerva za bodem sepnutí (OP→TTP). Chrání kontakt před přetížením.',
   rt_realisingtravel:
-    'Uvolňovací zdvih [mm] — vzdálenost uvolnění kontaktu od RP.',
+    'Uvolňovací zdvih [µm] — vzdálenost uvolnění kontaktu od RP.',
   md_movementdifferential:
-    'Diferenciál pohybu [mm] — vzdálenost mezi OP a RP (polohovová hystereze). Větší MD = stabilnější přepínání.',
+    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (polohovová hystereze). Větší MD = stabilnější přepínání.',
   tt_totaltravel:
-    'Celkový zdvih [mm] — vzdálenost od FP do TTP.',
+    'Celkový zdvih [µm] — vzdálenost od FP do TTP.',
   ut_unstabletime:
-    'Nestabilní čas [ms] — délka kmitů kontaktu těsně po sepnutí, než se kontakt definitivně otevře.',
+    'Nestabilní čas [µs] — délka kmitů kontaktu těsně po sepnutí, než se kontakt definitivně otevře.',
   rt_reversetime:
-    'Čas reverzu [ms] — okno, ve kterém kontakt dočasně reverzuje zpět k zavřenému stavu (NC se krátce uzavře).',
+    'Čas reverzu [µs] — okno, ve kterém kontakt dočasně reverzuje zpět k zavřenému stavu (NC se krátce uzavře).',
   bt_bouncetime:
-    'Čas odskoku [ms] — celková délka zákmitů po sepnutí. Delší BT = více šumu, pomalejší odezva.',
+    'Čas odskoku [µs] — celková délka zákmitů po sepnutí. Delší BT = více šumu, pomalejší odezva.',
   ot_operatingtime:
-    'Čas sepnutí [ms] — celková doba od zahájení spínání po ustálení kontaktu v novém stavu.',
+    'Čas sepnutí [µs] — celková doba od zahájení spínání po ustálení kontaktu v novém stavu.',
   r_nc_operatingposition_neg:
-    'Odpor [mΩ] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace.',
+    'Odpor [Ω] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace.',
   r_nc_operatingposition_pos:
-    'Odpor [mΩ] NC kontaktu v bodě sepnutí (OP), kladný pól.',
+    'Odpor [Ω] NC kontaktu v bodě sepnutí (OP), kladný pól.',
   r_nc_releasingposition_neg:
-    'Odpor [mΩ] NC kontaktu v bodě uvolnění (RP), záporný pól.',
+    'Odpor [Ω] NC kontaktu v bodě uvolnění (RP), záporný pól.',
   r_nc_releasingposition_pos:
-    'Odpor [mΩ] NC kontaktu v bodě uvolnění (RP), kladný pól.',
+    'Odpor [Ω] NC kontaktu v bodě uvolnění (RP), kladný pól.',
   r_no_operatingposition_neg:
-    'Odpor [mΩ] normálně otevřeného (NO) kontaktu v bodě sepnutí (OP), záporný pól. Nízký odpor = správně uzavřeno.',
+    'Odpor [Ω] normálně otevřeného (NO) kontaktu v bodě sepnutí (OP), záporný pól. Nízký odpor = správně uzavřeno.',
   r_no_operatingposition_pos:
-    'Odpor [mΩ] NO kontaktu v bodě sepnutí (OP), kladný pól.',
+    'Odpor [Ω] NO kontaktu v bodě sepnutí (OP), kladný pól.',
   r_no_releasingposition_neg:
-    'Odpor [mΩ] NO kontaktu v bodě uvolnění (RP), záporný pól.',
+    'Odpor [Ω] NO kontaktu v bodě uvolnění (RP), záporný pól.',
   r_no_releasingposition_pos:
-    'Odpor [mΩ] NO kontaktu v bodě uvolnění (RP), kladný pól.',
+    'Odpor [Ω] NO kontaktu v bodě uvolnění (RP), kladný pól.',
 }
 
 // PARAM_GROUPS importováno z paramMeta.ts — sdíleno s ChartView TABLE_TABS
@@ -177,7 +177,7 @@ function ForceTravelDiagram({ record }: Props) {
       <line x1={135} y1={y_zero} x2={730} y2={y_zero} stroke={C_AXIS} strokeWidth={1.5} />
       <polygon points={`730,${y_zero} ${730-AS*1.5},${y_zero-AS/2} ${730-AS*1.5},${y_zero+AS/2}`}
         fill={C_AXIS} />
-      <text x={736} y={y_zero+4} fontSize={11} fill={C_AXIS}>Travel [mm]</text>
+      <text x={736} y={y_zero+4} fontSize={11} fill={C_AXIS}>Travel [µm]</text>
 
       {/* ── Vodorovné referenční čáry sil (jemná mřížka) ── */}
       <line x1={148} y1={y_TTF} x2={TTP_x} y2={y_TTF} stroke={C_FORCE} strokeWidth={0.8} strokeDasharray="5,4" opacity={0.18} />
@@ -470,7 +470,7 @@ function TimeDiagram({ record }: Props) {
       <line x1={108} y1={X_AXIS} x2={715} y2={X_AXIS} stroke={C_AXIS} strokeWidth={1.5} />
       <polygon points={`715,${X_AXIS} ${715-AS*1.5},${X_AXIS-AS/2} ${715-AS*1.5},${X_AXIS+AS/2}`}
         fill={C_AXIS} />
-      <text x={720} y={X_AXIS+4} fontSize={11} fill={C_AXIS}>Time [ms]</text>
+      <text x={720} y={X_AXIS+4} fontSize={11} fill={C_AXIS}>Time [µs]</text>
 
       {/* ── Svislé referenční čáry klíčových časů ── */}
       {[t_act, t_ut, t_revt, t_bt, t_opt].map(x => (
@@ -613,6 +613,41 @@ function ParamTable({ record }: Props) {
   )
 }
 
+// ── NOK info panel ───────────────────────────────────────────────────────────
+
+const NOK_CATEGORIES = [
+  { key: 'nokcategory_force',    label: 'Force' },
+  { key: 'nokcategory_position', label: 'Position' },
+  { key: 'nokcategory_electric', label: 'Electric' },
+  { key: 'nokcategory_times',    label: 'Times' },
+  { key: 'nokcategory_process',  label: 'Process' },
+] as const
+
+function NokPanel({ record }: Props) {
+  // Zobrazit panel jen pokud existuje alespoň jedno nokcategory_* pole
+  const hasAny = NOK_CATEGORIES.some(c => record[c.key] != null && String(record[c.key] ?? '') !== '')
+  if (!hasAny) return null
+
+  return (
+    <div className="rd-nok-panel">
+      <span className="rd-nok-panel__title">NOK Categories</span>
+      <span className="rd-nok-panel__cats">
+        {NOK_CATEGORIES.map(c => {
+          const isFail = String(record[c.key]) === '1'
+          return (
+            <span key={c.key} className={`rd-nok-panel__cat rd-nok-panel__cat--${isFail ? 'fail' : 'ok'}`}>
+              <span className={`db-nok-icon db-nok-icon--${isFail ? 'fail' : 'ok'}`}>
+                {isFail ? '!' : '\u2713'}
+              </span>
+              {c.label}
+            </span>
+          )
+        })}
+      </span>
+    </div>
+  )
+}
+
 // ── Default export ────────────────────────────────────────────────────────────
 
 // Ikona rozbalení (expand arrows)
@@ -675,6 +710,7 @@ export default function RecordDiagram({ record }: Props) {
         </div>
       </div>
 
+      <NokPanel record={record} />
       <ParamTable record={record} />
 
       {/* Modální overlay — maximalizovaný diagram */}

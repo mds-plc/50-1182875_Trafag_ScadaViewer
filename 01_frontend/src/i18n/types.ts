@@ -96,6 +96,13 @@ export interface Translations {
     paramName: string
     paramValue: string
     maximize: string
+    print: string
+    testingInput: string
+    testingDetail: string
+    sectionTestingParams: string
+    sectionMeasuredInfo: string
+    sectionAnalyzedParams: string
+    sectionNokInfo: string
   }
   settings: {
     title: string

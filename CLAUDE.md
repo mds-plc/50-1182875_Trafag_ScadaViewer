@@ -332,6 +332,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/users/{username}/password` | POST | Změna hesla jiného uživatele (admin+) |
 | `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
+| `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
 | `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`) |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
@@ -433,7 +434,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: TestingHero + dvouúrovňové záložky (sekce/pod-záložky) |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -669,8 +670,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Hooks (useFiles, useFileRecords, useRemoteStatus, useData) | ✅ | useData.ts — AbortController (race condition fix), reset stavu při přepnutí záložky |
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
 | Stránka Overview | ✅ | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
-| Stránka ChartView — order detail | ✅ | Production: OrderHero (tmavý panel) + Chart + klikací tabulka → record detail; Testing: summary + chart + placeholder |
-| Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin: forces/positions/travel/times/electric); rd-meta badge; maximize modal |
+| Stránka ChartView — order detail | ✅ | Production: OrderHero (tmavý panel) + Chart + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky (Test Setup/Measurement/Results/NOK); **Tisk**: skupinové tabulky (Forces→…→Electric) se sloupcem # |
+| Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
 | WebSocket /ws/orders + OrderWatcher | ✅ | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
 | Stránka Info | ✅ | 2 záložky Projekt/Dokumentace; verze z /api/health; info.css |

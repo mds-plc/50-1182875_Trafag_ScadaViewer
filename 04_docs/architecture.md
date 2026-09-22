@@ -1351,3 +1351,74 @@ Dict `_hits` rostl neomezeně (nová entry pro každou novou IP). Fix: při prun
 Konstanta `GROUP_COLORS = ['#3b82f6', ...]` byla definována identicky v `ChartView.tsx` i `FileTable.tsx`. Extrahována do `src/utils/groupColors.ts`, oba soubory importují z ní.
 
 **Stav testů po fázi 17:** Backend 119/119, Frontend 51/51.
+
+### Fáze 18 — Tisk reportů z prohlížeče (2026-09-21)
+
+Implementace tisku zakázkových reportů přímo z prohlížeče (`window.print()` → systémový dialog tisku).
+
+**Architektura tisku:**
+
+Na obrazovce zůstává záložkový UI (`.cv-screen-only`). V `@media print` se záložková tabulka skryje a místo ní se zobrazí `.cv-print-only` sekce — samostatná tabulka pro každou skupinu parametrů (Forces, Positions, Travel, Times, Electric). Každá tabulka obsahuje pevné sloupce (# řádku, timestamp, kategorie, status) + parametry dané skupiny. Číslo řádku (`#`) umožňuje propojení záznamů mezi skupinami.
+
+**Print CSS (`layout.css` + `chart.css`):**
+
+| Pravidlo | Účel |
+|----------|------|
+| `html, body, #root, .app, .content { height: auto; overflow: visible }` | Obsah se neořezává na viewport — tiskne se celá stránka |
+| `.sidebar, .topbar, .toast-container { display: none }` | Skrytí navigace a UI prvků |
+| `.cv-screen-only { display: none }` / `.cv-print-only { display: block }` | Přepnutí záložkové → skupinové tabulky |
+| `.order-hero { background: #f8f9fa; color: #111827 }` | Světlé barvy pro tisk (šetří inkoust) |
+| `.recharts-responsive-container { display: none }` | Skrytí sloupcového grafu (jen KPI souhrn) |
+| `.data-table-scroll { overflow-x: visible }` | Zrušení horizontálního scrollu |
+| `.data-table { font-size: 11px; table-layout: auto }` | Kompaktní font, automatická šířka sloupců |
+
+**Změněné soubory:**
+
+| Soubor | Změna |
+|--------|-------|
+| `pages/ChartView.tsx` | Tlačítko Tisk (Printer) vedle CSV/XLSX; `.cv-print-only` sekce s tabulkami po skupinách + sloupec `#` |
+| `styles/layout.css` | `@media print` globální pravidla (height/overflow/display) |
+| `styles/chart.css` | `@media print` pravidla pro ChartView; `.cv-print-only`/`.cv-screen-only` třídy; `.cv-print-group` styl |
+| `i18n/types.ts` + `cs.ts` + `en.ts` | Klíč `chart.print` ("Tisk" / "Print") |
+
+**Stav testů po fázi 18:** Backend 146/146, Frontend 102/102.
+
+---
+
+### Fáze 19 — Testing file detail + originální CSV download (2026-09-22)
+
+Dvouúrovňový detail testovacích souborů (sekční CSV formát `[Metadata] + [TestingParameters] + [MeasuredInfo] + [AnalyzedParameters] + [NokInfo] + [SignalData]`) a download originálních CSV souborů přes backend.
+
+**Backend:**
+
+| Změna | Popis |
+|-------|-------|
+| `csv_repository.py` | Merge `testingparameters` do záznamu — vstupní parametry měření (Drive, Electric, Measuring, Limits) jsou nyní součástí záznamu |
+| `files.py` | `GET /api/files/{id}/download` — `FileResponse` servírující originální CSV; timeout 30s/10s; audit log |
+| `file_service.py` | `resolve_path()` — delegace na repository + `exists()` guard |
+| `protocols.py` | `resolve_path` v `DataReader` protokolu |
+
+**Frontend:**
+
+| Změna | Popis |
+|-------|-------|
+| `ChartView.tsx` | Testing branch: hero hlavička (switch name, ID, timestamp, OK/NOK badge) + dvouúrovňové záložky (sekce → pod-záložky) |
+| `paramMeta.ts` | `TESTING_INPUT_GROUPS` (4 skupiny), `METADATA_KEYS`, `MEASUREDINFO_KEYS` + labely/tooltipy |
+| `downloadOriginal.ts` | Nová utilita — fetch + blob + `<a download>`; `onError` callback pattern |
+| `useDatabaseState.ts` | CSV download přepojeno na backend endpoint; odstraněny debug `console.log` |
+| `i18n/*` | 4 nové klíče pro sekce testovacího detailu |
+| `chart.css` | Testing hero, section tabs, sub-tabs, NOK section, empty state |
+
+**Architektura záložek (testing):**
+```
+┌──────────────────────────────────────────────────────────────┐
+│ TESTING HERO: switch_name · switch_id · timestamp · OK/NOK  │
+├──────────┬─────────────┬──────────┬──────────────────────────┤
+│ Test     │ Measurement │ Results  │ NOK Evaluation           │  ← hlavní záložky (SectionId)
+│ Setup    │             │ ┌───────┬┤───────┬────────┬────────┐│
+│          │             │ │Forces ││Posit. │Travel  │Times   ││  ← pod-záložky (TabId) — jen v Results
+│          │             │ │       ││       │        │Electric││
+└──────────┴─────────────┴─┴───────┴┴───────┴────────┴────────┘│
+```
+
+**Stav testů po fázi 19:** Backend 146/146, Frontend build OK.

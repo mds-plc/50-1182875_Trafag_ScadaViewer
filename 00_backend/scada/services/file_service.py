@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date as _date
+from pathlib import Path
 
 from scada.services.protocols import PagedResult
 from scada.services.repositories.csv_repository import CsvRepository
@@ -147,6 +148,16 @@ class FileService:
         except Exception as exc:
             log.error("[SVC]   get_file %s chyba: %s", file_id, exc)
             return None
+
+    def resolve_path(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> Path | None:
+        """Vrátí fyzickou cestu k souboru (delegace na repository)."""
+        p = self._repo.resolve_path(file_id, location, file_type)
+        return p if p and p.exists() else None
 
     # ------------------------------------------------------------------
     # Smazání souboru

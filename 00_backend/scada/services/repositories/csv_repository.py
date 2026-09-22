@@ -24,6 +24,63 @@ from scada.config import DataConfig
 log = logging.getLogger(__name__)
 
 
+def _normalize_key(k: str) -> str:
+    """Normalize CSV header: strip unit suffix and lowercase.
+
+    'OF_OperatingForce [N]' → 'of_operatingforce'
+    'Timestamp'             → 'timestamp'
+    """
+    bracket = k.find('[')
+    if bracket >= 0:
+        k = k[:bracket]
+    return k.strip().lower()
+
+
+def _parse_sectioned(
+    f,
+    separator: str,
+) -> dict[str, dict[str, str]]:
+    """Parse multi-section TEST CSV format.
+
+    Sections are delimited by ``[SectionName]`` lines.
+    Each section has a header row followed by a values row.
+    Stops at ``[SignalData]`` to avoid reading ~400k signal rows.
+
+    Returns ``{section_name_lower: {normalized_key: value, ...}, ...}``.
+    """
+    sections: dict[str, dict[str, str]] = {}
+    current_section: str | None = None
+    header: list[str] | None = None
+
+    for raw_line in f:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            current_section = line[1:-1].lower()
+            if current_section == 'signaldata':
+                break  # skip signal data — too large
+            header = None
+            continue
+        if current_section is None:
+            continue
+        if header is None:
+            # First non-empty line after section header = column names
+            header = [c.strip() for c in line.split(separator)]
+        else:
+            # Second non-empty line = values
+            vals = [v.strip() for v in line.split(separator)]
+            sections[current_section] = {
+                _normalize_key(h): v
+                for h, v in zip(header, vals)
+                if v  # skip empty values
+            }
+            current_section = None  # section done (1 row per section)
+            header = None
+
+    return sections
+
+
 class CsvRepository:
     """Data Access Layer pro CSV soubory — otevírá soubory, vrací surová data."""
 
@@ -103,6 +160,25 @@ class CsvRepository:
             line1 = f.readline().strip()
             first_col = line1.split(self._cfg.csv_separator)[0].strip()
 
+            if line1.startswith('['):
+                # Sekční formát (TEST) — [Metadata] + [AnalyzedParameters] + …
+                f.seek(0)
+                sections = _parse_sectioned(f, self._cfg.csv_separator)
+                md = sections.get('metadata', {})
+                meta: dict = {
+                    'file_id':      path.name,
+                    'name':         path.stem,
+                    'type':         file_type,
+                    'location':     location,
+                    'order_id':     None,
+                    'switch_name':  md.get('microswitch_name', ''),
+                    'created_at':   md.get('timestamp', ''),
+                    'record_count': 1,
+                }
+                if sync_status is not None:
+                    meta['sync_status'] = sync_status
+                return meta
+
             if first_col.lower() == 'timestamp':
                 # Starý jednodílný formát — první řádek je datový header
                 f.seek(0)
@@ -119,25 +195,26 @@ class CsvRepository:
                 # f je nyní na datovém headeru (řádek 4) — DictReader ho použije jako sloupce
 
             reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
-            first = next(iter(reader), None)
-            if first is None:
+            raw_first = next(iter(reader), None)
+            if raw_first is None:
                 return None
+            first = {_normalize_key(k): v for k, v in raw_first.items()}
 
             # Ve starém formátu jsou Order/Microswitch_Name v datových řádcích
             if first_col.lower() == 'timestamp':
-                order_id    = first.get('Order') if file_type == 'production' else None
-                switch_name = first.get('Microswitch_Name', '')
+                order_id    = first.get('order') if file_type == 'production' else None
+                switch_name = first.get('microswitch_name', '')
 
             record_count = 1 + sum(1 for _ in reader)   # O(1) paměť
 
-        meta: dict = {
+        meta = {
             'file_id':      path.name,
             'name':         path.stem,
             'type':         file_type,
             'location':     location,
             'order_id':     order_id if file_type == 'production' else None,
             'switch_name':  switch_name,
-            'created_at':   first.get('Timestamp', ''),
+            'created_at':   first.get('timestamp', ''),
             'record_count': record_count,
         }
         if sync_status is not None:
@@ -180,6 +257,28 @@ class CsvRepository:
                 # Detekce formátu (totožná logika jako v read_file_meta)
                 line1     = f.readline().strip()
                 first_col = line1.split(self._cfg.csv_separator)[0].strip()
+
+                # ── Sekční formát (TEST) ──────────────────────────────
+                if line1.startswith('['):
+                    f.seek(0)
+                    sections = _parse_sectioned(f, self._cfg.csv_separator)
+                    # Sloučit sekce do jednoho záznamu
+                    rec: dict[str, str] = {}
+                    for sec_name in ('metadata', 'testingparameters', 'analyzedparameters', 'nokinfo', 'measuredinfo'):
+                        rec.update(sections.get(sec_name, {}))
+                    # Datumový filtr
+                    if from_day or to_day:
+                        try:
+                            ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
+                        except ValueError:
+                            pass
+                        else:
+                            if from_day and ts_day < from_day:
+                                return [], 0, {}, None
+                            if to_day   and ts_day > to_day:
+                                return [], 0, {}, None
+                    return [rec], 1, {}, None
+
                 meta_inject: dict[str, str] = {}
                 if first_col.lower() == 'timestamp':
                     f.seek(0)   # starý formát — vrátit se na začátek pro DictReader
@@ -197,7 +296,7 @@ class CsvRepository:
 
                 reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
                 for row in reader:
-                    rec = {k.lower(): v for k, v in row.items()}
+                    rec = {_normalize_key(k): v for k, v in row.items()}
                     # Injektovat metadata pole chybějící v datových řádcích (nový dvoudílný formát)
                     for mk, mv in meta_inject.items():
                         if mk not in rec:

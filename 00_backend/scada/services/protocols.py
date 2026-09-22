@@ -12,6 +12,7 @@ PagedResult — výstup list_files_paginated(); sdílený datový kontejner
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 
@@ -53,6 +54,13 @@ class DataReader(Protocol):
         location:  str = 'local',
         file_type: str = 'production',
     ) -> dict | None: ...
+
+    def resolve_path(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> Path | None: ...
 
     def delete_file(
         self,
