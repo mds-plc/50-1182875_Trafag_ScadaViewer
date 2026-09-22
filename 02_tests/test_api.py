@@ -401,6 +401,68 @@ class TestData:
         assert body["total"] == 5
         assert body["pages"] == 1
 
+    def test_group_counts_without_group_column(self) -> None:
+        """Bez sloupce Group vrací group_counts null."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        assert body["group_counts"] is None
+
+    def test_file_expected_count_without_column(self) -> None:
+        """Bez sloupce Expected_Count vrací file_expected_count null."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        assert body["file_expected_count"] is None
+
+
+class TestDataGroupCounts:
+    """Testy pro group_counts a file_expected_count v /api/data response."""
+
+    @pytest.fixture(autouse=True)
+    def setup_file(self, client) -> None:
+        c, cfg = client
+        self.fname = "GRP_2026-08-01_DONE.csv"
+        headers = ["Timestamp", "Order", "Microswitch_ID", "Microswitch_Name", "Group", "Expected_Count"]
+        rows = [
+            {"Timestamp": "2026-08-01T08:00:00", "Order": "ORD-100",
+             "Microswitch_ID": "MS-01", "Microswitch_Name": "Marquardt",
+             "Group": "1", "Expected_Count": "20"},
+            {"Timestamp": "2026-08-01T08:01:00", "Order": "ORD-100",
+             "Microswitch_ID": "MS-02", "Microswitch_Name": "Marquardt",
+             "Group": "1", "Expected_Count": "20"},
+            {"Timestamp": "2026-08-01T08:02:00", "Order": "ORD-100",
+             "Microswitch_ID": "MS-03", "Microswitch_Name": "Marquardt",
+             "Group": "5", "Expected_Count": "20"},
+        ]
+        write_csv(
+            cfg.data.local_path / "production" / "done_local" / self.fname,
+            headers,
+            rows,
+        )
+        self.c = c
+
+    def test_group_counts_present(self) -> None:
+        """S Group sloupcem vrátí group_counts jako dict s počty."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        gc = body["group_counts"]
+        assert gc is not None
+        assert gc["1"] == 2
+        assert gc["5"] == 1
+
+    def test_file_expected_count_present(self) -> None:
+        """S Expected_Count sloupcem vrátí file_expected_count jako int."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        assert body["file_expected_count"] == 20
+
+    def test_group_counts_keys_are_strings(self) -> None:
+        """Klíče v group_counts jsou stringy (JSON Object keys)."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        gc = body["group_counts"]
+        assert all(isinstance(k, str) for k in gc.keys())
+
+    def test_group_counts_values_are_ints(self) -> None:
+        """Hodnoty v group_counts jsou celá čísla."""
+        body = self.c.get(f"/api/data?file={self.fname}").json()
+        gc = body["group_counts"]
+        assert all(isinstance(v, int) for v in gc.values())
+
 
 # ======================================================================
 # Security headers — middleware

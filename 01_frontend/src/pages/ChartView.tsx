@@ -43,16 +43,16 @@ const TABLE_TABS = PARAM_GROUPS as { id: TabId; label: string; color: string; ke
 type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info'
 
 /** Custom X-axis tick — barevné rozlišení OK (zelená) / NOK (červená). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const CatAxisTick = (props: any) => {
-  const { x, y, payload } = props
-  const idx   = (payload.value as number) - 1
+interface CatAxisTickProps { x?: number; y?: number; payload?: { value: number } }
+const CatAxisTick = (props: CatAxisTickProps) => {
+  const { x = 0, y = 0, payload } = props
+  const idx   = (payload?.value ?? 1) - 1
   const isNok = idx >= 4
   const nums  = ['1', '2', '3', '4', '5', '6']
   const descs = ['OK', 'OK', 'OK', 'OK', 'NOK T.', 'NOK M.']
   const color = isNok ? '#dc2626' : '#16a34a'
   return (
-    <g transform={`translate(${x as number},${y as number})`}>
+    <g transform={`translate(${x},${y})`}>
       <text textAnchor="middle" y={12} fontSize={13} fontWeight="700" fill={color}>{nums[idx]}</text>
       <text textAnchor="middle" y={26} fontSize={9}  fill={color}>{descs[idx]}</text>
     </g>
@@ -74,9 +74,12 @@ function CategoryChart({ groupCounts, total }: { groupCounts: Record<string, num
   if (total === 0) return null
 
   // Custom bar label: počet (velký) + procento (malé)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const renderLabel = (props: any) => {
-    const { x, y, width, value } = props as { x: number; y: number; width: number; value: number }
+  interface BarLabelProps { x?: number | string; y?: number | string; width?: number | string; value?: number | string }
+  const renderLabel = (props: BarLabelProps) => {
+    const x = Number(props.x ?? 0)
+    const y = Number(props.y ?? 0)
+    const width = Number(props.width ?? 0)
+    const value = Number(props.value ?? 0)
     if (!value) return null
     const pct = total > 0 ? Math.round((value / total) * 100) : 0
     return (

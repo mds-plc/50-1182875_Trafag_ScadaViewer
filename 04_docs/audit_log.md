@@ -16,13 +16,16 @@
 
 ### ⚠️ MEDIUM
 
-| # | Popis | Soubor | Zdroj |
-|---|-------|--------|-------|
-| M2 | `order` parametr v `/api/wip` bez sanitizace | `api/wip.py` | [2026-07-28 hloubkový #2] |
-| M3 | `groupCounts` + `fileExpectedCount` z hook nepoužity v ChartView UI | `pages/ChartView.tsx` | [2026-07-22 #9] |
-| M4 | `CatAxisTick` + `renderLabel` přijímají `props: any` | `pages/ChartView.tsx` | [2026-07-28 hloubkový #7] |
-| M7 | Chybí test pro `group_counts` + `file_expected_count` v `/api/data` response | `02_tests/test_api.py` | [2026-07-22 #15] |
-| M8 | `downloadXlsx`: chybí AbortController (one-shot handler, nízká priorita); `downloadCsv` opraveno (2026-09-22: přepojeno na backend download endpoint) | `hooks/useDatabaseState.ts` | [2026-07-30 full-audit FE#5] |
+(žádné otevřené)
+
+#### Uzavřené MEDIUM nálezy
+| # | Popis | Stav | Poznámka |
+|---|-------|------|----------|
+| M2 | `order` parametr v `/api/wip` bez sanitizace | ✅ Uzavřeno | Již opraveno — `pattern=r'^[\w\-\.]+$'` v Query validaci |
+| M3 | `groupCounts` + `fileExpectedCount` z hook nepoužity v ChartView UI | ✅ Uzavřeno | `groupCounts` se používá v CategoryChart; `fileExpectedCount` se správně nedestruktuje (používá se jen v FileTable) |
+| M4 | `CatAxisTick` + `renderLabel` přijímají `props: any` | ✅ Opraveno 2026-09-22 | Nahrazeno typed interfaces `CatAxisTickProps` + `BarLabelProps` |
+| M7 | Chybí test pro `group_counts` + `file_expected_count` v `/api/data` response | ✅ Opraveno 2026-09-22 | 6 nových testů: `TestData` (2 testy bez Group sloupce) + `TestDataGroupCounts` (4 testy s Group/Expected_Count) |
+| M8 | `downloadXlsx` AbortController | ✅ Uzavřeno | AbortController již implementován; `downloadCsv` přepojeno na backend endpoint (2026-09-22) |
 
 ### 🔵 LOW
 
