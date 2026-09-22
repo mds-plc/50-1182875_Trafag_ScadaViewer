@@ -68,12 +68,14 @@ CLAUDE.md                  ← tento soubor
     │   ├── users_api.py       ← CRUD /api/users (admin+)
     │   ├── config_api.py      ← GET/PATCH /api/config + GET /api/config/fs (folder picker)
     │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot)
+    │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
     │   └── dependencies.py    ← require_auth(), require_role() Depends factories
     └── services/
         ├── __init__.py
         ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
         ├── file_service.py    ← list_files(), list_files_paginated(), sort + stránkování
         ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast
+        ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP
         └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast()
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
@@ -102,6 +104,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář)
     │   ├── PlcWatcher.tsx     ← side-effect: toast při změně PLC connected
     │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable
+    │   ├── SignalCharts.tsx   ← 5-záložkové interaktivní grafy signálových dat (Recharts)
     │   ├── Sidebar.tsx        ← levá navigace (4 NavLink), company logo v patičce
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
     ├── i18n/
@@ -121,7 +124,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── useKeyShortcuts.ts  ← F5/Escape generický hook; skip inputs
     │   ├── useBackendOnline.ts ← polling /api/health 10 s; vrací boolean
     │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders; max 200 záznamů; backoff reconnect
-    │   └── useWipData.ts       ← REST /api/wip?order=X; historický snapshot WIP
+    │   ├── useWipData.ts       ← REST /api/wip?order=X; historický snapshot WIP
+    │   └── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     ├── utils/
     │   ├── paramMeta.ts        ← PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS — sdíleno Chart/RecordDiagram
     │   ├── groupColors.ts      ← GROUP_COLORS (barvy skupin 1–6) — sdíleno FileTable/ChartView
@@ -139,7 +143,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── ui.css             ← .loading-spinner, .error-boundary, .filter-bar, .plc-status
     │   ├── login.css          ← .login-overlay, .login-card, přihlašovací formulář
     │   ├── toast.css          ← .toast-container, .toast--success/danger/warning/info
-    │   └── database.css       ← .db-* — tabs, toolbar, table, expand, modal, NAS alert
+    │   ├── database.css       ← .db-* — tabs, toolbar, table, expand, modal, NAS alert
+    │   └── signal-charts.css  ← .sig-* — záložky, gridy, subploty signálových grafů
     └── types/
         └── index.ts           ← PlcStatus, OrderFile, CsvRecord, DataFilter
 
@@ -337,6 +342,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
 | `/api/wip` | GET | Záznamy aktuální WIP zakázky — `?order=X` → `{file, records[], total}` |
+| `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/api/config` | GET | Bezpečná podmnožina konfigurace (bez password_hash) |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
@@ -434,7 +440,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` | `OrderHero`, `Chart`, `DataTable` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: TestingHero + dvouúrovňové záložky (sekce/pod-záložky) |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `Chart`, `DataTable`, `SignalCharts` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: TestingHero + dvouúrovňové záložky (sekce/pod-záložky) + **Signal Data** (5 grafů, podmíněně) |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -670,7 +676,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Hooks (useFiles, useFileRecords, useRemoteStatus, useData) | ✅ | useData.ts — AbortController (race condition fix), reset stavu při přepnutí záložky |
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
 | Stránka Overview | ✅ | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
-| Stránka ChartView — order detail | ✅ | Production: OrderHero (tmavý panel) + Chart + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky (Test Setup/Measurement/Results/NOK); **Tisk**: skupinové tabulky (Forces→…→Electric) se sloupcem # |
+| Stránka ChartView — order detail | ✅ | Production: OrderHero + skupiny + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky + **Signal Data** (5 interaktivních grafů, decimace 400k→2k, FP/OP/RP/TTP); **Tisk**: skupinové tabulky |
 | Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
 | WebSocket /ws/orders + OrderWatcher | ✅ | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
@@ -685,11 +691,12 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **146 testů**: config, API integration, security, ADS monitor, users |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 7 souborů) — **51 testů**: useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **152 testů**: config, API integration, security, ADS monitor, users |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 14 souborů) — **102 testů**: useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
+| Signal Data Charts (Fáze 20) | ✅ | `signal_reader.py` + `GET /api/signal` (5 režimů) + `SignalCharts.tsx` (5 záložek Recharts); min-max decimace 400k→2k; FP/OP/RP/TTP |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
 

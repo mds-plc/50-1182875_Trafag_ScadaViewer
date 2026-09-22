@@ -1,6 +1,6 @@
 # ScadaViewer — Architektura
 
-> Poslední aktualizace: 2026-07-30
+> Poslední aktualizace: 2026-09-22
 
 Tento dokument popisuje **strukturu a historii** projektu.
 Pro hloubkový rozbor vrstev, propojení a rozšiřitelnosti viz [`architecture_critique.md`](architecture_critique.md).
@@ -1422,3 +1422,75 @@ Dvouúrovňový detail testovacích souborů (sekční CSV formát `[Metadata] +
 ```
 
 **Stav testů po fázi 19:** Backend 146/146, Frontend build OK.
+
+---
+
+### Fáze 20 — Signal Data Charts — interaktivní grafy signálových dat (2026-09-22)
+
+Testovací CSV soubory obsahují sekci `[SignalData]` (~404 800 řádků × 11 sloupců, 20 kHz vzorkování).
+Data se dosud ignorovala. V této fázi jsou přečtena, decimována na serveru (min-max bucketing) a zobrazena v 5 interaktivních grafech (Recharts).
+
+**Backend — nové soubory:**
+
+| Soubor | Popis |
+|--------|-------|
+| `services/signal_reader.py` | Parser `[SignalData]` sekce, min-max decimace (400k → 2000 bodů), extrakce klíčových bodů (FP/OP/RP/TTP) |
+| `api/signal.py` | `GET /api/signal?file=X&location=&type=&mode=&buckets=` — 5 režimů: overview, results, hysteresis, zoom_op, zoom_rp |
+
+**Backend — modifikace:**
+
+| Soubor | Změna |
+|--------|-------|
+| `app.py` | Registrace signal routeru |
+| `csv_repository.py` | `_parse_sectioned()` — sentinel `_has_signal` při detekci `[SignalData]`; propagace do záznamu |
+| `models.py` | `DataResponse.has_signal: bool` — frontend ví, zda zobrazit záložku |
+| `data.py` | Detekce `_has_signal` flagu v záznamech, naplnění `has_signal` v response |
+
+**Frontend — nové soubory:**
+
+| Soubor | Popis |
+|--------|-------|
+| `hooks/useSignalData.ts` | Fetch hook pro `/api/signal` (AbortController, lazy loading) |
+| `components/SignalCharts.tsx` | 5-záložková komponenta: Overview (5 subplot), Results (dual Y + KP tabulka), Hysteresis (XY), Switching (2×3), Timing (2×2) |
+| `styles/signal-charts.css` | Styly pro záložky, gridy, subploty, tisk |
+
+**Frontend — modifikace:**
+
+| Soubor | Změna |
+|--------|-------|
+| `ChartView.tsx` | Nová sekce `signal` v SectionId; podmíněné zobrazení záložky jen pokud `has_signal=true` |
+| `i18n/{types,cs,en}.ts` | 7 nových klíčů pro záložky a popis vzorků |
+| `index.css` | Import `signal-charts.css` |
+
+**Klíčová technická rozhodnutí:**
+
+- **Min-max bucketing (ne průměrování)** — zachovává píky a propadliny signálů, které jsou kritické pro analýzu spínacích kontaktů. 404 800 → 2 000 bodů (bucket size ≈ 200 vzorků, pro každý bucket se zachová min a max).
+- **Sloupcový formát dat** — API vrací `{ts_ms: [...], position: [...], ...}` místo `[{ts_ms, position, ...}, ...]`. Menší JSON payload (~1.5× menší), rychlejší serializace.
+- **Lazy loading zoom dat** — Overview data se načtou ihned; zoom OP/RP (nedecimovaná data ±500 vzorků kolem klíčového bodu) se fetch-ují až při přepnutí na záložku Switching/Timing.
+- **Key point extraction** — FP/OP/RP/TTP se hledají z AnalyzedParameters (argmin vzdálenosti na pozicích v signálu); tolerance na překlepy v CSV hlavičkách (`realeasingposition`).
+- **has_signal propagace** — `_parse_sectioned()` nastaví sentinel `_has_signal` → `read_records()` ho propaguje do záznamu → `data.py` ho detekuje → frontend podmíněně zobrazí záložku.
+
+**Architektura záložek (testing s SignalData):**
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ TESTING HERO: switch_name · switch_id · timestamp · OK/NOK              │
+├──────────┬─────────┬──────────┬─────────────┬──────────────────────────┤
+│ Test     │ Measure │ Results  │ NOK Eval.   │ Signal Data              │ ← hlavní záložky
+│ Setup    │ ment    │          │             │ ┌──────┬────────┬───────┐│
+│          │         │          │             │ │Overv.│Results │Hyster.││ ← signal sub-tabs
+│          │         │          │             │ │      │        │Switch.││
+│          │         │          │             │ │      │        │Timing ││
+└──────────┴─────────┴──────────┴─────────────┴─┴──────┴────────┴───────┘│
+```
+
+**Datový tok:**
+```
+[CSV soubor]                [signal_reader.py]           [/api/signal]
+  [SignalData]  ──read──►  read_signal_data()  ──dec──►  decimate_minmax()
+  404 800 řádků             dict{col: list}               2 000 bodů
+  11 sloupců                                              + key_points
+                           find_key_points()             (FP/OP/RP/TTP)
+  [AnalyzedPar.]  ─────────►  positions ──►  argmin
+```
+
+**Stav testů po fázi 20:** Backend 152/152, Frontend 102/102.

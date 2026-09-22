@@ -99,6 +99,7 @@ class DataResponse(BaseModel):
     per_page:             int = 0   # 0 = vše (bez stránkování)
     group_counts:         dict[str, int] | None = None   # agregace skupin přes celý soubor
     file_expected_count:  int | None            = None   # expected_count z CSV (celá zakázka)
+    has_signal:           bool                  = False  # True pokud CSV obsahuje [SignalData]
 
 
 # ======================================================================

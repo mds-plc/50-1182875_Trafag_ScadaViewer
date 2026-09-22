@@ -102,6 +102,13 @@ export const en: Translations = {
     sectionMeasuredInfo:   'Measurement',
     sectionAnalyzedParams: 'Results',
     sectionNokInfo:        'NOK Evaluation',
+    sectionSignal:         'Signal Data',
+    signalOverview:        'Overview',
+    signalResults:         'Results',
+    signalHysteresis:      'Hysteresis',
+    signalSwitching:       'Switching Detail',
+    signalTiming:          'Timing Detail',
+    signalSamples:         'samples',
   },
   settings: {
     title:           'Settings',

@@ -103,6 +103,13 @@ export interface Translations {
     sectionMeasuredInfo: string
     sectionAnalyzedParams: string
     sectionNokInfo: string
+    sectionSignal: string
+    signalOverview: string
+    signalResults: string
+    signalHysteresis: string
+    signalSwitching: string
+    signalTiming: string
+    signalSamples: string
   }
   settings: {
     title: string

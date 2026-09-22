@@ -47,6 +47,8 @@ def _parse_sectioned(
     Stops at ``[SignalData]`` to avoid reading ~400k signal rows.
 
     Returns ``{section_name_lower: {normalized_key: value, ...}, ...}``.
+    If ``[SignalData]`` section is present, a sentinel key ``_has_signal``
+    is added to the top-level dict with value ``{'_flag': 'true'}``.
     """
     sections: dict[str, dict[str, str]] = {}
     current_section: str | None = None
@@ -59,6 +61,7 @@ def _parse_sectioned(
         if line.startswith('[') and line.endswith(']'):
             current_section = line[1:-1].lower()
             if current_section == 'signaldata':
+                sections['_has_signal'] = {'_flag': 'true'}
                 break  # skip signal data — too large
             header = None
             continue
@@ -266,6 +269,9 @@ class CsvRepository:
                     rec: dict[str, str] = {}
                     for sec_name in ('metadata', 'testingparameters', 'analyzedparameters', 'nokinfo', 'measuredinfo'):
                         rec.update(sections.get(sec_name, {}))
+                    # Propagovat has_signal flag
+                    if '_has_signal' in sections:
+                        rec['_has_signal'] = 'true'
                     # Datumový filtr
                     if from_day or to_day:
                         try:

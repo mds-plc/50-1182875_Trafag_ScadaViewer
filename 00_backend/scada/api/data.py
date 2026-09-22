@@ -114,8 +114,11 @@ async def get_data(
         log.error("[API]   /api/data I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
     pages = max(1, (total + effective_per_page - 1) // effective_per_page) if per_page > 0 else 1
+    # Detekce přítomnosti signálových dat (sectioned CSV propaguje _has_signal flag)
+    has_signal = any(r.get('_has_signal') == 'true' for r in records)
     return DataResponse(
         records=records, total=total, page=page, pages=pages, per_page=per_page,
         group_counts=group_counts or None,
         file_expected_count=file_expected_count,
+        has_signal=has_signal,
     )

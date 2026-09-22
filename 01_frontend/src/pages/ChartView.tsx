@@ -24,6 +24,7 @@ import DataTable      from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
 import RecordDiagram  from '../components/RecordDiagram'
+import SignalCharts   from '../components/SignalCharts'
 import { GROUP_COLORS } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
@@ -40,7 +41,7 @@ type TabId = 'forces' | 'positions' | 'travel' | 'times' | 'electric'
 const TABLE_TABS = PARAM_GROUPS as { id: TabId; label: string; color: string; keys: string[] }[]
 
 /** Sekce testovacího CSV souboru — hlavní úroveň záložek (metadata jsou v hero). */
-type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info'
+type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info' | 'signal'
 
 /** Custom X-axis tick — barevné rozlišení OK (zelená) / NOK (červená). */
 interface CatAxisTickProps { x?: number; y?: number; payload?: { value: number } }
@@ -512,11 +513,14 @@ export default function ChartView() {
   const record = records[0] ?? null
 
   // Mapování sekcí → klíče a podskupiny (metadata jsou v hero panelu)
+  const hasSignal = record != null && record._has_signal === 'true'
+
   const sectionLabels: Record<SectionId, string> = {
     testing_params: t.chart.sectionTestingParams,
     measured_info:  t.chart.sectionMeasuredInfo,
     analyzed:       t.chart.sectionAnalyzedParams,
     nok_info:       t.chart.sectionNokInfo,
+    signal:         t.chart.sectionSignal,
   }
 
   const sectionColors: Record<SectionId, string> = {
@@ -524,7 +528,13 @@ export default function ChartView() {
     measured_info:  '#64748b',
     analyzed:       '#d97706',
     nok_info:       '#dc2626',
+    signal:         '#8b5cf6',
   }
+
+  /** Visible sections — signal tab only shown when CSV has [SignalData]. */
+  const visibleSections = (Object.keys(sectionLabels) as SectionId[]).filter(
+    id => id !== 'signal' || hasSignal
+  )
 
   /** Zjistí, zda záznam obsahuje alespoň 1 klíč dané sekce (nový sekční formát). */
   const hasTestingParams = record != null && TESTING_INPUT_GROUPS.some(g => g.keys.some(k => record[k] != null))
@@ -671,7 +681,7 @@ export default function ChartView() {
           <div className="tile tile--12">
             <div className="tile__header">
               <div className="cv-section-tabs">
-                {(Object.keys(sectionLabels) as SectionId[]).map(id => (
+                {visibleSections.map(id => (
                   <button
                     key={id}
                     className={`cv-section-tab${section === id ? ' cv-section-tab--active' : ''}`}
@@ -732,6 +742,10 @@ export default function ChartView() {
               hasNokInfo
                 ? renderNokTable(record)
                 : <p className="cv-section-empty">{t.common.noData}</p>
+            )}
+
+            {section === 'signal' && hasSignal && (
+              <SignalCharts fileId={fileId} location={location} fileType={fileType} />
             )}
           </div>
 

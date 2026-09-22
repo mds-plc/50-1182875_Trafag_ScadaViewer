@@ -102,6 +102,13 @@ export const cs: Translations = {
     sectionMeasuredInfo:   'Měření',
     sectionAnalyzedParams: 'Výsledky',
     sectionNokInfo:        'NOK hodnocení',
+    sectionSignal:         'Signálová data',
+    signalOverview:        'Přehled',
+    signalResults:         'Výsledky',
+    signalHysteresis:      'Hystereze',
+    signalSwitching:       'Detail spínání',
+    signalTiming:          'Časování',
+    signalSamples:         'vzorků',
   },
   settings: {
     title:           'Nastavení',

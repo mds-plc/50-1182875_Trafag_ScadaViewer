@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-22 (testing file detail + audit opravy)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-22 (signal data charts — Fáze 20)**.
 
 ### 🔴 HIGH
 
@@ -46,6 +46,48 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+
+---
+
+## [2026-09-22] Signal Data Charts — Fáze 20
+
+### Scope
+Interaktivní vizualizace signálových dat (`[SignalData]` sekce v testovacích CSV — 404 800 řádků × 11 sloupců). Backend čte raw data, decimuje min-max bucketingem (400k → 2k bodů), extrahuje klíčové body (FP/OP/RP/TTP). Frontend zobrazuje 5 záložkových grafů v Recharts.
+
+### Nové soubory
+
+| # | Soubor | Popis |
+|---|--------|-------|
+| S1 | `services/signal_reader.py` | `read_signal_data()`, `decimate_minmax()`, `extract_zoom_window()`, `find_key_points()`, `prepare_signal_response()` |
+| S2 | `api/signal.py` | `GET /api/signal` — 5 mode (overview/results/hysteresis/zoom_op/zoom_rp); `Depends(require_auth)`, `asyncio.to_thread` |
+| S3 | `hooks/useSignalData.ts` | Fetch hook s AbortController; lazy loading zoom dat |
+| S4 | `components/SignalCharts.tsx` | 5-záložková komponenta: Overview (5 subplot), Results (dual Y + KP), Hysteresis (XY), Switching (2×3), Timing (2×2) |
+| S5 | `styles/signal-charts.css` | `.sig-tabs`, `.sig-grid-2x3`, `.sig-grid-2x2`, `.sig-subplot`, `@media print` |
+
+### Modifikace
+
+| # | Soubor | Popis |
+|---|--------|-------|
+| S6 | `app.py` | Registrace `signal.router` |
+| S7 | `csv_repository.py` | `_parse_sectioned()`: sentinel `_has_signal`; `read_records()`: propagace do záznamu |
+| S8 | `models.py` | `DataResponse.has_signal: bool` |
+| S9 | `data.py` | Detekce `_has_signal` flagu → `has_signal` v response |
+| S10 | `ChartView.tsx` | `SectionId += 'signal'`; podmíněná záložka; integrace `<SignalCharts>` |
+| S11 | `i18n/{types,cs,en}.ts` | 7 klíčů: `sectionSignal`, `signalOverview/Results/Hysteresis/Switching/Timing`, `signalSamples` |
+| S12 | `index.css` | Import `signal-charts.css` |
+
+### Klíčové opravy během implementace
+
+| # | Závažnost | Nález | Oprava |
+|---|-----------|-------|--------|
+| KP1 | MEDIUM | `_get_pos()` v `find_key_points()` matchoval resistance klíče (`r_nc_releasingposition_neg = 1e6`) jako pozice | Přidán filter `if k.startswith('r_'): continue` |
+| KP2 | LOW | CSV hlavička s překlepem `rp_realeasingposition` (místo `releasing`) nebyla matchována | Přidána tolerance: `_get_pos('releasingposition') or _get_pos('realeasingposition')` |
+| KP3 | LOW | TTP detekce jen přes `argmax(position)` — nepřesná u šumu | Preferována analyzovaná hodnota `ttp_totaltravelposition` z AnalyzedParameters |
+
+### Stav testů
+- Backend: **152/152** (žádná regrese)
+- Frontend: **102/102** (14 souborů, žádná regrese)
+- Build: OK
 
 ---
 
