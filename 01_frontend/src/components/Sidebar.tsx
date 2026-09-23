@@ -3,8 +3,8 @@
  * @description Levá navigační lišta — logo aplikace, 4 NavLink položky
  *   (Overview, Database, Settings, Info), logo zákazníka v patičce.
  */
-import { NavLink, useLocation } from 'react-router-dom'
-import { Monitor, Database, Settings, Info } from 'lucide-react'
+import { NavLink, Link, useLocation } from 'react-router-dom'
+import { Database, Settings, Info } from 'lucide-react'
 import AppLogo from './AppLogo'
 import { useLang } from '../context/LangContext'
 
@@ -17,7 +17,6 @@ export default function Sidebar() {
   const location = useLocation()
 
   const NAV_ITEMS = [
-    { to: '/',         label: t.nav.overview, icon: Monitor,  extraPaths: ['/wip']  },
     { to: '/database', label: t.nav.database, icon: Database, extraPaths: ['/chart'] },
     { to: '/settings', label: t.nav.settings, icon: Settings, extraPaths: []        },
     { to: '/info',     label: t.nav.info,     icon: Info,     extraPaths: []        },
@@ -26,10 +25,10 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar__header">
-        <div className="sidebar__logo">
+        <Link to="/database" className="sidebar__logo">
           <AppLogo size={32} />
           <span className="sidebar__logo-text">Machine Portal</span>
-        </div>
+        </Link>
       </div>
 
       <nav className="sidebar__nav">
@@ -37,7 +36,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end
             className={({ isActive }) => {
               const extra = extraPaths.some(p => location.pathname.startsWith(p))
               return 'sidebar__nav-item' + (isActive || extra ? ' active' : '')

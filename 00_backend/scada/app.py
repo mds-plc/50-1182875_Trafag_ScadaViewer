@@ -5,7 +5,7 @@ FastAPI factory — sestavení instance aplikace, middleware a lifecycle service
       create_app() vrátí plně nakonfigurovanou FastAPI instanci připravenou ke spuštění.
 
 Zodpovědnost:
-  - Inicializuje AdsMonitor, FileService a OrderWatcher při startu (lifespan).
+  - Inicializuje AdsMonitor a FileService při startu (lifespan).
   - Konfiguruje middleware stack: CORS → RateLimit → SecurityHeaders (LIFO pořadí Starlette).
   - Sestavuje CSP hlavičku: inline skripty z index.html se zahashují (SHA-256) a přidají
     do script-src — zabrání spuštění cizího JavaScriptu bez whitelistování.
@@ -108,12 +108,11 @@ def _build_csp(frontend_dist: Path) -> str:
 
 from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users
-from scada.api import plc_ws, files, data, status, health, auth, config_api, orders_ws, wip, users_api, signal
+from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
-from scada.services.order_watcher import OrderWatcher
 from scada.services.repositories.csv_repository import CsvRepository
-from scada.services.ws_manager import manager, orders_manager
+from scada.services.ws_manager import manager
 
 log = logging.getLogger(__name__)
 
@@ -256,14 +255,8 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         rate_limit:  Max požadavků za minutu na IP. Výchozí 120.
         config_path: Cesta ke Config.toml; users.toml se hledá ve stejném adresáři.
     """
-    monitor       = AdsMonitor(cfg, manager)
-    csv_reader    = FileService(CsvRepository(cfg.data))
-    order_watcher = OrderWatcher(
-        Path(cfg.data.local_path),
-        orders_manager,
-        csv_encoding=cfg.data.csv_encoding,
-        csv_separator=cfg.data.csv_separator,
-    )
+    monitor    = AdsMonitor(cfg, manager)
+    csv_reader = FileService(CsvRepository(cfg.data))
 
     users_path = config_path.parent / "users.toml" if config_path else None
 
@@ -279,10 +272,8 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         log.info("[APP]   ScadaViewer start")
         try:
             await monitor.start()
-            await order_watcher.start()
             yield
         finally:
-            await order_watcher.stop()
             await monitor.stop()
             log.info("[APP]   ScadaViewer stop")
 
@@ -304,7 +295,6 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         )
 
     app.include_router(plc_ws.router,     prefix="/ws",  tags=["plc"])
-    app.include_router(orders_ws.router,  prefix="/ws",  tags=["orders"])
     app.include_router(health.router,     prefix="/api", tags=["health"])
     app.include_router(auth.router,       prefix="/api", tags=["auth"])
     app.include_router(users_api.router,  prefix="/api", tags=["users"])
@@ -312,7 +302,6 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app.include_router(files.router,      prefix="/api", tags=["files"])
     app.include_router(data.router,       prefix="/api", tags=["data"])
     app.include_router(status.router,     prefix="/api", tags=["status"])
-    app.include_router(wip.router,        prefix="/api", tags=["wip"])
     app.include_router(signal.router,    prefix="/api", tags=["signal"])
 
     # React frontend — automaticky aktivní pokud existuje build (Docker / produkce).
