@@ -2,82 +2,24 @@
  * @file RecordDiagram.tsx
  * @description Detail záznamu:
  *   1. ForceTravelDiagram — hysterezní smyčka s kótami (screen 29)  viewBox 0 0 840 500
- *   2. TimeDiagram        — průběhy NC + NO kontaktu (screen 30)   viewBox 0 0 840 470
+ *   2. TimeDiagram        — U_NC + U_NO při sepnutí (vzor: osciloskop IMG_4818), časy v měřítku   viewBox 0 0 840 470
  */
 
-import React, { useState, useEffect, useId } from 'react'
-import { PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS } from '../utils/paramMeta'
+import { useState, useEffect, useId } from 'react'
+import { PARAM_LABELS, PARAM_GROUPS, formatParam } from '../utils/paramMeta'
+import ParamTable from './ParamTable'
 import { useLang } from '../context/LangContext'
 
 interface Props {
   record: Record<string, unknown>
 }
 
+/** Hodnota parametru pro zobrazení — sdílené formatParam (µm/µs celá čísla, N 2 des., mΩ, ∞). */
 function makeVal(record: Record<string, unknown>) {
-  return (key: string): string => {
-    const raw = record[key]
-    if (raw == null || String(raw).trim() === '') return '—'
-    const n = Number(raw)
-    return isNaN(n) ? String(raw) : n.toFixed(2)
-  }
+  return (key: string): string => formatParam(key, record[key]).text
 }
 
-function getUnit(key: string): string {
-  return PARAM_TOOLTIPS[key]?.match(/\[([^\]]+)\]$/)?.[1] ?? ''
-}
 
-// ── České popisy parametrů ──────────────────────────────────────────────────
-
-const PARAM_DESC: Record<string, string> = {
-  of_operatingforce:
-    'Síla [N] v bodě sepnutí (OP). Pokud je příliš velká nebo malá, spínač neodpovídá specifikaci.',
-  rf_realisingforce:
-    'Síla [N] při uvolnění kontaktu na zpáteční cestě (RP). Spolu s OF definuje silovou hysterezi.',
-  ttf_totaltravelforce:
-    'Maximální síla [N] na konci zdvihu (TTP). Nesmí překročit povolenou mez pro daný typ.',
-  fp_freeposition:
-    'Výchozí poloha kladky [µm] bez vnější síly — referenční bod pro všechny délkové hodnoty.',
-  op_operatingposition:
-    'Vzdálenost [µm] od FP do bodu sepnutí kontaktu (aktivace NC→NO).',
-  rp_realeasingposition:
-    'Vzdálenost [µm] od FP do bodu uvolnění kontaktu při zpáteční cestě (deaktivace NO→NC).',
-  ttp_totaltravelposition:
-    'Maximální bezpečná vzdálenost stisku [µm]. Za tímto bodem hrozí mechanické poškození.',
-  pt_pretravel:
-    'Předzdvih [µm] — dráha od FP do OP. Musí být dostatečná pro spolehlivé sepnutí.',
-  ot_overtravel:
-    'Přezdvih [µm] — rezerva za bodem sepnutí (OP→TTP). Chrání kontakt před přetížením.',
-  rt_realisingtravel:
-    'Uvolňovací zdvih [µm] — vzdálenost uvolnění kontaktu od RP.',
-  md_movementdifferential:
-    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (polohovová hystereze). Větší MD = stabilnější přepínání.',
-  tt_totaltravel:
-    'Celkový zdvih [µm] — vzdálenost od FP do TTP.',
-  ut_unstabletime:
-    'Nestabilní čas [µs] — délka kmitů kontaktu těsně po sepnutí, než se kontakt definitivně otevře.',
-  rt_reversetime:
-    'Čas reverzu [µs] — okno, ve kterém kontakt dočasně reverzuje zpět k zavřenému stavu (NC se krátce uzavře).',
-  bt_bouncetime:
-    'Čas odskoku [µs] — celková délka zákmitů po sepnutí. Delší BT = více šumu, pomalejší odezva.',
-  ot_operatingtime:
-    'Čas sepnutí [µs] — celková doba od zahájení spínání po ustálení kontaktu v novém stavu.',
-  r_nc_operatingposition_neg:
-    'Odpor [Ω] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace.',
-  r_nc_operatingposition_pos:
-    'Odpor [Ω] NC kontaktu v bodě sepnutí (OP), kladný pól.',
-  r_nc_releasingposition_neg:
-    'Odpor [Ω] NC kontaktu v bodě uvolnění (RP), záporný pól.',
-  r_nc_releasingposition_pos:
-    'Odpor [Ω] NC kontaktu v bodě uvolnění (RP), kladný pól.',
-  r_no_operatingposition_neg:
-    'Odpor [Ω] normálně otevřeného (NO) kontaktu v bodě sepnutí (OP), záporný pól. Nízký odpor = správně uzavřeno.',
-  r_no_operatingposition_pos:
-    'Odpor [Ω] NO kontaktu v bodě sepnutí (OP), kladný pól.',
-  r_no_releasingposition_neg:
-    'Odpor [Ω] NO kontaktu v bodě uvolnění (RP), záporný pól.',
-  r_no_releasingposition_pos:
-    'Odpor [Ω] NO kontaktu v bodě uvolnění (RP), kladný pól.',
-}
 
 // PARAM_GROUPS importováno z paramMeta.ts — sdíleno s ChartView TABLE_TABS
 
@@ -143,13 +85,6 @@ function ForceTravelDiagram({ record }: Props) {
   const r_noRpNeg = val('r_no_releasingposition_neg')
   const r_noRpPos = val('r_no_releasingposition_pos')
 
-  // RL = TTP − RP (odvozený parametr, není přímo v CSV)
-  const rl_str = (() => {
-    const ttp = Number(record['ttp_totaltravelposition'])
-    const rp  = Number(record['rp_realeasingposition'])
-    if (isNaN(ttp) || isNaN(rp)) return '—'
-    return (ttp - rp).toFixed(2)
-  })()
 
   return (
     <svg className="rd-svg" viewBox="0 0 840 500" xmlns="http://www.w3.org/2000/svg"
@@ -302,18 +237,12 @@ function ForceTravelDiagram({ record }: Props) {
         {val('ot_overtravel')}
       </text>
 
-      {/* Řada 3 (y=450): RT (FP→RP) + RL (RP→TTP) — Leerlaufweg + Rücklaufweg */}
-      <line x1={FP_x+4} y1={450} x2={RP_x-4} y2={450}
-        stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
-      <text x={(FP_x+RP_x)/2} y={447} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>RT</text>
-      <text x={(FP_x+RP_x)/2} y={462} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
-        {val('rt_realisingtravel')}
-      </text>
+      {/* Řada 3 (y=450): RT (RP→TTP) — Rücklaufweg. RT_RealisingTravel = TTP − RP (ověřeno na datech) */}
       <line x1={RP_x+4} y1={450} x2={TTP_x-4} y2={450}
         stroke={C_TRAVEL} strokeWidth={1.5} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
-      <text x={(RP_x+TTP_x)/2} y={447} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>RL</text>
+      <text x={(RP_x+TTP_x)/2} y={447} textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TRAVEL}>RT</text>
       <text x={(RP_x+TTP_x)/2} y={462} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
-        {rl_str}
+        {val('rt_realisingtravel')}
       </text>
 
       {/* Řada 4 (y=475): TT (FP→TTP) — Gesamtweg */}
@@ -369,90 +298,106 @@ function ForceTravelDiagram({ record }: Props) {
   )
 }
 
-// ── Diagram 2: NC + NO průběh spínání (screen 30) ────────────────────────────
+// ── Diagram 2: Časové parametry přepnutí — průběh U_NC a U_NO (osciloskop) ────
 //
-// FYZIKÁLNÍ REALITA:
-//   NC (Normally Closed) = před spínáním ZAVŘEN → při stisku se OTEVÍRÁ → HIGH padá DOLŮ
-//   NO (Normally Open)   = před spínáním OTEVŘEN → při stisku se ZAVÍRÁ → LOW stoupá NAHORU
+// VZOR: záznam osciloskopu při sepnutí mikrospínače (05_user_data/IMG_4818.JPEG):
+//   U_NC (na začátku dole, 0 V = NC sepnut) — v OP se NC rozepne, napětí stoupá zaoblenou
+//        hranou na 10 V → úsek UT (Unstable Time)
+//   oba kontakty rozepnuté → úsek RevT (Reverse Time) do prvního dotyku NO
+//   U_NO (na začátku nahoře, 10 V = NO rozepnut) — NO sepne se zákmity a ustálí se na 0 V
+//        → úsek BT (Bounce Time)
+//   OpT (Operating Time) = UT + RevT + BT — ověřeno na 215 reálných záznamech.
 //
-// LAYOUT: každý kontakt má vlastní oblast HIGH(top) → LOW(bottom).
-//   NC oblast: y=[NC_HIGH=55, NC_LOW=140]  — HIGH nahoře, LOW dole
-//   NO oblast: y=[NO_HIGH=182, NO_LOW=267] — HIGH nahoře, LOW dole (níže na SVG)
-//
-// ZRCADLOVÁ KOMPLEMENTARITA: NO_y = MIRROR - NC_y, kde MIRROR = NC_HIGH + NO_LOW = 322
-//   → NC na HIGH (55)  ↔ NO na LOW  (267)  = NC zavřen, NO otevřen ✓
-//   → NC na LOW  (140) ↔ NO na HIGH (182)  = NC otevřen, NO zavřen ✓
-//   → NC padá DOLŮ při spínání ↔ NO stoupá NAHORU — opačný vizuální směr ✓
+// Časová osa je v MĚŘÍTKU skutečných hodnot záznamu (0 = OP), jako mřížka osciloskopu.
+// Průběhy jsou schematické (produkční záznam nemá surový signál) — tvar hran a zákmitů je
+// ilustrativní, polohy hran a délky úseků odpovídají naměřeným časům.
 //
 // viewBox: 0 0 840 470
+
+/** Zákmity NO během BT: [podíl šířky BT, úroveň 0 = LOW … 1 = HIGH] — schematický tvar. */
+const NO_BOUNCES: [number, number][] = [
+  [0.00, 0], [0.10, 0], [0.10, 1], [0.18, 1], [0.18, 0], [0.30, 0], [0.30, 0.85], [0.36, 0.85],
+  [0.36, 0], [0.46, 0], [0.46, 1], [0.50, 1], [0.50, 0], [0.78, 0], [0.78, 0.6], [0.81, 0.6], [0.81, 0],
+]
 
 function TimeDiagram({ record }: Props) {
   const val = makeVal(record)
   const uid = useId()
 
-  const C_NC   = '#1e293b'
-  const C_NO   = '#2563eb'
+  const num = (k: string) => {
+    const n = Number(record[k])
+    return isFinite(n) && n > 0 ? n : 0
+  }
+  const utRaw = num('ut_unstabletime'), revRaw = num('rt_reversetime'), btRaw = num('bt_bouncetime')
+  const hasTimes = utRaw + revRaw + btRaw > 0
+  // Bez naměřených časů jen ilustrace s typickými poměry (hodnoty kót pak „—")
+  const UT  = hasTimes ? utRaw  : 200
+  const REV = hasTimes ? revRaw : 2700
+  const BT  = hasTimes ? btRaw  : 200
+  const OPT = UT + REV + BT
+
+  const C_NC   = '#16a34a'   // shodně se Signal Data grafy
+  const C_NO   = '#c026d3'
   const C_TIME = '#059669'
   const C_AXIS = '#6b7280'
-  const C_DASH = '#e2e8f0'
-  const AS = 7
+  const C_GRID = '#e5e7eb'
+  const BAND = { ut: '#f59e0b', rev: '#6366f1', bt: '#ef4444' }
 
-  // NC oblast (horní): HIGH = zavřen, LOW = otevřen
-  const NC_HIGH = 55
-  const NC_LOW  = 140
+  // Plocha grafu
+  const X0 = 90, X1 = 790                  // okraje časové osy
+  const Y_HIGH = 80, Y_LOW = 220           // 10 V / 0 V
+  const Y_AXIS = 240
 
-  // NO oblast (dolní): HIGH = zavřen, LOW = otevřen
-  const NO_HIGH = 182
-  const NO_LOW  = 267
+  // Měřítko: před OP 15 %, za koncem BT 15 % z OpT (min. 150 µs), zbytek úměrně
+  const pre  = Math.max(OPT * 0.15, 150)
+  const post = Math.max(OPT * 0.15, 150)
+  const tMin = -pre, tMax = OPT + post
+  const x = (tUs: number) => X0 + ((tUs - tMin) / (tMax - tMin)) * (X1 - X0)
 
-  // Zrcadlový vzorec: NO_y = MIRROR - NC_y
-  const MIRROR = NC_HIGH + NO_LOW   // 55 + 267 = 322
+  const tOp = 0, tUt = UT, tNo = UT + REV, tEnd = OPT
+  const xOp = x(tOp), xUt = x(tUt), xNo = x(tNo), xEnd = x(tEnd)
 
-  // Časové body
-  const t0     = 125
-  const t_act  = 285
-  const t_ut   = 340
-  const t_revt = 390
-  const t_bt   = 488
-  const t_opt  = 568
+  // U_NC: LOW → v OP zaoblený náběh (UT) → HIGH
+  const ncPath = [
+    `M ${X0} ${Y_LOW}`, `L ${xOp} ${Y_LOW}`,
+    `C ${xOp + (xUt - xOp) * 0.55} ${Y_LOW}, ${xUt - (xUt - xOp) * 0.08} ${Y_LOW - (Y_LOW - Y_HIGH) * 0.35}, ${xUt} ${Y_HIGH}`,
+    `L ${X1} ${Y_HIGH}`,
+  ].join(' ')
 
-  // NC waveform: CLOSED/HIGH → (switch) → OPEN/LOW + zákmity + reverz
-  const ncPts: [number, number][] = [
-    [t0,         NC_HIGH],
-    [t_act,      NC_HIGH],
-    [t_act,      NC_LOW],    // okamžité otevření ↓
-    [310,        92],        // zákmit 1: NC se krátce uzavře (↑ k HIGH)
-    [322,        NC_LOW],
-    [332,        102],       // zákmit 2: menší
-    [t_ut,       NC_LOW],
-    [365,        58],        // REVERZ: plné uzavření (≈ NC_HIGH)
-    [t_revt,     NC_LOW],   // znovu otevřen
-    [418,        118],       // zákmit 3: po reverzu
-    [438,        NC_LOW],
-    [456,        126],
-    [472,        NC_LOW],
-    [480,        136],       // poslední zákmit, téměř neznatelný
-    [t_bt,       NC_LOW],
-    [t_opt + 80, NC_LOW],
-  ]
+  // U_NO: HIGH → první dotyk (konec RevT) → zákmity (BT) → LOW
+  const lvl = (l: number) => Y_LOW - l * (Y_LOW - Y_HIGH)
+  const noPts: string[] = [`${X0},${Y_HIGH}`, `${xNo},${Y_HIGH}`]
+  for (const [f, l] of NO_BOUNCES) noPts.push(`${xNo + f * (xEnd - xNo)},${lvl(l)}`)
+  noPts.push(`${xEnd},${Y_LOW}`, `${X1},${Y_LOW}`)
 
-  // NO waveform = zrcadlový obraz NC:
-  //   NC HIGH (zavřen)  → NO LOW  (otevřen)
-  //   NC LOW  (otevřen) → NO HIGH (zavřen)
-  //   NC ↓ → NO ↑  (opačné vizuální směry = fyzikálně správně)
-  const noPts: [number, number][] = ncPts.map(([x, y]) => [x, MIRROR - y])
+  // Dílky časové osy [ms] — kulatý krok
+  const spanMs = (tMax - tMin) / 1000
+  const rawStep = spanMs / 8
+  const mag = 10 ** Math.floor(Math.log10(rawStep))
+  const n = rawStep / mag
+  const stepMs = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag
+  const ticks: number[] = []
+  for (let v = Math.ceil(tMin / 1000 / stepMs) * stepMs; v <= tMax / 1000 + 1e-9; v += stepMs) ticks.push(v)
+  const fmtTick = (v: number) => (stepMs < 1 ? v.toFixed(stepMs < 0.1 ? 2 : 1) : v.toFixed(0))
 
-  const toPoints = (pts: [number, number][]) => pts.map(([x, y]) => `${x},${y}`).join(' ')
-
-  // X-osa a časové šipky
-  const X_AXIS = 290
-  const R1 = 308   // UT + RevT
-  const R2 = 346   // BT
-  const R3 = 384   // OpT
+  const R1 = 290, R2 = 330, R3 = 380       // řady kót: UT + BT, RevT, OpT
+  const arrow = (xa: number, xb: number, y: number) => (
+    <line x1={xa + 2} y1={y} x2={xb - 2} y2={y} stroke={C_TIME} strokeWidth={1.5}
+      markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
+  )
+  const dim = (xa: number, xb: number, y: number, label: string, key: string) => (
+    <g>
+      {arrow(xa, xb, y)}
+      <text x={(xa + xb) / 2} y={y - 5} textAnchor="middle" fontSize={10} fontWeight="700" fill={C_TIME}>{label}</text>
+      <text x={(xa + xb) / 2} y={y + 14} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
+        {hasTimes ? `${val(key)} µs` : '—'}
+      </text>
+    </g>
+  )
 
   return (
     <svg className="rd-svg" viewBox="0 0 840 470" xmlns="http://www.w3.org/2000/svg"
-      aria-label="Contact switching time — NC and NO signals">
+      aria-label="Contact switching times — U_NC and U_NO voltage">
       <defs>
         <marker id={uid + 'tmG'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TIME} /></marker>
@@ -460,158 +405,78 @@ function TimeDiagram({ record }: Props) {
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TIME} /></marker>
       </defs>
 
-      {/* ── Referenční přerušované čáry HIGH / LOW ── */}
-      <line x1={108} y1={NC_HIGH} x2={715} y2={NC_HIGH} stroke={C_DASH} strokeWidth={1} strokeDasharray="3,4" />
-      <line x1={108} y1={NC_LOW}  x2={715} y2={NC_LOW}  stroke={C_DASH} strokeWidth={1} strokeDasharray="3,4" />
-      <line x1={108} y1={NO_HIGH} x2={715} y2={NO_HIGH} stroke={C_DASH} strokeWidth={1} strokeDasharray="3,4" />
-      <line x1={108} y1={NO_LOW}  x2={715} y2={NO_LOW}  stroke={C_DASH} strokeWidth={1} strokeDasharray="3,4" />
+      {/* ── Mřížka + úrovně napětí ── */}
+      {ticks.map(v => (
+        <line key={`g${v}`} x1={x(v * 1000)} y1={Y_HIGH - 20} x2={x(v * 1000)} y2={Y_AXIS} stroke={C_GRID} strokeWidth={1} />
+      ))}
+      {[Y_HIGH, (Y_HIGH + Y_LOW) / 2, Y_LOW].map(y => (
+        <line key={`h${y}`} x1={X0} y1={y} x2={X1} y2={y} stroke={C_GRID} strokeWidth={1} strokeDasharray="3,4" />
+      ))}
+      <text x={X0 - 8} y={Y_HIGH + 4} textAnchor="end" fontSize={10} fill={C_AXIS}>10 V</text>
+      <text x={X0 - 8} y={(Y_HIGH + Y_LOW) / 2 + 4} textAnchor="end" fontSize={10} fill={C_AXIS}>5 V</text>
+      <text x={X0 - 8} y={Y_LOW + 4} textAnchor="end" fontSize={10} fill={C_AXIS}>0 V</text>
 
-      {/* ── X-osa (čas) ── */}
-      <line x1={108} y1={X_AXIS} x2={715} y2={X_AXIS} stroke={C_AXIS} strokeWidth={1.5} />
-      <polygon points={`715,${X_AXIS} ${715-AS*1.5},${X_AXIS-AS/2} ${715-AS*1.5},${X_AXIS+AS/2}`}
-        fill={C_AXIS} />
-      <text x={720} y={X_AXIS+4} fontSize={11} fill={C_AXIS}>Time [µs]</text>
+      {/* ── Barevné úseky UT / RevT / BT ── */}
+      <rect x={xOp} y={Y_HIGH - 20} width={Math.max(0, xUt - xOp)} height={Y_AXIS - Y_HIGH + 20} fill={BAND.ut}  opacity={0.14} />
+      <rect x={xUt} y={Y_HIGH - 20} width={Math.max(0, xNo - xUt)} height={Y_AXIS - Y_HIGH + 20} fill={BAND.rev} opacity={0.10} />
+      <rect x={xNo} y={Y_HIGH - 20} width={Math.max(0, xEnd - xNo)} height={Y_AXIS - Y_HIGH + 20} fill={BAND.bt}  opacity={0.12} />
 
-      {/* ── Svislé referenční čáry klíčových časů ── */}
-      {[t_act, t_ut, t_revt, t_bt, t_opt].map(x => (
-        <line key={x} x1={x} y1={35} x2={x} y2={X_AXIS}
-          stroke={C_DASH} strokeWidth={1} strokeDasharray="4,4" />
+      {/* ── Časová osa [ms], 0 = OP ── */}
+      <line x1={X0} y1={Y_AXIS} x2={X1} y2={Y_AXIS} stroke={C_AXIS} strokeWidth={1.5} />
+      {ticks.map(v => (
+        <g key={`t${v}`}>
+          <line x1={x(v * 1000)} y1={Y_AXIS} x2={x(v * 1000)} y2={Y_AXIS + 5} stroke={C_AXIS} />
+          <text x={x(v * 1000)} y={Y_AXIS + 17} textAnchor="middle" fontSize={9} fill={C_AXIS}>{fmtTick(v)}</text>
+        </g>
+      ))}
+      <text x={X1} y={Y_AXIS + 30} textAnchor="end" fontSize={10} fill={C_AXIS}>t [ms] · 0 = OP</text>
+
+      {/* ── Události ── */}
+      {[
+        { xe: xOp,  label: 'OP',        color: '#43a047' },
+        { xe: xNo,  label: 'NO ↓',      color: C_NO },
+        { xe: xEnd, label: 'NO stable', color: C_NO },
+      ].map((e, i, all) => {
+        // Popisek blíž než 70 px k předchozímu (krátké UT / BT) → o řádek výš a doprava od čáry
+        const lifted = i > 0 && e.xe - all[i - 1].xe < 70 ? 13 : 0
+        return (
+          <g key={e.label}>
+            <line x1={e.xe} y1={Y_HIGH - 22 - lifted} x2={e.xe} y2={Y_AXIS} stroke={e.color} strokeWidth={1.2} strokeDasharray="4,3" />
+            <text x={e.xe} y={Y_HIGH - 27 - lifted} textAnchor={lifted ? 'start' : 'middle'}
+              fontSize={10} fontWeight="700" fill={e.color}>{e.label}</text>
+          </g>
+        )
+      })}
+
+      {/* ── Průběhy ── */}
+      <path d={ncPath} fill="none" stroke={C_NC} strokeWidth={2.4} strokeLinejoin="round" />
+      <polyline points={noPts.join(' ')} fill="none" stroke={C_NO} strokeWidth={2.2} strokeLinejoin="round" />
+      <text x={X0 + 6} y={Y_LOW - 7} fontSize={11} fontWeight="700" fill={C_NC}>U_NC</text>
+      <text x={X0 + 6} y={Y_HIGH - 7} fontSize={11} fontWeight="700" fill={C_NO}>U_NO</text>
+
+      {/* ── Kóty ── */}
+      {dim(xOp, xUt, R1, PARAM_LABELS.ut_unstabletime ?? 'UT', 'ut_unstabletime')}
+      {dim(xNo, xEnd, R1, PARAM_LABELS.bt_bouncetime ?? 'BT', 'bt_bouncetime')}
+      {dim(xUt, xNo, R2, PARAM_LABELS.rt_reversetime ?? 'RevT', 'rt_reversetime')}
+      {dim(xOp, xEnd, R3, PARAM_LABELS.ot_operatingtime ?? 'OpT', 'ot_operatingtime')}
+      {[xOp, xUt, xNo, xEnd].map((xe, i) => (
+        <line key={`d${i}`} x1={xe} y1={Y_AXIS + 34} x2={xe} y2={R3 + 4} stroke={C_TIME} strokeWidth={0.8} strokeDasharray="2,3" opacity={0.6} />
       ))}
 
-      {/* ── Popisky kanálů a úrovní ── */}
-      <text x={104} y={(NC_HIGH+NC_LOW)/2+4} textAnchor="end" fontSize={11} fontWeight="700" fill={C_NC}>NC</text>
-      <text x={104} y={NC_HIGH+4} textAnchor="end" fontSize={9} fill={C_NC} opacity={0.6}>HIGH</text>
-      <text x={104} y={NC_LOW+4}  textAnchor="end" fontSize={9} fill={C_NC} opacity={0.6}>LOW</text>
-
-      <text x={104} y={(NO_HIGH+NO_LOW)/2+4} textAnchor="end" fontSize={11} fontWeight="700" fill={C_NO}>NO</text>
-      <text x={104} y={NO_HIGH+4} textAnchor="end" fontSize={9} fill={C_NO} opacity={0.6}>HIGH</text>
-      <text x={104} y={NO_LOW+4}  textAnchor="end" fontSize={9} fill={C_NO} opacity={0.6}>LOW</text>
-
-      {/* ── Zónové popisky ── */}
-      <text x={(t_act+t_ut)/2}  y={42} textAnchor="middle" fontSize={9} fill="#64748b">Unstable</text>
-      <text x={(t_ut+t_revt)/2} y={42} textAnchor="middle" fontSize={9} fill="#64748b">Reverse</text>
-      <text x={(t_revt+t_bt)/2} y={42} textAnchor="middle" fontSize={9} fill="#64748b">Bounce</text>
-
-      {/* ── NC signál ── */}
-      <polyline points={toPoints(ncPts)} fill="none" stroke={C_NC} strokeWidth={2.5}
-        strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* ── NO signál (zrcadlový — opačný směr) ── */}
-      <polyline points={toPoints(noPts)} fill="none" stroke={C_NO} strokeWidth={2.5}
-        strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* ── Časové šipky ── */}
-      {/* UT: t_act → t_ut */}
-      <line x1={t_act+4} y1={R1} x2={t_ut-4} y2={R1}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
-      <text x={(t_act+t_ut)/2} y={R1-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>UT</text>
-      <text x={(t_act+t_ut)/2} y={R1+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
-        {val('ut_unstabletime')}
-      </text>
-      {/* RevT: t_ut → t_revt */}
-      <line x1={t_ut+4} y1={R1} x2={t_revt-4} y2={R1}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
-      <text x={(t_ut+t_revt)/2} y={R1-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>RevT</text>
-      <text x={(t_ut+t_revt)/2} y={R1+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
-        {val('rt_reversetime')}
-      </text>
-      {/* BT: t_act → t_bt */}
-      <line x1={t_act+4} y1={R2} x2={t_bt-4} y2={R2}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
-      <text x={(t_act+t_bt)/2} y={R2-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>BT</text>
-      <text x={(t_act+t_bt)/2} y={R2+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
-        {val('bt_bouncetime')}
-      </text>
-      {/* OpT: t_act → t_opt */}
-      <line x1={t_act+4} y1={R3} x2={t_opt-4} y2={R3}
-        stroke={C_TIME} strokeWidth={1.5} markerEnd={`url(#${uid}tmG)`} markerStart={`url(#${uid}tmGL)`} />
-      <text x={(t_act+t_opt)/2} y={R3-4}  textAnchor="middle" fontSize={9} fontWeight="700" fill={C_TIME}>OpT</text>
-      <text x={(t_act+t_opt)/2} y={R3+13} textAnchor="middle" fontSize={10} fill={C_TIME} fontFamily="monospace">
-        {val('ot_operatingtime')}
-      </text>
-
       {/* Legenda */}
-      <line x1={580} y1={435} x2={605} y2={435} stroke={C_NC} strokeWidth={2.5} />
-      <text x={610} y={439} fontSize={10} fill={C_AXIS}>NC (Normally Closed)</text>
-      <line x1={580} y1={453} x2={605} y2={453} stroke={C_NO} strokeWidth={2.5} />
-      <text x={610} y={457} fontSize={10} fill={C_AXIS}>NO (Normally Open)</text>
+      <line x1={X0} y1={435} x2={X0 + 25} y2={435} stroke={C_NC} strokeWidth={2.5} />
+      <text x={X0 + 30} y={439} fontSize={10} fill={C_AXIS}>U_NC — NC (Normally Closed)</text>
+      <line x1={X0 + 230} y1={435} x2={X0 + 255} y2={435} stroke={C_NO} strokeWidth={2.5} />
+      <text x={X0 + 260} y={439} fontSize={10} fill={C_AXIS}>U_NO — NO (Normally Open)</text>
+      <text x={X1} y={439} textAnchor="end" fontSize={9} fill={C_AXIS} opacity={0.8}>
+        OpT = UT + RevT + BT
+      </text>
     </svg>
   )
 }
 
 // ── Tabulka parametrů ─────────────────────────────────────────────────────────
 
-function ParamTable({ record }: Props) {
-  const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const { t } = useLang()
-  const val = makeVal(record)
-
-  return (
-    <div className="tile tile--12">
-      <div className="tile__header">
-        <span className="tile__title">{t.chart.paramsTitle}</span>
-      </div>
-      <table className="rd-pt">
-        <thead>
-          <tr>
-            <th className="rd-pt__th rd-pt__th--abbr">{t.chart.paramAbbr}</th>
-            <th className="rd-pt__th rd-pt__th--name">{t.chart.paramName}</th>
-            <th className="rd-pt__th rd-pt__th--val">{t.chart.paramValue}</th>
-            <th className="rd-pt__th rd-pt__th--help"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {PARAM_GROUPS.map(group => (
-            <React.Fragment key={group.label}>
-              <tr className="rd-pt__group-row">
-                <td colSpan={4} className="rd-pt__group-header"
-                  style={{ borderLeftColor: group.color }}>
-                  <span style={{ color: group.color }}>{group.label} [{group.unit}]</span>
-                </td>
-              </tr>
-              {group.keys.map(k => {
-                const v      = val(k)
-                const missing = v === '—'
-                const isOpen  = expandedKey === k
-                const u       = getUnit(k)
-                const name    = (PARAM_TOOLTIPS[k] ?? PARAM_LABELS[k] ?? k)
-                  .replace(/\s*\[.*?\]\s*$/, '')
-                const desc    = PARAM_DESC[k]
-                return (
-                  <React.Fragment key={k}>
-                    <tr className={`rd-pt__row${missing ? ' rd-pt__row--missing' : ''}`}>
-                      <td className="rd-pt__abbr" style={{ color: group.color }}>
-                        {PARAM_LABELS[k] ?? k}
-                      </td>
-                      <td className="rd-pt__name">{name}</td>
-                      <td className="rd-pt__val">
-                        {missing ? '—' : <>{v}{u && <span className="rd-pt__unit">{u}</span>}</>}
-                      </td>
-                      <td className="rd-pt__help-cell">
-                        {desc && (
-                          <button
-                            className={`rd-pt__help-btn${isOpen ? ' rd-pt__help-btn--active' : ''}`}
-                            onClick={() => setExpandedKey(isOpen ? null : k)}
-                            aria-expanded={isOpen}
-                          >?</button>
-                        )}
-                      </td>
-                    </tr>
-                    {isOpen && desc && (
-                      <tr className="rd-pt__desc-row">
-                        <td colSpan={4} className="rd-pt__desc">{desc}</td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                )
-              })}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
 
 // ── NOK info panel ───────────────────────────────────────────────────────────
 
@@ -711,7 +576,7 @@ export default function RecordDiagram({ record }: Props) {
       </div>
 
       <NokPanel record={record} />
-      <ParamTable record={record} />
+      <ParamTable record={record} groups={PARAM_GROUPS} title={t.chart.paramsTitle} />
 
       {/* Modální overlay — maximalizovaný diagram */}
       {maximized && (

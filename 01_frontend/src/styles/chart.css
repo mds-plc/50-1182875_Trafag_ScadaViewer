@@ -14,6 +14,12 @@
   margin-bottom: 0;
 }
 
+/* Akce v hlavičce (Tisk) — vpravo, na řádku s nadpisem (nezabírá vlastní řádek) */
+.chart-header__action {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* ORDER SUMMARY — souhrn zakázky nad tabulkou/kartou */
 
 .chart-summary {
@@ -30,8 +36,13 @@
 
 .chart-summary__item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2);
+}
+
+/* OK/NOK štítek v souhrnu — vpravo */
+.chart-summary__item--status {
+  margin-left: auto;
 }
 
 .chart-summary__key {
@@ -219,31 +230,25 @@
 .testing-hero {
   background: #161c2d;
   border-radius: var(--radius-lg);
-  padding: var(--space-6) var(--space-8);
+  padding: var(--space-4) var(--space-6);
   margin-bottom: var(--space-4);
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-8);   /* vše pohromadě zleva — žádné roztažení na krajní strany */
   border-left: 4px solid #0ea5e9;
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.22);
 }
 
-.testing-hero__left {
-  flex: 1;
+.testing-hero__main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
   min-width: 0;
 }
 
-.testing-hero__ts {
-  font-size: var(--font-size-sm);
-  font-family: var(--font-mono);
-  color: #64748b;
-}
-
 .testing-hero__switch {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: var(--font-weight-semibold);
   color: #e2e8f0;
   line-height: 1.2;
@@ -255,27 +260,39 @@
 .testing-hero__id {
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
-  color: #4a5568;
-}
-
-.testing-hero__measure {
-  font-size: var(--font-size-xs);
-  color: #64748b;
-  margin-top: var(--space-1);
+  color: #94a3b8;
 }
 
 .testing-hero__divider {
   width: 1px;
-  height: 80px;
-  background: rgba(255, 255, 255, 0.06);
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
 
-.testing-hero__right {
+/* Popisek + hodnota (čas, doba měření) */
+.testing-hero__item {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-3);
+  gap: 2px;
+}
+
+.testing-hero__label {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.testing-hero__value {
+  font-size: var(--font-size-md);
+  font-family: var(--font-mono);
+  color: #e2e8f0;
+}
+
+.testing-hero__status {
+  font-size: var(--font-size-sm);
+  padding: 4px 14px;
 }
 
 /* SECTION TABS — hlavní úroveň záložek (sekce CSV souboru) */
@@ -475,29 +492,6 @@
 
 /* RECORD DIAGRAM */
 
-.rd-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  background: var(--color-surface-2);
-  border-bottom: 1px solid var(--color-border);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-md);
-}
-
-.rd-meta__ts {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-}
-.rd-meta__id {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-
 /* Diagramy vedle sebe — align-items vynechán → výchozí stretch = stejná výška */
 .rd-diagrams {
   display: grid;
@@ -548,6 +542,12 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   border-left: 3px solid;
+}
+
+/* Jednotka v záhlaví skupiny bez uppercase — „µm" by se jinak změnilo na „ΜM" (vypadá jako MM) */
+.rd-pt__group-unit {
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 /* Parametrový řádek */
@@ -923,12 +923,135 @@
     margin-bottom: 8px !important;
   }
   .testing-hero__switch { color: #111827 !important; font-size: 18px !important; }
-  .testing-hero__ts { color: #4b5563 !important; }
+  .testing-hero__value { color: #111827 !important; }
   .testing-hero__id { color: #4b5563 !important; }
-  .testing-hero__measure { color: #4b5563 !important; }
+  .testing-hero__label { color: #4b5563 !important; }
   .testing-hero__divider { background: #d1d5db !important; }
 
   /* Chart header — kompaktnější */
   .chart-header { margin-bottom: 8px !important; }
   .page-title { font-size: 16px !important; }
+}
+
+/* ============================================================
+ * PROTOKOL — tiskové rozvržení A4 (detail zakázky, záznamu, testu)
+ * Doplňuje blok @media print výše; pozdější pravidla mají přednost.
+ * ============================================================ */
+
+/* Záhlaví protokolu (čas tisku, uživatel) — jen v tisku */
+.print-meta { display: none; }
+
+@page {
+  size: A4;
+  margin: 12mm 11mm 14mm;
+  @bottom-left {
+    content: "Trafag AG · ScadaViewer";
+    font-size: 8pt;
+    color: #6b7280;
+  }
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-size: 8pt;
+    color: #6b7280;
+  }
+}
+
+@media print {
+  /* Bílý papír, barvy odznaků / skupin zachovat */
+  html, body, #root, .app, .content {
+    background: #fff !important;
+    min-height: 0 !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .content { padding: 0 !important; }
+
+  /* Hlavička protokolu: název + čas tisku na jednom řádku, linka pod */
+  .chart-header {
+    display: flex !important;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    padding-bottom: 6px;
+    margin-bottom: 10px !important;
+    border-bottom: 1.5px solid #111827;
+  }
+  .page-title { font-size: 15px !important; margin: 0 !important; }
+  .print-meta {
+    display: block;
+    margin-left: auto;
+    font-size: 9px;
+    color: #4b5563;
+    white-space: nowrap;
+  }
+
+  /* Dlaždice: bez zaoblení a stínů, tenký rámeček, žádné velké mezery */
+  .tile {
+    background: #fff !important;
+    border-radius: 4px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 8px !important;
+  }
+  .tile__header { margin-bottom: 4px !important; padding: 0 !important; min-height: 0 !important; }
+  .tile__title { font-size: 10px !important; }
+
+  /* Tiskové skupiny: nadpis nikdy sám na konci stránky, řádky se nedělí */
+  /* Skupina se nedělí mezi stránky, pokud se vejde na jednu (dlouhé tabulky prohlížeč stejně zalomí,
+     záhlaví sloupců se pak opakuje) */
+  .cv-print-group { margin-bottom: 10px !important; break-inside: avoid; page-break-inside: avoid; }
+  .cv-print-group__title {
+    font-size: 11px !important;
+    padding: 3px 8px !important;
+    margin: 0 0 2px !important;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  thead { display: table-header-group; }          /* záhlaví tabulky na každé stránce */
+  tr, .rd-pt__group-row { break-inside: avoid; page-break-inside: avoid; }
+  .rd-pt__group-row { break-after: avoid; page-break-after: avoid; }
+
+  /* Skupinové tabulky zakázky: stejné šířky prvních sloupců → vše pod sebou napříč skupinami */
+  .cv-print-group .data-table { table-layout: fixed !important; width: 100% !important; }
+  .cv-print-group .data-table th:nth-child(1) { width: 5%; }
+  .cv-print-group .data-table th:nth-child(2) { width: 21%; }
+  .cv-print-group .data-table th:nth-child(3) { width: 7%; }
+  .cv-print-group .data-table th:nth-child(4) { width: 8%; }
+  .cv-print-group .data-table__th,
+  .cv-print-group .data-table__td { padding: 2px 5px !important; }
+  .cv-print-group .data-table__td { font-size: 10px !important; }
+
+  /* Tabulka parametrů: kompaktní řádky, hodnoty zarovnané vpravo */
+  .rd-pt { width: 100%; font-size: 10px !important; }
+  .rd-pt__th--help, .rd-pt__desc-row { display: none !important; }
+  .rd-pt__th { padding: 3px 8px !important; font-size: 9px !important; }
+  .rd-pt__row td { padding: 2px 8px !important; height: auto !important; }
+  .rd-pt__group-header { padding: 3px 8px !important; font-size: 9px !important; }
+  .rd-pt__th--abbr, .rd-pt__abbr { width: 14%; }
+  .rd-pt__th--val, .rd-pt__val { width: 22%; text-align: right; }
+  .rd-pt__row:nth-child(even) { background: #f9fafb !important; }
+
+  /* Detail záznamu: strana 1 = souhrn + oba diagramy + NOK, strana 2 = parametry */
+  .rd-diagrams { gap: 6px !important; margin-bottom: 6px !important; }
+  .rd-diagrams .tile { break-inside: avoid; }
+  .rd-svg {
+    display: block;
+    width: 100%;
+    max-height: 100mm !important;
+    margin: 0 auto;
+  }
+  .rd-nok-panel { padding: 6px 10px !important; margin-bottom: 0 !important; break-inside: avoid; }
+  .rd-diagrams ~ .tile { break-before: page; page-break-before: always; }
+
+  /* Testing: obrazovkové záložky netisknout — protokol je v .cv-print-only */
+  .testing-hero { break-inside: avoid; }
+  .cv-nok-section { padding: 4px 0 !important; }
+  .cv-nok-result__badge { font-size: 12px !important; padding: 3px 12px !important; }
+  .cv-nok-cats { gap: 6px !important; }
+  .cv-nok-cat { padding: 4px 10px !important; }
+
+  /* Souhrn záznamu / zakázky */
+  .chart-summary { padding: 6px 10px !important; margin-bottom: 8px !important; }
+  .order-hero { break-inside: avoid; }
 }

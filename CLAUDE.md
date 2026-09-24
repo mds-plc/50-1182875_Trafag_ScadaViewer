@@ -53,7 +53,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "0.1.0"
+    ├── __init__.py            ← __version__ = "0.2.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -76,7 +76,8 @@ CLAUDE.md                  ← tento soubor
     └── services/
         ├── __init__.py
         ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
-        ├── file_service.py    ← list_files(), list_files_paginated(), sort + stránkování
+        ├── file_service.py    ← list_files(), list_files_paginated() (+ wip), sort + stránkování
+        ├── files_watcher.py   ← každé 2 s otisk lokálních složek → WS {"type":"files_changed"} (auto-refresh Database)
         ├── io_pool.py         ← run_io(): NAS I/O ve vlastním poolu (4 vlákna), plný → NasBusyError → 503
         ├── repositories/csv_repository.py ← CSV I/O, validace file_id, cache metadat (mtime/size)
         ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast — ⏸ odpojeno
@@ -94,10 +95,10 @@ CLAUDE.md                  ← tento soubor
     ├── App.tsx             ← BrowserRouter + provider nesting + 4 Routes, `/` → `/database` (viz Architektura)
     ├── pages/
     │   ├── Overview.tsx    ← live PLC status grid (PlcContext) — ⏸ odpojeno z routingu (2026-09-23), kód zachován
-    │   ├── Database.tsx    ← /database — local/remote×production/testing, expand, delete
+    │   ├── Database.tsx    ← /database — local/remote×production/testing, expand, delete; rozpracovaná zakázka nahoře; auto-refresh přes WS
     │   ├── ChartView.tsx   ← /chart?file=&location=&type= — graf + tabulka
     │   ├── Settings.tsx    ← /settings — Předvolby + Připojení + Uživatelé (admin+)
-    │   ├── Info.tsx        ← /info — verze v0.1.0, Trafag AG
+    │   ├── Info.tsx        ← /info — verze z /api/health, Trafag AG
     │   └── Wip.tsx         ← WIP záznamy — ⏸ odpojeno (kód zachován s Overview)
     ├── components/
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
@@ -109,8 +110,10 @@ CLAUDE.md                  ← tento soubor
     │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…" (i Suspense fallback)
     │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář + „Relace vypršela")
     │   ├── Pagination.tsx     ← [<] Stránka X z Y [>]
-    │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable
-    │   ├── SignalCharts.tsx   ← 5-záložkové interaktivní grafy signálových dat (Recharts)
+    │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818, časy v měřítku) + ParamTable
+    │   ├── ParamTable.tsx     ← sdílená tabulka parametrů (zkratka/název/hodnota+jednotka/„?" nápověda) — production detail záznamu + Testing detail
+    │   ├── SignalCharts.tsx   ← 5 záložek Signal Data dle referenčních grafů analýzy (05_user_data/20260921_103124/*.png)
+    │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
     ├── i18n/
@@ -134,8 +137,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
     │   └── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     ├── utils/
-    │   ├── paramMeta.ts        ← PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS — sdíleno ChartView/RecordDiagram
-    │   ├── groupColors.ts      ← GROUP_COLORS (barvy skupin 1–6) — sdíleno FileTable/ChartView
+    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞)
+    │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
     │   ├── exportXlsx.ts       ← XLSX export (SheetJS); exportFileXlsx() = vždy celý soubor (per_page=0)
@@ -164,13 +167,16 @@ CLAUDE.md                  ← tento soubor
 
 02_tests/
 ├── pytest.ini
+├── conftest.py                ← autouse: AdsMonitor → offline atrapa (testy nezávisí na ADS routeru)
 ├── test_api.py                ← API integrace (TestClient) — files, data, auth, users, security, regrese auditů
 ├── test_ads_monitor.py        ← AdsMonitor (mock pyads)
 ├── test_performance.py        ← io_pool, signal parser (numpy/Python), cache, prefetch, gzip, cache hlavičky
+├── test_wip_live.py           ← rozpracovaná zakázka v /api/files, FilesWatcher (files_changed)
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
-└── logs/                      ← logy serveru (gitignore) — generuje uvicorn
+├── logs/                      ← logy serveru (gitignore) — generuje uvicorn
+└── cache/file_meta.json       ← cache metadat CSV souborů (gitignore) — přežije restart, lze kdykoli smazat
 
 04_docs/
 ├── architecture.md            ← tok dat, vrstvy, CSV formáty, výkon, API, provider strom, časová osa fází
@@ -351,7 +357,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 
 | Endpoint | Metoda | Popis |
 |----------|--------|-------|
-| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast ADS notifikací + `{type:"ads_status", connected:bool}`; **bez autentizace záměrně** (PLC auto-login, přijaté riziko M14) |
+| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast ADS notifikací + `{type:"ads_status", connected:bool}` + `{type:"files_changed", types:[…]}` (FilesWatcher); **bez autentizace záměrně** (PLC auto-login, přijaté riziko M14) |
 | `/ws/orders` | WebSocket | ⏸ odpojeno (2026-09-23) — live CSV záznamy z wip/ (OrderWatcher) |
 | `/api/health` | GET | Zdravotní stav aplikace — `{status, version, checks}` (NSSM watchdog, diagnostika) |
 | `/api/config` | GET | Bezpečná podmnožina konfigurace — `{server, ads, data, auth}` (bez hash) |
@@ -362,14 +368,14 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/users` | GET / POST | Seznam uživatelů / přidání nového (admin+) |
 | `/api/users/{username}` | DELETE | Smazání uživatele (admin+) |
 | `/api/users/{username}/password` | POST | Změna hesla — admin+ jiným s nižší rolí; vlastní heslo vždy s `current_password` |
-| `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) |
+| `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) + `wip[]` — rozpracované zakázky (jen local, mimo stránkování/filtry) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
-| `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`) |
+| `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` → 409 |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
-| `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) |
+| `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
 | `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty (admin+) |
@@ -388,7 +394,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 ```json
 {
   "status":  "ok",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "checks": {
     "local_storage": true,
     "ads":           false
@@ -715,7 +721,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
 | Stránka Overview | ⏸ odpojeno | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
 | Stránka ChartView — order detail | ✅ | Production: OrderHero + skupiny + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky + **Signal Data** (5 interaktivních grafů, decimace 400k→2k, FP/OP/RP/TTP); **Tisk**: skupinové tabulky |
-| Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
+| Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818, časy v měřítku) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
 | WebSocket /ws/orders + OrderWatcher | ⏸ odpojeno | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
 | Stránka Info | ✅ | 2 záložky Projekt/Dokumentace; verze z /api/health; info.css |
@@ -729,8 +735,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **183 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 8 souborů) — **59 testů**: useData, AuthContext, apiFetch, FileTable, Database, useFiles, LangContext, Pagination |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **201 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 10 souborů) — **80 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |

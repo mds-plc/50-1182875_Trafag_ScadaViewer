@@ -44,11 +44,31 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+
+class _SPAStaticFiles(StaticFiles):
+    """
+    StaticFiles s fallbackem na index.html pro cesty React routeru (/chart, /settings, /info…).
+
+    Bez fallbacku vrací F5 nebo otevřený odkaz na /chart?file=… chybu 404 {"detail":"Not Found"} —
+    přímo funguje jen „/", ostatní stránky jen při navigaci uvnitř aplikace.
+    API (/api/*), WebSocket (/ws/*) a chybějící assety (/assets/*) dál vrací skutečné 404.
+    """
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            rel = path.replace("\\", "/").lstrip("/")      # Windows: StaticFiles normalizuje na „\"
+            if exc.status_code != 404 or rel.startswith(("api/", "ws/", "assets/")) or "." in rel.rsplit("/", 1)[-1]:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 def _get_frontend_dist() -> Path:
@@ -107,11 +127,13 @@ def _build_csp(frontend_dist: Path) -> str:
     return "; ".join(directives)
 
 
+from scada import __version__
 from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users
 from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
+from scada.services.files_watcher import FilesWatcher
 from scada.services.io_pool import NasBusyError
 from scada.services.repositories.csv_repository import CsvRepository
 from scada.services.ws_manager import manager
@@ -269,7 +291,10 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         config_path: Cesta ke Config.toml; users.toml se hledá ve stejném adresáři.
     """
     monitor    = AdsMonitor(cfg, manager)
-    csv_reader = FileService(CsvRepository(cfg.data))
+    watcher    = FilesWatcher(cfg.data, manager)   # změny ve složkách → WS files_changed
+    # Cache metadat souborů na disku (03_output/cache/) — přežije restart; bez config_path jen v paměti
+    meta_cache = config_path.parent / "03_output" / "cache" / "file_meta.json" if config_path else None
+    csv_reader = FileService(CsvRepository(cfg.data, cache_file=meta_cache))
 
     users_path = config_path.parent / "users.toml" if config_path else None
 
@@ -285,12 +310,14 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         log.info("[APP]   ScadaViewer start")
         try:
             await monitor.start()
+            await watcher.start()
             yield
         finally:
+            await watcher.stop()
             await monitor.stop()
             log.info("[APP]   ScadaViewer stop")
 
-    app = FastAPI(title="ScadaViewer", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="ScadaViewer", version=__version__, lifespan=lifespan)
 
     # Middleware — starlette aplikuje v opačném pořadí přidání (LIFO):
     # požadavek projde: CORS → GZip → RateLimit → RequestId → SecurityHeaders → router
@@ -331,6 +358,6 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     # StaticFiles musí být POSLEDNÍ — zachytí vše co neodpovídá routerům výše.
     if _FRONTEND_DIST.is_dir():
         log.info("[APP]   servírování frontendu z %s", _FRONTEND_DIST)
-        app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
+        app.mount("/", _SPAStaticFiles(directory=str(_FRONTEND_DIST), html=True), name="static")
 
     return app

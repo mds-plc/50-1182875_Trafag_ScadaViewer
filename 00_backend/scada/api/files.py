@@ -100,6 +100,9 @@ async def list_files(
         total=result.total,
         page=result.page,
         pages=result.pages,
+        wip=result.wip,
+        hidden_by_filter=result.hidden_by_filter,
+        latest_created_at=result.latest_created_at,
     )
 
 
@@ -124,6 +127,8 @@ async def delete_file(
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
     if result == 'remote_forbidden':
         raise HTTPException(status_code=403, detail="Vzdálené soubory nelze smazat")
+    if result == 'wip_forbidden':
+        raise HTTPException(status_code=409, detail="Rozpracovanou zakázku nelze smazat")
     if result == 'not_found':
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 

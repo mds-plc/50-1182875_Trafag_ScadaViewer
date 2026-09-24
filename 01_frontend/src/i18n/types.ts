@@ -49,6 +49,11 @@ export interface Translations {
     colId: string
     colSwitch: string
     badgeSynced: string
+    badgeWip: string
+    noFilesInRange: string
+    hiddenByFilter: string
+    showLatestDay: string
+    wipTooltip: string
     badgeLocal: string
     showRecords: string
     openInChart: string
@@ -66,6 +71,7 @@ export interface Translations {
     page: string
     of: string
     colGroup: string
+    colStatus: string
     groupDistribution: string
     totalVsExpected: string
     orderDetail: string
@@ -79,6 +85,9 @@ export interface Translations {
   chart: {
     diagramForceTravel: string
     diagramSwitchingTimes: string
+    openContact: string
+    colCategory: string
+    unitPcs: string
     records: string
     exportCsv: string
     backToDatabase: string
@@ -90,6 +99,14 @@ export interface Translations {
     paramName: string
     paramValue: string
     maximize: string
+    measureDuration: string
+    measuredAt: string
+    printedAt: string
+    fullscreen: string
+    close: string
+    zoomReset: string
+    zoomHint: string
+    zoomHintFs: string
     print: string
     testingDetail: string
     sectionTestingParams: string
@@ -103,6 +120,19 @@ export interface Translations {
     signalSwitching: string
     signalTiming: string
     signalSamples: string
+    sigPosition: string
+    sigForce: string
+    sigVoltage: string
+    sigCurrent: string
+    sigResistance: string
+    sigForward: string
+    sigReverse: string
+    sigThreshold: string
+    sigAnalysis: string
+    sigSwitchAt: string
+    sigHysteresisBand: string
+    sigTime: string
+    sigOpenContact: string
   }
   settings: {
     title: string

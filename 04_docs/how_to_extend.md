@@ -377,14 +377,19 @@ Pro texty s proměnnými (např. "Soubor: ORDER_001.csv"):
 // src/utils/paramMeta.ts — jediný zdroj popisků parametrů
 export const PARAM_LABELS   = { …, pr_pressure: 'PR' }                        // zkratka
 export const PARAM_TOOLTIPS = { …, pr_pressure: 'Pressure [bar]' }            // popis + jednotka
+export const PARAM_DESC     = { …, pr_pressure: 'Tlak [bar] — …' }             // česká nápověda „?"
 export const PARAM_GROUPS   = [ …,
   { id: 'forces', label: 'Forces', unit: 'N', color: '#d97706',
     keys: ['of_operatingforce', …, 'pr_pressure'] },                         // ← do skupiny
 ]
 ```
 
-Zařazením do `PARAM_GROUPS` se sloupec automaticky objeví v záložkách tabulky ChartView
-(`TABLE_TABS`) i v `ParamTable` detailu záznamu (`RecordDiagram.tsx`).
+Zařazením do `PARAM_GROUPS` se sloupec automaticky objeví ve všech pohledech — rozbalený řádek
+v Database, záložky tabulky ChartView (`TABLE_TABS`) i sdílené `components/ParamTable.tsx`
+(detail produkčního záznamu i Testing detail — stejné jednotky, vzorce i nápověda).
+Vstupní parametry testu (mimo `PARAM_GROUPS`) mají jednotku a desetinná místa v `EXTRA_FORMAT`.
+Formátování (počet desetinných míst, jednotka, převody) řeší **jen** `formatParam()` v `paramMeta.ts`
+(`GROUP_DECIMALS`) — v komponentách hodnoty nikdy neformátovat ručně (`toFixed`).
 
 ### Krok 3 — (Volitelně) Typ
 

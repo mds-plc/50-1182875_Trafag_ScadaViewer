@@ -114,7 +114,33 @@ class FileService:
             total=total,
             page=page,
             pages=pages,
+            wip=self.list_wip(location, file_type),
+            **self._hidden_by_filter(location, file_type, total, from_date, to_date),
         )
+
+    def _hidden_by_filter(
+        self, location: str, file_type: str, total: int, from_date: str | None, to_date: str | None,
+    ) -> dict:
+        """Filtr nic nenašel → kolik souborů existuje mimo něj a kdy vznikl nejnovější.
+
+        Metadata jdou z cache repozitáře — druhý průchod bez filtru je levný.
+        """
+        if total > 0 or not (from_date or to_date):
+            return {}
+        everything = self.list_files(location, file_type)
+        if not everything:
+            return {}
+        latest = max((f.get('created_at') or '' for f in everything), default='') or None
+        return {'hidden_by_filter': len(everything), 'latest_created_at': latest}
+
+    def list_wip(self, location: str = 'local', file_type: str = 'production') -> list[dict]:
+        """
+        Rozpracované zakázky (wip/) — BUSINESS PRAVIDLO: jen lokální úložiště, bez datumového
+        filtru, řazení a stránkování (zobrazují se vždy nahoře, dokud se měří).
+        """
+        if location != 'local' or not self._repo.validate_params(None, location, file_type):
+            return []
+        return self._repo.list_wip(file_type)
 
     # ------------------------------------------------------------------
     # Jednotlivý soubor
@@ -140,11 +166,14 @@ class FileService:
         sync_status: str | None
         if location == 'remote':
             sync_status = None
+        elif path.parent.name == 'wip':
+            sync_status = 'wip'
         else:
             sync_status = 'done_remote' if 'done_remote' in path.parts else 'done_local'
 
         try:
-            return self._repo.read_file_meta(path, file_type, location, sync_status)
+            return self._repo.read_file_meta(path, file_type, location, sync_status,
+                                             allow_empty=(sync_status == 'wip'))
         except Exception as exc:
             log.error("[SVC]   get_file %s chyba: %s", file_id, exc)
             return None
@@ -176,9 +205,12 @@ class FileService:
           'ok'               — soubor smazán
           'not_found'        — soubor neexistuje
           'remote_forbidden' — remote soubory nelze smazat
+          'wip_forbidden'    — rozpracovanou zakázku nelze smazat (DatabaseGateway do ní zapisuje)
         """
         if location != 'local':
             return 'remote_forbidden'
+        if file_id.endswith('_WIP.csv'):
+            return 'wip_forbidden'
         path = self._repo.resolve_path(file_id, location, file_type)
         if path is None or not path.exists():
             return 'not_found'

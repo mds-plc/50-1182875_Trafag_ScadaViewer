@@ -7,7 +7,8 @@
  * Zodpovědnost:
  *   - Otevírá a udržuje WebSocket spojení (/ws/plc) po celou dobu životnosti aplikace.
  *   - Po odpojení spouští exponential backoff reconnect (1 s → 30 s).
- *   - Rozlišuje dva typy zpráv: PLC symbol update a ads_status (ADS backend↔PLC).
+ *   - Rozlišuje typy zpráv: PLC symbol update, ads_status (ADS backend↔PLC) a files_changed
+ *     (změna CSV složek — přepošle jako window událost FILES_CHANGED_EVENT pro stránku Database).
  *   - Při odpojení nebo ADS výpadku resetuje status na {} — SCADA bezpečnost
  *     (nezobrazovat stará data jako aktuální).
  *   - Není zodpovědný za interpretaci hodnot — to je Overview.tsx.
@@ -24,6 +25,9 @@
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { PlcStatus } from '../types'
+
+/** Window událost: backend (FilesWatcher) hlásí změnu lokálních CSV složek. detail = { types: string[] } */
+export const FILES_CHANGED_EVENT = 'scada:files-changed'
 
 const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS  = 30_000
@@ -78,7 +82,10 @@ export function PlcProvider({ children }: { children: React.ReactNode }) {
             const adsOk = Boolean(msg.connected)
             setAdsConnected(adsOk)
             if (!adsOk) setStatus({})   // ADS výpadek: stará data nejsou aktuální (SCADA safety + auto-logout PLC)
-          } else {
+          } else if (msg.type === 'files_changed') {
+            const types: string[] = Array.isArray(msg.types) ? msg.types : []
+            window.dispatchEvent(new CustomEvent(FILES_CHANGED_EVENT, { detail: { types } }))
+          } else if (typeof msg.symbol === 'string') {
             const plcMsg: PlcStatus = msg
             setStatus(prev => ({ ...prev, [plcMsg.symbol]: plcMsg }))
           }

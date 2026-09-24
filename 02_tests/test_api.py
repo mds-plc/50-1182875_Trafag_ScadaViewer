@@ -1261,7 +1261,7 @@ class TestAuditFollowup20260924:
         repo  = CsvRepository(cfg.data)
         calls = []
         orig  = repo.read_file_meta
-        monkeypatch.setattr(repo, "read_file_meta", lambda *a: calls.append(a) or orig(*a))
+        monkeypatch.setattr(repo, "read_file_meta", lambda *a, **kw: calls.append(a) or orig(*a, **kw))
 
         assert repo.list_local("production")[0]["record_count"] == 1
         assert repo.list_local("production")[0]["record_count"] == 1
@@ -1301,6 +1301,28 @@ class TestAuditFollowup20260924:
         assert set(overview["key_points"]) >= {"op", "rp", "ttp"}
         assert len(calls) == 1
         sr._cache.clear(); sr._resp_cache.clear()
+
+    def test_signal_range_returns_window_with_edge_samples(self, tmp_path: Path) -> None:
+        """mode=range (přiblížený graf): jen vzorky v okně + 1 na každé straně."""
+        from scada.services import signal_reader as sr
+        f = tmp_path / "S_DONE.csv"
+        f.write_text(_SECTIONED_SIGNAL, encoding="utf-8-sig")
+        sr._cache.clear(); sr._resp_cache.clear()
+        r = sr.prepare_signal_response(f, "range", 100, t0_ms=0.003, t1_ms=0.005)
+        assert r is not None
+        assert r["ts_ms"] == [0.002, 0.003, 0.004, 0.005, 0.006]
+        assert r["position"] == [2, 3, 4, 5, 4]
+        assert set(r["key_points"]) >= {"op", "rp"}          # body z celého souboru
+        sr._cache.clear(); sr._resp_cache.clear()
+
+    def test_signal_range_requires_valid_bounds(self, tmp_path: Path) -> None:
+        app, _ = make_app(tmp_path)
+        with TestClient(app) as c:
+            _inject_session(app)
+            h = {"Authorization": f"Bearer {_TEST_TOKEN}"}
+            for q in ("", "&t0=5", "&t0=5&t1=5"):
+                r = c.get(f"/api/signal?file=X_DONE.csv&type=testing&mode=range{q}", headers=h)
+                assert r.status_code == 400, q
 
     # ── L11 — /auth/change-password ────────────────────────────────────
 

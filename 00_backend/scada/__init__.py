@@ -106,4 +106,4 @@ Viz ``Config.toml`` (není v repozitáři) nebo ``Config.toml.example``:
     csv_encoding  = "utf-8-sig"
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

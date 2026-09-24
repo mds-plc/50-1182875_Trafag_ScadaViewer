@@ -9,6 +9,7 @@ Zodpovědnost:
   - read_signal_data() — parsuje [SignalData] sekci, vrací sloupcová data
   - decimate_minmax() — min-max bucketing (zachová píky/propadliny)
   - extract_zoom_window() — nedecimovaný výřez kolem bodu
+  - extract_time_range() — výřez časového rozsahu (přiblížení grafu kolečkem / gestem)
   - find_key_points() — FP/OP/RP/TTP indexy z AnalyzedParameters
   - load_signal() — cache naparsovaných dat (max 2 soubory, invalidace dle mtime/size);
     souběžné požadavky na tentýž soubor (overview + zoom_op + zoom_rp) parsují jen jednou
@@ -20,6 +21,7 @@ Napojení:
 """
 from __future__ import annotations
 
+import bisect
 import io
 import logging
 import math
@@ -37,10 +39,15 @@ except ImportError:       # pragma: no cover
 
 log = logging.getLogger(__name__)
 
+# Práh napětí kontaktu pro detekci přepnutí (shodně s referenční analýzou — „Threshold 5V")
+_SWITCH_THRESHOLD_V = 5.0
+# Zoom okno kolem OP / RP: ±600 vzorků při 20 kHz = ±30 ms
+_ZOOM_HALF_SAMPLES = 600
+
 # Cache naparsovaných signálových dat. Jeden soubor ≈ 400k × 11 hodnot; v array('d')
 # ~35 MB (Python list floatů by byl ~4× víc). Držíme max 2 soubory.
 _CACHE_MAX = 2
-_cache: OrderedDict[Path, tuple[tuple[int, int], dict[str, array] | None, dict[str, dict]]] = OrderedDict()
+_cache: OrderedDict[Path, tuple[tuple[int, int], dict[str, array] | None, dict[str, dict], dict[str, float]]] = OrderedDict()
 _cache_lock = threading.Lock()                       # chrání _cache a _path_locks
 _path_locks: dict[Path, threading.Lock] = {}         # jeden parser na soubor současně
 
@@ -221,6 +228,20 @@ def extract_zoom_window(
     return {col: columns[col][start:end] for col in columns}
 
 
+def extract_time_range(
+    columns: dict[str, list[float]],
+    t0_ms: float,
+    t1_ms: float,
+) -> dict[str, list[float]]:
+    """Vrátí výřez vzorků s časem v [t0_ms, t1_ms] (+ 1 vzorek na každé straně, aby čára
+    navazovala na okraj grafu). Čas v datech je v ns a roste monotónně → bisect."""
+    ts = columns.get('ts', [])
+    n = len(ts)
+    start = max(0, bisect.bisect_left(ts, t0_ms * 1_000_000) - 1)
+    end = min(n, bisect.bisect_right(ts, t1_ms * 1_000_000) + 1)
+    return {col: columns[col][start:end] for col in columns}
+
+
 def find_key_points(
     analyzed: dict[str, str],
     signal: dict[str, list[float]],
@@ -232,9 +253,17 @@ def find_key_points(
         signal: dict ze read_signal_data() — surová (nedecimovaná) data.
 
     Returns:
-        dict s klíči 'fp', 'op', 'rp', 'ttp', každý obsahuje {idx, ts_ms, position}.
+        dict s klíči 'fp', 'op', 'rp', 'ttp', každý obsahuje
+        {idx, ts_ms, position, force, source}.
+
+    OP a RP se určují stejně jako v referenční analýze (Analyzing — grafy results /
+    switching_detail): okamžik, kdy napětí U_NC projde prahem _SWITCH_THRESHOLD_V
+    (OP: NC se rozepne → U_NC stoupne; RP: NC se sepne → U_NC klesne). Pokud U_NC
+    chybí nebo práh nikdy nepřekročí, fallback = nejbližší poloha k analyzované hodnotě.
     """
     position = signal.get('position', [])
+    force    = signal.get('force', [])
+    u_nc     = signal.get('u_nc', [])
     ts = signal.get('ts', [])
     n = len(position)
     if n == 0:
@@ -282,42 +311,54 @@ def find_key_points(
     if ttp_val is not None:
         ttp_idx = _argmin_abs(position, ttp_val)
 
-    points['ttp'] = {
-        'idx': ttp_idx,
-        'ts_ms': ts[ttp_idx] / 1_000_000 if ttp_idx < len(ts) else 0,
-        'position': position[ttp_idx],
-    }
+    def _point(idx: int, source: str = 'position') -> dict:
+        return {
+            'idx':      idx,
+            'ts_ms':    ts[idx] / 1_000_000 if idx < len(ts) else 0,
+            'position': position[idx],
+            'force':    force[idx] if idx < len(force) else None,
+            'source':   source,
+        }
+
+    def _edge(start: int, end: int, rising: bool) -> int | None:
+        """První průchod U_NC prahem v [start, end) — rising: zdola nahoru, jinak shora dolů."""
+        if len(u_nc) < end or start < 1:
+            start = max(start, 1)
+            if len(u_nc) < end:
+                return None
+        thr = _SWITCH_THRESHOLD_V
+        for i in range(start, end):
+            prev, cur = u_nc[i - 1], u_nc[i]
+            if (rising and prev < thr <= cur) or (not rising and prev >= thr > cur):
+                return i
+        return None
+
+    points['ttp'] = _point(ttp_idx)
 
     # FP — Free Position
     fp_val = _get_pos('freeposition')
     if fp_val is not None:
         fp_idx = _argmin_abs(position, fp_val, 0, ttp_idx + 1) if ttp_idx > 0 else 0
-        points['fp'] = {
-            'idx': fp_idx,
-            'ts_ms': ts[fp_idx] / 1_000_000 if fp_idx < len(ts) else 0,
-            'position': position[fp_idx],
-        }
+        points['fp'] = _point(fp_idx)
 
     # OP — Operating Position (v první polovině — sestupná část)
-    op_val = _get_pos('operatingposition')
-    if op_val is not None:
+    op_edge = _edge(1, ttp_idx + 1, rising=True)
+    op_val  = _get_pos('operatingposition')
+    if op_edge is not None:
+        points['op'] = _point(op_edge, 'electric')
+    elif op_val is not None:
         op_idx = _argmin_abs(position, op_val, 0, ttp_idx + 1) if ttp_idx > 0 else 0
-        points['op'] = {
-            'idx': op_idx,
-            'ts_ms': ts[op_idx] / 1_000_000 if op_idx < len(ts) else 0,
-            'position': position[op_idx],
-        }
+        points['op'] = _point(op_idx)
 
     # RP — Releasing Position (v druhé polovině — vzestupná část)
     # Tolerujeme překlep: 'realeasingposition' i 'releasingposition'
-    rp_val = _get_pos('releasingposition') or _get_pos('realeasingposition')
-    if rp_val is not None and ttp_idx < n - 1:
+    rp_edge = _edge(ttp_idx + 1, n, rising=False) if ttp_idx < n - 1 else None
+    rp_val  = _get_pos('releasingposition') or _get_pos('realeasingposition')
+    if rp_edge is not None:
+        points['rp'] = _point(rp_edge, 'electric')
+    elif rp_val is not None and ttp_idx < n - 1:
         rp_idx = _argmin_abs(position, rp_val, ttp_idx, n)
-        points['rp'] = {
-            'idx': rp_idx,
-            'ts_ms': ts[rp_idx] / 1_000_000 if rp_idx < len(ts) else 0,
-            'position': position[rp_idx],
-        }
+        points['rp'] = _point(rp_idx)
 
     return points
 
@@ -326,8 +367,9 @@ def load_signal(
     path: Path,
     encoding: str = 'utf-8-sig',
     separator: str = ';',
-) -> tuple[dict[str, array] | None, dict[str, dict]]:
-    """Vrátí (signal sloupce | None, klíčové body FP/OP/RP/TTP) — z cache, nebo naparsuje soubor.
+) -> tuple[dict[str, array] | None, dict[str, dict], dict[str, float]]:
+    """Vrátí (signal sloupce | None, klíčové body FP/OP/RP/TTP, AnalyzedParameters jako čísla)
+    — z cache, nebo naparsuje soubor.
 
     Klíčové body se počítají jednou při načtení (argmin přes ~400k vzorků ≈ 40 ms).
 
@@ -343,20 +385,21 @@ def load_signal(
             hit = _cache.get(path)
             if hit is not None and hit[0] == sig:
                 _cache.move_to_end(path)
-                return hit[1], hit[2]
+                return hit[1], hit[2], hit[3]
 
         with open(path, encoding=encoding, newline='') as f:
             analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
         raw        = read_signal_data(path, encoding, separator)
         key_points = find_key_points(analyzed, raw) if raw is not None else {}
+        params     = _numeric_params(analyzed)
 
         with _cache_lock:
-            _cache[path] = (sig, raw, key_points)
+            _cache[path] = (sig, raw, key_points, params)
             _cache.move_to_end(path)
             while len(_cache) > _CACHE_MAX:
                 evicted, _ = _cache.popitem(last=False)
                 _path_locks.pop(evicted, None)
-        return raw, key_points
+        return raw, key_points, params
 
 
 def prepare_signal_response(
@@ -365,12 +408,15 @@ def prepare_signal_response(
     n_buckets: int = 1000,
     encoding: str = 'utf-8-sig',
     separator: str = ';',
+    t0_ms: float | None = None,
+    t1_ms: float | None = None,
 ) -> dict | None:
     """Připraví kompletní response pro GET /api/signal.
 
     Args:
         path: cesta k CSV souboru
-        mode: 'overview' | 'results' | 'hysteresis' | 'zoom_op' | 'zoom_rp'
+        mode: 'overview' | 'results' | 'hysteresis' | 'zoom_op' | 'zoom_rp' | 'range'
+              ('range' = výřez t0_ms…t1_ms, decimovaný na n_buckets — přiblížený graf)
         n_buckets: počet bucketů pro decimaci
         encoding: kódování CSV
         separator: oddělovač CSV
@@ -380,6 +426,16 @@ def prepare_signal_response(
         Hotové odpovědi se cachují (overview/results/hysteresis sdílí stejná decimovaná
         data) — opakované otevření / přepnutí záložky je bez výpočtu.
     """
+    if mode == 'range':
+        # Rozsahy se mění plynule s každým přiblížením → necachuje se odpověď,
+        # jen surová data (load_signal); výřez + decimace okna je rychlá
+        raw, key_points, params = load_signal(path, encoding, separator)
+        if raw is None:
+            return None
+        lo, hi = sorted((t0_ms or 0.0, t1_ms or 0.0))
+        window = decimate_minmax(extract_time_range(raw, lo, hi), n_buckets)
+        return _convert_units(window, key_points, params)
+
     st      = path.stat()
     variant = mode if mode in ('zoom_op', 'zoom_rp') else 'decimated'
     key     = (path, st.st_mtime_ns, st.st_size, variant, n_buckets if variant == 'decimated' else 0)
@@ -402,7 +458,7 @@ def _build_response(
     path: Path, mode: str, n_buckets: int, encoding: str, separator: str,
 ) -> dict | None:
     """Vypočte odpověď z (cachovaných) surových dat — decimace nebo zoom výřez."""
-    raw, key_points = load_signal(path, encoding, separator)
+    raw, key_points, params = load_signal(path, encoding, separator)
     if raw is None:
         return None
 
@@ -411,20 +467,22 @@ def _build_response(
         point = key_points.get(point_key)
         if point is None:
             return None
-        zoomed = extract_zoom_window(raw, point['idx'], half_width=500)
-        # Konverze jednotek
-        return _convert_units(zoomed, key_points)
+        # ±30 ms (20 kHz → 600 vzorků): pokryje detail přepnutí (±20 ms) i časové
+        # parametry (OP −5…+25 ms, RP −5…+10 ms) jako v referenční analýze
+        zoomed = extract_zoom_window(raw, point['idx'], half_width=_ZOOM_HALF_SAMPLES)
+        return _convert_units(zoomed, key_points, params)
 
     # Pro overview/results/hysteresis — decimovat
     decimated = decimate_minmax(raw, n_buckets)
-    return _convert_units(decimated, key_points)
+    return _convert_units(decimated, key_points, params)
 
 
 def _convert_units(
     data: dict[str, list[float]],
     key_points: dict[str, dict],
+    params: dict[str, float] | None = None,
 ) -> dict:
-    """Konvertuje jednotky pro frontend: ns→ms, A→mA, R→log10(R)."""
+    """Konvertuje jednotky pro frontend: ns→ms, A→mA; odpor v Ω (frontend: logaritmická osa)."""
     n = len(data.get('ts', []))
     result: dict = {
         'ts_ms':     [v / 1_000_000 for v in data.get('ts', [])],
@@ -435,17 +493,28 @@ def _convert_units(
         'u_no':      list(data.get('u_no', [])),
         'i_nc_ma':   [v * 1000 for v in data.get('i_nc', [])],
         'i_no_ma':   [v * 1000 for v in data.get('i_no', [])],
-        'r_nc_log':  [_safe_log10(v) for v in data.get('r_nc', [])],
-        'r_no_log':  [_safe_log10(v) for v in data.get('r_no', [])],
+        'r_nc_ohm':  [_clip_ohm(v) for v in data.get('r_nc', [])],
+        'r_no_ohm':  [_clip_ohm(v) for v in data.get('r_no', [])],
         'key_points': key_points,
+        'params':     params or {},
         'total_raw':  n,
     }
     return result
 
 
-def _safe_log10(v: float) -> float | None:
-    """Bezpečný log10 — clip na rozsah [1e-4, 1e7], None pro nuly."""
+def _clip_ohm(v: float) -> float | None:
+    """Odpor pro logaritmickou osu — ořez na [1e-4, 1e7] Ω, None pro nekladné hodnoty."""
     if v <= 0:
         return None
-    v = max(1e-4, min(1e7, v))
-    return math.log10(v)
+    return max(1e-4, min(1e7, v))
+
+
+def _numeric_params(analyzed: dict[str, str]) -> dict[str, float]:
+    """AnalyzedParameters jako čísla (souhrn výsledků, časové úseky UT/RevT/BT v grafech)."""
+    out: dict[str, float] = {}
+    for k, v in analyzed.items():
+        try:
+            out[k] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return out

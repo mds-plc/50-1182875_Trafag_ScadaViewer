@@ -209,6 +209,41 @@
   background: var(--color-surface-2);
 }
 
+/* Rozpracovaná zakázka (wip/) — vždy nahoře, podbarvená, levý akcentový pruh */
+.db-row--wip,
+.db-row--wip:hover,
+.db-row--wip.db-row--expanded {
+  background: var(--color-accent-muted);
+}
+
+.db-row--wip > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.db-row--wip .db-badge {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Pulzující tečka místo pořadového čísla — „právě se měří" */
+.db-wip-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: db-wip-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes db-wip-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-accent-muted); opacity: 1; }
+  50%      { box-shadow: 0 0 0 6px var(--color-accent-muted); opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .db-wip-dot { animation: none; }
+}
+
 .db-expand-row > td {
   padding: 0;
   border-bottom: 2px solid var(--color-accent);
@@ -629,9 +664,29 @@
   color: #fff;
   background: var(--color-accent);
 }
-.db-cat-badge[data-cat="1"] { background: #16a34a; }
-.db-cat-badge[data-cat="2"] { background: #65a30d; }
-.db-cat-badge[data-cat="3"] { background: #ca8a04; }
-.db-cat-badge[data-cat="4"] { background: #ea580c; }
-.db-cat-badge[data-cat="5"] { background: #dc2626; }
-.db-cat-badge[data-cat="6"] { background: #9f1239; }
+/* = CATEGORY_COLORS v utils/groupColors.ts — měnit jen společně */
+.db-cat-badge[data-cat="1"] { background: #3b82f6; }
+.db-cat-badge[data-cat="2"] { background: #10b981; }
+.db-cat-badge[data-cat="3"] { background: #f59e0b; }
+.db-cat-badge[data-cat="4"] { background: #8b5cf6; }
+.db-cat-badge[data-cat="5"] { background: #ef4444; }
+.db-cat-badge[data-cat="6"] { background: #ec4899; }
+
+/* Prázdná tabulka kvůli datumovému filtru — vysvětlení + „Zobrazit vše" */
+.db-empty__filtered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.db-empty__hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Prázdné místo za chybějící akci (rozpracovaná zakázka) — tlačítka se v řádcích neposouvají */
+.db-icon-btn--placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}

@@ -19,13 +19,13 @@ export default function Database() {
   const {
     location, setLocation,
     dataType, setDataType,
-    dateFrom, setDateFrom,
+    dateFrom, setDateFrom, showDaysUntil,
     dateTo,   setDateTo,
     page,     setPage,
     expandedId,   setExpandedId,
     deleteTarget, setDeleteTarget,
     sortBy, sortDir, onSort,
-    files, total, pages, loading, error, fetchFiles,
+    files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
     showSync, totalRecords,
     deleteFile, downloadCsv, downloadXlsx,
@@ -127,6 +127,10 @@ export default function Database() {
 
         <FileTable
           files={files}
+          wip={page === 1 ? wip : []}
+          hiddenByFilter={hiddenByFilter}
+          latestCreatedAt={latestCreatedAt}
+          onShowLatestDay={showDaysUntil}
           loading={loading}
           error={error}
           dataType={dataType}

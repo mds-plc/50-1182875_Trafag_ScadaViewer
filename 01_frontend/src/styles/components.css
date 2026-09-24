@@ -19,6 +19,7 @@
 
 .badge--success { background: var(--color-success-light); color: var(--color-success); }
 .badge--warning { background: var(--color-warning-light); color: var(--color-warning); }
+.badge--wip     { background: var(--color-accent); color: #fff; }
 .badge--danger  { background: var(--color-danger-light);  color: var(--color-danger);  }
 .badge--info    { background: var(--color-accent-light);  color: var(--color-accent);  }
 .badge--neutral { background: var(--color-surface-2);     color: var(--color-text-muted); }
@@ -100,6 +101,16 @@
   letter-spacing: 0.06em;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
+}
+
+/* Jednotka pod popiskem sloupce (µm, µs, mΩ…) — shodně s .db-subtable__unit */
+.data-table__unit {
+  display: block;
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-muted);
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* Wrapper pro tabulky s fixními sloupci — horizontální scroll */

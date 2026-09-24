@@ -12,44 +12,20 @@ import { useFileRecords, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import LoadingSpinner from './LoadingSpinner'
 import Pagination from './Pagination'
-import { formatDateTime } from '../utils/formatting'
+import { formatDate, formatDateTime } from '../utils/formatting'
 import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
-import { GROUP_COLORS } from '../utils/groupColors'
+import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
+import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit } from '../utils/paramMeta'
 
-/** Všechny měřené parametry se zkratkami, jednotkami a anglickým popisem (tooltip). */
-interface ExpandParam { key: string; label: string; unit: string; description: string }
-
-const EXPAND_PARAMS: ExpandParam[] = [
-  // Forces
-  { key: 'of_operatingforce',          label: 'OF',   unit: 'N',  description: 'Operating Force'               },
-  { key: 'rf_realisingforce',          label: 'RF',   unit: 'N',  description: 'Realising Force'               },
-  { key: 'ttf_totaltravelforce',       label: 'TTF',  unit: 'N',  description: 'Total Travel Force'            },
-  // Distances
-  { key: 'pt_pretravel',               label: 'PT',   unit: 'µm', description: 'Pre-travel'                    },
-  { key: 'ot_overtravel',              label: 'OvT',  unit: 'µm', description: 'Overtravel'                    },
-  { key: 'rt_realisingtravel',         label: 'RvT',  unit: 'µm', description: 'Realising Travel'              },
-  { key: 'md_movementdifferential',    label: 'MD',   unit: 'µm', description: 'Movement Differential'         },
-  { key: 'tt_totaltravel',             label: 'TT',   unit: 'µm', description: 'Total Travel'                  },
-  { key: 'fp_freeposition',            label: 'FP',   unit: 'µm', description: 'Free Position'                 },
-  { key: 'op_operatingposition',       label: 'OP',   unit: 'µm', description: 'Operating Position'            },
-  { key: 'rp_realeasingposition',      label: 'RP',   unit: 'µm', description: 'Releasing Position'            },
-  { key: 'ttp_totaltravelposition',    label: 'TTP',  unit: 'µm', description: 'Total Travel Position'         },
-  // Times
-  { key: 'ut_unstabletime',            label: 'UT',   unit: 'µs', description: 'Unstable Time'                 },
-  { key: 'rt_reversetime',             label: 'RevT', unit: 'µs', description: 'Reverse Time'                  },
-  { key: 'bt_bouncetime',              label: 'BT',   unit: 'µs', description: 'Bounce Time'                   },
-  { key: 'ot_operatingtime',           label: 'OpT',  unit: 'µs', description: 'Operating Time'                },
-  // Contacts — 999.9 = sensor not connected → filtered (value > 500)
-  { key: 'r_nc_operatingposition_neg', label: 'NCo−', unit: 'Ω', description: 'NC — Operating Position Neg'  },
-  { key: 'r_nc_operatingposition_pos', label: 'NCo+', unit: 'Ω', description: 'NC — Operating Position Pos'  },
-  { key: 'r_nc_releasingposition_neg', label: 'NCr−', unit: 'Ω', description: 'NC — Releasing Position Neg'  },
-  { key: 'r_nc_releasingposition_pos', label: 'NCr+', unit: 'Ω', description: 'NC — Releasing Position Pos'  },
-  { key: 'r_no_operatingposition_neg', label: 'NOo−', unit: 'Ω', description: 'NO — Operating Position Neg'  },
-  { key: 'r_no_operatingposition_pos', label: 'NOo+', unit: 'Ω', description: 'NO — Operating Position Pos'  },
-  { key: 'r_no_releasingposition_neg', label: 'NOr−', unit: 'Ω', description: 'NO — Releasing Position Neg'  },
-  { key: 'r_no_releasingposition_pos', label: 'NOr+', unit: 'Ω', description: 'NO — Releasing Position Pos'  },
-]
+/** NOK kategorie — sloupce se zobrazí jen pokud je CSV obsahuje. */
+const NOK_CATS = [
+  { key: 'nokcategory_force',    label: 'F'  },
+  { key: 'nokcategory_position', label: 'P'  },
+  { key: 'nokcategory_electric', label: 'E'  },
+  { key: 'nokcategory_times',    label: 'T'  },
+  { key: 'nokcategory_process',  label: 'Pr' },
+] as const
 
 // ------------------------------------------------------------------
 // ExpandedRow — záznamy jednoho souboru
@@ -84,12 +60,13 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
     setRecordPage(1)
   }, [file.file_id, location, dataType])
 
-  // Načtení dat (production) při změně stránky
+  // Načtení dat (production) při změně stránky — a při změně počtu záznamů
+  // (rozpracovaná zakázka: DatabaseGateway přidal záznam → tabulka se doplní sama)
   useEffect(() => {
     if (dataType === 'production') {
       fetchRecords(file.file_id, location, dataType, recordPage)
     }
-  }, [file.file_id, location, dataType, recordPage, fetchRecords])
+  }, [file.file_id, file.record_count, location, dataType, recordPage, fetchRecords])
 
   // groupCounts + fileExpectedCount přicházejí z API — agregovány přes celý soubor,
   // takže skupinový graf je přesný i při stránkování (nezáleží na aktuální stránce).
@@ -113,27 +90,17 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const hasStatusCol   = useMemo(() => records.some(r => r.status          != null && String(r.status          ?? '') !== ''), [records])
   const hasCategoryCol = useMemo(() => records.some(r => r.sortingcategory != null && String(r.sortingcategory ?? '') !== ''), [records])
 
-  /** NOK kategorie — zobrazit jen pokud CSV obsahuje alespoň jedno nokcategory_* pole. */
-  const NOK_CATS = [
-    { key: 'nokcategory_force',    label: 'F' },
-    { key: 'nokcategory_position', label: 'P' },
-    { key: 'nokcategory_electric', label: 'E' },
-    { key: 'nokcategory_times',    label: 'T' },
-    { key: 'nokcategory_process',  label: 'Pr' },
-  ] as const
   const activeNokCats = useMemo(
     () => NOK_CATS.filter(c => records.some(r => r[c.key] != null && String(r[c.key] ?? '') !== '')),
     [records]
   )
 
-  // Měřené parametry — zobrazit jen ty, které existují a mají platnou hodnotu (ne sentinel 999.9 = senzor off)
-  const activeParams = useMemo(() => EXPAND_PARAMS.filter(p =>
-    records.some(r => {
-      const v = String(r[p.key] ?? '')
-      const n = Number(v)
-      return v !== '' && !isNaN(n) && n < 999999
-    })
-  ), [records])
+  // Měřené parametry (pořadí dle PARAM_GROUPS) — skrýt sloupce bez měřené hodnoty
+  // (prázdné, nebo kontakt v celém souboru rozepnutý = ∞)
+  const activeParams = useMemo(
+    () => ALL_PARAM_KEYS.filter(k => hasMeasuredValue(k, records)),
+    [records]
+  )
 
   // Absolutní index záznamu v celém souboru (0-based) — pro navigaci do ChartView
   const absIdx = (i: number) => (recordPage - 1) * RECORDS_PER_PAGE + i
@@ -154,7 +121,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
           {dataType === 'production' && hasGroups && (
             <div className="db-order-stats">
               <div className="db-group-chart-wrap">
-                <div className="db-order-stats__label">{t.db.groupDistribution}</div>
+                <div className="db-order-stats__label">{t.chart.categoryDistribution}</div>
                 <ResponsiveContainer width="100%" height={90}>
                   <BarChart data={groupData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -162,7 +129,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                     <Tooltip />
                     <Bar dataKey="count" radius={[3, 3, 0, 0]}>
                       {groupData.map((_, idx) => (
-                        <Cell key={idx} fill={GROUP_COLORS[idx % GROUP_COLORS.length]} />
+                        <Cell key={idx} fill={CATEGORY_COLORS[idx]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -216,20 +183,20 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                   <th className="db-subtable__th db-subtable__th--num">#</th>
                   <th className="db-subtable__th">{t.db.colTimestamp}</th>
                   {hasGroupCol    && <th className="db-subtable__th db-subtable__th--center">{t.db.colGroup}</th>}
-                  {hasStatusCol   && <th className="db-subtable__th db-subtable__th--center">STATUS</th>}
-                  {hasCategoryCol && <th className="db-subtable__th db-subtable__th--center">KAT.</th>}
+                  {hasStatusCol   && <th className="db-subtable__th db-subtable__th--center" title={PARAM_TOOLTIPS.status}>{t.db.colStatus}</th>}
+                  {hasCategoryCol && <th className="db-subtable__th db-subtable__th--center" title={PARAM_TOOLTIPS.sortingcategory}>{t.chart.colCategory}</th>}
                   {activeNokCats.map(c => (
-                    <th key={c.key} className="db-subtable__th db-subtable__th--center" title={c.key}>{c.label}</th>
+                    <th key={c.key} className="db-subtable__th db-subtable__th--center" title={PARAM_TOOLTIPS[c.key]}>{c.label}</th>
                   ))}
-                  {activeParams.map(p => (
+                  {activeParams.map(k => (
                     <th
-                      key={p.key}
+                      key={k}
                       className="db-subtable__th db-subtable__th--param"
-                      onClick={() => setTooltipKey(tooltipKey === p.key ? null : p.key)}
+                      onClick={() => setTooltipKey(tooltipKey === k ? null : k)}
                     >
-                      {p.label}<br /><span className="db-subtable__unit">{p.unit}</span>
-                      {tooltipKey === p.key && (
-                        <div className="db-param-tooltip">{p.description} [{p.unit}]</div>
+                      {PARAM_LABELS[k] ?? k}<br /><span className="db-subtable__unit">{paramUnit(k)}</span>
+                      {tooltipKey === k && (
+                        <div className="db-param-tooltip">{PARAM_TOOLTIPS[k] ?? k}</div>
                       )}
                     </th>
                   ))}
@@ -244,14 +211,14 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                     onClick={() => navigate(`${chartUrl}&record=${absIdx(i)}`)}
                   >
                     <td className="db-subtable__td db-subtable__td--num">{absIdx(i) + 1}</td>
-                    <td className="db-subtable__td">{String(r.timestamp ?? '—')}</td>
+                    <td className="db-subtable__td">{formatDateTime(String(r.timestamp ?? ''), true)}</td>
                     {hasGroupCol && (
                       <td className="db-subtable__td db-subtable__td--center">
                         {r.group != null
                           ? (
                             <span
                               className="db-group-badge"
-                              style={{ background: GROUP_COLORS[(Number(r.group) - 1) % GROUP_COLORS.length] }}
+                              style={{ background: categoryColor(r.group) }}
                             >
                               {String(r.group)}
                             </span>
@@ -295,13 +262,13 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                         </td>
                       )
                     })}
-                    {activeParams.map(p => {
-                      const raw = r[p.key]
-                      if (raw == null || String(raw) === '') return <td key={p.key} className="db-subtable__td db-subtable__td--param">—</td>
-                      const n = Number(raw)
-                      const display = !isNaN(n) ? n.toFixed(2) : String(raw)
+                    {activeParams.map(k => {
+                      const f = formatParam(k, r[k])
                       return (
-                        <td key={p.key} className="db-subtable__td db-subtable__td--param">{display}</td>
+                        <td key={k} className="db-subtable__td db-subtable__td--param"
+                          title={f.open ? t.chart.openContact : undefined}>
+                          {f.text}
+                        </td>
                       )
                     })}
                     <td className="db-subtable__td db-subtable__td--actions">
@@ -353,6 +320,14 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
 
 interface Props {
   files:           OrderFile[]
+  /** Rozpracované zakázky — zobrazí se nahoře, zvýrazněné, bez mazání a výběru */
+  wip?:            OrderFile[]
+  /** Datumový filtr skryl vše: počet souborů mimo filtr (0 = nic skryté) */
+  hiddenByFilter?:    number
+  /** Datum nejnovějšího souboru mimo filtr (ISO) */
+  latestCreatedAt?:   string | null
+  /** Přepnout filtr tak, aby končil daným dnem (YYYY-MM-DD) — tlačítko v prázdném stavu */
+  onShowLatestDay?:   (day: string) => void
   loading:         boolean
   error:           string | null
   dataType:        DataType
@@ -379,7 +354,7 @@ interface Props {
 }
 
 export default function FileTable({
-  files, loading, error,
+  files, wip = [], hiddenByFilter = 0, latestCreatedAt = null, onShowLatestDay, loading, error,
   dataType, location, showSync,
   page, pages, total, totalRecords,
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
@@ -404,6 +379,112 @@ export default function FileTable({
         {children}
         <span className="db-sort-icon">{active ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}</span>
       </th>
+    )
+  }
+
+  /** Jeden řádek tabulky (+ rozbalený detail). isWip = rozpracovaná zakázka (zvýrazněná, bez mazání). */
+  function renderRow(file: OrderFile, index: number, isWip: boolean) {
+    return (
+      <Fragment key={file.file_id}>
+        <tr
+          className={`db-row${isWip ? ' db-row--wip' : ''}${expandedId === file.file_id ? ' db-row--expanded' : ''}`}
+          title={isWip ? t.db.wipTooltip : undefined}
+          onClick={dataType === 'production'
+            ? () => onExpandToggle(file.file_id)
+            : () => navigate(`/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`)
+          }
+        >
+          <td className="db-td db-td--check" onClick={e => e.stopPropagation()}>
+            {!isWip && (
+              <input
+                type="checkbox"
+                checked={selectedIds.has(file.file_id)}
+                onChange={() => onToggleSelect(file.file_id)}
+              />
+            )}
+          </td>
+          <td className="db-td db-td--num">
+            {isWip ? <span className="db-wip-dot" aria-label={t.db.badgeWip} /> : index + 1}
+          </td>
+          <td className="db-td">{formatDateTime(file.created_at)}</td>
+          {dataType === 'production' && (
+            <td className="db-td db-td--mono">{file.order_id ?? '—'}</td>
+          )}
+          <td className="db-td">{file.switch_name}</td>
+          {showRecords && (
+            <td className="db-td db-td--center">
+              <span className="db-badge">{file.record_count}</span>
+            </td>
+          )}
+          {showSync && (
+            <td className="db-td db-td--center">
+              {isWip
+                ? <span className="badge badge--wip">{t.db.badgeWip}</span>
+                : file.sync_status === 'done_remote'
+                  ? <span className="badge badge--success">{t.db.badgeSynced}</span>
+                  : <span className="badge badge--warning">{t.db.badgeLocal}</span>
+              }
+            </td>
+          )}
+          <td className="db-td db-td--actions" onClick={e => e.stopPropagation()}>
+            {dataType === 'testing' ? (
+              <button
+                className="db-icon-btn"
+                title={t.db.orderDetail}
+                onClick={() => navigate(
+                  `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
+                )}
+              >
+                <BarChart2 size={18} />
+              </button>
+            ) : (
+              <button
+                className={`db-icon-btn${expandedId === file.file_id ? ' db-icon-btn--active' : ''}`}
+                onClick={() => onExpandToggle(file.file_id)}
+                title={t.db.showRecords}
+              >
+                <ChevronDown size={18} />
+              </button>
+            )}
+            {/* Stahování — vždy vedle sebe */}
+            <button
+              className="db-download-btn"
+              title={t.chart.exportCsv}
+              onClick={() => onDownload(file)}
+            >
+              <Download size={14} /> CSV
+            </button>
+            <button
+              className="db-download-btn"
+              title={t.db.downloadXlsx}
+              onClick={() => onDownloadXlsx(file)}
+            >
+              <Download size={14} /> XLSX
+            </button>
+            {isWip ? (
+              // Rozpracovanou zakázku nelze smazat — prázdné místo stejné šířky,
+              // aby tlačítka CSV / XLSX zůstala ve všech řádcích na stejné pozici
+              <span className="db-icon-btn db-icon-btn--placeholder" aria-hidden="true" />
+            ) : (
+              <button
+                className="db-icon-btn db-icon-btn--danger"
+                title={t.common.delete}
+                onClick={() => onDeleteRequest(file)}
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
+          </td>
+        </tr>
+
+        {expandedId === file.file_id && dataType === 'production' && (
+          <tr className="db-expand-row">
+            <td colSpan={colSpan}>
+              <ExpandedRow file={file} location={location} dataType={dataType} />
+            </td>
+          </tr>
+        )}
+      </Fragment>
     )
   }
 
@@ -450,102 +531,30 @@ export default function FileTable({
               </tr>
             </thead>
             <tbody>
-              {files.length === 0 && (
+              {files.length === 0 && wip.length === 0 && (
                 <tr>
                   <td colSpan={colSpan} className="db-empty">
-                    {location === 'local' ? t.db.noFilesLocal : t.db.noFilesRemote}
+                    {hiddenByFilter > 0 ? (
+                      <div className="db-empty__filtered">
+                        <div>{t.db.noFilesInRange}</div>
+                        <div className="db-empty__hint">
+                          {t.db.hiddenByFilter
+                            .replace('{count}', String(hiddenByFilter))
+                            .replace('{date}', formatDateTime(latestCreatedAt ?? ''))}
+                        </div>
+                        {onShowLatestDay && latestCreatedAt && /^\d{4}-\d{2}-\d{2}/.test(latestCreatedAt) && (
+                          <button className="btn btn--primary btn--sm"
+                            onClick={() => onShowLatestDay(latestCreatedAt.slice(0, 10))}>
+                            {t.db.showLatestDay.replace('{date}', formatDate(latestCreatedAt))}
+                          </button>
+                        )}
+                      </div>
+                    ) : (location === 'local' ? t.db.noFilesLocal : t.db.noFilesRemote)}
                   </td>
                 </tr>
               )}
-              {files.map((file, i) => (
-                <Fragment key={file.file_id}>
-                  <tr
-                    className={`db-row${expandedId === file.file_id ? ' db-row--expanded' : ''}`}
-                    onClick={dataType === 'production'
-                      ? () => onExpandToggle(file.file_id)
-                      : () => navigate(`/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`)
-                    }
-                  >
-                    <td className="db-td db-td--check" onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(file.file_id)}
-                        onChange={() => onToggleSelect(file.file_id)}
-                      />
-                    </td>
-                    <td className="db-td db-td--num">{i + 1}</td>
-                    <td className="db-td">{formatDateTime(file.created_at)}</td>
-                    {dataType === 'production' && (
-                      <td className="db-td db-td--mono">{file.order_id ?? '—'}</td>
-                    )}
-                    <td className="db-td">{file.switch_name}</td>
-                    {showRecords && (
-                      <td className="db-td db-td--center">
-                        <span className="db-badge">{file.record_count}</span>
-                      </td>
-                    )}
-                    {showSync && (
-                      <td className="db-td db-td--center">
-                        {file.sync_status === 'done_remote'
-                          ? <span className="badge badge--success">{t.db.badgeSynced}</span>
-                          : <span className="badge badge--warning">{t.db.badgeLocal}</span>
-                        }
-                      </td>
-                    )}
-                    <td className="db-td db-td--actions" onClick={e => e.stopPropagation()}>
-                      {dataType === 'testing' ? (
-                        <button
-                          className="db-icon-btn"
-                          title={t.db.orderDetail}
-                          onClick={() => navigate(
-                            `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
-                          )}
-                        >
-                          <BarChart2 size={18} />
-                        </button>
-                      ) : (
-                        <button
-                          className={`db-icon-btn${expandedId === file.file_id ? ' db-icon-btn--active' : ''}`}
-                          onClick={() => onExpandToggle(file.file_id)}
-                          title={t.db.showRecords}
-                        >
-                          <ChevronDown size={18} />
-                        </button>
-                      )}
-                      {/* Stahování — vždy vedle sebe */}
-                      <button
-                        className="db-download-btn"
-                        title={t.chart.exportCsv}
-                        onClick={() => onDownload(file)}
-                      >
-                        <Download size={14} /> CSV
-                      </button>
-                      <button
-                        className="db-download-btn"
-                        title={t.db.downloadXlsx}
-                        onClick={() => onDownloadXlsx(file)}
-                      >
-                        <Download size={14} /> XLSX
-                      </button>
-                      <button
-                        className="db-icon-btn db-icon-btn--danger"
-                        title={t.common.delete}
-                        onClick={() => onDeleteRequest(file)}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-
-                  {expandedId === file.file_id && dataType === 'production' && (
-                    <tr className="db-expand-row">
-                      <td colSpan={colSpan}>
-                        <ExpandedRow file={file} location={location} dataType={dataType} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
+              {wip.map((file, i) => renderRow(file, i, true))}
+              {files.map((file, i) => renderRow(file, i, false))}
             </tbody>
           </table>
 

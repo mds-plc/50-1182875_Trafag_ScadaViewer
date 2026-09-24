@@ -2,7 +2,8 @@
 REST endpoint pro signálová data z testovacích CSV souborů (/api/signal).
 
 Účel: Poskytuje decimovaná signálová data pro interaktivní grafy v prohlížeči.
-      Podporuje 5 režimů zobrazení: overview, results, hysteresis, zoom_op, zoom_rp.
+      Podporuje 5 režimů zobrazení: overview, results, hysteresis, zoom_op, zoom_rp
+      + 'range' (výřez t0…t1 ms pro přiblížený graf — kolečko / gesto).
 
 Zodpovědnost:
   - Validuje vstupní parametry (file, location, type, mode)
@@ -33,7 +34,7 @@ from scada.services.signal_reader import prepare_signal_response
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-_VALID_MODES = frozenset({'overview', 'results', 'hysteresis', 'zoom_op', 'zoom_rp'})
+_VALID_MODES = frozenset({'overview', 'results', 'hysteresis', 'zoom_op', 'zoom_rp', 'range'})
 
 
 @router.get("/signal", dependencies=[Depends(require_auth)])
@@ -44,6 +45,8 @@ async def get_signal(
     file_type: str        = Query('testing',     description="production | testing", alias="type"),
     mode:      str        = Query('overview',    description="overview | results | hysteresis | zoom_op | zoom_rp"),
     buckets:   int        = Query(1000, ge=100, le=5000, description="Počet bucketů decimace"),
+    t0:        float | None = Query(None, description="mode=range: začátek výřezu [ms]"),
+    t1:        float | None = Query(None, description="mode=range: konec výřezu [ms]"),
 ) -> JSONResponse:
     """Vrátí decimovaná signálová data pro interaktivní grafy.
 
@@ -64,6 +67,8 @@ async def get_signal(
     """
     if mode not in _VALID_MODES:
         raise HTTPException(status_code=400, detail=f"Neplatný mode: {mode!r}")
+    if mode == 'range' and (t0 is None or t1 is None or not t1 > t0):
+        raise HTTPException(status_code=400, detail="mode=range vyžaduje t0 < t1 [ms]")
 
     cfg = request.app.state.config.data
     timeout = 30.0 if location == 'remote' else 15.0
@@ -90,6 +95,8 @@ async def get_signal(
                 n_buckets=buckets,
                 encoding=cfg.csv_encoding,
                 separator=cfg.csv_separator,
+                t0_ms=t0,
+                t1_ms=t1,
             ),
             timeout=timeout,
         )
@@ -109,6 +116,7 @@ async def get_signal(
 
 def _read_signal(
     path, mode: str, n_buckets: int, encoding: str, separator: str,
+    t0_ms: float | None = None, t1_ms: float | None = None,
 ) -> dict | None:
     """Synchronní čtení signálových dat — voláno přes run_io (parsování je cachované)."""
     return prepare_signal_response(
@@ -117,4 +125,6 @@ def _read_signal(
         n_buckets=n_buckets,
         encoding=encoding,
         separator=separator,
+        t0_ms=t0_ms,
+        t1_ms=t1_ms,
     )

@@ -18,14 +18,16 @@ import { exportFileXlsx } from '../utils/exportXlsx'
 import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import {
   PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
-  MEASUREDINFO_KEYS,
+  MEASUREDINFO_KEYS, MEASUREDINFO_GROUPS, formatParam, hasMeasuredValue, paramUnit,
 } from '../utils/paramMeta'
+import { formatDateTime } from '../utils/formatting'
 import DataTable      from '../components/DataTable'
 import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
+import ParamTable from '../components/ParamTable'
 import RecordDiagram  from '../components/RecordDiagram'
 import SignalCharts   from '../components/SignalCharts'
-import { GROUP_COLORS } from '../utils/groupColors'
+import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
  *  NOK sloupce jsou pevné — pokud CSV je neobsahuje, existingKeys.has() je automaticky skryje. */
@@ -33,8 +35,6 @@ const FIXED_COLS = ['timestamp', 'sortingcategory', 'status',
   'nokcategory_force', 'nokcategory_position', 'nokcategory_electric',
   'nokcategory_times', 'nokcategory_process']
 
-// Barvy kategorií 1–6 (1–4 OK, 5 NOK Trafag, 6 NOK výrobce)
-const CAT_COLORS = ['#16a34a', '#4ade80', '#65a30d', '#ca8a04', '#ea580c', '#dc2626']
 
 /** Záložky tabulky parametrů v detailu zakázky — odvozeno z PARAM_GROUPS v paramMeta.ts. */
 type TabId = 'forces' | 'positions' | 'travel' | 'times' | 'electric'
@@ -66,7 +66,7 @@ function CategoryChart({ groupCounts, total }: { groupCounts: Record<string, num
   const catData = [1, 2, 3, 4, 5, 6].map((g, i) => ({
     g,
     count: groupCounts[String(g)] ?? 0,
-    color: CAT_COLORS[i],
+    color: CATEGORY_COLORS[i],
   }))
 
   const countOk  = catData.slice(0, 4).reduce((s, d) => s + d.count, 0)
@@ -114,7 +114,7 @@ function CategoryChart({ groupCounts, total }: { groupCounts: Record<string, num
         <BarChart data={catData} margin={{ top: 36, right: 16, bottom: 28, left: -16 }}>
           <XAxis dataKey="g" tick={<CatAxisTick />} tickLine={false} axisLine={false} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v: number) => [v, 'pcs']} />
+          <Tooltip formatter={(v: number) => [v, t.chart.unitPcs]} />
           <Bar dataKey="count" radius={[5, 5, 0, 0]}>
             <LabelList dataKey="count" content={renderLabel} />
             {catData.map((d, i) => (
@@ -154,10 +154,10 @@ function OrderHero({ records, total: totalProp, t }: MetricsProps) {
   const isPartial = totalProp != null && totalProp > records.length
   const hasGroups = records.some(r => r.group != null) && !isPartial
   const groupData  = useMemo(
-    () => [1, 2, 3, 4, 5, 6].map((g, i) => ({
+    () => [1, 2, 3, 4, 5, 6].map(g => ({
       g,
       count: records.filter(r => Number(r.group) === g).length,
-      color: GROUP_COLORS[i],
+      color: categoryColor(g),
     })),
     [records]
   )
@@ -203,7 +203,7 @@ function OrderHero({ records, total: totalProp, t }: MetricsProps) {
                 key={g}
                 className="order-hero__group-dot"
                 style={{ background: color }}
-                title={`Skupina ${g}: ${count}`}
+                title={`${t.db.colGroup} ${g}: ${count}`}
               >
                 {g}
               </div>
@@ -218,9 +218,31 @@ function OrderHero({ records, total: totalProp, t }: MetricsProps) {
 
 // ── Souhrn pro testing / record detail ──────────────────────────────────────
 
-function OrderSummary({ record, t }: {
-  record: Record<string, unknown>
-  t:      ReturnType<typeof import('../context/LangContext').useLang>['t']
+/**
+ * Záhlaví tiskového protokolu (jen @media print): čas tisku + přihlášený uživatel.
+ * Čas se obnoví těsně před tiskem (událost beforeprint) — stránka může být otevřená dlouho.
+ */
+function PrintMeta() {
+  const { t } = useLang()
+  const { displayName } = useAuth()
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const onBefore = () => setNow(new Date())
+    window.addEventListener('beforeprint', onBefore)
+    return () => window.removeEventListener('beforeprint', onBefore)
+  }, [])
+  return (
+    <div className="print-meta">
+      {t.chart.printedAt} {formatDateTime(now.toISOString(), false)}{displayName ? ` · ${displayName}` : ''}
+    </div>
+  )
+}
+
+function OrderSummary({ record, t, children }: {
+  record:    Record<string, unknown>
+  t:         ReturnType<typeof import('../context/LangContext').useLang>['t']
+  /** Doplňkové položky na konci řádku (detail záznamu: čas, kategorie, OK/NOK) */
+  children?: React.ReactNode
 }) {
   const items = [
     { key: 'order',            label: t.db.colOrder  },
@@ -228,7 +250,7 @@ function OrderSummary({ record, t }: {
     { key: 'microswitch_id',   label: t.db.colId     },
   ].filter(item => record[item.key] != null)
 
-  if (items.length === 0) return null
+  if (items.length === 0 && !children) return null
 
   return (
     <div className="chart-summary">
@@ -238,15 +260,24 @@ function OrderSummary({ record, t }: {
           <span className="chart-summary__value">{String(record[item.key])}</span>
         </span>
       ))}
+      {children}
     </div>
   )
 }
 
-/** Vlastní render buňky pro DataTable v detailu zakázky — OK/NOK badge pro status a sortingcategory.
- *  Status OK/NOK se odvozuje z sortingcategory (1–4 = OK, 5–6 = NOK), ne ze status pole.
- *  Tím se předchází nesrovnalostem v datech (kat. 4 s status=5). */
-function renderChartCell(col: string, value: unknown, row: Record<string, unknown>) {
+/** Vlastní render buňky pro DataTable v detailu zakázky:
+ *  - status / sortingcategory → OK/NOK badge, badge kategorie (barva boxu)
+ *  - nokcategory_* → ✓ / !
+ *  - měřené parametry → formatParam (jednotné formátování, mΩ, ∞ pro rozepnutý kontakt)
+ *  Status OK/NOK se odvozuje z sortingcategory (1–4 = OK, 5–6 = NOK); v datech je vždy
+ *  konzistentní se Status (2 ↔ 1–4, 5 ↔ 5–6), fallback na Status když kategorie chybí. */
+function makeChartCellRenderer(openLabel: string) {
+  return (col: string, value: unknown, row: Record<string, unknown>) => renderChartCell(col, value, row, openLabel)
+}
+
+function renderChartCell(col: string, value: unknown, row: Record<string, unknown>, openLabel: string) {
   const v = String(value ?? '')
+  if (col === 'timestamp') return formatDateTime(v, true)
   if (col === 'status') {
     const cat = Number(row['sortingcategory'] ?? 0)
     if (cat >= 1) {
@@ -265,6 +296,10 @@ function renderChartCell(col: string, value: unknown, row: Record<string, unknow
   if (col.startsWith('nokcategory_')) {
     const isFail = v === '1'
     return <span className={`db-nok-icon db-nok-icon--${isFail ? 'fail' : 'ok'}`}>{isFail ? '!' : '\u2713'}</span>
+  }
+  if (paramUnit(col)) {
+    const f = formatParam(col, value)
+    return f.open ? <span title={openLabel}>{f.text}</span> : f.text
   }
   return null
 }
@@ -286,7 +321,6 @@ export default function ChartView() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabId>('forces')
   const [section, setSection] = useState<SectionId>('testing_params')
-  const [analyzedSub, setAnalyzedSub] = useState<TabId>('forces')
 
   // Absolutní index záznamu → stránka, na které leží
   const pageForRecord = recordIdx != null
@@ -311,16 +345,15 @@ export default function ChartView() {
     const tab = TABLE_TABS.find(t => t.id === activeTab)!
     const cols = [...FIXED_COLS, ...tab.keys].filter(k =>
       existingKeys.has(k) &&
-      records.some(r => {
-        const v = r[k]
-        if (v == null || String(v) === '') return false
-        // Pro měřené parametry (mimo electric) filtrovat sentinel (≥999999 = otevřený kontakt)
-        if (activeTab !== 'electric' && !FIXED_COLS.includes(k) && Number(String(v)) >= 999999) return false
-        return true
-      })
+      (FIXED_COLS.includes(k)
+        ? records.some(r => r[k] != null && String(r[k]) !== '')
+        // měřené parametry: skrýt sloupec, kde není žádná měřená hodnota (vše prázdné nebo ∞)
+        : hasMeasuredValue(k, records))
     )
     return cols.length >= 1 ? cols : FIXED_COLS
   }, [records, activeTab])
+
+  const cellRenderer = useMemo(() => makeChartCellRenderer(t.chart.openContact), [t])
 
   const backBtn = (
     <button className="btn btn--secondary btn--sm" onClick={() => navigate(-1)}>
@@ -343,6 +376,13 @@ export default function ChartView() {
             {t.chart.recordDetail} — {fileId}
             {record && <span className="chart-header__sub">({recordIdx + 1} / {total})</span>}
           </h1>
+          <PrintMeta />
+          {record && (
+            <button className="btn btn--secondary btn--sm chart-header__action" onClick={() => window.print()}>
+              <Printer size={14} />
+              {t.chart.print}
+            </button>
+          )}
         </div>
 
         {loading && <LoadingSpinner />}
@@ -350,37 +390,34 @@ export default function ChartView() {
 
         {!loading && !error && record && (
           <>
-            <OrderSummary record={record} t={t} />
-
-            <div className="cv-toolbar">
-              <button className="btn btn--secondary btn--sm" onClick={() => window.print()}>
-                <Printer size={14} />
-                {t.chart.print}
-              </button>
-            </div>
-
-            <div className="rd-meta">
-              <span className="rd-meta__ts">{String(record.timestamp ?? '—')}</span>
-              {record.microswitch_id != null && (
-                <span className="rd-meta__id">ID: {String(record.microswitch_id)}</span>
-              )}
+            {/* Jeden řádek: zakázka · typ · ID · čas · kategorie · OK/NOK */}
+            <OrderSummary record={record} t={t}>
+              <span className="chart-summary__item">
+                <span className="chart-summary__key">{t.db.colTimestamp}</span>
+                <span className="chart-summary__value">{formatDateTime(String(record.timestamp ?? ''), true)}</span>
+              </span>
               {record.sortingcategory != null && (
-                <span className="db-cat-badge" data-cat={String(record.sortingcategory)}>
-                  {String(record.sortingcategory)}
+                <span className="chart-summary__item">
+                  <span className="chart-summary__key">{t.chart.colCategory}</span>
+                  <span className="db-cat-badge" data-cat={String(record.sortingcategory)}>
+                    {String(record.sortingcategory)}
+                  </span>
                 </span>
               )}
-              {(() => {
-                const cat = Number(record.sortingcategory ?? 0)
-                if (cat >= 1) {
-                  const isNok = cat >= 5
-                  return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
-                }
-                const v = String(record.status ?? '')
-                if (v === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
-                if (v === '5' || v === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
-                return null
-              })()}
-            </div>
+              <span className="chart-summary__item chart-summary__item--status">
+                {(() => {
+                  const cat = Number(record.sortingcategory ?? 0)
+                  if (cat >= 1) {
+                    const isNok = cat >= 5
+                    return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
+                  }
+                  const v = String(record.status ?? '')
+                  if (v === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
+                  if (v === '5' || v === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
+                  return null
+                })()}
+              </span>
+            </OrderSummary>
 
             <RecordDiagram record={record} />
           </>
@@ -400,6 +437,7 @@ export default function ChartView() {
         <div className="chart-header">
           {backBtn}
           <h1 className="page-title">{t.db.orderDetail} — {fileId}</h1>
+          <PrintMeta />
         </div>
 
         {loading && <LoadingSpinner />}
@@ -467,7 +505,8 @@ export default function ChartView() {
                 rows={records}
                 columnLabels={PARAM_LABELS}
                 columnTooltips={PARAM_TOOLTIPS}
-                cellRenderer={renderChartCell}
+                columnUnits={paramUnit}
+                cellRenderer={cellRenderer}
                 fixedColumns={FIXED_COLS}
                 onRowClick={row => {
                   const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
@@ -497,7 +536,8 @@ export default function ChartView() {
                       rows={numberedRows}
                       columnLabels={{ ...PARAM_LABELS, _row_num: '#' }}
                       columnTooltips={PARAM_TOOLTIPS}
-                      cellRenderer={renderChartCell}
+                      columnUnits={paramUnit}
+                      cellRenderer={cellRenderer}
                     />
                   </div>
                 )
@@ -542,73 +582,6 @@ export default function ChartView() {
   const hasAnalyzed      = record != null && PARAM_GROUPS.some(g => g.keys.some(k => record[k] != null))
   const hasNokInfo       = record != null && record.nokreason != null
 
-  /** Render key-value řádek parametru. */
-  const renderParamRow = (key: string, rec: Record<string, unknown>) => {
-    const raw = rec[key]
-    if (raw == null || String(raw).trim() === '') return null
-    const n = Number(raw)
-    const display = isNaN(n) ? String(raw) : n.toFixed(4).replace(/\.?0+$/, '')
-    const unit = PARAM_TOOLTIPS[key]?.match(/\[([^\]]+)\]$/)?.[1] ?? ''
-    return (
-      <tr key={key} className="rd-pt__row">
-        <td className="rd-pt__abbr">{PARAM_LABELS[key] ?? key}</td>
-        <td className="rd-pt__name">{PARAM_TOOLTIPS[key]?.replace(/\s*\[.*$/, '') ?? key}</td>
-        <td className="rd-pt__val">
-          {display}
-          {unit && <span className="rd-pt__unit">{unit}</span>}
-        </td>
-      </tr>
-    )
-  }
-
-  /** Render celou key-value tabulku pro flat seznam klíčů. */
-  const renderFlatTable = (keys: string[], rec: Record<string, unknown>) => (
-    <table className="rd-pt">
-      <thead>
-        <tr>
-          <th className="rd-pt__th rd-pt__th--abbr">{t.chart.paramAbbr}</th>
-          <th className="rd-pt__th">{t.chart.paramName}</th>
-          <th className="rd-pt__th rd-pt__th--val">{t.chart.paramValue}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {keys.map(k => renderParamRow(k, rec))}
-      </tbody>
-    </table>
-  )
-
-  /** Render tabulku se skupinami (barevné záhlaví skupiny + řádky). */
-  const renderGroupedTable = (
-    groups: { id: string; label: string; unit: string; color: string; keys: string[] }[],
-    rec: Record<string, unknown>,
-  ) => (
-    <table className="rd-pt">
-      <thead>
-        <tr>
-          <th className="rd-pt__th rd-pt__th--abbr">{t.chart.paramAbbr}</th>
-          <th className="rd-pt__th">{t.chart.paramName}</th>
-          <th className="rd-pt__th rd-pt__th--val">{t.chart.paramValue}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {groups.map(group => {
-          const visibleKeys = group.keys.filter(k => rec[k] != null && String(rec[k]).trim() !== '')
-          if (visibleKeys.length === 0) return null
-          return (
-            <React.Fragment key={group.id}>
-              <tr className="rd-pt__group-row">
-                <td colSpan={3} className="rd-pt__group-header" style={{ borderColor: group.color, color: group.color }}>
-                  {group.label} {group.unit && `[${group.unit}]`}
-                </td>
-              </tr>
-              {visibleKeys.map(k => renderParamRow(k, rec))}
-            </React.Fragment>
-          )
-        })}
-      </tbody>
-    </table>
-  )
-
   /** NOK render — speciální zobrazení s OK/NOK ikonami. */
   const renderNokTable = (rec: Record<string, unknown>) => {
     const reason = Number(rec.nokreason ?? 0)
@@ -645,6 +618,7 @@ export default function ChartView() {
       <div className="chart-header">
         {backBtn}
         <h1 className="page-title">{t.chart.testingDetail} — {fileId}</h1>
+        <PrintMeta />
       </div>
 
       {loading && <LoadingSpinner />}
@@ -654,31 +628,33 @@ export default function ChartView() {
         <>
           {/* Testing Hero — kompaktní tmavý panel */}
           <div className="testing-hero">
-            <div className="testing-hero__left">
+            <div className="testing-hero__main">
               <div className="testing-hero__switch">{String(record.microswitch_name ?? '—')}</div>
               {record.microswitch_id != null && (
                 <div className="testing-hero__id">ID: {String(record.microswitch_id)}</div>
               )}
             </div>
             <div className="testing-hero__divider" />
-            <div className="testing-hero__right">
-              <div className="testing-hero__ts">{String(record.timestamp ?? '—')}</div>
-              {record.measuretime != null && (
-                <div className="testing-hero__measure">
-                  {Number(record.measuretime).toFixed(1)} s
-                </div>
-              )}
-              {/* Celkový OK/NOK */}
-              {(() => {
-                const reason = Number(record.nokreason ?? 0)
-                const isNok = reason !== 0
-                return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
-              })()}
+            <div className="testing-hero__item">
+              <span className="testing-hero__label">{t.chart.measuredAt}</span>
+              <span className="testing-hero__value">{formatDateTime(String(record.timestamp ?? ''), true)}</span>
             </div>
+            {record.measuretime != null && (
+              <div className="testing-hero__item">
+                <span className="testing-hero__label">{t.chart.measureDuration}</span>
+                <span className="testing-hero__value">{formatParam('measuretime', record.measuretime).text} s</span>
+              </div>
+            )}
+            {/* Celkový OK/NOK */}
+            {(() => {
+              const reason = Number(record.nokreason ?? 0)
+              const isNok = reason !== 0
+              return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'} testing-hero__status`}>{isNok ? 'NOK' : 'OK'}</span>
+            })()}
           </div>
 
-          {/* Hlavní sekční záložky */}
-          <div className="tile tile--12">
+          {/* Hlavní sekční záložky (v tisku nahrazeny .cv-print-only — jinak by se aktivní záložka tiskla 2×) */}
+          <div className="tile tile--12 cv-screen-only">
             <div className="tile__header">
               <div className="cv-section-tabs">
                 {visibleSections.map(id => (
@@ -708,34 +684,21 @@ export default function ChartView() {
             {/* Obsah aktivní sekce */}
             {section === 'testing_params' && (
               hasTestingParams
-                ? renderGroupedTable(TESTING_INPUT_GROUPS, record)
+                ? <ParamTable record={record} groups={TESTING_INPUT_GROUPS} bare hideMissing />
                 : <p className="cv-section-empty">{t.common.noData}</p>
             )}
 
             {section === 'measured_info' && (
               hasMeasuredInfo
-                ? renderFlatTable(MEASUREDINFO_KEYS, record)
+                ? <ParamTable record={record} groups={MEASUREDINFO_GROUPS} bare hideMissing />
                 : <p className="cv-section-empty">{t.common.noData}</p>
             )}
 
             {section === 'analyzed' && (
-              hasAnalyzed ? (
-                <>
-                  {/* Podzáložky — skupiny analyzovaných parametrů */}
-                  <div className="cv-sub-tabs">
-                    {TABLE_TABS.map(tab => (
-                      <button
-                        key={tab.id}
-                        className={`cv-param-tab${analyzedSub === tab.id ? ' cv-param-tab--active' : ''}`}
-                        onClick={() => setAnalyzedSub(tab.id)}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                  {renderGroupedTable(PARAM_GROUPS.filter(g => g.id === analyzedSub), record)}
-                </>
-              ) : <p className="cv-section-empty">{t.common.noData}</p>
+              // Stejná tabulka jako v detailu produkčního záznamu (skupiny, jednotky, nápověda „?")
+              hasAnalyzed
+                ? <ParamTable record={record} groups={PARAM_GROUPS} bare />
+                : <p className="cv-section-empty">{t.common.noData}</p>
             )}
 
             {section === 'nok_info' && (
@@ -754,25 +717,21 @@ export default function ChartView() {
             {hasTestingParams && (
               <div className="cv-print-group">
                 <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.testing_params }}>{sectionLabels.testing_params}</h3>
-                {renderGroupedTable(TESTING_INPUT_GROUPS, record)}
+                <ParamTable record={record} groups={TESTING_INPUT_GROUPS} bare hideMissing />
               </div>
             )}
             {hasMeasuredInfo && (
               <div className="cv-print-group">
                 <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.measured_info }}>{sectionLabels.measured_info}</h3>
-                {renderFlatTable(MEASUREDINFO_KEYS, record)}
+                <ParamTable record={record} groups={MEASUREDINFO_GROUPS} bare hideMissing />
               </div>
             )}
-            {PARAM_GROUPS.map(group => {
-              const visibleKeys = group.keys.filter(k => record[k] != null && String(record[k]).trim() !== '')
-              if (visibleKeys.length === 0) return null
-              return (
-                <div key={group.id} className="cv-print-group">
-                  <h3 className="cv-print-group__title" style={{ borderColor: group.color }}>{group.label}</h3>
-                  {renderGroupedTable([group], record)}
-                </div>
-              )
-            })}
+            {hasAnalyzed && (
+              <div className="cv-print-group">
+                <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.analyzed }}>{sectionLabels.analyzed}</h3>
+                <ParamTable record={record} groups={PARAM_GROUPS} bare />
+              </div>
+            )}
             <div className="cv-print-group">
               <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.nok_info }}>{sectionLabels.nok_info}</h3>
               {renderNokTable(record)}

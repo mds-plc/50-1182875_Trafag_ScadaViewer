@@ -11,7 +11,7 @@ PagedResult — výstup list_files_paginated(); sdílený datový kontejner
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -23,6 +23,11 @@ class PagedResult:
     total: int
     page:  int
     pages: int
+    wip:   list[dict] = field(default_factory=list)   # rozpracované zakázky (mimo stránkování)
+    # Jen když datumový filtr skryl vše: kolik souborů je mimo filtr a datum nejnovějšího
+    # (UI pak místo „žádné soubory" nabídne „Zobrazit vše")
+    hidden_by_filter: int = 0
+    latest_created_at: str | None = None
 
 
 class DataReader(Protocol):

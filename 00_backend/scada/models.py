@@ -56,7 +56,7 @@ class OrderFileModel(BaseModel):
     switch_name:  str
     created_at:   str                                                   # ISO datetime
     record_count: int
-    sync_status:  Literal['done_local', 'done_remote'] | None = None   # None pro remote
+    sync_status:  Literal['wip', 'done_local', 'done_remote'] | None = None   # None pro remote; 'wip' = rozpracovaná
 
 
 class FilesResponse(BaseModel):
@@ -65,6 +65,9 @@ class FilesResponse(BaseModel):
     total: int   # celkový počet souborů (před stránkováním)
     page:  int   # aktuální stránka (od 1)
     pages: int   # celkový počet stránek
+    wip:   list[OrderFileModel] = []   # rozpracované zakázky (jen local) — mimo stránkování a filtry
+    hidden_by_filter:  int = 0            # filtr skryl vše: počet souborů mimo datumový filtr
+    latest_created_at: str | None = None  # … a datum nejnovějšího z nich
 
 
 # ======================================================================

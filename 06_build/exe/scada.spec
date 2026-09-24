@@ -37,6 +37,7 @@ a = Analysis(
         'scada.services', 'scada.services.ads_monitor', 'scada.services.order_watcher',
         'scada.services.ws_manager', 'scada.services.file_service',
         'scada.services.signal_reader', 'scada.services.io_pool', 'scada.services.protocols',
+        'scada.services.files_watcher',
         'scada.services.repositories', 'scada.services.repositories.csv_repository',
     ],
     # numpy NENÍ vyloučena — signal_reader ji používá pro rychlé parsování [SignalData]

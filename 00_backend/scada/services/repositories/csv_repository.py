@@ -6,6 +6,7 @@ Bez business pravidel — nerozhoduje co filtrovat, co zobrazit, jak stránkovat
 Všechna taková rozhodnutí jsou v FileService (services/file_service.py).
 
 Lokální úložiště:
+  {local_path}/{file_type}/wip/          ← rozpracovaná zakázka (*_WIP.csv, jen production)
   {local_path}/{file_type}/done_local/   ← uzavřené, čeká na upload
   {local_path}/{file_type}/done_remote/  ← uploadováno na NAS
 
@@ -15,13 +16,22 @@ Vzdálené úložiště (NAS — přímá UNC cesta):
 from __future__ import annotations
 
 import csv
+import json
 import logging
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date
+from datetime import datetime
 from pathlib import Path
 
 from scada.config import DataConfig
 
 log = logging.getLogger(__name__)
+
+_CACHE_VERSION        = 1    # zvýšit při změně struktury meta dictu → stará cache se zahodí
+_READ_WORKERS_REMOTE  = 32   # paralelní čtení metadat z NAS (latence, ne CPU)
+_READ_WORKERS_LOCAL   = 4
 
 
 def _normalize_key(k: str) -> str:
@@ -87,12 +97,51 @@ def _parse_sectioned(
 class CsvRepository:
     """Data Access Layer pro CSV soubory — otevírá soubory, vrací surová data."""
 
-    def __init__(self, cfg: DataConfig) -> None:
+    def __init__(self, cfg: DataConfig, cache_file: Path | None = None) -> None:
         self._cfg = cfg
         # Cache metadat: cesta → ((mtime_ns, size), meta). Bez ní /api/files při každém
         # volání (auto-refresh 30 s) četl všechny CSV celé kvůli record_count — na NAS drahé.
         # Soubory DONE se po uzavření nemění; změna mtime/size cache invaliduje.
         self._meta_cache: dict[Path, tuple[tuple[int, int], dict | None]] = {}
+        # Perzistence cache na disk — po restartu serveru není první výpis NAS „studený"
+        # (310 souborů po síti ≈ desítky sekund). None = jen v paměti (testy).
+        self._cache_file = cache_file
+        self._save_lock  = threading.Lock()
+        self._load_disk_cache()
+
+    # ------------------------------------------------------------------
+    # Perzistentní cache metadat
+    # ------------------------------------------------------------------
+
+    def _load_disk_cache(self) -> None:
+        if self._cache_file is None or not self._cache_file.exists():
+            return
+        try:
+            raw = json.loads(self._cache_file.read_text(encoding="utf-8"))
+            if raw.get("version") != _CACHE_VERSION:
+                return
+            for key, (mtime_ns, size, meta) in raw.get("entries", {}).items():
+                self._meta_cache[Path(key)] = ((mtime_ns, size), meta)
+            log.info("[CSV]   cache metadat načtena: %d souborů", len(self._meta_cache))
+        except Exception as exc:                      # poškozená cache = jen pomalejší start
+            log.warning("[CSV]   cache metadat nečitelná (%s) — ignoruji", exc)
+
+    def _save_disk_cache(self) -> None:
+        if self._cache_file is None:
+            return
+        entries = {
+            str(path): [sig[0], sig[1], meta]
+            for path, (sig, meta) in list(self._meta_cache.items())
+            if not (meta and meta.get("sync_status") == "wip")     # WIP se mění pořád — neukládat
+        }
+        with self._save_lock:
+            try:
+                self._cache_file.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self._cache_file.with_suffix(".tmp")
+                tmp.write_text(json.dumps({"version": _CACHE_VERSION, "entries": entries}), encoding="utf-8")
+                os.replace(tmp, self._cache_file)
+            except OSError as exc:
+                log.warning("[CSV]   cache metadat nelze uložit: %s", exc)
 
     # ------------------------------------------------------------------
     # Skenování složek
@@ -109,6 +158,13 @@ class CsvRepository:
         log.debug("[CSV]   list_local %s → %d souborů", file_type, len(results))
         return results
 
+    def list_wip(self, file_type: str) -> list[dict]:
+        """Rozpracované zakázky ve wip/ — soubor může být i bez datových řádků (právě založený)."""
+        folder  = Path(self._cfg.local_path) / file_type / 'wip'
+        results = self._scan_folder(folder, file_type, 'local', 'wip', suffix='_WIP.csv')
+        results.sort(key=lambda x: x['created_at'], reverse=True)
+        return results
+
     def list_remote(self, file_type: str) -> list[dict]:
         """Čte přímo z NAS — flat složka (žádné done_local/done_remote podadresáře)."""
         folder = Path(self._cfg.remote_path) / file_type
@@ -119,38 +175,90 @@ class CsvRepository:
         log.debug("[CSV]   list_remote %s → %d souborů", file_type, len(results))
         return results
 
+    def _local_twin(self, name: str, file_type: str, size: int) -> Path | None:
+        """Lokální kopie NAS souboru (done_remote / done_local) se stejnou velikostí, jinak None."""
+        base = Path(self._cfg.local_path) / file_type
+        for sub in ('done_remote', 'done_local'):
+            candidate = base / sub / name
+            try:
+                if candidate.stat().st_size == size:
+                    return candidate
+            except OSError:
+                continue
+        return None
+
     def _scan_folder(
         self,
         folder:      Path,
         file_type:   str,
         location:    str,
         sync_status: str | None,
+        suffix:      str = '_DONE.csv',
     ) -> list[dict]:
-        """Metadata všech *_DONE.csv ve složce — z cache, soubor čte jen při změně mtime/size."""
-        if not folder.exists():
+        """Metadata všech souborů *suffix ve složce — z cache, soubor čte jen při změně mtime/size.
+
+        Výkon (hlavně NAS):
+          - os.scandir: velikost a mtime přijdou s výpisem složky (Windows FindFirstFile) —
+            žádný samostatný stat() dotaz po síti pro každý soubor
+          - soubory mimo cache se čtou paralelně (latence SMB ~200 ms / soubor)
+        WIP soubory (sync_status='wip') se vrací i bez datových řádků: record_count 0,
+        created_at = čas poslední změny souboru.
+        """
+        is_wip = sync_status == 'wip'
+        entries: list[tuple[Path, tuple[int, int], float]] = []
+        try:
+            with os.scandir(folder) as it:
+                for e in it:
+                    if e.name.endswith(suffix) and e.is_file():
+                        st = e.stat()
+                        entries.append((Path(e.path), (st.st_mtime_ns, st.st_size), st.st_mtime))
+        except (FileNotFoundError, NotADirectoryError):
             return []
-        results: list[dict] = []
-        seen: set[Path] = set()
-        for csv_path in sorted(folder.glob('*_DONE.csv'), reverse=True):
-            seen.add(csv_path)
+        entries.sort(key=lambda x: x[0].name, reverse=True)
+
+        misses = [(path, sig, mtime) for path, sig, mtime in entries
+                  if (hit := self._meta_cache.get(path)) is None or hit[0] != sig]
+
+        def load(item: tuple[Path, tuple[int, int], float]) -> tuple[Path, tuple[int, int], dict | None, bool]:
+            path, sig, mtime = item
             try:
-                st  = csv_path.stat()
-                sig = (st.st_mtime_ns, st.st_size)
-                hit = self._meta_cache.get(csv_path)
-                if hit is not None and hit[0] == sig:
-                    meta = hit[1]
-                else:
-                    meta = self.read_file_meta(csv_path, file_type, location, sync_status)
-                    self._meta_cache[csv_path] = (sig, meta)
-                if meta:
-                    results.append(dict(meta))   # kopie — volající nesmí měnit cache
+                # NAS soubor je kopie lokálního done_remote/ (DatabaseGateway ho tam nahrál) —
+                # shodný název + velikost → metadata z lokálního disku (~0,2 ms místo ~80 ms po síti)
+                source = self._local_twin(path.name, file_type, sig[1]) if location == 'remote' else None
+                meta = self.read_file_meta(source or path, file_type, location, sync_status, allow_empty=is_wip)
+                if meta is not None and not meta.get('created_at'):
+                    meta['created_at'] = datetime.fromtimestamp(mtime).isoformat(timespec='seconds')
+                return path, sig, meta, True
             except Exception as exc:
-                log.warning("[CSV]   přeskočen %s: %s", csv_path.name, exc)
+                log.warning("[CSV]   přeskočen %s: %s", path.name, exc)
+                return path, sig, None, False          # necachovat — zkusit znovu příště
+
+        if misses:
+            workers = min(len(misses), _READ_WORKERS_REMOTE if location == 'remote' else _READ_WORKERS_LOCAL)
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="csv-meta") as ex:
+                    loaded = list(ex.map(load, misses))
+            else:
+                loaded = [load(m) for m in misses]
+            for path, sig, meta, ok in loaded:
+                if ok:
+                    self._meta_cache[path] = (sig, meta)
+            log.debug("[CSV]   %s: načteno %d/%d souborů (zbytek z cache)", folder.name, len(misses), len(entries))
+
+        results: list[dict] = []
+        for path, sig, _ in entries:
+            hit = self._meta_cache.get(path)
+            if hit is not None and hit[0] == sig and hit[1]:
+                results.append(dict(hit[1]))           # kopie — volající nesmí měnit cache
 
         # Úklid: smazané / přesunuté soubory (done_local → done_remote) z cache odstranit
         # list(dict) je pod GIL atomický — souběžné požadavky (to_thread) mohou cache měnit
-        for stale in [p for p in list(self._meta_cache) if p.parent == folder and p not in seen]:
-            self._meta_cache.pop(stale, None)
+        seen   = {path for path, _, _ in entries}
+        stale  = [p for p in list(self._meta_cache) if p.parent == folder and p not in seen]
+        for p in stale:
+            self._meta_cache.pop(p, None)
+        if (misses or stale) and not is_wip:
+            self._save_disk_cache()
         return results
 
     # ------------------------------------------------------------------
@@ -162,7 +270,8 @@ class CsvRepository:
         path:        Path,
         file_type:   str,
         location:    str,
-        sync_status: str | None,   # 'done_local' | 'done_remote' | None (remote)
+        sync_status: str | None,   # 'wip' | 'done_local' | 'done_remote' | None (remote)
+        allow_empty: bool = False, # True = vrátit metadata i bez datových řádků (WIP soubor)
     ) -> dict | None:
         """
         Přečte metadata jednoho CSV souboru — první řádek + počet řádků.
@@ -218,15 +327,17 @@ class CsvRepository:
             reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
             raw_first = next(iter(reader), None)
             if raw_first is None:
-                return None
-            first = {_normalize_key(k): v for k, v in raw_first.items()}
+                if not allow_empty:
+                    return None
+                raw_first = {}                          # WIP bez záznamů — jen metadata
+            first = {_normalize_key(k): v for k, v in raw_first.items() if k}
 
             # Ve starém formátu jsou Order/Microswitch_Name v datových řádcích
             if first_col.lower() == 'timestamp':
                 order_id    = first.get('order') if file_type == 'production' else None
                 switch_name = first.get('microswitch_name', '')
 
-            record_count = 1 + sum(1 for _ in reader)   # O(1) paměť
+            record_count = (1 if raw_first else 0) + sum(1 for _ in reader)   # O(1) paměť
 
         meta = {
             'file_id':      path.name,
@@ -369,7 +480,8 @@ class CsvRepository:
         if location == 'remote':
             return Path(self._cfg.remote_path) / file_type / file_id
         base = Path(self._cfg.local_path)
-        for subfolder in ('done_local', 'done_remote'):
+        subfolders = ('wip',) if file_id.endswith('_WIP.csv') else ('done_local', 'done_remote')
+        for subfolder in subfolders:
             p = base / file_type / subfolder / file_id
             if p.exists():
                 return p
@@ -398,7 +510,9 @@ class CsvRepository:
             if len(file_id) > 255:
                 log.warning("[CSV]   odmítnuto příliš dlouhé file_id: %d znaků", len(file_id))
                 return False
-            if not file_id.endswith('_DONE.csv'):
-                log.warning("[CSV]   odmítnuto neplatné file_id (formát — musí být *_DONE.csv): %r", file_id[:60])
+            if not file_id.endswith(('_DONE.csv', '_WIP.csv')):
+                log.warning("[CSV]   odmítnuto neplatné file_id (formát — musí být *_DONE.csv / *_WIP.csv): %r", file_id[:60])
                 return False
+            if file_id.endswith('_WIP.csv') and location != 'local':
+                return False                            # WIP existuje jen lokálně
         return True

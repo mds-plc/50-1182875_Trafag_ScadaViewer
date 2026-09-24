@@ -24,13 +24,15 @@ interface Props {
   onRowClick?:     (row: Record<string, unknown>) => void
   columnLabels?:   Record<string, string>
   columnTooltips?: Record<string, string>
+  /** Jednotka zobrazená pod popiskem sloupce (např. key → 'µm') */
+  columnUnits?:    (col: string) => string
   cellRenderer?:   (col: string, value: unknown, row: Record<string, unknown>) => ReactNode
   fixedColumns?:   string[]
 }
 
 export default function DataTable({
   columns, rows, onRowClick,
-  columnLabels, columnTooltips, cellRenderer, fixedColumns,
+  columnLabels, columnTooltips, columnUnits, cellRenderer, fixedColumns,
 }: Props) {
   const [tooltipCol, setTooltipCol] = useState<string | null>(null)
 
@@ -65,6 +67,7 @@ export default function DataTable({
         <tr>
           {columns.map(c => {
             const label   = columnLabels?.[c] ?? c
+            const unit    = columnUnits?.(c) ?? ''
             const tip     = columnTooltips?.[c]
             const fi      = fixedColumns ? fixedColumns.indexOf(c) : -1
             const isFixed = fi >= 0
@@ -76,6 +79,7 @@ export default function DataTable({
                 onClick={tip ? () => setTooltipCol(tooltipCol === c ? null : c) : undefined}
               >
                 {label}
+                {unit && <span className="data-table__unit">{unit}</span>}
                 {tooltipCol === c && <div className="dt-tooltip">{tip}</div>}
               </th>
             )

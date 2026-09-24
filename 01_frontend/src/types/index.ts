@@ -19,7 +19,7 @@ export interface OrderFile extends Record<string, unknown> {
   switch_name:  string
   created_at:   string          // ISO datetime z prvního záznamu
   record_count: number
-  sync_status?: 'done_local' | 'done_remote'  // jen pro lokální soubory
+  sync_status?: 'wip' | 'done_local' | 'done_remote'  // jen pro lokální soubory; 'wip' = rozpracovaná zakázka
 }
 
 /** Jeden záznam z CSV souboru (klíče normalizovány na lowercase) */

@@ -26,6 +26,7 @@
  *   Používáno: pages/Database.tsx
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { FILES_CHANGED_EVENT } from '../context/PlcContext'
 import { useFiles, useRemoteStatus } from './useData'
 import { useKeyShortcuts } from './useKeyShortcuts'
 import { useSettings } from './useSettings'
@@ -40,13 +41,18 @@ import { apiFetch } from '../utils/apiFetch'
 export type Location = 'local' | 'remote'
 export type DataType = 'production' | 'testing'
 
+/** YYYY-MM-DD v MÍSTNÍM čase (toISOString by vrátil UTC — po půlnoci CEST by „dnes" byl včerejšek). */
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+
+/** Výchozí filtr = poslední dva dny (včera + dnes). */
+const DEFAULT_FILTER_DAYS = 2
 
 function defaultDateFrom(): string {
   const d = new Date()
-  d.setDate(d.getDate() - 5)
+  d.setDate(d.getDate() - (DEFAULT_FILTER_DAYS - 1))
   return toIsoDate(d)
 }
 
@@ -68,6 +74,9 @@ function _lsSet(key: string, value: unknown): void {
   try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)) } catch { /* quota */ }
 }
 
+// Dřívější verze ukládaly datumový filtr — odstranit, ať nepřebíjí výchozí „poslední 2 dny"
+try { localStorage.removeItem(LS_PREFIX + 'dateFrom'); localStorage.removeItem(LS_PREFIX + 'dateTo') } catch { /* ignore */ }
+
 const isLocation = (v: unknown): v is Location => v === 'local' || v === 'remote'
 const isDataType = (v: unknown): v is DataType => v === 'production' || v === 'testing'
 const isSortDir  = (v: unknown): v is 'asc' | 'desc' => v === 'asc' || v === 'desc'
@@ -76,8 +85,9 @@ const isString   = (v: unknown): v is string => typeof v === 'string'
 /**
  * Kompletní state management pro stránku Database.
  *
- * Filtry (location, dataType, dateFrom, dateTo, sortBy, sortDir) se persistují
- * do localStorage — při návratu na stránku Database se obnoví poslední nastavení.
+ * Filtry location, dataType, sortBy, sortDir se persistují do localStorage — při návratu
+ * na stránku Database se obnoví. Datumový filtr se NEPERSISTUJE: vždy posledních
+ * DEFAULT_FILTER_DAYS dní (jinak by staré uložené „do" skrývalo nové zakázky).
  *
  * @returns Veškerý state (location, dataType, filtry, stránkování, výběr)
  *          a handlery (fetchFiles, onSort, deleteFile, downloadCsv, downloadXlsx,
@@ -91,8 +101,19 @@ export function useDatabaseState() {
 
   const [location,     setLocationRaw]  = useState<Location>(() => _lsGet('location', 'local' as Location, isLocation))
   const [dataType,     setDataTypeRaw]  = useState<DataType>(() => _lsGet('dataType', 'production' as DataType, isDataType))
-  const [dateFrom,     setDateFromRaw]  = useState(() => _lsGet('dateFrom', defaultDateFrom(), isString))
-  const [dateTo,       setDateToRaw]    = useState(() => _lsGet('dateTo', toIsoDate(new Date()), isString))
+  // Datumový filtr se NEUKLÁDÁ — při každém otevření posledních DEFAULT_FILTER_DAYS dní.
+  // Uložené „do" by po čase skrývalo nové zakázky (i při automatické aktualizaci).
+  const [dateFrom,     setDateFrom]     = useState(defaultDateFrom)
+  const [dateTo,       setDateTo]       = useState(() => toIsoDate(new Date()))
+
+  /** Posunout filtr na posledních DEFAULT_FILTER_DAYS dní končících daným dnem (YYYY-MM-DD). */
+  const showDaysUntil = useCallback((day: string) => {
+    const [y, m, d] = day.split('-').map(Number)
+    const from = new Date(y, m - 1, d)
+    from.setDate(from.getDate() - (DEFAULT_FILTER_DAYS - 1))
+    setDateFrom(toIsoDate(from))
+    setDateTo(day)
+  }, [])
   const [page,         setPage]         = useState(1)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OrderFile | null>(null)
@@ -104,8 +125,6 @@ export function useDatabaseState() {
   // Wrappery — setState + localStorage persist
   const setLocation = useCallback((v: Location)      => { setLocationRaw(v); _lsSet('location', v) }, [])
   const setDataType = useCallback((v: DataType)      => { setDataTypeRaw(v); _lsSet('dataType', v) }, [])
-  const setDateFrom = useCallback((v: string)        => { setDateFromRaw(v); _lsSet('dateFrom', v) }, [])
-  const setDateTo   = useCallback((v: string)        => { setDateToRaw(v);   _lsSet('dateTo', v) }, [])
   const setSortBy   = useCallback((v: string)        => { setSortByRaw(v);   _lsSet('sortBy', v) }, [])
   const setSortDir  = useCallback((v: 'asc' | 'desc') => { setSortDirRaw(v); _lsSet('sortDir', v) }, [])
 
@@ -126,7 +145,7 @@ export function useDatabaseState() {
   }, [sortBy, sortDir, setSortBy, setSortDir])
 
   const remoteAvailable = useRemoteStatus()
-  const { files, total, pages, loading, error, fetchFiles } = useFiles({
+  const { files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles } = useFiles({
     location, type: dataType, page, perPage, dateFrom, dateTo, sortBy, sortDir,
   })
 
@@ -137,6 +156,27 @@ export function useDatabaseState() {
     const id = setInterval(fetchFiles, refreshMs)
     return () => clearInterval(id)
   }, [fetchFiles, remoteAvailable, refreshMs])
+
+  // Okamžitá aktualizace — backend (FilesWatcher) hlásí přes WS změnu lokálních složek:
+  // nová / uzavřená zakázka, nový záznam v rozpracované zakázce, sync na NAS.
+  // Polling výše zůstává jako záloha (a pro NAS, který se nehlídá).
+  useEffect(() => {
+    if (location !== 'local') return
+    function onFilesChanged(e: Event): void {
+      const types = (e as CustomEvent<{ types: string[] }>).detail?.types ?? []
+      if (types.includes(dataType)) void fetchFiles()
+    }
+    window.addEventListener(FILES_CHANGED_EVENT, onFilesChanged)
+    return () => window.removeEventListener(FILES_CHANGED_EVENT, onFilesChanged)
+  }, [location, dataType, fetchFiles])
+
+  // Uzavření rozbalené rozpracované zakázky: *_WIP.csv → *_DONE.csv — rozbalení přenést
+  // na hotový soubor, aby obsluze nezmizel detail, na který se právě dívá.
+  useEffect(() => {
+    if (!expandedId?.endsWith('_WIP.csv') || wip.some(f => f.file_id === expandedId)) return
+    const doneId = expandedId.replace(/_WIP\.csv$/, '_DONE.csv')
+    setExpandedId(files.some(f => f.file_id === doneId) ? doneId : null)
+  }, [expandedId, wip, files])
 
   useEffect(() => { setExpandedId(null); setPage(1); setSelectedIds(new Set()) }, [location, dataType])
   useEffect(() => { setPage(1) }, [dateFrom, dateTo])
@@ -229,13 +269,13 @@ export function useDatabaseState() {
   return {
     location,     setLocation,
     dataType,     setDataType,
-    dateFrom,     setDateFrom,
+    dateFrom,     setDateFrom, showDaysUntil,
     dateTo,       setDateTo,
     page,         setPage,
     expandedId,   setExpandedId,
     deleteTarget, setDeleteTarget,
     sortBy, sortDir, onSort,
-    files, total, pages, loading, error, fetchFiles,
+    files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
     showSync, totalRecords,
     deleteFile, downloadCsv, downloadXlsx,

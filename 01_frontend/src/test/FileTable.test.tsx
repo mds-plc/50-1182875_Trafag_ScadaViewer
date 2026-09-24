@@ -17,6 +17,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { LangProvider } from '../context/LangContext'
 import FileTable from '../components/FileTable'
+import { useFileRecords } from '../hooks/useData'
 import type { OrderFile } from '../types'
 
 // -----------------------------------------------------------------------
@@ -222,5 +223,108 @@ describe('FileTable', () => {
       </Wrapper>
     )
     expect(container.querySelector('.pagination')).toBeInTheDocument()
+  })
+
+  // ── Rozpracovaná zakázka (WIP) ─────────────────────────────────────────
+
+  const WIP = makeFile({
+    file_id: 'PROD_ORD7_Cherry_20260924_100000_WIP.csv', name: 'PROD_ORD7_Cherry_20260924_100000_WIP',
+    order_id: 'ORD7', switch_name: 'Cherry', record_count: 3, sync_status: 'wip',
+  })
+
+  it('WIP order is rendered first, highlighted, with "In progress" badge', () => {
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} wip={[WIP]} total={1} />
+      </Wrapper>
+    )
+    const rows = container.querySelectorAll('tbody > tr.db-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveClass('db-row--wip')
+    expect(rows[0]).toHaveTextContent('Cherry')
+    expect(rows[1]).not.toHaveClass('db-row--wip')
+    expect(screen.getByText('In progress')).toBeInTheDocument()
+  })
+
+  it('WIP row has no checkbox and no delete button, but can be expanded', () => {
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} wip={[WIP]} />
+      </Wrapper>
+    )
+    const row = container.querySelector('tr.db-row--wip')!
+    expect(row.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(row.querySelector('.db-icon-btn--danger')).toBeNull()
+    fireEvent.click(row)
+    expect(DEFAULT_PROPS.onExpandToggle).toHaveBeenCalledWith(WIP.file_id)
+  })
+
+  it('WIP row keeps action buttons aligned with other rows (placeholder instead of delete)', () => {
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} wip={[WIP]} total={1} />
+      </Wrapper>
+    )
+    const [wipCell, doneCell] = [...container.querySelectorAll('td.db-td--actions')]
+    expect(wipCell.children.length).toBe(doneCell.children.length)
+    expect(wipCell.lastElementChild).toHaveClass('db-icon-btn--placeholder')
+  })
+
+  it('does not show "no files" message when only a WIP order exists', () => {
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} wip={[WIP]} />
+      </Wrapper>
+    )
+    expect(screen.queryByText('No files in local storage')).toBeNull()
+  })
+
+  // ── Rozbalený řádek — jednotné formátování (reálný production záznam) ──
+
+  it('expanded row: units, mΩ, whole µm, open contacts hidden, time with seconds', () => {
+    const rec = {
+      timestamp: '2026-09-20T11:36:45', status: '2', sortingcategory: '2',
+      op_operatingposition: '926.0000', of_operatingforce: '1.0600',
+      r_nc_operatingposition_neg: '0.0090', r_no_operatingposition_neg: '1000000.0000',
+    }
+    const original = vi.mocked(useFileRecords).getMockImplementation()
+    vi.mocked(useFileRecords).mockReturnValue({
+      records: [rec], loading: false, error: null, fetchRecords: vi.fn(),
+      total: 1, pages: 1, groupCounts: { '2': 1 }, fileExpectedCount: null,
+    } as unknown as ReturnType<typeof useFileRecords>)
+    const file = makeFile()
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[file]} total={1} expandedId={file.file_id} />
+      </Wrapper>
+    )
+    const sub = container.querySelector('.db-subtable')!
+    const headers = Array.from(sub.querySelectorAll('th')).map(th => th.textContent ?? '')
+    expect(headers).toContain('OFN')
+    expect(headers).toContain('OPµm')
+    expect(headers).toContain('R NCo−mΩ')
+    expect(headers.some(h => h.startsWith('R NOo−'))).toBe(false)   // vždy rozepnuto → skryto
+    const cells = Array.from(sub.querySelectorAll('tbody td')).map(td => td.textContent ?? '')
+    expect(cells).toContain('926')
+    expect(cells).toContain('1.06')
+    expect(cells).toContain('9.0')
+    expect(cells.some(c => /11:36:45/.test(c))).toBe(true)
+    if (original) vi.mocked(useFileRecords).mockImplementation(original)
+  })
+
+  // ── Prázdná tabulka kvůli datumovému filtru ──────────────────────────
+
+  it('empty because of date filter: offers the last day with records', () => {
+    const onShow = vi.fn()
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} dataType="testing" hiddenByFilter={308}
+          latestCreatedAt="2026-09-22T10:00:00" onShowLatestDay={onShow} />
+      </Wrapper>
+    )
+    expect(screen.getByText('No files in the selected period.')).toBeInTheDocument()
+    expect(screen.getByText(/files: 308/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Show records up to 22\. 9\. 2026/ }))
+    expect(onShow).toHaveBeenCalledWith('2026-09-22')
   })
 })

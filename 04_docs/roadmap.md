@@ -19,8 +19,8 @@
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Kritický audit + opravy | ✅ Hotovo | Session TTL (8 h), sessions.clear() scope, privilege escalation — viz audit_log.md 2026-07-31 |
 | Self-hosted fonty | ✅ Hotovo | @fontsource — DM Sans + DM Mono bundlovány do buildu; aplikace funguje bez internetu |
-| Backend testy | ✅ Hotovo | **183 testů** (config, API, security, ADS monitor, users, výkon/cache); `pytest 02_tests/ -v` |
-| Frontend testy | ✅ Hotovo | **59 testů**, 8 souborů Vitest; `npm run test` |
+| Backend testy | ✅ Hotovo | **199 testů** (config, API, security, ADS monitor, users, výkon/cache); `pytest 02_tests/ -v` |
+| Frontend testy | ✅ Hotovo | **77 testů**, 10 souborů Vitest; `npm run test` |
 | Hloubkový audit 2026-09-24 | ✅ Hotovo | 28 nálezů uzavřeno (M14 přijaté riziko) — viz audit_log.md |
 | Výkon | ✅ Hotovo | cache metadat + signálových dat, numpy parser, prefetch, NAS pool, gzip, code-splitting |
 | Dokumentace kódu | ✅ Hotovo | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
@@ -98,7 +98,7 @@ Viz `04_docs/deployment.md` pro detaily.
 
 - [x] Build pipeline: `build.bat` → exe funguje *(✅ 2026-07-29)*
 - [x] Security: CSP, SecurityHeaders, RateLimit, CORS, WS origin check *(✅ 2026-07-30)*
-- [x] Testy: 183 backend + 59 frontend, vše zelené *(✅ 2026-09-24)*
+- [x] Testy: 199 backend + 77 frontend, vše zelené *(✅ 2026-09-24)*
 - [x] Dokumentace kódu: strukturované hlavičky ve všech klíčových souborech *(✅ 2026-07-31)*
 - [ ] AnalyzedParams: zákaznické sloupce zobrazeny dle dohody s Trafag
 - [ ] Produkční Config.toml: cors_origins, ADS net_id, cesty k datům

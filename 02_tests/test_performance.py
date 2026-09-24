@@ -211,3 +211,112 @@ def test_gzip_for_large_api_responses(tmp_path: Path) -> None:
             "Authorization": f"Bearer {_TEST_TOKEN}", "Accept-Encoding": "gzip"})
         assert r.status_code == 200
         assert r.headers.get("content-encoding") == "gzip"
+
+
+# ======================================================================
+# Cache metadat souborů — disk + lokální kopie NAS souborů
+# ======================================================================
+
+def _prod_csv(path: Path, rows: int) -> None:
+    from test_api import PROD_HEADERS, write_csv
+    write_csv(path, PROD_HEADERS, [{"Timestamp": "2026-07-01T10:00:00", "Order": "7",
+                                    "Microswitch_ID": str(i), "Microswitch_Name": "X"} for i in range(rows)])
+
+
+def test_disk_cache_survives_restart(tmp_path: Path, monkeypatch) -> None:
+    """Po restartu (nová instance repository) se metadata berou z disku — soubory se nečtou."""
+    from scada.services.repositories.csv_repository import CsvRepository
+    _, cfg = make_app(tmp_path)
+    _prod_csv(cfg.data.local_path / "production" / "done_local" / "A_DONE.csv", rows=3)
+    cache = tmp_path / "cache" / "file_meta.json"
+
+    CsvRepository(cfg.data, cache_file=cache).list_local("production")
+    assert cache.exists()
+
+    repo2 = CsvRepository(cfg.data, cache_file=cache)
+    monkeypatch.setattr(repo2, "read_file_meta", lambda *a, **kw: pytest.fail("mělo jít z disk cache"))
+    assert repo2.list_local("production")[0]["record_count"] == 3
+
+
+def test_corrupted_disk_cache_is_ignored(tmp_path: Path) -> None:
+    from scada.services.repositories.csv_repository import CsvRepository
+    _, cfg = make_app(tmp_path)
+    _prod_csv(cfg.data.local_path / "production" / "done_local" / "A_DONE.csv", rows=2)
+    cache = tmp_path / "file_meta.json"
+    cache.write_text("{nesmysl", encoding="utf-8")
+    assert CsvRepository(cfg.data, cache_file=cache).list_local("production")[0]["record_count"] == 2
+
+
+def test_remote_meta_reused_from_local_copy(tmp_path: Path, monkeypatch) -> None:
+    """NAS soubor se stejným názvem a velikostí jako lokální done_remote → čte se lokální kopie."""
+    from scada.services.repositories import csv_repository as cr
+    remote = tmp_path / "nas"
+    _, cfg = make_app(tmp_path, remote_path=str(remote))
+    local_file  = cfg.data.local_path / "production" / "done_remote" / "B_DONE.csv"
+    remote_file = remote / "production" / "B_DONE.csv"
+    _prod_csv(local_file, rows=4)
+    remote_file.parent.mkdir(parents=True)
+    remote_file.write_bytes(local_file.read_bytes())
+
+    repo = cr.CsvRepository(cfg.data)
+    opened: list[Path] = []
+    orig = repo.read_file_meta
+    monkeypatch.setattr(repo, "read_file_meta", lambda p, *a, **kw: opened.append(p) or orig(p, *a, **kw))
+    meta = repo.list_remote("production")[0]
+    assert opened == [local_file]                        # NAS soubor se neotevřel
+    assert meta["location"] == "remote" and "sync_status" not in meta
+    assert meta["record_count"] == 4
+
+
+# ======================================================================
+# SPA fallback — F5 / odkaz na /chart, /settings nesmí vrátit 404
+# ======================================================================
+
+def test_spa_routes_serve_index_html(tmp_path: Path, monkeypatch) -> None:
+    import scada.app as app_module
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html>SPA</html>", encoding="utf-8")
+    monkeypatch.setattr(app_module, "_FRONTEND_DIST", dist)
+    app, _ = make_app(tmp_path)
+    with TestClient(app) as c:
+        for url in ("/chart?file=X_DONE.csv&type=testing", "/settings", "/database"):
+            r = c.get(url)
+            assert r.status_code == 200 and "SPA" in r.text, url
+        assert c.get("/assets/chybi.js").status_code == 404          # chybějící asset = 404
+        assert c.get("/api/neexistuje").status_code == 404           # API = JSON 404
+        assert c.get("/favicon-neni.png").status_code == 404
+
+
+# ======================================================================
+# Signal Data — OP/RP elektricky (U_NC práh 5 V), jako referenční analýza
+# ======================================================================
+
+def test_key_points_from_voltage_edges(tmp_path: Path) -> None:
+    """OP = první vzestup U_NC přes 5 V na dopředné cestě, RP = první pokles po TTP."""
+    from scada.services import signal_reader as sr
+    sr._cache.clear(); sr._resp_cache.clear()
+    u_nc = [0, 0, 0, 10, 10, 10, 10, 10, 0, 0, 0]            # rozepnuto i=3..7
+    rows = [f"{i * 50000};{min(i, 10 - i) * 100}.0;{i / 10:.1f};{u};0;0;0;0.1;0;0.005;1000000"
+            for i, u in enumerate(u_nc)]
+    f = tmp_path / "E_DONE.csv"
+    f.write_text(_signal_csv(rows), encoding="utf-8-sig")
+    r = sr.prepare_signal_response(f, "overview", 100)
+    kp = r["key_points"]
+    assert (kp["op"]["idx"], kp["op"]["source"]) == (3, "electric")
+    assert (kp["rp"]["idx"], kp["rp"]["source"]) == (8, "electric")
+    assert kp["op"]["force"] == pytest.approx(0.3)
+    assert r["params"]["op_operatingposition"] == 2.0            # AnalyzedParameters jako čísla
+    assert r["r_nc_ohm"][0] == pytest.approx(0.005)              # odpor v Ω pro log osu
+    assert r["r_no_ohm"][0] == pytest.approx(1e6)
+    sr._cache.clear(); sr._resp_cache.clear()
+
+
+def test_key_points_fallback_to_position_without_voltage_edge(tmp_path: Path) -> None:
+    from scada.services import signal_reader as sr
+    sr._cache.clear(); sr._resp_cache.clear()
+    f = tmp_path / "N_DONE.csv"
+    f.write_text(_signal_csv(_GOOD_ROWS), encoding="utf-8-sig")        # U_NC konstantně 0,1 V
+    kp = sr.prepare_signal_response(f, "overview", 100)["key_points"]
+    assert kp["op"]["source"] == "position" and kp["op"]["position"] == 2.0
+    sr._cache.clear(); sr._resp_cache.clear()

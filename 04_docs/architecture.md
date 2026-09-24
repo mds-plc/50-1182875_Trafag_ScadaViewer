@@ -484,6 +484,163 @@ odhlásí (lokální login: hláška „Relace vypršela") nebo tiše obnoví PL
 | Frontend bundle | code-splitting (ChartView/Settings/Info lazy + preload v idle), `xlsx` dynamický import, vendor chunky `react` / `charts` | úvodní JS 1 007 → 641 kB |
 | Login | PBKDF2 v `asyncio.to_thread` | login neblokuje WS broadcast |
 
+### Fáze 22 — Živá Database: rozpracovaná zakázka + automatická aktualizace (2026-09-24)
+
+- **Rozpracovaná zakázka:** `production/wip/PROD_…_WIP.csv` (DatabaseGateway Op1 založí, Op2 přidává
+  záznamy, Op3 přejmenuje na `_DONE.csv` a přesune do `done_local/`). `/api/files` ji vrací v poli
+  `wip` (jen local, mimo stránkování, datum filtr i řazení; i bez záznamů — `record_count 0`).
+  Tabulka ji zobrazí jako první řádek na 1. stránce: podbarvení, pulzující tečka, štítek
+  „Rozpracováno", bez checkboxu a mazání (backend DELETE → 409). `_WIP.csv` je povolený `file_id`
+  jen pro `location=local`.
+- **Automatická aktualizace:** `services/files_watcher.py` — každé 2 s `os.scandir` otisk
+  `{production,testing}/{wip,done_local,done_remote}` (název + mtime + velikost). Při změně
+  `{"type":"files_changed","types":[…]}` přes `/ws/plc` → `PlcContext` → window událost
+  `scada:files-changed` → `useDatabaseState` zavolá `fetchFiles()` (jen local, odpovídající typ).
+  Rozbalený detail se doplní při změně `record_count`. Po uzavření zakázky se rozbalení přenese
+  z `_WIP.csv` na `_DONE.csv`. Polling (30 s) zůstává jako záloha a pro NAS (ten se nehlídá).
+- Latence: změna souboru → obnovená tabulka ≈ 1–3 s; metadata nezměněných souborů z cache.
+
+### Fáze 23 — Rychlé načítání NAS + výchozí filtr 2 dny (2026-09-24)
+
+Měření (310 testing + 58 production souborů na NAS, 6,3 GB):
+
+| Situace | Předtím | Teď |
+|---------|---------|-----|
+| NAS testing — první načtení | 58 s (> timeout 30 s → chyba) | 0,18 s |
+| NAS testing — opakovaně | 7 s | 0,44 s |
+| NAS production — první / opakovaně | 11 s / 3,2 s | 0,97 s / 0,03 s |
+| Po restartu serveru | = první načtení | 0,03 s |
+
+- `_scan_folder` přes `os.scandir` — velikost + mtime přijdou s výpisem složky (dřív `stat()` po síti pro každý soubor).
+- Metadata NAS souboru se berou z **lokální kopie** v `done_remote/`/`done_local/` (stejný název + velikost) — NAS se čte jen pro soubory, které lokálně nejsou.
+- Zbylé soubory se čtou paralelně (32 vláken NAS, 4 lokálně).
+- Cache metadat se ukládá do `03_output/cache/file_meta.json` (bez WIP) → po restartu okamžitě.
+- Frontend: datumový filtr výchozí **posledních 2 dny** (včera + dnes), počítán v místním čase; neukládá se
+  do localStorage (staré uložené „do" skrývalo nové zakázky).
+- Testy: `02_tests/conftest.py` nahrazuje AdsMonitor offline atrapou — doba testů nezávisí na stavu
+  lokálního TwinCAT ADS routeru (dřív 6 s vs. 4 min).
+
+### Fáze 24 — Jednotné jednotky a formátování v production detailech (2026-09-24)
+
+Kontrola rozbaleného řádku (Database), detailu zakázky a detailu záznamu proti hlavičce CSV
+(DatabaseGateway `ProductionRecord.csv_header`) a 215 reálným záznamům.
+
+- **Jediný zdroj formátování:** `utils/paramMeta.ts` → `formatParam(key, raw)`, `paramUnit(key)`,
+  `hasMeasuredValue(key, records)`. Síly N (2 des.), pozice/dráhy µm a časy µs (celá čísla),
+  **odpory v mΩ** (CSV Ω × 1000, 1 des.), rozepnutý kontakt (CSV 1 000 000 Ω) → **„∞"** s popiskem.
+  Sloupec bez měřené hodnoty (prázdný / vždy ∞) se skryje. Exporty zůstávají v jednotkách CSV.
+- `FileTable` už nemá vlastní kopii parametrů (`EXPAND_PARAMS` odstraněn) — pořadí a popisky z `PARAM_GROUPS`.
+- `DataTable` zobrazuje jednotku pod popiskem sloupce (`columnUnits`).
+- **Geometrie ověřená na datech:** PT = OP − FP, OT = TTP − OP, **RT = TTP − RP**, MD = OP − RP,
+  TT = TTP − FP, OpT = UT + RevT + BT. Diagram síla–dráha kreslil RT mezi FP a RP a dopočítával
+  vymyšlené „RL" — opraveno (RT mezi RP a TTP). České popisy parametrů opraveny (OP/RP/TTP jsou polohy).
+- **Barvy boxů 1–6:** jediná paleta `CATEGORY_COLORS` (`utils/groupColors.ts` = `.db-cat-badge` v CSS),
+  box 4 (OK) už není červený; dříve 3 různé palety.
+- Status: v datech vždy konzistentní se SortingCategory (2 ↔ 1–4, 5 ↔ 5–6) — OK/NOK z kategorie je správně.
+- Čas záznamu všude `formatDateTime(…, withSeconds)`; texty „STATUS", „KAT.", „pcs", „Skupina" přes i18n.
+
+### Fáze 25 — Signal Data grafy podle referenční analýzy + SPA fallback (2026-09-24)
+
+**Zadání:** referenční grafy z analytického skriptu (projekt Analyzing) v
+`05_user_data/20260921_103124/` — `overview.png`, `results.png`, `hysteresis.png`,
+`switching_detail.png`, `timing_detail.png` + `results.json`.
+
+**Nalezené chyby:** osa X byla kategoriální (Recharts default) → svislé čáry FP/OP/RP/TTP se
+nevykreslily (čas bodu není přesně v decimovaných datech) a hystereze se kreslila podle pořadí
+bodů, ne podle polohy. Síla a poloha v detailu na jedné ose (síla plochá), odpor jako log₁₀
+čísla na lineární ose, NC/NO bez legendy, chyběly hodnoty bodů, MD, souhrn a časové úseky.
+
+**Backend (`signal_reader.py`):** OP/RP = průchod U_NC prahem 5 V (jako reference; fallback
+poloha) — ověřeno: OP 897,8 vs. 898 µm, RP 870,9 vs. 871 µm z AnalyzedParameters; body nesou
+`force` a `source`; odpověď obsahuje `params` (AnalyzedParameters jako čísla) a `r_nc_ohm`/`r_no_ohm`
+(Ω pro log osu); zoom okno ±30 ms.
+
+**Frontend (`SignalCharts.tsx`):** číselné osy s kulatými dílky; NC zeleně / NO fialově;
+FP modrá, OP zelená, TTP červená, RP oranžová; Výsledky = 4 grafy + body s hodnotami + souhrn
+analýzy; Hystereze = XY s body, pásmem MD a štítky OF/RF/TTF; Detail přepnutí 3×2 (±20 ms, síla +
+poloha na 2 osách); Časování 2×2 s úseky UT → RevT → BT (součet OpT). Ověřeno snímky v Chrome.
+
+**Detail záznamu — časový diagram (`RecordDiagram.tsx` TimeDiagram):** podle záznamu osciloskopu
+`05_user_data/IMG_4818.JPEG` — jeden graf U_NO (nahoře, 10 V) + U_NC (dole, 0 V), časová osa v měřítku
+skutečných časů záznamu (0 = OP): U_NC zaoblený náběh během UT, mezera RevT (oba kontakty rozepnuté),
+U_NO zákmity během BT; kóty UT, RevT, BT a OpT (= UT + RevT + BT). Dříve pevná schéma bez měřítka
+se špatným významem úseků (reverz jako opětovné sepnutí NC, BT od začátku přepnutí).
+
+**Prázdná tabulka kvůli filtru:** `/api/files` vrací `hidden_by_filter` + `latest_created_at`, když datumový filtr skryje vše → tabulka napíše, kolik souborů je mimo filtr, a tlačítko „Zobrazit záznamy do {datum}" posune filtr (posledních 2 dnů) na den nejnovějšího souboru.
+
+**Detail záznamu — hlavička:** Tisk je v řádku s nadpisem; zakázka · typ · ID · čas · kategorie · OK/NOK v jednom souhrnném řádku.
+
+### Fáze 26 — Sdílená tabulka parametrů (production + Testing) (2026-09-24)
+
+`components/ParamTable.tsx` — jediná tabulka parametrů pro detail produkčního záznamu
+(`RecordDiagram`) i Testing detail (záložky Test Setup / Measurement / Results + tisk):
+zkratka · název (bez jednotky, se vzorcem, např. „Pre-travel (OP − FP)") · hodnota s jednotkou
+(`formatParam`) · „?" s českým popisem (`PARAM_DESC`). Props: `groups`, `record`, `title`,
+`bare` (bez dlaždice), `hideMissing` (Testing vstupy).
+
+- `PARAM_DESC` přesunut z `RecordDiagram.tsx` do `utils/paramMeta.ts` a doplněn o vstupy testu
+  (`drive_*`, `electric_*`, `measuring_*`, `limits_*`) a MeasuredInfo (`measuretime`, `meas_ts`).
+- `formatParam`/`paramUnit` znají i vstupy testu (`EXTRA_FORMAT`: jednotky dle hlavičky CSV,
+  pevná desetinná místa); `meas_ts` (unix s) → datum a čas. `MEASUREDINFO_GROUPS` pro tabulku.
+- `Electric_Current` se zobrazuje v **mA** — hlavička CSV z DatabaseGateway chybně uvádí `[A]`
+  (potvrzeno uživatelem 2026-09-24; opravit hlavičku v DatabaseGateway).
+- Testing „Results" = stejná tabulka se všemi skupinami jako produkce (dřívější podzáložky zrušeny);
+  hero zobrazuje čas přes `formatDateTime`.
+- Jednotka v záhlaví skupiny mimo `text-transform: uppercase` (`.rd-pt__group-unit`) — jinak
+  „µm" → „ΜM" (vypadá jako „MM").
+
+### Fáze 27 — Přiblížení grafů Signal Data + celá obrazovka (2026-09-24)
+
+Každý graf Signal Data je v `components/ZoomPanel.tsx`:
+
+| Akce | Ovládání |
+|------|----------|
+| Přiblížení osy X kolem kurzoru | kolečko (v náhledu s **Ctrl** — jinak kolečko roluje stránkou a ukáže se nápověda; touchpad pinch = Ctrl + kolečko), na celé obrazovce kolečko vždy |
+| Přiblížení gestem | dva prsty (pinch) — zároveň posun |
+| Posun přiblíženého grafu | tažení myší / jedním prstem vodorovně (`touch-action: pan-y` → svislé rolování stránky zůstává) |
+| Základní velikost | dvojklik / dvojité klepnutí nebo tlačítko ⟲ |
+| Celá obrazovka | tlačítko ⛶ (portál přes celé okno; Escape / × zavře, přiblížení zůstává) |
+
+- Přibližuje se jen osa X; osy Y se dopočítají z viditelných dat (`fitAxis`, autoscale jako osciloskop);
+  napětí (0–10 V) a odpor (log) mají pevnou osu.
+- Grafy celého záznamu (Přehled, Výsledky) si pro přiblížený výřez dotáhnou data v **plném rozlišení**:
+  `GET /api/signal?mode=range&t0=&t1=` (ms) → `extract_time_range()` (bisect nad časem, ± 1 vzorek)
+  + min-max decimace na 1500 bucketů. Odpověď se necachuje (rozsahy plynule mění), surová data ano
+  (`load_signal`). Frontend: debounce 180 ms, požadavek s rezervou ½ šířky na každou stranu,
+  nový jen při opuštění rezervy nebo přiblížení > 2×. Do té doby decimovaný náhled.
+- Minimální šířka: 0,5 ms (celý záznam), 0,2 ms (Detail přepnutí / Časování — surová okna ±30 ms).
+- Synchronizovaný tooltip grafů přes `syncMethod="value"` (grafy mají po přiblížení různá data).
+- `ReferenceArea` (úseky UT/RevT/BT, pásmo MD) s `ifOverflow="hidden"` — při přiblížení se ořízne.
+- Popisky časové osy mají desetinná místa podle kroku dílků (`fixedTicks`).
+
+**Drobné úpravy UI (2026-09-24):**
+- Database: rozpracovaná zakázka (nelze mazat) má místo koše neviditelný zástupný prvek
+  (`.db-icon-btn--placeholder`) — tlačítka CSV / XLSX jsou ve všech řádcích na stejném místě.
+- Testing detail: hlavička (`.testing-hero`) v jednom řádku zleva — typ spínače + ID │ Čas měření │
+  Doba měření │ OK/NOK (dřív roztaženo na krajní strany); nižší výška.
+
+### Fáze 28 — Tiskový protokol A4 (2026-09-24)
+
+Tisk (`window.print`) z detailu zakázky, detailu záznamu a Testing detailu — blok „PROTOKOL" na konci
+`styles/chart.css`:
+
+- `@page` A4, okraje 12/11/14 mm, pata stránky „Trafag AG · ScadaViewer" + číslo strany `n / N`
+  (page-margin boxes, Chrome ≥ 131). Bílý papír, `print-color-adjust: exact` (barvy odznaků a skupin).
+- Záhlaví: název protokolu + `PrintMeta` (ChartView) — „Vytištěno {datum čas} · {uživatel}",
+  čas se obnoví na `beforeprint`; linka pod záhlavím.
+- Skupiny (`.cv-print-group`) se nedělí mezi stránky, pokud se vejdou; nadpis nikdy sám na konci
+  stránky; řádky se nedělí; záhlaví tabulky se opakuje na každé stránce.
+- Detail zakázky: skupinové tabulky s `table-layout: fixed` a pevnými šířkami #/čas/kat./stav →
+  sloupce pod sebou napříč skupinami.
+- Detail záznamu: strana 1 = souhrn + diagram síla–dráha + časový diagram + NOK, strana 2 = parametry.
+- Testing: obrazovková dlaždice se záložkami má `cv-screen-only` (dřív se aktivní záložka tiskla 2×);
+  protokol = Nastavení testu, Měření, Výsledky, NOK hodnocení. Grafy Signal Data se netisknou.
+- Tabulky parametrů v tisku kompaktní (bez sloupce nápovědy).
+
+
+**SPA fallback (`app.py` `_SPAStaticFiles`):** F5 / odkaz na `/chart`, `/settings` vracel
+`{"detail":"Not Found"}` — nyní `index.html`; `/api/*`, `/assets/*` a soubory dál 404.
+
 ---
 
 ## Tok dat
@@ -598,7 +755,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 ### /api/health — formát odpovědi
 
 ```json
-{ "status": "ok", "version": "0.1.0", "checks": { "local_storage": true, "ads": false } }
+{ "status": "ok", "version": "0.2.0", "checks": { "local_storage": true, "ads": false } }
 ```
 
 `status`: `"ok"` nebo `"degraded"` (vždy HTTP 200 — NSSM rozlišuje connection refused od degraded).

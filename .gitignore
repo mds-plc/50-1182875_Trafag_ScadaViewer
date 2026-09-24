@@ -25,6 +25,7 @@ build/
 # Výstupy
 03_output/logs/*.log
 03_output/logs/*.log.*
+03_output/cache/
 
 # Konfigurace — obsahuje síťové údaje, hesla a hash hesla; nikdy do repozitáře
 Config.toml

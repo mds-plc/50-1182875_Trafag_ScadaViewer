@@ -62,6 +62,10 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
   const { token } = useAuth()
 
   const [files,   setFiles]   = useState<OrderFile[]>([])
+  const [wip,     setWip]     = useState<OrderFile[]>([])   // rozpracované zakázky (mimo stránkování)
+  // Datumový filtr skryl všechny soubory → kolik jich je mimo filtr + datum nejnovějšího
+  const [hiddenByFilter,  setHiddenByFilter]  = useState(0)
+  const [latestCreatedAt, setLatestCreatedAt] = useState<string | null>(null)
   const [total,   setTotal]   = useState(0)
   const [pages,   setPages]   = useState(1)
   const [loading, setLoading] = useState(false)
@@ -71,6 +75,9 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
   // Vymazat stará data při přepnutí zdroje (location / type)
   useEffect(() => {
     setFiles([])
+    setWip([])
+    setHiddenByFilter(0)
+    setLatestCreatedAt(null)
     setTotal(0)
     setPages(1)
     setError(null)
@@ -101,6 +108,9 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       const json = await res.json()
       if (!Array.isArray(json.files)) throw new Error(tRef.current.common.errorInvalidResponse)
       setFiles(json.files)
+      setWip(Array.isArray(json.wip) ? json.wip : [])
+      setHiddenByFilter(typeof json.hidden_by_filter === 'number' ? json.hidden_by_filter : 0)
+      setLatestCreatedAt(typeof json.latest_created_at === 'string' ? json.latest_created_at : null)
       // Validace tvaru odpovědi — neočekávaný typ nesmí rozbít stránkování
       setTotal(typeof json.total === 'number' ? json.total : json.files.length)
       setPages(typeof json.pages === 'number' && json.pages >= 1 ? json.pages : 1)
@@ -112,7 +122,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
     }
   }, [location, type, page, perPage, dateFrom, dateTo, sortBy, sortDir, token])
 
-  return { files, total, pages, loading, error, fetchFiles }
+  return { files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles }
 }
 
 /** Počet záznamů na stránku — musí odpovídat výchozímu per_page v api/data.py */
