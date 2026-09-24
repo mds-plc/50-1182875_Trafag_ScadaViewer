@@ -363,6 +363,12 @@
   padding: var(--space-4);
   background: var(--color-bg);
   border-left: 3px solid var(--color-accent);
+  /* Rozbalený detail nesmí roztáhnout hlavní tabulku: šířka 0 → obsah se nezapočítá do
+     šířky tabulky, min-width 100 % → vyplní buňku. Široká tabulka záznamů pak roluje
+     vodorovně uvnitř .db-subtable-wrap místo přetečení celé stránky. */
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
 }
 
 .db-subtable-wrap {
@@ -439,6 +445,7 @@
   font-family: var(--font-mono);
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;   /* čas záznamu na 1 řádku — tabulka roluje vodorovně */
 }
 
 .db-subtable__td--num {
