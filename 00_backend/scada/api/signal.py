@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from scada.api.dependencies import require_auth
 from scada.services.signal_reader import prepare_signal_response
-from scada.services.repositories.csv_repository import CsvRepository, _parse_sectioned
+from scada.services.repositories.csv_repository import _parse_sectioned
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -64,13 +64,20 @@ async def get_signal(
     if mode not in _VALID_MODES:
         raise HTTPException(status_code=400, detail=f"Neplatný mode: {mode!r}")
 
-    reader: CsvRepository = request.app.state.csv_reader._repo
-    path = reader.resolve_path(file, location, file_type)
-    if path is None or not path.exists():
-        raise HTTPException(status_code=404, detail="Soubor nenalezen")
-
     cfg = request.app.state.config.data
     timeout = 30.0 if location == 'remote' else 15.0
+
+    # resolve_path + exists() na UNC cestě blokuje — nesmí běžet v event loopu
+    try:
+        path = await asyncio.wait_for(
+            asyncio.to_thread(request.app.state.csv_reader.resolve_path, file, location, file_type),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error("[API]   /api/signal resolve timeout (%s, %s)", file, location)
+        raise HTTPException(status_code=504, detail="Úložiště nedostupné — timeout.")
+    if path is None:
+        raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
     try:
         result = await asyncio.wait_for(

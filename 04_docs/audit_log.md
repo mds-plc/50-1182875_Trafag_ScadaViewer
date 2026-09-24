@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-22 (signal data charts — Fáze 20)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-24 (hloubkový audit — vše)**.
 
 ### 🔴 HIGH
 
@@ -16,7 +16,11 @@
 
 ### ⚠️ MEDIUM
 
-(žádné otevřené)
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| M14 | `/ws/plc` bez autentizace; origin check se přeskočí, když chybí `Origin` hlavička | `api/plc_ws.py` | [2026-09-24 #16] |
+| M15 | `/api/files` při každém volání čte všechny CSV celé (record_count) — bez cache dle mtime; zátěž NAS při auto-refresh | `services/repositories/csv_repository.py` | [2026-09-24 #17] |
+| M16 | `/api/signal` parsuje 400k řádků do Python listů (~100+ MB) při každém požadavku, bez cache; záložka Switching spustí 3 paralelní parsování | `services/signal_reader.py` | [2026-09-24 #18] |
 
 #### Uzavřené MEDIUM nálezy
 | # | Popis | Stav | Poznámka |
@@ -40,12 +44,61 @@
 | L7 | `_read_and_broadcast_initial()` nečeká na Future při shutdown | `services/ads_monitor.py` | [2026-07-28 hloubkový #14] |
 | L8 | Chybí per-endpoint lockout po N selháních přihlášení | `api/auth.py` | [2026-07-28 hloubkový #16] |
 | L9 | `useFiles`: chybí validace tvaru response (přístup na `json.files` bez existence check) | `hooks/useData.ts` | [2026-07-30 full-audit FE#16] |
+| L11 | `/auth/change-password` obchází `require_auth` (bez TTL) a hádání aktuálního hesla nemá lockout | `api/auth.py` | [2026-09-24 #20] |
+| L12 | Admin mění vlastní heslo bez `current_password` (ukradený token → převzetí účtu) | `api/users_api.py` | [2026-09-24 #21] |
+| L13 | Rate limiter počítá i statické assety (JS chunky, fonty) do limitu 120/min | `app.py` | [2026-09-24 #22] |
+| L14 | `asyncio.wait_for` timeout nezastaví worker vlákno — zaseknutý NAS může vyčerpat thread pool | `api/files.py`, `api/data.py` | [2026-09-24 #23] |
+| L15 | `csv.Error` (NUL byte, limit pole) v `read_records()` nezachycen → HTTP 500 | `services/repositories/csv_repository.py` | [2026-09-24 #24] |
+| L16 | Download `media_type="text/csv; charset=utf-8-sig"` — nestandardní charset label | `api/files.py` | [2026-09-24 #25] |
+| L17 | Odpojený kód (wip.py, orders_ws.py, order_watcher.py, Overview/Wip) — `wip.py` má race `p.stat()` při přesunu WIP→done; opravit před znovuzapojením | `api/wip.py` | [2026-09-24 #27] |
 
 ### 📄 DOCS
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
+| D2 | CLAUDE.md zastaralý: `/ws/orders`, `/api/wip`, Overview uvedeny jako aktivní; sekce 6 uvádí 4 symboly DatabaseGateway GVL (reálně 23, `ScadaViewerApp`); `csv_reader.py` neexistuje (→ `file_service.py` + `csv_repository.py`); počty FE testů 102/14 → 51/7 | `CLAUDE.md` | [2026-09-24 #28] |
+
+---
+
+## [2026-09-24] Audit — vše (backend, frontend, ads, security, docs)
+
+Hloubkový audit celého kódu. Ověřeno po opravách: `pytest 02_tests/` **158 passed** (+6 regresních), `vitest` **51 passed / 7 souborů**, `tsc` 0 chyb, `npm run build` OK.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 CRITICAL | `PATCH /api/config/paths` zapisoval Windows cesty jako nevalidní TOML — `re.subn` interpretoval `\\` v replacement stringu jako escape → `local_path = "C:\data"` → **server po restartu nenastartuje**; UNC cesta navíc ztratila úvodní `\` (ověřeno reprodukcí) | `api/config_api.py` | ✅ Opraveno (lambda replacement + test) |
+| 2 | 🔴 HIGH | `tsconfig.json` bez `noEmit` → `tsc` v `npm run build` generoval 57 `.js` souborů vedle `.tsx` v `src/`; Vite i Vitest resolvují `.js` **před** `.tsx` → dev server/HMR i testy běžely nad zastaralým kódem; Vitest spouštěl každý test 2× (hlášených 102/14 = 51/7 × 2) | `01_frontend/tsconfig.json` | ✅ Opraveno (`noEmit: true`, `.js` smazány) |
+| 3 | 🔴 HIGH | Folder picker volal `/api/config/fs` bez `Authorization` → 401 → výběr složky vždy prázdný | `pages/Settings.tsx` | ✅ Opraveno |
+| 4 | 🔴 HIGH | XLSX export potichu neúplný: Database posílal `/api/data` bez `per_page=0` (→ jen 200 záznamů), ChartView exportoval jen aktuální stránku tabulky | `hooks/useDatabaseState.ts`, `pages/ChartView.tsx`, `utils/exportXlsx.ts` | ✅ Opraveno (`exportFileXlsx()` — vždy celý soubor) |
+| 5 | ⚠️ MEDIUM | WS cache po výpadku ADS držela staré hodnoty symbolů → nově připojený klient dostal např. `plc_operator_login=true` jako aktuální (SCADA safety + falešný PLC login) | `services/ws_manager.py`, `services/ads_monitor.py` | ✅ Opraveno (`clear_symbols()` po disconnectu + test) |
+| 6 | ⚠️ MEDIUM | `file_id` s `:` obcházel validaci na Windows — `D:x_DONE.csv` přeskočí base adresář (drive-relative), `a.csv:x_DONE.csv` = NTFS alternate data stream | `services/repositories/csv_repository.py` | ✅ Opraveno (+ test) |
+| 7 | ⚠️ MEDIUM | `/api/signal`: `resolve_path()` + `exists()` synchronně v event loopu — na UNC cestě blokuje celý server | `api/signal.py` | ✅ Opraveno (`to_thread` + timeout) |
+| 8 | ⚠️ MEDIUM | `read_signal_data()`: chybějící sloupec nebo krátký řádek → sloupce různé délky → `IndexError` v `decimate_minmax()` → HTTP 500 | `services/signal_reader.py` | ✅ Opraveno |
+| 9 | ⚠️ MEDIUM | `/api/config/fs` dostupné i roli operator — výpis disků/složek serveru | `api/config_api.py` | ✅ Opraveno (`require_role("admin")` + test) |
+| 10 | ⚠️ MEDIUM | Login: PBKDF2 (260k iterací) synchronně v event loopu — každý pokus blokuje ~100 ms vč. WS broadcastu | `api/auth.py` | ✅ Opraveno (`asyncio.to_thread`) |
+| 11 | 🔵 LOW | Změna vlastního hesla přes `/api/users/{u}/password` volala `sessions.clear()` → odhlásila **všechny** uživatele | `api/users_api.py` | ✅ Opraveno |
+| 12 | 🔵 LOW | `create_user` propouštěl řídicí znaky ve jméně → `users.toml` nečitelný → `load_users()` fallback = ztráta všech uživatelů | `api/users_api.py` | ✅ Opraveno (+ test) |
+| 13 | 🔵 LOW | `/ws/plc` odregistroval socket jen při `WebSocketDisconnect` — jiná výjimka nechala mrtvý socket v registru | `api/plc_ws.py` | ✅ Opraveno (`finally`) |
+| 14 | 🔵 LOW | Settings uložil 401 odpověď `/api/config` jako `ConfigData` → pád stránky na `config.data.*` | `pages/Settings.tsx` | ✅ Opraveno |
+| 15 | ⚠️ MEDIUM | Žádná globální obsluha 401 ve frontendu (restart backendu / TTL 8 h → „přihlášen", ale vše padá) | `context/AuthContext.tsx`, `utils/apiFetch.ts`, `api/dependencies.py` | ✅ Opraveno 2026-09-24 (401 + `WWW-Authenticate: Bearer` → `apiFetch` → odhlášení + hláška „Relace vypršela"; PLC token se obnoví automaticky) |
+| 16 | ⚠️ MEDIUM | `/ws/plc` bez autentizace; chybějící `Origin` projde | `api/plc_ws.py` | ⬜ Otevřeno (M14) |
+| 17 | ⚠️ MEDIUM | `/api/files` čte všechny CSV celé při každém volání (bez mtime cache) | `csv_repository.py` | ⬜ Otevřeno (M15) |
+| 18 | ⚠️ MEDIUM | `/api/signal` — 400k řádků do Python listů při každém požadavku, bez cache | `signal_reader.py` | ⬜ Otevřeno (M16) |
+| 19 | 🔵 LOW | `isLoggedIn` true i bez PLC tokenu, když plc-login selže | `context/AuthContext.tsx` | ✅ Opraveno 2026-09-24 (`isLoggedIn = localLogin \|\| (plcLoggedIn && plcToken)`) |
+| 20 | 🔵 LOW | `/auth/change-password` bez TTL kontroly a lockoutu | `api/auth.py` | ⬜ Otevřeno (L11) |
+| 21 | 🔵 LOW | Admin mění vlastní heslo bez aktuálního hesla | `api/users_api.py` | ⬜ Otevřeno (L12) |
+| 22 | 🔵 LOW | Rate limit počítá statické assety | `app.py` | ⬜ Otevřeno (L13) |
+| 23 | 🔵 LOW | Timeout nezastaví worker vlákno (thread pool exhaustion při zaseknutém NAS) | `api/files.py`, `api/data.py` | ⬜ Otevřeno (L14) |
+| 24 | 🔵 LOW | `csv.Error` v `read_records()` nezachycen → 500 | `csv_repository.py` | ⬜ Otevřeno (L15) |
+| 25 | 🔵 LOW | Nestandardní `charset=utf-8-sig` v download hlavičce | `api/files.py` | ⬜ Otevřeno (L16) |
+| 26 | 🔵 LOW | `SignalCharts` neresetoval zoom data při změně souboru bez unmountu | `pages/ChartView.tsx` | ✅ Opraveno (`key` dle souboru) |
+| 27 | 🔵 LOW | Odpojený kód (`wip.py` race na `p.stat()`, `orders_ws`, `order_watcher`, Overview) | `api/wip.py` | ⬜ Otevřeno (L17) |
+| 28 | 📄 DOCS | CLAUDE.md zastaralý (odpojené endpointy, ADS symboly, `csv_reader.py`, počty testů) | `CLAUDE.md` | ⬜ Otevřeno (D2) |
+
+**Celkem:** 28 nálezů | 17 opraveno | 11 otevřeno  _(M13 + L10 opraveny dodatečně — testy: pytest 160, vitest 59/8)_
+
+**Poznámka k nasazení:** frontend změny vyžadují `npm run build` (provedeno) — produkce běží z `01_frontend/dist/` přes port 8080.
 
 ---
 

@@ -15,6 +15,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord } from '../types'
 import { useAuth } from '../context/AuthContext'
+import { apiFetch } from '../utils/apiFetch'
 
 /** Data z /api/wip — snapshot WIP záznamy aktuální zakázky. */
 export interface WipData {
@@ -38,7 +39,7 @@ export function useWipData(enabled: boolean, orderName: string | undefined) {
     try {
       const params  = new URLSearchParams({ order })
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const res = await fetch(`/api/wip?${params}`, { signal: ctrl.signal, headers })
+      const res = await apiFetch(`/api/wip?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json() as WipData
       setData(json)

@@ -368,7 +368,9 @@ class CsvRepository:
             log.warning("[CSV]   odmítnuto neplatné file_type: %r", file_type)
             return False
         if file_id is not None:
-            if '/' in file_id or '\\' in file_id or '..' in file_id:
+            # ':' — Windows drive-relative cesta ("D:x_DONE.csv" přeskočí base adresář)
+            #       nebo NTFS alternate data stream ("a.csv:x_DONE.csv")
+            if '/' in file_id or '\\' in file_id or '..' in file_id or ':' in file_id:
                 log.warning("[CSV]   odmítnuto neplatné file_id (path traversal): %r", file_id)
                 return False
             if '\x00' in file_id:

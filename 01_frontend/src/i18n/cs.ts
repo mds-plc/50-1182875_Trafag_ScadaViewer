@@ -236,6 +236,7 @@ export const cs: Translations = {
     signIn:           'Přihlásit se',
     errorCredentials: 'Neplatné přihlašovací údaje.',
     errorServer:      'Chyba serveru — zkuste to znovu.',
+    sessionExpired:   'Relace vypršela — přihlaste se prosím znovu.',
     localAccess:      'Lokální přístup',
     signOut:          'Odhlásit se',
   },

@@ -1159,3 +1159,78 @@ class TestUsersApi:
                           json={"new_password": "noveheslo123"})
         # op1 sessions musí být odstraněny
         assert _OP_TOKEN2 not in users_client.app.state.sessions
+
+
+# ======================================================================
+# Audit 2026-09-24 — regresní testy
+# ======================================================================
+
+class TestAudit20260924:
+    """Regresní testy pro nálezy hloubkového auditu 2026-09-24."""
+
+    def test_write_paths_produces_valid_toml(self, tmp_path: Path) -> None:
+        """Windows cesty s backslashi musí po zápisu zůstat validní TOML (dříve Config.toml rozbit)."""
+        import tomllib
+        from scada.api.config_api import _write_paths
+        cfg = tmp_path / "Config.toml"
+        cfg.write_text('[data]\nlocal_path = "x"\nremote_path = "y"\n', encoding="utf-8")
+        _write_paths(cfg, r"C:\data\new", r"\10.45.124.20\trafag_test")
+        parsed = tomllib.loads(cfg.read_text(encoding="utf-8"))
+        assert parsed["data"]["local_path"]  == r"C:\data\new"
+        assert parsed["data"]["remote_path"] == r"\10.45.124.20\trafag_test"
+
+    @pytest.mark.parametrize("file_id", ["D:x_DONE.csv", "a.csv:x_DONE.csv"])
+    def test_file_id_with_colon_rejected(self, tmp_path: Path, file_id: str) -> None:
+        """Drive-relative cesta / NTFS ADS v file_id → odmítnuto validací."""
+        from scada.services.repositories.csv_repository import CsvRepository
+        _, cfg = make_app(tmp_path)
+        assert CsvRepository(cfg.data).validate_params(file_id, "local", "production") is False
+
+    def test_config_fs_requires_admin(self, tmp_path: Path) -> None:
+        """Folder picker (výpis disků serveru) smí jen admin+."""
+        app, _ = make_app(tmp_path)
+        with TestClient(app) as c:
+            _inject_session(app, "op-token", {"username": "op", "role": "operator", "display_name": "Op",
+                                              "created_at": time.time()})
+            r = c.get("/api/config/fs", headers={"Authorization": "Bearer op-token"})
+            assert r.status_code == 403
+
+    def test_ws_cache_clear_symbols_keeps_status(self) -> None:
+        """Po výpadku ADS zůstane v cache jen ads_status, ne staré hodnoty symbolů."""
+        import asyncio
+        from scada.services.ws_manager import ConnectionManager
+        m = ConnectionManager()
+        asyncio.run(m.broadcast({"symbol": "plc_operator_login", "value": True, "ts": "x"}))
+        asyncio.run(m.broadcast({"type": "ads_status", "connected": False}))
+        m.clear_symbols()
+        assert list(m._cache) == ["ads_status"]
+
+    def test_create_user_rejects_control_chars(self, client) -> None:
+        """Username s LF by rozbil users.toml → 400."""
+        c, _ = client
+        r = c.post("/api/users", json={
+            "username": "evil\nrole", "display_name": "E", "password": "x", "role": "operator",
+        })
+        assert r.status_code == 400
+
+    def test_401_carries_www_authenticate_bearer(self, tmp_path: Path) -> None:
+        """Neplatný/chybějící token → 401 + WWW-Authenticate: Bearer (frontend podle ní odhlásí)."""
+        app, _ = make_app(tmp_path)
+        with TestClient(app) as c:
+            r = c.get("/api/files", headers={"Authorization": "Bearer neexistuje"})
+            assert r.status_code == 401
+            assert r.headers.get("www-authenticate") == "Bearer"
+
+    def test_wrong_current_password_401_without_www_authenticate(self, tmp_path: Path) -> None:
+        """Špatné aktuální heslo je 401 BEZ WWW-Authenticate — nesmí vyvolat odhlášení ve FE."""
+        from scada.config import hash_password
+        app, _ = make_app(tmp_path)
+        with TestClient(app) as c:
+            app.state.users_path = None
+            app.state.users = [UserEntry("tech", "Tech", hash_password("spravne"), "technician")]
+            _inject_session(app, "tech-tok", {"username": "tech", "role": "technician", "display_name": "Tech"})
+            r = c.post("/api/users/tech/password",
+                       json={"new_password": "nove", "current_password": "spatne"},
+                       headers={"Authorization": "Bearer tech-tok"})
+            assert r.status_code == 401
+            assert "www-authenticate" not in r.headers

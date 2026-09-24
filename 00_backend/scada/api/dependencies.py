@@ -45,6 +45,11 @@ SESSION_TTL_SECS: int = 8 * 3600
 _GC_EVERY: int = 50
 _gc_counter: int = 0
 
+# RFC 6750 — 401 z neplatného/vypršelého tokenu nese WWW-Authenticate: Bearer.
+# Frontend (utils/apiFetch.ts) podle ní odliší „relace neplatná → odhlásit"
+# od jiných 401 (např. špatné aktuální heslo při změně hesla), které hlavičku nemají.
+_WWW_AUTH: dict[str, str] = {"WWW-Authenticate": "Bearer"}
+
 
 async def require_auth(
     request:       Request,
@@ -75,7 +80,7 @@ async def require_auth(
     sessions = request.app.state.sessions
     session  = sessions.get(token or "")
     if not session:
-        raise HTTPException(status_code=401, detail="Neautorizovaný přístup")
+        raise HTTPException(status_code=401, detail="Neautorizovaný přístup", headers=_WWW_AUTH)
 
     now = time.time()
 
@@ -83,7 +88,7 @@ async def require_auth(
     created_at = session.get("created_at", 0.0)
     if now - created_at > SESSION_TTL_SECS:
         sessions.pop(token, None)
-        raise HTTPException(status_code=401, detail="Relace vypršela — přihlaste se znovu")
+        raise HTTPException(status_code=401, detail="Relace vypršela — přihlaste se znovu", headers=_WWW_AUTH)
 
     # Aktivní GC — periodický sweep všech expired sessions
     _gc_counter += 1

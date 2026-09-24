@@ -12,6 +12,7 @@
  *   XLSX.writeFile() stáhne soubor do výchozí složky Stažené soubory.
  */
 import * as XLSX from 'xlsx'
+import { apiFetch } from './apiFetch'
 
 /**
  * Exportuje záznamy do XLSX souboru.
@@ -71,4 +72,27 @@ export async function exportXlsx(rows: Record<string, unknown>[], filename: stri
     console.error('[exportXlsx] export selhal:', e)
     throw e   // propaguje do downloadXlsx → toast "Chyba načítání"
   }
+}
+
+/**
+ * Stáhne VŠECHNY záznamy souboru (`per_page=0`) a exportuje je do XLSX.
+ *
+ * Bez `per_page=0` vrací /api/data jen první stránku (200 záznamů) — export by byl
+ * potichu neúplný.
+ *
+ * @throws Error při HTTP chybě (volající zobrazí toast); AbortError při zrušení
+ */
+export async function exportFileXlsx(
+  fileId:   string,
+  location: string,
+  fileType: string,
+  token:    string | null,
+  signal?:  AbortSignal,
+): Promise<void> {
+  const params  = new URLSearchParams({ file: fileId, location, type: fileType, per_page: '0' })
+  const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await apiFetch(`/api/data?${params}`, { signal, headers })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json() as { records: Record<string, unknown>[] }
+  await exportXlsx(data.records, fileId)
 }

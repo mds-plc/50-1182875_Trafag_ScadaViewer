@@ -69,8 +69,10 @@ def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
 
     local_toml  = _toml_str(local_path)
     remote_toml = _toml_str(remote_path)
-    text, n1 = re.subn(r'local_path\s*=\s*"[^"]*"',  f'local_path = "{local_toml}"',  text)
-    text, n2 = re.subn(r'remote_path\s*=\s*"[^"]*"', f'remote_path = "{remote_toml}"', text)
+    # Lambda jako replacement — re.subn by jinak interpretoval "\\" v řetězci jako escape
+    # a zapsal zpět jediný "\" (→ nevalidní TOML, server by po restartu nenastartoval).
+    text, n1 = re.subn(r'local_path\s*=\s*"[^"]*"',  lambda _m: f'local_path = "{local_toml}"',  text)
+    text, n2 = re.subn(r'remote_path\s*=\s*"[^"]*"', lambda _m: f'remote_path = "{remote_toml}"', text)
     if n1 == 0:
         log.warning("[API]   _write_paths: klíč local_path nenalezen v %s", config_path)
     if n2 == 0:
@@ -161,7 +163,7 @@ def _list_children(path_str: str) -> dict[str, object]:
     return {"path": _norm(p), "parent": parent, "children": children}
 
 
-@router.get("/config/fs", dependencies=[Depends(require_auth)])
+@router.get("/config/fs", dependencies=[Depends(require_role("admin"))])
 async def list_fs(path: str = "") -> dict[str, object]:
     """
     Vrátí seznam podsložek pro folder picker v Settings UI.

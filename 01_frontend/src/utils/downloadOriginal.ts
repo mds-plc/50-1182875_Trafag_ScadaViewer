@@ -5,6 +5,7 @@
  * Používá endpoint GET /api/files/{id}/download, který vrací soubor
  * přesně tak, jak ho zapsal DatabaseGateway — včetně sekcí, hlaviček a BOM.
  */
+import { apiFetch } from './apiFetch'
 
 /**
  * Stáhne originální CSV soubor přes backend download endpoint.
@@ -27,7 +28,7 @@ export function downloadOriginalCsv(
 
   const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
 
-  fetch(url, { headers })
+  apiFetch(url, { headers })
     .then(res => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return res.blob()

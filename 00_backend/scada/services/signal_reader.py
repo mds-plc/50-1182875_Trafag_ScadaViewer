@@ -75,7 +75,9 @@ def read_signal_data(
             # Data row
             vals = line.split(separator)
             for i, col_name in enumerate(header):
-                if col_name in columns and i < len(vals):
+                if col_name in columns:
+                    # Chybějící / neparsovatelná hodnota → 0.0; všechny sloupce musí mít
+                    # stejnou délku, jinak decimate_minmax() indexuje mimo rozsah.
                     try:
                         columns[col_name].append(float(vals[i]))
                     except (ValueError, IndexError):
@@ -83,6 +85,9 @@ def read_signal_data(
 
     if not found or len(columns.get('ts', [])) == 0:
         return None
+
+    # Sloupce, které soubor neobsahuje, vynechat (prázdný list by rozbil decimaci)
+    columns = {col: data for col, data in columns.items() if data}
 
     log.debug("[SIG]   read_signal_data: %d řádků z %s", len(columns['ts']), path.name)
     return columns

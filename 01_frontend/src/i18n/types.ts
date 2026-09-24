@@ -245,6 +245,7 @@ export interface Translations {
     signIn: string
     errorCredentials: string
     errorServer: string
+    sessionExpired: string
     localAccess: string
     signOut: string
   }

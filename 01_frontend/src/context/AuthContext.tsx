@@ -11,6 +11,10 @@
  *   - Lokální session má vždy přednost před PLC session.
  *   - plcLoginInFlightRef chrání před dvojitým fetchem v React Strict Mode.
  *   - Při odhlášení (logout nebo PLC výpadek) invaliduje token na serveru fire-and-forget.
+ *   - Neplatná session (401 + WWW-Authenticate z utils/apiFetch.ts — restart backendu,
+ *     TTL 8 h): lokální login se ukončí a nastaví `sessionExpired` (LoginOverlay zobrazí
+ *     hlášku); PLC token se zahodí a PLC login proběhne znovu automaticky.
+ *   - isLoggedIn = true jen s platným tokenem (lokální session nebo získaný PLC token).
  *
  * Rozhraní:
  *   AuthProvider({ children, plcLoggedIn })   — obaluje strom pod PlcProvider
@@ -26,6 +30,8 @@
  *   plcLoggedIn prop: App.tsx předává hodnotu z usePlc().status["plc_operator_login"]
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { UNAUTHORIZED_EVENT } from '../utils/apiFetch'
+import type { UnauthorizedDetail } from '../utils/apiFetch'
 
 // sessionStorage klíče — pouze lokální login, PLC token zůstává jen v paměti
 const TOKEN_KEY    = 'scada_auth_token'
@@ -48,6 +54,8 @@ export interface AuthContextType {
   role:         string | null
   /** aktivní Bearer token — ze sessionStorage (lokální) nebo jen z paměti (PLC) */
   token:        string | null
+  /** true = lokální session byla serverem odmítnuta (vypršela / restart backendu) */
+  sessionExpired: boolean
   /** POST /api/auth/login; vrátí 'ok', 'invalid' (HTTP 401) nebo 'error' při síťové chybě */
   login:  (username: string, password: string) => Promise<LoginResult>
   logout: () => void
@@ -85,7 +93,32 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
   const [plcRole,        setPlcRole]        = useState<string | null>(null)
   const [plcDisplayName, setPlcDisplayName] = useState<string | null>(null)
 
+  const [sessionExpired, setSessionExpired] = useState(false)
+
   const plcLoginInFlightRef = useRef(false)
+
+  // Aktuální tokeny pro event listener (bez re-registrace při každé změně)
+  const tokensRef = useRef({ localToken, plcToken })
+  tokensRef.current = { localToken, plcToken }
+
+  // Neplatná session hlášená z apiFetch → odhlásit (jen pokud jde o aktuální token)
+  useEffect(() => {
+    function onUnauthorized(e: Event): void {
+      const { token: rejected } = (e as CustomEvent<UnauthorizedDetail>).detail
+      const { localToken: lt, plcToken: pt } = tokensRef.current
+      if (rejected === lt) {
+        clearLocalSession()
+        setSessionExpired(true)
+      } else if (rejected === pt) {
+        // PLC session: zahodit token — useEffect níže vyžádá nový přes plc-login
+        setPlcToken(null)
+        setPlcRole(null)
+        setPlcDisplayName(null)
+      }
+    }
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+  }, [])
 
   // auto-login / auto-logout při změně PLC příznaku
   useEffect(() => {
@@ -142,6 +175,7 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
       sessionStorage.setItem(USERNAME_KEY, user.trim())
       sessionStorage.setItem(ROLE_KEY,     data.role)
       sessionStorage.setItem(DISPLAY_KEY,  data.display_name)
+      setSessionExpired(false)
       setLocalToken(data.token)
       setLocalLogin(true)
       setUsername(user.trim())
@@ -153,9 +187,8 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
     }
   }
 
-  function logout(): void {
-    const tokenToInvalidate = localToken ?? plcToken
-
+  /** Vymaže lokální session ze sessionStorage i ze state (bez volání serveru). */
+  function clearLocalSession(): void {
     sessionStorage.removeItem(TOKEN_KEY)
     sessionStorage.removeItem(USERNAME_KEY)
     sessionStorage.removeItem(ROLE_KEY)
@@ -165,6 +198,13 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
     setUsername(null)
     setRole(null)
     setDisplayName(null)
+  }
+
+  function logout(): void {
+    const tokenToInvalidate = localToken ?? plcToken
+
+    clearLocalSession()
+    setSessionExpired(false)
     setPlcToken(null)
     setPlcRole(null)
     setPlcDisplayName(null)
@@ -179,8 +219,9 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
     }
   }
 
-  // lokální session má přednost před PLC
-  const isLoggedIn           = plcLoggedIn || localLogin
+  // lokální session má přednost před PLC; PLC příznak sám nestačí — bez tokenu
+  // by UI vypadalo přihlášené, ale všechna API volání by vracela 401
+  const isLoggedIn           = localLogin || (plcLoggedIn && plcToken !== null)
   const token                = localLogin ? localToken   : plcToken
   const effectiveRole        = localLogin ? role         : plcRole
   const effectiveDisplayName = localLogin ? displayName  : plcDisplayName
@@ -194,6 +235,7 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
       displayName: effectiveDisplayName,
       role:        effectiveRole,
       token,
+      sessionExpired,
       login,
       logout,
     }}>

@@ -12,6 +12,7 @@ import { useAuth }     from '../context/AuthContext'
 import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
 import LoadingSpinner  from '../components/LoadingSpinner'
+import { apiFetch } from '../utils/apiFetch'
 
 // ---------------------------------------------------------------------------
 // HelpButton — info tlačítko s výskakovacím popiskem
@@ -62,6 +63,7 @@ interface FolderPickerProps {
 
 function FolderPickerModal({ initialPath, onSelect, onClose }: FolderPickerProps) {
   const { t } = useLang()
+  const { token } = useAuth()
   const [fsData,  setFsData]  = useState<FsData>({ path: '', parent: null, children: [] })
   const [loading, setLoading] = useState(false)
   const fpAbortRef = useRef<AbortController | null>(null)
@@ -72,14 +74,15 @@ function FolderPickerModal({ initialPath, onSelect, onClose }: FolderPickerProps
     fpAbortRef.current = ctrl
     setLoading(true)
     try {
-      const res = await fetch(`/api/config/fs?${new URLSearchParams({ path: newPath })}`, { signal: ctrl.signal })
+      const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
+      const res = await apiFetch(`/api/config/fs?${new URLSearchParams({ path: newPath })}`, { signal: ctrl.signal, headers })
       if (res.ok) setFsData(await res.json() as FsData)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
     } finally {
       if (!ctrl.signal.aborted) setLoading(false)
     }
-  }, [])
+  }, [token])
 
   useEffect(() => {
     navigate(initialPath)
@@ -212,7 +215,7 @@ interface UsersTabProps {
 function UsersTab({ token }: UsersTabProps) {
   const { t }         = useLang()
   const { addToast }  = useToast()
-  const { username: selfUsername, role: selfRole } = useAuth()
+  const { username: selfUsername, role: selfRole, logout } = useAuth()
 
   const ROLE_LEVELS: Record<string, number> = {
     operator: 0, technician: 1, admin: 2, manufacturer: 3,
@@ -253,7 +256,7 @@ function UsersTab({ token }: UsersTabProps) {
     fetchAbortRef.current = ctrl
     setLoading(true)
     try {
-      const res = await fetch('/api/users', { headers: authHeaders(), signal: ctrl.signal })
+      const res = await apiFetch('/api/users', { headers: authHeaders(), signal: ctrl.signal })
       if (res.ok) setUsers(await res.json() as UserEntry[])
       setLoading(false)
     } catch (e) {
@@ -271,7 +274,7 @@ function UsersTab({ token }: UsersTabProps) {
     }
     setAddBusy(true)
     try {
-      const res = await fetch('/api/users', {
+      const res = await apiFetch('/api/users', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -295,7 +298,7 @@ function UsersTab({ token }: UsersTabProps) {
   async function handleDelete(username: string) {
     if (confirmDelete !== username) { setConfirmDelete(username); return }
     setConfirmDelete(null)
-    const res = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+    const res = await apiFetch(`/api/users/${encodeURIComponent(username)}`, {
       method: 'DELETE',
       headers: authHeaders(),
     })
@@ -313,7 +316,7 @@ function UsersTab({ token }: UsersTabProps) {
       const isSelf = username === selfUsername
       const body: Record<string, string> = { new_password: pwdValue }
       if (isSelf) body.current_password = pwdCurrent
-      const res = await fetch(`/api/users/${encodeURIComponent(username)}/password`, {
+      const res = await apiFetch(`/api/users/${encodeURIComponent(username)}/password`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify(body),
@@ -322,6 +325,8 @@ function UsersTab({ token }: UsersTabProps) {
       if (!res.ok)             { addToast(t.common.errorLoading, 'danger');      return }
       addToast(t.users.successPassword, 'success')
       setPwdTarget(null); setPwdValue(''); setPwdCurrent('')
+      // Server po změně vlastního hesla zneplatnil naše sessions → čisté odhlášení
+      if (isSelf) logout()
     } finally {
       setPwdBusy(false)
     }
@@ -525,12 +530,12 @@ export default function Settings() {
       // health + config jsou rychlé — stránka se zobrazí okamžitě
       const [hRes, cRes] = await Promise.all([
         fetch('/api/health', { signal: ctrl.signal }),
-        fetch('/api/config', { signal: ctrl.signal, headers: authHdr }),
+        apiFetch('/api/config', { signal: ctrl.signal, headers: authHdr }),
       ])
       if (ctrl.signal.aborted) return
-      const [h, c] = await Promise.all([hRes.json(), cRes.json()])
-      setHealth(h as HealthData)
-      setConfig(c as ConfigData)
+      // 401/403 vrací {detail} — nesmí se uložit jako ConfigData (config.data.* by shodil stránku)
+      if (hRes.ok) setHealth(await hRes.json() as HealthData)
+      if (cRes.ok) setConfig(await cRes.json() as ConfigData)
     } catch (e) {
       if (ctrl.signal.aborted) return
     } finally {
@@ -541,7 +546,7 @@ export default function Settings() {
     // nezablokuje zobrazení stránky
     if (abortRef.current?.signal.aborted) return
     setStatusChecking(true)
-    fetch('/api/status', { signal: abortRef.current?.signal, headers: authHdr })
+    apiFetch('/api/status', { signal: abortRef.current?.signal, headers: authHdr })
       .then(r => r.ok ? r.json() : null)
       .then((data: StatusData | null) => { if (data) setStatus(data) })
       .catch(() => {})
@@ -567,7 +572,7 @@ export default function Settings() {
   async function handleSavePath() {
     setPathBusy(true)
     try {
-      const res = await fetch('/api/config/paths', {
+      const res = await apiFetch('/api/config/paths', {
         method:  'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -580,7 +585,7 @@ export default function Settings() {
         // Po uložení okamžitě ověř dostupnost vzdáleného úložiště
         setStatus(null)
         setStatusChecking(true)
-        fetch('/api/status', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
+        apiFetch('/api/status', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
           .then(r => r.ok ? r.json() : null)
           .then((data: StatusData | null) => { if (data) setStatus(data) })
           .catch(() => {})

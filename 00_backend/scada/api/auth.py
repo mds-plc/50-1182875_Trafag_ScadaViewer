@@ -26,6 +26,7 @@ Napojení:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import secrets
@@ -161,7 +162,11 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
             found_user = u
 
     dummy_hash = users[0].password_hash if users else _DUMMY_HASH
-    valid = verify_password(body.password, found_user.password_hash if found_user else dummy_hash)
+    # PBKDF2 (260k iterací, ~100 ms CPU) v thread poolu — jinak blokuje event loop
+    # včetně WebSocket broadcastu PLC hodnot
+    valid = await asyncio.to_thread(
+        verify_password, body.password, found_user.password_hash if found_user else dummy_hash,
+    )
     if found_user is None or not valid:
         _record_failure(client_ip)
         log.warning("[AUTH]  neplatné přihlášení: username=%r ip=%r", body.username, client_ip)

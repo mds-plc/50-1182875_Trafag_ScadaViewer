@@ -14,7 +14,7 @@ import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { exportXlsx } from '../utils/exportXlsx'
+import { exportFileXlsx } from '../utils/exportXlsx'
 import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import {
   PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
@@ -444,7 +444,7 @@ export default function ChartView() {
                       </button>
                       <button
                         className="btn btn--secondary btn--sm"
-                        onClick={() => void exportXlsx(records as Record<string, unknown>[], fileId)}
+                        onClick={() => exportFileXlsx(fileId, location, fileType, token).catch(() => addToast(t.common.errorLoading, 'danger'))}
                         title={t.db.downloadXlsx}
                       >
                         <Download size={13} />
@@ -696,7 +696,7 @@ export default function ChartView() {
                 <button className="btn btn--secondary btn--sm" onClick={() => downloadOriginalCsv(fileId, location, fileType, token ?? '', () => addToast(t.common.errorLoading, 'danger'))} title={t.chart.exportCsv}>
                   <Download size={13} /> CSV
                 </button>
-                <button className="btn btn--secondary btn--sm" onClick={() => void exportXlsx(records as Record<string, unknown>[], fileId)} title={t.db.downloadXlsx}>
+                <button className="btn btn--secondary btn--sm" onClick={() => exportFileXlsx(fileId, location, fileType, token).catch(() => addToast(t.common.errorLoading, 'danger'))} title={t.db.downloadXlsx}>
                   <Download size={13} /> XLSX
                 </button>
                 <button className="btn btn--secondary btn--sm cv-print-btn" onClick={() => window.print()} title={t.chart.print}>
@@ -745,7 +745,7 @@ export default function ChartView() {
             )}
 
             {section === 'signal' && hasSignal && (
-              <SignalCharts fileId={fileId} location={location} fileType={fileType} />
+              <SignalCharts key={`${location}/${fileType}/${fileId}`} fileId={fileId} location={location} fileType={fileType} />
             )}
           </div>
 

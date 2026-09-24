@@ -236,6 +236,7 @@ export const en: Translations = {
     signIn:           'Sign in',
     errorCredentials: 'Invalid credentials.',
     errorServer:      'Server error — please try again.',
+    sessionExpired:   'Session expired — please sign in again.',
     localAccess:      'Local access',
     signOut:          'Sign out',
   },

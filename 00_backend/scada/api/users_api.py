@@ -63,6 +63,10 @@ async def create_user(
         raise HTTPException(status_code=400, detail="username nesmí být prázdné")
     if not body.password.strip():
         raise HTTPException(status_code=400, detail="Heslo nesmí být prázdné")
+    # Řídicí znaky (LF, TAB…) nelze zapsat do TOML basic stringu — users.toml by byl
+    # nečitelný a load_users() by spadl na fallback (ztráta všech uživatelů)
+    if any(c < " " for c in body.username + body.display_name):
+        raise HTTPException(status_code=400, detail="Jméno obsahuje nepovolené řídicí znaky")
 
     users = request.app.state.users
     if any(u.username == body.username for u in users):
@@ -176,14 +180,11 @@ async def change_user_password(
 
     # Pokud si admin mění heslo jiného uživatele, nezneplatňovat všechny sessions
     # Pokud si mění vlastní heslo, zneplatní všechny (jako v /auth/change-password)
-    if is_self:
-        request.app.state.sessions.clear()
-        log.info("[USERS] heslo změněno pro %r (vlastní); sessions zneplatněny", username)
-    else:
-        # Zneplatni jen sessions daného uživatele
-        to_remove = [tok for tok, sess in request.app.state.sessions.items()
-                     if sess["username"] == username]
-        for tok in to_remove:
-            del request.app.state.sessions[tok]
-        log.info("[USERS] heslo změněno pro %r (admin: %r); %d sessions zneplatněno",
-                 username, session["username"], len(to_remove))
+    # Zneplatni jen sessions daného uživatele — ostatní přihlášení nesmí být odhlášeni
+    # (shodné chování s /auth/change-password)
+    to_remove = [tok for tok, sess in request.app.state.sessions.items()
+                 if sess["username"] == username]
+    for tok in to_remove:
+        del request.app.state.sessions[tok]
+    log.info("[USERS] heslo změněno pro %r (akce: %r); %d sessions zneplatněno",
+             username, session["username"], len(to_remove))

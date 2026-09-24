@@ -194,6 +194,7 @@ class AdsMonitor:
                 log.warning("[ADS]   Spojení selhalo/ztraceno: %s", exc)
 
             await asyncio.to_thread(self._disconnect)
+            self._manager.clear_symbols()   # nový WS klient nesmí dostat staré hodnoty
             await self._manager.broadcast({"type": "ads_status", "connected": False})
             delay = min(2 ** attempt, _RECONNECT_MAX_S)
             log.info("[ADS]   Reconnect za %g s (pokus %d)", delay, attempt + 1)

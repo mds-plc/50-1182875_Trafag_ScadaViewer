@@ -51,6 +51,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._active: list[WebSocket] = []
         self._cache:  dict[str, str]  = {}   # symbol/type → poslední JSON string
+        self._symbol_keys: set[str]   = set()   # klíče cache patřící PLC symbolům
 
     async def connect(self, ws: WebSocket) -> None:
         """Přijme nové WebSocket připojení a odešle snapshot z cache."""
@@ -72,6 +73,17 @@ class ConnectionManager:
             pass   # broadcast() již odstranil nefunkční spojení
         log.debug("[WS] Klient odpojen (celkem: %d)", len(self._active))
 
+    def clear_symbols(self) -> None:
+        """
+        Odstraní z cache hodnoty symbolů, stavové zprávy (type) ponechá.
+
+        Volat po výpadku ADS — jinak by nově připojený klient dostal ze snapshotu
+        staré PLC hodnoty (např. plc_operator_login=True) jako aktuální.
+        """
+        for key in self._symbol_keys:
+            self._cache.pop(key, None)
+        self._symbol_keys.clear()
+
     async def broadcast(self, message: dict) -> None:
         """
         Odešle zprávu všem připojeným klientům a aktualizuje cache.
@@ -83,6 +95,7 @@ class ConnectionManager:
         # Uložit do cache — explicitní priorita: symbol (PLC hodnota) → type (stavová zpráva)
         if message.get("symbol"):
             self._cache[message["symbol"]] = text
+            self._symbol_keys.add(message["symbol"])
         elif message.get("type"):
             self._cache[message["type"]] = text
         if not self._active:

@@ -59,4 +59,7 @@ async def plc_websocket(websocket: WebSocket) -> None:
             # Čekáme na zprávy od klienta (ping / keep-alive)
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
+        # i při jiné výjimce (RuntimeError, síťová chyba) — jinak mrtvý socket zůstane v registru
         manager.disconnect(websocket)

@@ -32,6 +32,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CsvRecord, DataFilter, OrderFile } from '../types'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
+import { apiFetch } from '../utils/apiFetch'
 
 // ---
 // useFiles — seznam souborů dle location + type + stránka
@@ -95,7 +96,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo)   params.set('to',   dateTo)
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const res = await fetch(`/api/files?${params}`, { signal: ctrl.signal, headers })
+      const res = await apiFetch(`/api/files?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.files)) throw new Error(tRef.current.common.errorInvalidResponse)
@@ -154,7 +155,7 @@ function useDataFetch() {
       if (filter.page     != null) params.set('page',     String(filter.page))
       if (filter.perPage  != null) params.set('per_page', String(filter.perPage))
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const res = await fetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
+      const res = await apiFetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.records)) throw new Error(tRef.current.common.errorInvalidResponse)
@@ -222,7 +223,7 @@ export function useRemoteStatus() {
     abortRef.current = ctrl
     try {
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const res  = await fetch('/api/status', { signal: ctrl.signal, headers })
+      const res  = await apiFetch('/api/status', { signal: ctrl.signal, headers })
       const json = await res.json()
       setAvailable(Boolean(json.remote_available))
     } catch (e) {

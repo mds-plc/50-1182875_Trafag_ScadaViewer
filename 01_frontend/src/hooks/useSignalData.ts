@@ -7,6 +7,7 @@
  */
 import { useState, useCallback, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { apiFetch } from '../utils/apiFetch'
 
 export type SignalMode = 'overview' | 'results' | 'hysteresis' | 'zoom_op' | 'zoom_rp'
 
@@ -59,7 +60,7 @@ export function useSignalData() {
         buckets: String(buckets),
       })
       const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-      const res = await fetch(`/api/signal?${params}`, { signal: ctrl.signal, headers })
+      const res = await apiFetch(`/api/signal?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) {
         if (res.status === 404) {
           setData(null)

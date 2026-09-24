@@ -32,9 +32,10 @@ import { useSettings } from './useSettings'
 import { useToast } from '../context/ToastContext'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
-import { exportXlsx } from '../utils/exportXlsx'
+import { exportFileXlsx } from '../utils/exportXlsx'
 import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import type { OrderFile } from '../types'
+import { apiFetch } from '../utils/apiFetch'
 
 export type Location = 'local' | 'remote'
 export type DataType = 'production' | 'testing'
@@ -157,12 +158,7 @@ export function useDatabaseState() {
     const ctrl = new AbortController()
     xlsxAbortRef.current = ctrl
     try {
-      const url = `/api/data?file=${encodeURIComponent(file.file_id)}&location=${file.location}&type=${file.type}`
-      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-      const res = await fetch(url, { signal: ctrl.signal, headers })
-      if (!res.ok) throw new Error()
-      const data = await res.json() as { records: Record<string, unknown>[] }
-      await exportXlsx(data.records, file.file_id)
+      await exportFileXlsx(file.file_id, file.location, file.type, token, ctrl.signal)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       addToast(t.common.errorLoading, 'danger')
@@ -174,7 +170,7 @@ export function useDatabaseState() {
     try {
       const url = `/api/files/${encodeURIComponent(file.file_id)}?location=${file.location}&type=${file.type}`
       const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-      const res = await fetch(url, { method: 'DELETE', headers })
+      const res = await apiFetch(url, { method: 'DELETE', headers })
       if (res.ok) {
         addToast(t.db.deleteSuccess, 'success')
         fetchFiles()
@@ -205,7 +201,7 @@ export function useDatabaseState() {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       }
-      const res = await fetch('/api/files/batch-delete', {
+      const res = await apiFetch('/api/files/batch-delete', {
         method: 'POST',
         headers,
         body: JSON.stringify({ file_ids: ids, location, type: dataType }),

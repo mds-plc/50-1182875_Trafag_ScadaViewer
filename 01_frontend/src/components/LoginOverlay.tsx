@@ -19,7 +19,7 @@ import { useLang } from '../context/LangContext'
  */
 export default function LoginOverlay() {
   const { adsConnected } = usePlc()
-  const { login }     = useAuth()
+  const { login, sessionExpired } = useAuth()
   const { t }         = useLang()
 
   const [username,  setUsername]  = useState('')
@@ -86,7 +86,9 @@ export default function LoginOverlay() {
             disabled={isLoading}
           />
 
-          {error && <p className="login-card__error">{error}</p>}
+          {error
+            ? <p className="login-card__error">{error}</p>
+            : sessionExpired && <p className="login-card__error" role="status">{t.login.sessionExpired}</p>}
 
           <button
             type="submit"
