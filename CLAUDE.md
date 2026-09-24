@@ -53,7 +53,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "0.2.0"
+    ├── __init__.py            ← __version__ = "2.0.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -394,7 +394,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 ```json
 {
   "status":  "ok",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "checks": {
     "local_storage": true,
     "ads":           false

@@ -755,7 +755,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 ### /api/health — formát odpovědi
 
 ```json
-{ "status": "ok", "version": "0.2.0", "checks": { "local_storage": true, "ads": false } }
+{ "status": "ok", "version": "2.0.0", "checks": { "local_storage": true, "ads": false } }
 ```
 
 `status`: `"ok"` nebo `"degraded"` (vždy HTTP 200 — NSSM rozlišuje connection refused od degraded).

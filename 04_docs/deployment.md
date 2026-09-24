@@ -52,7 +52,7 @@ Skript provede:
 ### Krok A2: Obsah release balíčku
 
 ```
-v0.2.0_2026-09-24.zip
+v2.0.0_2026-09-24.zip
 └── scada_viewer/
     ├── scada_viewer.exe        ← spouštěč
     ├── _internal/              ← Python, knihovny (FastAPI, pyads, numpy…), React build — NUTNÉ
@@ -324,7 +324,7 @@ GET http://localhost:8080/api/health
 Odpověď:
 {
   "status":  "ok",           ← "degraded" pokud local_path neexistuje
-  "version": "0.2.0",
+  "version": "2.0.0",
   "checks": {
     "local_storage": true,   ← false = local_path nenalezena
     "ads":           true    ← false = ADS odpojeno
