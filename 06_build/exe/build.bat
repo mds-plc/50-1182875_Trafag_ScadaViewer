@@ -20,7 +20,8 @@ setlocal EnableDelayedExpansion
 ::
 :: Nasazení na cílovém PC:
 ::   1. Zkopírovat 06_build\releases\vX.Y.Z_DATUM\scada_viewer\ do C:\apps\ScadaViewer\
-::   2. Upravit Config.toml (AMS Net ID, cesty, heslo)
+::   2. První instalace: Config.toml.example -> Config.toml, vyplnit (AMS Net ID, cesty, heslo)
+::      Aktualizace: nahradit celou složku, Config.toml a users.toml ponechat původní
 ::   3. Spustit nssm_install.bat jako Administrator
 :: =============================================================================
 
@@ -118,12 +119,10 @@ copy /Y "%BUILD_DIR%nssm_install.bat"      "%DIST_DIR%\nssm_install.bat"    > nu
 copy /Y "%BUILD_DIR%kiosk_start.bat"       "%DIST_DIR%\kiosk_start.bat"     > nul
 copy /Y "%BUILD_DIR%start.bat"             "%DIST_DIR%\start.bat"           > nul
 
-if exist "%PROJECT_DIR%Config.toml" (
-    copy /Y "%PROJECT_DIR%Config.toml" "%DIST_DIR%\Config.toml" > nul
-    echo  Config.toml zkopirovan z projektu.
-) else (
-    echo  [WARN] Config.toml nenalezen -- zkopiruj Config.toml.example a vyplnuj rucne.
-)
+:: Config.toml se ZAMERNE nekopiruje (audit 2026-09-24, B2): vyvojova konfigurace obsahuje
+:: hash hesla a pri vymene cele slozky na produkci by prepsala produkcni nastaveni.
+:: Prvni instalace: Config.toml.example -> Config.toml. Aktualizace: puvodni Config.toml zustava.
+echo  Config.toml se do release nekopiruje -- na cilovem PC pouzit existujici / Config.toml.example.
 
 :: Vytvořit výstupní složky
 mkdir "%DIST_DIR%\03_output\logs" 2>nul

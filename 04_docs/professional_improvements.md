@@ -1,5 +1,9 @@
 # ScadaViewer — Roadmapa profesionálního projektu
 
+> ⚠️ **Historický dokument** — analýza ke stavu 2026-07-20. Většina bodů je vyřešena;
+> aktuální stav a otevřené nálezy viz `04_docs/audit_log.md` (sekce „Aktuálně otevřené nálezy")
+> a `04_docs/roadmap.md`. Dokument se dále neaktualizuje.
+
 > Přehled vylepšení, která posunují projekt z "funkčního prototypu" na "produkční software".
 > Každá položka obsahuje: **proč je důležitá**, **co implementovat** a **odhadovanou náročnost**.
 

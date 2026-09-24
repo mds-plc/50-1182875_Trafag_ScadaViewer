@@ -3,7 +3,7 @@
 > Krok za krokem: od zdrojového kódu po běžící Windows službu.
 > Určeno pro IT správce nebo vývojáře provádějící nasazení.
 >
-> Poslední aktualizace: 2026-07-24
+> Poslední aktualizace: 2026-09-24 (onedir build, numpy, postup aktualizace)
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Cesta | Kdy zvolit | Předpoklady na cílovém PC |
 |-------|-----------|--------------------------|
-| **A — Spustitelný soubor (exe)** | Trafag nemá IT správce pro Python; chceš předat hotový balíček | Nic (Python zabalený v exe) |
+| **A — Spustitelný soubor (exe)** | Trafag nemá IT správce pro Python; chceš předat hotový balíček | Nic — Python i všechny knihovny (vč. numpy) jsou ve složce `_internal/` |
 | **B — Python přímo** | Ty nebo kolega budeš spravovat a aktualizovat | Python 3.11+, pip |
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
@@ -25,9 +25,12 @@ Toto je stroj, na kterém **sestavuješ balíček** (ne nutně cílový PC):
 ```
 ✅ Python 3.11+       python --version
 ✅ Node.js 20+        node --version
-✅ pip dependencies   pip install -r 00_backend/requirements.txt
+✅ pip dependencies   pip install -r 00_backend/requirements.txt   (vč. numpy, pyinstaller)
 ✅ npm dependencies   cd 01_frontend && npm install
 ```
+
+> PyInstaller balí knihovny z prostředí build PC — co tam chybí, nebude ani v exe.
+> numpy je volitelná (bez ní funguje pomalejší parser signálových dat), ale build ji má obsahovat.
 
 ---
 
@@ -41,19 +44,28 @@ Toto je stroj, na kterém **sestavuješ balíček** (ne nutně cílový PC):
 ```
 
 Skript provede:
-1. `npm run build` → `01_frontend/dist/` (React build)
-2. `pyinstaller 06_build/exe/scada.spec` → `06_build/dist/scada_viewer.exe`
-3. ZIP balíček → `06_build/releases/ScadaViewer_vX.Y.Z.zip`
+1. `npm install` + `npm run build` → `01_frontend/dist/` (React build)
+2. `pyinstaller 06_build/exe/scada.spec` → `06_build/dist/scada_viewer/` (**složka**: exe + `_internal/`)
+3. Kopie do `06_build/releases/v<verze>_<datum>/scada_viewer/` + ZIP `v<verze>_<datum>.zip`
+4. Git tag `v<verze>` + (volitelně) GitHub release přes `gh`
 
 ### Krok A2: Obsah release balíčku
 
 ```
-ScadaViewer_v0.1.0.zip
-├── scada_viewer.exe        ← spustitelný soubor (Python + React uvnitř)
-├── Config.toml.example     ← vzor konfigurace — přejmenovat a vyplnit
-├── nssm_install.bat        ← instalátor Windows služby
-└── 03_output/logs/         ← složka pro logy (prázdná)
+v0.1.0_2026-09-24.zip
+└── scada_viewer/
+    ├── scada_viewer.exe        ← spouštěč
+    ├── _internal/              ← Python, knihovny (FastAPI, pyads, numpy…), React build — NUTNÉ
+    ├── Config.toml.example     ← vzor konfigurace — přejmenovat a vyplnit
+    ├── nssm_install.bat        ← instalátor Windows služby
+    ├── kiosk_start.bat         ← kiosk: 2 obrazovky (ScadaViewer + TcHmiClient)
+    ├── start.bat               ← ruční spuštění
+    └── 03_output/logs/         ← složka pro logy (prázdná)
 ```
+
+> ⚠️ `scada_viewer.exe` **nefunguje samostatně** — vždy přenášet celou složku včetně `_internal/`.
+> Release **neobsahuje `Config.toml`** (záměrně) — při první instalaci vytvořit z `Config.toml.example`,
+> při aktualizaci zůstává původní `Config.toml` i `users.toml` na cílovém PC.
 
 ### Krok A3: Přenést na cílový PC
 
@@ -268,13 +280,17 @@ netsh advfirewall firewall add rule ^
 
 ### Aktualizace aplikace
 
-**Cesta A (exe):**
+**Cesta A (exe):** na cílovém PC se nic neinstaluje — jen se vymění soubory.
 ```bat
 nssm stop ScadaViewer
-:: Přepsat scada_viewer.exe novou verzí
-:: Config.toml PONECHAT (obsahuje heslo a produkční nastavení)
+:: 1. Zálohovat Config.toml a users.toml (produkční nastavení, hesla uživatelů)
+:: 2. Nahradit CELÝ obsah složky novou verzí — scada_viewer.exe I _internal\
+::    (samotné exe se starým _internal\ nefunguje)
+:: 3. Config.toml a users.toml z nové verze NEKOPÍROVAT / vrátit ze zálohy
 nssm start ScadaViewer
 ```
+Ověřit `http://<stroj>:8080/api/health`. Prohlížeč si nové JS/CSS načte sám (soubory mají hash
+v názvu); `index.html` se revaliduje při každém načtení.
 
 **Cesta B (Python):**
 ```bat

@@ -11,6 +11,14 @@ Zodpovědnost:
     (ledaže cors_origins je prázdný nebo obsahuje "*" — dev mód).
   - Neparsuje ani negeneruje zprávy — to je zodpovědnost AdsMonitor a ws_manager.
 
+Bezpečnost — PŘIJATÉ RIZIKO (audit 2026-09-24, M14, rozhodnutí: varianta B):
+  Endpoint záměrně NEVYŽADUJE přihlášení. PLC auto-login (AuthContext) čte příznak
+  plc_operator_login právě z tohoto WS ještě PŘED přihlášením — token by auto-login rozbil.
+  Riziko je přijatelné: data jsou read-only (stav stroje, zakázka, boxy — žádná hesla ani
+  výrobní data), zápis do PLC přes WS neexistuje a aplikace běží v uzavřeném intranetu.
+  Pokud by se aplikace otevírala mimo intranet, přejít na variantu A: před přihlášením
+  posílat jen ads_status + plc_operator_login, ostatní symboly až s platným tokenem.
+
 Rozhraní:
   WebSocket /ws/plc
     server → klient: {"symbol": "mode", "value": 2, "ts": "2026-07-17T10:00:00+00:00"}

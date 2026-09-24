@@ -52,16 +52,6 @@
   margin: var(--space-1) 0;
 }
 
-.login-card__status {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.login-card__status-text--ok  { color: var(--color-success); }
-.login-card__status-text--err { color: var(--color-danger);  }
-
 .login-card__waiting {
   display: flex;
   align-items: center;
@@ -131,36 +121,3 @@
 
 /* TAB BAR — pro Database stránku */
 
-.tab-bar {
-  display: flex;
-  gap: 2px;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  padding: 3px;
-  border-radius: var(--radius-md);
-  width: fit-content;
-}
-
-.tab-bar__tab {
-  padding: 6px var(--space-5);
-  border-radius: calc(var(--radius-md) - 2px);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-  border: none;
-  background: none;
-  font-family: var(--font-primary);
-}
-
-.tab-bar__tab:hover {
-  color: var(--color-text-primary);
-}
-
-.tab-bar__tab.active {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  box-shadow: var(--shadow-sm);
-  font-weight: var(--font-weight-semibold);
-}

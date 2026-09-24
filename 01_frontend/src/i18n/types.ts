@@ -27,8 +27,6 @@ export interface Translations {
   plc: {
     connected: string
     disconnected: string
-    disconnectedDetail: string
-    waitingForData: string
     toastConnected: string
     toastDisconnected: string
   }
@@ -54,7 +52,6 @@ export interface Translations {
     badgeLocal: string
     showRecords: string
     openInChart: string
-    noRecords: string
     noFilesLocal: string
     noFilesRemote: string
     footerFiles: string
@@ -80,15 +77,12 @@ export interface Translations {
     batchConfirmBody: string
   }
   chart: {
-    title: string
-    filters: string
+    diagramForceTravel: string
+    diagramSwitchingTimes: string
     records: string
-    noData: string
-    noNumericData: string
     exportCsv: string
     backToDatabase: string
     recordDetail: string
-    paramsPlaceholder: string
     categoryDistribution: string
     categoryNote: string
     paramsTitle: string
@@ -97,7 +91,6 @@ export interface Translations {
     paramValue: string
     maximize: string
     print: string
-    testingInput: string
     testingDetail: string
     sectionTestingParams: string
     sectionMeasuredInfo: string
@@ -125,10 +118,6 @@ export interface Translations {
     connTile:            string
     connPlcSection:      string
     connStorageSection:  string
-    connVersion:         string
-    connStatus:          string
-    connStatusOk:        string
-    connStatusDegraded:  string
     connAds:             string
     connAdsConnected:    string
     connAdsDisconnected: string
@@ -161,18 +150,8 @@ export interface Translations {
     helpNas:             string
     helpRemotePath:      string
     // Účet tile
-    accountTile:        string
-    accountUser:        string
-    accountChangePwd:   string
-    accountCurrentPwd:  string
-    accountNewPwd:      string
-    accountConfirmPwd:  string
     accountSave:        string
-    accountLogout:      string
-    accountPwdMismatch: string
     accountPwdWrong:    string
-    accountPwdChanged:  string
-    accountPwdEmpty:    string
   }
   overview: {
     title:          string
@@ -180,24 +159,14 @@ export interface Translations {
     modeUnknown:    string
     // Zakázka
     orderTile:      string
-    orderNumber:    string
-    orderValidity:  string
     orderValid:     string
     orderInvalid:   string
     orderWaiting:   string
-    orderProgress:  string   // "47 / 120"
-    orderSwitchType: string
     // Třídění
-    sortingTile:    string
-    sortingActive:  string
-    sortingIdle:    string
     // Boxy
     boxesTile:      string
     boxFull:        string
-    boxEmpty:       string
-    boxPresent:     string
     // Live záznamy
-    recordsTile:    string
     lastRecordTile: string
     colTimestamp:   string
     colId:          string
@@ -273,7 +242,6 @@ export interface Translations {
     roleAdmin:       string
     roleManufacturer: string
     errUserExists:   string
-    errInvalidRole:  string
     errEmptyField:   string
     errHigherRole:   string
     errLastUser:     string

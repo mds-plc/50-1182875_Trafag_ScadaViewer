@@ -1234,3 +1234,146 @@ class TestAudit20260924:
                        headers={"Authorization": "Bearer tech-tok"})
             assert r.status_code == 401
             assert "www-authenticate" not in r.headers
+
+
+# ======================================================================
+# Audit 2026-09-24 — navazující opravy (M15, M16, L11–L13, L15, L16)
+# ======================================================================
+
+_SECTIONED_SIGNAL = (
+    "[Metadata]\nTimestamp;Microswitch_Name\n2026-09-21T10:00:00;Test\n\n"
+    "[AnalyzedParameters]\nOP_OperatingPosition [um];RP_ReleasingPosition [um]\n2;1\n\n"
+    "[SignalData]\nTs [ns];Position [um];Force [N]\n"
+    + "".join(f"{i * 1000};{min(i, 10 - i)};{i % 3}\n" for i in range(11))
+)
+
+
+class TestAuditFollowup20260924:
+
+    # ── M15 — cache metadat souborů ────────────────────────────────────
+
+    def test_file_meta_cached_until_file_changes(self, tmp_path: Path, monkeypatch) -> None:
+        from scada.services.repositories.csv_repository import CsvRepository
+        _, cfg = make_app(tmp_path)
+        f = cfg.data.local_path / "production" / "done_local" / "A_DONE.csv"
+        write_csv(f, PROD_HEADERS, [{"Timestamp": "2026-07-01T10:00:00", "Order": "1",
+                                     "Microswitch_ID": "1", "Microswitch_Name": "X"}])
+        repo  = CsvRepository(cfg.data)
+        calls = []
+        orig  = repo.read_file_meta
+        monkeypatch.setattr(repo, "read_file_meta", lambda *a: calls.append(a) or orig(*a))
+
+        assert repo.list_local("production")[0]["record_count"] == 1
+        assert repo.list_local("production")[0]["record_count"] == 1
+        assert len(calls) == 1                     # druhé volání z cache
+
+        write_csv(f, PROD_HEADERS, [{"Timestamp": "2026-07-01T10:00:00", "Order": "1",
+                                     "Microswitch_ID": str(i), "Microswitch_Name": "X"} for i in range(3)])
+        assert repo.list_local("production")[0]["record_count"] == 3   # změna size → přečteno znovu
+        assert len(calls) == 2
+
+    def test_file_meta_cache_drops_deleted_files(self, tmp_path: Path) -> None:
+        from scada.services.repositories.csv_repository import CsvRepository
+        _, cfg = make_app(tmp_path)
+        f = cfg.data.local_path / "production" / "done_local" / "A_DONE.csv"
+        write_csv(f, PROD_HEADERS, [{"Timestamp": "2026-07-01T10:00:00"}])
+        repo = CsvRepository(cfg.data)
+        repo.list_local("production")
+        f.unlink()
+        assert repo.list_local("production") == []
+        assert f not in repo._meta_cache
+
+    # ── M16 — cache signálových dat ────────────────────────────────────
+
+    def test_signal_parsed_once_for_multiple_modes(self, tmp_path: Path, monkeypatch) -> None:
+        from scada.services import signal_reader as sr
+        f = tmp_path / "S_DONE.csv"
+        f.write_text(_SECTIONED_SIGNAL, encoding="utf-8-sig")
+        sr._cache.clear(); sr._resp_cache.clear()
+        calls = []
+        orig  = sr.read_signal_data
+        monkeypatch.setattr(sr, "read_signal_data", lambda *a: calls.append(a) or orig(*a))
+
+        overview = sr.prepare_signal_response(f, "overview", 100)
+        zoom     = sr.prepare_signal_response(f, "zoom_op", 100)
+        assert overview is not None and zoom is not None
+        assert overview["position"] == [min(i, 10 - i) for i in range(11)]
+        assert set(overview["key_points"]) >= {"op", "rp", "ttp"}
+        assert len(calls) == 1
+        sr._cache.clear(); sr._resp_cache.clear()
+
+    # ── L11 — /auth/change-password ────────────────────────────────────
+
+    def test_change_password_rejects_expired_token(self, tmp_path: Path) -> None:
+        from scada.api.dependencies import SESSION_TTL_SECS
+        from scada.config import hash_password
+        app, _ = make_app(tmp_path)
+        with TestClient(app) as c:
+            app.state.users = [UserEntry("u", "U", hash_password("spravne"), "operator")]
+            app.state.sessions["old"] = {"username": "u", "role": "operator", "display_name": "U",
+                                         "created_at": time.time() - SESSION_TTL_SECS - 1}
+            r = c.post("/api/auth/change-password",
+                       json={"token": "old", "current_password": "spravne", "new_password": "x"})
+            assert r.status_code == 401
+            assert "old" not in app.state.sessions
+
+    def test_change_password_wrong_current_is_locked_out(self, tmp_path: Path) -> None:
+        from scada.api import auth
+        from scada.config import hash_password
+        auth._FAILURES.clear()
+        app, _ = make_app(tmp_path)
+        try:
+            with TestClient(app) as c:
+                app.state.users = [UserEntry("u", "U", hash_password("spravne"), "operator")]
+                _inject_session(app, "tok", {"username": "u", "role": "operator", "display_name": "U"})
+                body = {"token": "tok", "current_password": "spatne", "new_password": "x"}
+                codes = [c.post("/api/auth/change-password", json=body).status_code for _ in range(6)]
+                assert codes[:5] == [401] * 5
+                assert codes[5] == 429
+        finally:
+            auth._FAILURES.clear()
+
+    # ── L12 — admin mění vlastní heslo ─────────────────────────────────
+
+    def test_admin_own_password_requires_current(self, users_client) -> None:
+        r = users_client.post("/api/users/admin/password", json={"new_password": "nove"})
+        assert r.status_code == 400
+
+    def test_admin_own_password_with_current_ok(self, users_client) -> None:
+        r = users_client.post("/api/users/admin/password",
+                              json={"new_password": "nove", "current_password": "testpass"})
+        assert r.status_code == 204
+
+    # ── L13 — rate limit jen /api/* ────────────────────────────────────
+
+    def test_rate_limit_ignores_non_api_paths(self, tmp_path: Path) -> None:
+        from scada.app import create_app as _create_app
+        _, cfg = make_app(tmp_path)
+        app = _create_app(cfg, rate_limit=3)
+        with TestClient(app) as c:
+            _inject_session(app)
+            c.headers.update({"Authorization": f"Bearer {_TEST_TOKEN}"})
+            for _ in range(10):
+                c.get("/assets/neexistuje.js")
+            assert c.get("/api/files").status_code == 200
+
+    # ── L15 — poškozené CSV ────────────────────────────────────────────
+
+    def test_csv_error_returns_empty_not_500(self, client) -> None:
+        c, cfg = client
+        f = cfg.data.local_path / "production" / "done_local" / "BIG_DONE.csv"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("Timestamp;Order\n2026-07-01;" + "x" * 200_000 + "\n", encoding="utf-8-sig")
+        r = c.get("/api/data?file=BIG_DONE.csv")
+        assert r.status_code == 200
+        assert r.json()["records"] == []
+
+    # ── L16 — download content-type ────────────────────────────────────
+
+    def test_download_content_type_standard_charset(self, client) -> None:
+        c, cfg = client
+        write_csv(cfg.data.local_path / "production" / "done_local" / "D_DONE.csv",
+                  PROD_HEADERS, [{"Timestamp": "2026-07-01T10:00:00"}])
+        r = c.get("/api/files/D_DONE.csv/download")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "text/csv; charset=utf-8"

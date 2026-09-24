@@ -18,11 +18,13 @@ Tento projekt je **třetí aplikací** v ekosystému paralelních služeb pro Tr
 ```
 
 Funkce:
-1. **Overview** — live hodnoty z PLC přes ADS notifikace → WebSocket → SCADA status grid
-2. **Database** — procházení zakázkových CSV souborů (lokální stroj + Synology NAS)
-3. **ChartView** — čárový graf + filtry datumem nad záznamy z vybraného souboru
+1. **Database** (hlavní stránka) — procházení CSV souborů (lokální stroj + Synology NAS), filtry, řazení, export
+2. **ChartView** — detail zakázky / testu (tabulky parametrů, skupiny, Signal Data grafy) a detail záznamu (diagramy)
+3. **PLC** — ADS notifikace → WebSocket: stav ADS v topbaru, PLC auto-login operátora
+4. *(Overview — live dashboard, odpojen z routingu 2026-09-23, kód zachován)*
 
-> Data do CSV píše **DatabaseGateway**. ScadaViewer je pouze čte — **nezasahuje do dat**.
+> Data do CSV píše **DatabaseGateway**. ScadaViewer je čte; jediný zásah je mazání
+> **lokálních** souborů (role technician+). Soubory na NAS nemaže nikdy.
 
 ---
 
@@ -38,8 +40,9 @@ CLAUDE.md                  ← tento soubor
 .claude/                   ← Claude Code systémová složka
 ├── rules/
 │   ├── sibling-projects.md    ← KLÍČOVÉ: vzory z Analyzing + DatabaseGateway
-│   ├── fastapi-patterns.md    ← lifespan, routers, ADS→WebSocket bridge
-│   └── frontend-patterns.md   ← React hooks, Recharts, TypeScript
+│   ├── fastapi-patterns.md    ← lifespan, routers, ADS→WS bridge, run_io (NAS), výkon, autentizace
+│   ├── frontend-patterns.md   ← React hooks, apiFetch, code-splitting, Recharts, TypeScript
+│   └── workflow.md            ← checklist po každé úpravě (testy / dokumentace / architektura)
 ├── commands/
 │   ├── run-dev.md             ← /run-dev
 │   ├── run-tests.md           ← /run-tests
@@ -48,73 +51,76 @@ CLAUDE.md                  ← tento soubor
     └── api-implementer.md     ← @api-implementer
 
 00_backend/
-├── requirements.txt           ← fastapi, uvicorn, pyads, tomli
+├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
 └── scada/
     ├── __init__.py            ← __version__ = "0.1.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
-    ├── constants.py           ← GVL_BASE + SYM dict (4 ADS symboly, stejný GVL jako DatabaseGateway)
+    ├── constants.py           ← GVL_SV + SYM (23 Out symbolů) + SYM_WRITE (2 In) — GV_IO_ADS_API.ScadaViewerApp
     ├── app.py                 ← FastAPI factory create_app() + lifespan (start/stop AdsMonitor, app.state)
     ├── api/
     │   ├── __init__.py
     │   ├── plc_ws.py          ← WebSocket /ws/plc
-    │   ├── orders_ws.py       ← WebSocket /ws/orders (OrderWatcher live záznamy)
+    │   ├── orders_ws.py       ← WebSocket /ws/orders (OrderWatcher live záznamy) — ⏸ odpojeno (2026-09-23)
     │   ├── files.py           ← GET /api/files + GET /api/files/{id} + DELETE + POST batch-delete
     │   ├── data.py            ← GET /api/data s filtry from/to
     │   ├── status.py          ← GET /api/status → remote_available
     │   ├── health.py          ← GET /api/health → {status, version, checks}
     │   ├── auth.py            ← POST /api/auth/login + logout + change-password + plc-login
     │   ├── users_api.py       ← CRUD /api/users (admin+)
-    │   ├── config_api.py      ← GET/PATCH /api/config + GET /api/config/fs (folder picker)
-    │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot)
+    │   ├── config_api.py      ← GET/PATCH /api/config + GET /api/config/fs (folder picker, admin+)
+    │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot) — ⏸ odpojeno (2026-09-23)
     │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
-    │   └── dependencies.py    ← require_auth(), require_role() Depends factories
+    │   └── dependencies.py    ← require_auth(), require_role() Depends factories; 401 nese WWW-Authenticate: Bearer
     └── services/
         ├── __init__.py
         ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
         ├── file_service.py    ← list_files(), list_files_paginated(), sort + stránkování
-        ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast
-        ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP
-        └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast()
+        ├── io_pool.py         ← run_io(): NAS I/O ve vlastním poolu (4 vlákna), plný → NasBusyError → 503
+        ├── repositories/csv_repository.py ← CSV I/O, validace file_id, cache metadat (mtime/size)
+        ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast — ⏸ odpojeno
+        ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP; cache 2 souborů
+        └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast(); clear_symbols() po výpadku ADS
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
 ├── package.json           ← závislosti (viz sekce Závislosti)
 ├── vite.config.ts         ← proxy /api → :8080, /ws → ws://:8080
-├── tsconfig.json          ← strict mode, paths
+├── tsconfig.json          ← strict mode, noEmit (tsc nesmí generovat .js do src/ — Vite by je bral před .tsx)
 ├── index.html
 └── src/
     ├── main.tsx            ← ReactDOM.createRoot + StrictMode
     ├── index.css           ← @import všech CSS souborů (pořadí je důležité)
-    ├── App.tsx             ← BrowserRouter + provider nesting + 5 Routes (viz Architektura)
+    ├── App.tsx             ← BrowserRouter + provider nesting + 4 Routes, `/` → `/database` (viz Architektura)
     ├── pages/
-    │   ├── Overview.tsx    ← / — live PLC status grid (PlcContext)
+    │   ├── Overview.tsx    ← live PLC status grid (PlcContext) — ⏸ odpojeno z routingu (2026-09-23), kód zachován
     │   ├── Database.tsx    ← /database — local/remote×production/testing, expand, delete
     │   ├── ChartView.tsx   ← /chart?file=&location=&type= — graf + tabulka
     │   ├── Settings.tsx    ← /settings — Předvolby + Připojení + Uživatelé (admin+)
-    │   └── Info.tsx        ← /info — verze v0.1.0, Trafag AG
+    │   ├── Info.tsx        ← /info — verze v0.1.0, Trafag AG
+    │   └── Wip.tsx         ← WIP záznamy — ⏸ odpojeno (kód zachován s Overview)
     ├── components/
-    │   ├── PlcStatus.tsx      ← SCADA grid: symbol + hodnota (bool/num/text) + timestamp
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
     │   ├── AppLogo.tsx        ← SVG logo 4 čtverce
-    │   ├── Chart.tsx          ← Recharts LineChart wrapper (TODO: dataKey)
-    │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[]
+    │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[] (ChartView)
+    │   ├── DeleteModal.tsx    ← potvrzovací dialog mazání
     │   ├── ErrorBoundary.tsx  ← class component, getDerivedStateFromError
-    │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…"
-    │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář)
-    │   ├── PlcWatcher.tsx     ← side-effect: toast při změně PLC connected
+    │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (skupiny, count tile, akce)
+    │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…" (i Suspense fallback)
+    │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář + „Relace vypršela")
+    │   ├── Pagination.tsx     ← [<] Stránka X z Y [>]
     │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable
     │   ├── SignalCharts.tsx   ← 5-záložkové interaktivní grafy signálových dat (Recharts)
-    │   ├── Sidebar.tsx        ← levá navigace (4 NavLink), company logo v patičce
+    │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
     ├── i18n/
     │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en'
-    │   ├── cs.ts              ← České překlady (~160 klíčů, nested objekt)
-    │   └── en.ts              ← Anglické překlady (~160 klíčů, nested objekt)
+    │   ├── cs.ts              ← České překlady (~210 klíčů, nested objekt)
+    │   └── en.ts              ← Anglické překlady (~210 klíčů, nested objekt)
     ├── context/
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
     │   ├── PlcContext.tsx     ← WebSocket singleton, status: Record<symbol, PlcStatus>, connected: bool
-    │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, login(), logout() + sessionStorage
+    │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, sessionExpired, login(), logout() + sessionStorage
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
     ├── hooks/
     │   ├── useData.ts          ← useFiles, useFileRecords, useRemoteStatus, useData
@@ -123,15 +129,18 @@ CLAUDE.md                  ← tento soubor
     │   ├── useTheme.ts         ← dark/light toggle; localStorage scada_theme
     │   ├── useKeyShortcuts.ts  ← F5/Escape generický hook; skip inputs
     │   ├── useBackendOnline.ts ← polling /api/health 10 s; vrací boolean
-    │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders; max 200 záznamů; backoff reconnect
-    │   ├── useWipData.ts       ← REST /api/wip?order=X; historický snapshot WIP
+    │   ├── usePlcWatcher.ts    ← toast při změně PLC připojení (volán v AppShell)
+    │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders — ⏸ jen pro odpojený Overview
+    │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
     │   └── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     ├── utils/
-    │   ├── paramMeta.ts        ← PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS — sdíleno Chart/RecordDiagram
+    │   ├── paramMeta.ts        ← PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS — sdíleno ChartView/RecordDiagram
     │   ├── groupColors.ts      ← GROUP_COLORS (barvy skupin 1–6) — sdíleno FileTable/ChartView
-    │   ├── exportCsv.ts        ← CSV export s BOM; showSaveFilePicker fallback
-    │   ├── exportXlsx.ts       ← XLSX export (SheetJS) — Database download tlačítko
-    │   └── formatting.ts       ← formatDateTime — sdíleno FileTable/ExpandedRow
+    │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
+    │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
+    │   ├── exportXlsx.ts       ← XLSX export (SheetJS); exportFileXlsx() = vždy celý soubor (per_page=0)
+    │   ├── formatting.ts       ← formatDateTime — sdíleno FileTable/ExpandedRow
+    │   └── overviewHelpers.ts  ← ⏸ jen pro odpojený Overview
     ├── styles/
     │   ├── variables.css      ← design tokeny (barvy, fonty, mezery, stíny, přechody)
     │   ├── reset.css          ← normalizace, box-sizing, base typography
@@ -140,30 +149,45 @@ CLAUDE.md                  ← tento soubor
     │   ├── topbar.css         ← .topbar__chip, .topbar__datetime, .topbar__logout
     │   ├── components.css     ← .btn, .badge, .status-indicator, .filter-bar__label
     │   ├── tiles.css          ← .tile-grid (12 sloupců), .tile, .tile--ok/error/warning/info
-    │   ├── ui.css             ← .loading-spinner, .error-boundary, .filter-bar, .plc-status
+    │   ├── ui.css             ← .loading-spinner, .error-boundary, .filter-bar, utility
     │   ├── login.css          ← .login-overlay, .login-card, přihlašovací formulář
     │   ├── toast.css          ← .toast-container, .toast--success/danger/warning/info
     │   ├── database.css       ← .db-* — tabs, toolbar, table, expand, modal, NAS alert
-    │   └── signal-charts.css  ← .sig-* — záložky, gridy, subploty signálových grafů
+    │   ├── chart.css          ← .chart-*, .rd-* — ChartView, RecordDiagram, tisk
+    │   ├── settings.css       ← .settings-* — záložky, řádky, folder picker, uživatelé
+    │   ├── info.css           ← .info-*
+    │   ├── signal-charts.css  ← .sig-* — záložky, gridy, subploty signálových grafů
+    │   ├── overview.css       ← .ov-* — ⏸ odpojený Overview
+    │   └── wip.css            ← ⏸ odpojená WIP stránka
     └── types/
         └── index.ts           ← PlcStatus, OrderFile, CsvRecord, DataFilter
 
 02_tests/
 ├── pytest.ini
-└── test_scada.py              ← offline testy bez ADS/PLC (1 test: load_config)
+├── test_api.py                ← API integrace (TestClient) — files, data, auth, users, security, regrese auditů
+├── test_ads_monitor.py        ← AdsMonitor (mock pyads)
+├── test_performance.py        ← io_pool, signal parser (numpy/Python), cache, prefetch, gzip, cache hlavičky
+└── test_scada.py              ← offline testy konfigurace
 
 03_output/
 └── logs/                      ← logy serveru (gitignore) — generuje uvicorn
 
 04_docs/
-├── architecture.md            ← tok dat, vrstvy, API formáty, CSS, provider strom
-├── audit_log.md               ← záznamy auditů (/audit)
+├── architecture.md            ← tok dat, vrstvy, CSV formáty, výkon, API, provider strom, časová osa fází
+├── audit_log.md               ← záznamy auditů (/audit) + přehled otevřených nálezů
+├── deployment.md              ← průvodce nasazením a aktualizací (exe / Python / NSSM / HTTPS)
+├── how_to_extend.md           ← návody: ADS symbol, endpoint, stránka, CSV sloupec, i18n…
+├── roadmap.md                 ← stav, otázky pro Trafag, definice „hotovo"
 ├── project_reviews.md         ← průběžná hodnocení profesionality projektu
-├── roadmap.md                 ← plán dodělávek, sprint backlog, otázky pro Trafag
-└── deployment.md              ← průvodce produkčním nasazením (exe / Python / NSSM / HTTPS)
+├── architecture_critique.md   ← historická analýza (2026-07-20) — neaktualizuje se
+└── professional_improvements.md ← historická roadmapa vylepšení (2026-07-20) — neaktualizuje se
+
+01_frontend/docs-index.md      ← úvodní stránka TypeDoc dokumentace (06_build/docs/generate-docs.bat)
 
 05_user_data/
-└── test_db_output/            ← testovací data (local_path v Config.toml)
+├── plc_communication/         ← export PLC struktury ST_ADS_API_ScadaViewerApp (*.xml) — zdroj pro constants.py
+├── plc_modes/, logo_trafag/   ← podklady (obrázky)
+└── test_db_output/            ← testovací data (local_path v Config.toml; gitignore)
     ├── production/
     │   ├── done_local/        ← 3 soubory: Marquardt×12, Honeywell×8, Cherry×6 záznamů
     │   └── done_remote/       ← 2 soubory: Marquardt×24, Cherry×10 záznamů
@@ -173,13 +197,16 @@ CLAUDE.md                  ← tento soubor
 
 06_build/
 ├── exe/
-│   ├── build.bat              ← npm run build + PyInstaller + ZIP + git tag
-│   ├── scada.spec             ← PyInstaller spec: frontend dist jako datas (frontend_dist/)
+│   ├── build.bat              ← npm build + PyInstaller (onedir: exe + _internal/) + release složka + ZIP + git tag
+│   ├── scada.spec             ← PyInstaller spec: frontend dist jako datas (frontend_dist/), numpy součástí
+│   ├── start.bat              ← ruční spuštění exe
+│   ├── open_browser.bat       ← otevře prohlížeč na aplikaci
 │   ├── kiosk_start.bat        ← kiosk startup: Screen1=ScadaViewer, Screen2=TcHmiClient
 │   └── nssm_install.bat       ← Windows service instalátor (vzor z DatabaseGateway)
+├── docs/
+│   └── generate-docs.bat      ← pdoc (backend) + TypeDoc (frontend) → 06_build/docs/backend|frontend/ (gitignore)
 └── pdf/
-    ├── build_pdf.bat          ← pandoc PDF export
-    └── pdf_metadata.yaml
+    └── pdf_metadata.yaml      ← metadata pro pandoc PDF export (skript build_pdf.bat v repozitáři není)
 ```
 
 ---
@@ -238,7 +265,7 @@ cd 01_frontend && npm run dev
 
 ```bash
 cd 01_frontend && npm run build     # → 01_frontend/dist/
-# V app.py odkomentovat StaticFiles
+# StaticFiles se aktivuje automaticky, pokud existuje 01_frontend/dist/
 python main.py --config Config.toml # http://localhost:8080
 ```
 
@@ -278,11 +305,11 @@ pytest 02_tests/test_scada.py -v   # offline — bez ADS, bez PLC
     │  remote: {remote_path}/production/   ← flat NAS složka
     │          {remote_path}/testing/
     ▼
-[CsvReader]                 [files.py]              [data.py]
-(services/csv_reader.py) ─► GET /api/files      ─►  GET /api/data
+[FileService]               [files.py]              [data.py]
+(file_service+csv_repo) ─► GET /api/files      ─►  GET /api/data
   list_files()               ?location=              ?file=
   read_records()             &type=                  &location=
-  _validate_params()                                 &type=
+  validate_params()                                  &type=
   _file_meta() O(1) mem                              &from= &to=
                         [status.py]
                         GET /api/status
@@ -324,30 +351,37 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 
 | Endpoint | Metoda | Popis |
 |----------|--------|-------|
-| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast ADS notifikací + `{type:"ads_status", connected:bool}` |
-| `/ws/orders` | WebSocket | Live CSV záznamy z wip/ složek — OrderWatcher broadcastuje nové řádky |
+| `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast ADS notifikací + `{type:"ads_status", connected:bool}`; **bez autentizace záměrně** (PLC auto-login, přijaté riziko M14) |
+| `/ws/orders` | WebSocket | ⏸ odpojeno (2026-09-23) — live CSV záznamy z wip/ (OrderWatcher) |
 | `/api/health` | GET | Zdravotní stav aplikace — `{status, version, checks}` (NSSM watchdog, diagnostika) |
 | `/api/config` | GET | Bezpečná podmnožina konfigurace — `{server, ads, data, auth}` (bez hash) |
 | `/api/auth/login` | POST | Přihlášení; vrátí `{token, role, display_name}` |
 | `/api/auth/logout` | POST | Odhlášení; zneplatní session token |
-| `/api/auth/change-password` | POST | Změní heslo; ověří token+aktuální heslo; zneplatní session |
+| `/api/auth/change-password` | POST | Změní heslo; ověří token (vč. TTL) + aktuální heslo; lockout 5 pokusů / 10 min; zneplatní session |
 | `/api/auth/plc-login` | GET | PLC auto-login check (symbol `plc_operator_login`) |
 | `/api/users` | GET / POST | Seznam uživatelů / přidání nového (admin+) |
 | `/api/users/{username}` | DELETE | Smazání uživatele (admin+) |
-| `/api/users/{username}/password` | POST | Změna hesla jiného uživatele (admin+) |
+| `/api/users/{username}/password` | POST | Změna hesla — admin+ jiným s nižší rolí; vlastní heslo vždy s `current_password` |
 | `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
 | `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`) |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
-| `/api/wip` | GET | Záznamy aktuální WIP zakázky — `?order=X` → `{file, records[], total}` |
+| `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
-| `/api/config` | GET | Bezpečná podmnožina konfigurace (bez password_hash) |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
-| `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty |
+| `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty (admin+) |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
+
+> **Výkon:** GZip pro odpovědi > 1 kB; `/assets/*` s `Cache-Control: immutable` (hash v názvu), HTML `no-cache`.
+> NAS I/O vždy přes `run_io(location, …)` — nikdy holý `asyncio.to_thread` pro remote cesty.
+> `/api/data` u souboru se `[SignalData]` spustí prefetch signálu na pozadí.
+>
+> **Autentizace:** chráněné endpointy vyžadují `Authorization: Bearer <token>`. Neplatný / vypršelý
+> token → **401 + `WWW-Authenticate: Bearer`**; frontend (`utils/apiFetch.ts`) podle hlavičky uživatele
+> odhlásí. Jiné 401 (špatné aktuální heslo) hlavičku nemají. Rate limit (120/min) platí jen pro `/api/*`.
 
 ### /api/health — formát odpovědi
 
@@ -379,17 +413,18 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 
 ### ADS — live monitoring (read-only)
 
-Sledované symboly (viz `constants.py`):
+Sledované symboly (viz `constants.py`) — GVL **`GV_IO_ADS_API.ScadaViewerApp`**:
 
-| Symbol | Typ | Popis |
-|--------|-----|-------|
-| `In.Status.Heartbeat` | BOOL | Watchdog bit DatabaseGateway |
-| `In.Status.Ready` | BOOL | DatabaseGateway připraven |
-| `In.Status.LocalStorage` | BOOL | Lokální úložiště dostupné |
-| `In.Status.RemoteStorage` | BOOL | NAS dostupný |
+| Skupina | Symboly (friendly name) | Typ | Popis |
+|---------|------------------------|-----|-------|
+| Stav | `mode` | UINT | Režim stroje (16 módů — MODE_MAP v Overview) |
+| Zakázka | `order_valid`, `order_name`, `order_count_expected`, `order_count_actual` | BOOL / STRING(80) / UINT | Aktuální zakázka |
+| Přihlášení | `plc_operator_login` (`Out.Status.UserLoggedIn`) | BOOL | PLC auto-login operátora |
+| Boxy 1–6 | `box_N_present`, `box_N_full`, `box_N_count` | BOOL / BOOL / UINT | Stav třídicích boxů (18 symbolů) |
+| **Zápis** (`SYM_WRITE`) | `sv_heartbeat`, `sv_ready` | BOOL | ScadaViewer → PLC (watchdog, připravenost) |
 
-> **GVL:** `GV_IO_ADS_API.DatabaseGateway` — stejný jako DatabaseGateway projekt.
-> TODO: Doplnit další symboly dle potřeby (stav zakázky, počty záznamů...).
+> Celkem 23 Out symbolů (ADS notifikace, read-only) + 2 In symboly (zápis heartbeat/ready).
+> Po výpadku ADS se hodnoty symbolů mažou i z WS cache (`clear_symbols()`) — nový klient nedostane stará data.
 
 ### CSV soubory — historická data
 
@@ -422,7 +457,7 @@ encoding   = "utf-8-sig"
 | `Expected_Count` | ✅ (opt.) | — | `expected_count` | plánovaný počet vzorků v zakázce |
 | *(AnalyzedParams)* | ✅ (budoucí) | ✅ (budoucí) | lowercase | zákaznické sloupce — `CsvRecordModel(extra='allow')` je zachová automaticky |
 
-> CsvReader normalizuje všechny klíče na lowercase při čtení.
+> CsvRepository normalizuje klíče (`_normalize_key`: lowercase + odstranění `[jednotka]`).
 > `group` a `expected_count` jsou volitelné — jejich přítomnost závisí na verzi DatabaseGateway.
 > Zákaznické sloupce (AnalyzedParams) budou upřesněny s Trafag.
 
@@ -438,7 +473,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
-| Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ✅ plně funkční |
+| Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `Chart`, `DataTable`, `SignalCharts` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: TestingHero + dvouúrovňové záložky (sekce/pod-záložky) + **Signal Data** (5 grafů, podmíněně) |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
@@ -485,6 +520,7 @@ Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart
 | `uvicorn[standard]` | ≥0.30 | ASGI server (WebSocket podpora, hot-reload) |
 | `pyads` | ≥3.4 | ADS klient pro TwinCAT PLC (read-only notifikace) |
 | `tomli` | ≥2.0 | TOML parser pro Python < 3.11 (3.11+ má tomllib v stdlib) |
+| `numpy` | ≥1.24 | Rychlé parsování `[SignalData]` (`loadtxt`, ~2× rychlejší); bez ní funguje Python fallback |
 
 ### Frontend (`01_frontend/package.json`)
 
@@ -544,6 +580,8 @@ const fetch = useCallback(async () => { ... }, [location, type])
 // useEffect — dependency array VŽDY vyplněn
 useEffect(() => { fetch() }, [fetch])
 
+// Autentizovaná API volání VŽDY přes apiFetch (utils/apiFetch.ts), ne holý fetch —
+// jinak se vypršelá session neprojeví odhlášením
 // AbortController — VŽDY v fetch hoocích (viz useData.ts)
 // Přeruší předchozí in-flight request při novém volání (Strict Mode, přepínání záložek)
 const abortRef = useRef<AbortController | null>(null)
@@ -642,7 +680,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 |-----------------|---------|
 | `config.py` | `DatabaseGateway/00_src/db_gateway/config.py` |
 | `constants.py` (ADS symboly) | `DatabaseGateway/00_src/db_gateway/constants.py` |
-| `csv_reader.py` | `DatabaseGateway/00_src/db_gateway/io/file_manager.py` |
+| `services/repositories/csv_repository.py` | `DatabaseGateway/00_src/db_gateway/io/file_manager.py` |
 | `build.bat` | `Analyzing/06_build/exe/build.bat` |
 | `nssm_install.bat` | `DatabaseGateway/06_build/exe/nssm_install.bat` |
 | `scada.spec` | `DatabaseGateway/06_build/exe/db_gateway.spec` |
@@ -660,7 +698,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Config + dataclasses | ✅ | config.py + `_validate_config()` (port, net_id, local_path) |
 | ADS symboly (constants.py) | ✅ | 23 symbolů: mode, order_*, box_1..6_* (GVL: GV_IO_ADS_API.ScadaViewerApp) |
 | ADS monitor (notifikace) | ✅ | ads_monitor.py — ADSTRANS_SERVERONCHA; ctypes data.offset fix; GC prevence (_callback_refs); heartbeat loop |
-| CSV reader (list_files + read_records) | ✅ | csv_reader.py — local + NAS, O(1) paměť |
+| CSV reader (list_files + read_records) | ✅ | file_service.py + csv_repository.py — local + NAS, O(1) paměť, cache metadat (mtime/size) |
 | REST /api/files | ✅ | files.py — location + type + stránkování (page, per_page) |
 | REST /api/files/{id} — DELETE | ✅ | 204 OK; 403 pro remote; 404 nenalezeno; 503 I/O chyba |
 | REST /api/data | ✅ | data.py — filtry from/to (datetime.date, ne string prefix) |
@@ -675,15 +713,15 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | i18n (LangContext, cs.ts, en.ts) | ✅ | přepínač CS/EN v Topbar, localStorage persistence |
 | Hooks (useFiles, useFileRecords, useRemoteStatus, useData) | ✅ | useData.ts — AbortController (race condition fix), reset stavu při přepnutí záložky |
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
-| Stránka Overview | ✅ | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
+| Stránka Overview | ⏸ odpojeno | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
 | Stránka ChartView — order detail | ✅ | Production: OrderHero + skupiny + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky + **Signal Data** (5 interaktivních grafů, decimace 400k→2k, FP/OP/RP/TTP); **Tisk**: skupinové tabulky |
 | Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (SVG, screen 30) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
-| WebSocket /ws/orders + OrderWatcher | ✅ | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
+| WebSocket /ws/orders + OrderWatcher | ⏸ odpojeno | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
 | Stránka Info | ✅ | 2 záložky Projekt/Dokumentace; verze z /api/health; info.css |
 | Styling / design | ✅ | design systém hotov; dark mode; topbar redesign (3 skupiny + oddělovače) |
-| Autentizace | ✅ | AuthContext → POST /api/auth/login (PBKDF2); sessionStorage token |
-| Toast notifikace | ✅ | ToastContext, PlcWatcher |
+| Autentizace | ✅ | AuthContext → POST /api/auth/login (PBKDF2); sessionStorage token; `apiFetch` → auto-odhlášení při vypršelé session |
+| Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
 | Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller; kiosk_start.bat pro 2 obrazovky |
@@ -691,8 +729,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **152 testů**: config, API integration, security, ADS monitor, users |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 14 souborů) — **102 testů**: useData, AuthContext, FileTable, Database, useFiles, LangContext, Pagination |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **183 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 8 souborů) — **59 testů**: useData, AuthContext, apiFetch, FileTable, Database, useFiles, LangContext, Pagination |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -704,19 +742,18 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 
 ## 14. TODO
 
-### Krátkodobé
-1. Rozšířit Database stránku — řazení sloupců, vyhledávání, hromadné operace
-2. Doplnit zákaznické CSV sloupce do ChartView (AnalyzedParams — upřesnit s Trafag)
+### Čeká na Trafag
+1. Zákaznické CSV sloupce (AnalyzedParams) do ChartView — viz `roadmap.md` otázky 1–6
+2. Produkční `Config.toml` — `cors_origins` (omezit z `["*"]`), ADS `net_id`, cesty k datům
+3. Test na produkčním PC (exe, ADS, NAS, NSSM) + rozhodnutí HTTPS
 
-### Střednědobé
-3. ~~`build.bat` — npm run build + PyInstaller~~ ✅ HOTOVO (2026-07-29) — `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`
-4. Odkomentovat StaticFiles v app.py po prvním build (hotovo automaticky — StaticFiles je aktivní v `create_app()`)
-6. ~~Frontend testy (Vitest + React Testing Library)~~ ✅ HOTOVO (2026-07-29) — 48 testů, 7 souborů
+### Volitelné (po předání)
+4. Vyhledávání v Database (fulltext filtr)
+5. Znovuzapojení Overview (kód zachován) — před tím projít `api/wip.py`, `order_watcher.py`
+6. Pokud se aplikace otevře mimo intranet: autentizace `/ws/plc` (varianta A, audit M14)
 
-### Dlouhodobé
-7. CORS konfigurace pro produkci — omezit `cors_origins` z `["*"]` na konkrétní původy
-8. CSP hlavička (Content-Security-Policy) — zmapovat assety, přidat do `_SecurityHeadersMiddleware`
-9. Testy pokrývající ADS notifikace — mock pyads + callback simulace
+> Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
+> hromadné mazání) jsou v § 13 a v `audit_log.md`.
 
 ---
 
@@ -742,7 +779,9 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
 | `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |
 | `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč |
-| `04_docs/professional_improvements.md` | Roadmapa bezpečnosti, stability, UX, observability |
+| `04_docs/architecture_critique.md` | *Historická* analýza architektury (2026-07-20) — jen pro kontext |
+| `04_docs/professional_improvements.md` | *Historická* roadmapa vylepšení (2026-07-20) — jen pro kontext |
+| `01_frontend/docs-index.md` | Úvodní stránka generované TypeDoc dokumentace |
 
 > **Pravidlo:** Při každém rozšíření aktualizuj i příslušnou dokumentaci.
 > Pokud přidáváš nový vzor rozšíření, doplň ho do `how_to_extend.md`.

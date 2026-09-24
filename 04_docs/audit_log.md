@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-24 (hloubkový audit — vše)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-24 (všechny nálezy uzavřeny + výkonové úpravy)**.
 
 ### 🔴 HIGH
 
@@ -16,11 +16,7 @@
 
 ### ⚠️ MEDIUM
 
-| # | Popis | Soubor | Zdroj |
-|---|-------|--------|-------|
-| M14 | `/ws/plc` bez autentizace; origin check se přeskočí, když chybí `Origin` hlavička | `api/plc_ws.py` | [2026-09-24 #16] |
-| M15 | `/api/files` při každém volání čte všechny CSV celé (record_count) — bez cache dle mtime; zátěž NAS při auto-refresh | `services/repositories/csv_repository.py` | [2026-09-24 #17] |
-| M16 | `/api/signal` parsuje 400k řádků do Python listů (~100+ MB) při každém požadavku, bez cache; záložka Switching spustí 3 paralelní parsování | `services/signal_reader.py` | [2026-09-24 #18] |
+(žádné otevřené — M14 uzavřen jako přijaté riziko, viz záznam 2026-09-24)
 
 #### Uzavřené MEDIUM nálezy
 | # | Popis | Stav | Poznámka |
@@ -33,31 +29,90 @@
 
 ### 🔵 LOW
 
-| # | Popis | Soubor | Zdroj |
-|---|-------|--------|-------|
-| L1 | `TITLE_FORCE`/`TITLE_TIME` hardcoded anglicky bez i18n | `components/RecordDiagram.tsx` | [2026-07-28 fe-audit #4] |
-| L2 | `_update_config_file()` regex nepodporuje TOML multiline stringy | `api/auth.py` | [2026-07-22 #5] |
-| L3 | Logging prefix `[OW]` nekonzistentní se 7-znakovou konvencí | `services/order_watcher.py` | [2026-07-22 #6] |
-| L4 | `_list_children()` může blokovat na mapped drives i přes `to_thread` | `api/config_api.py` | [2026-07-28 hloubkový #4] |
-| L5 | `SUMMARY_FIELDS` vs `EXCLUDE_KEYS` — duplicita vyloučení polí na 2 místech | `pages/ChartView.tsx`, `components/Chart.tsx` | [2026-07-28 hloubkový #11] |
-| L6 | `_disconnect()`: `handles.clear()` před `close()` — pořadí opačné k intuici | `services/ads_monitor.py` | [2026-07-28 hloubkový #13] |
-| L7 | `_read_and_broadcast_initial()` nečeká na Future při shutdown | `services/ads_monitor.py` | [2026-07-28 hloubkový #14] |
-| L8 | Chybí per-endpoint lockout po N selháních přihlášení | `api/auth.py` | [2026-07-28 hloubkový #16] |
-| L9 | `useFiles`: chybí validace tvaru response (přístup na `json.files` bez existence check) | `hooks/useData.ts` | [2026-07-30 full-audit FE#16] |
-| L11 | `/auth/change-password` obchází `require_auth` (bez TTL) a hádání aktuálního hesla nemá lockout | `api/auth.py` | [2026-09-24 #20] |
-| L12 | Admin mění vlastní heslo bez `current_password` (ukradený token → převzetí účtu) | `api/users_api.py` | [2026-09-24 #21] |
-| L13 | Rate limiter počítá i statické assety (JS chunky, fonty) do limitu 120/min | `app.py` | [2026-09-24 #22] |
-| L14 | `asyncio.wait_for` timeout nezastaví worker vlákno — zaseknutý NAS může vyčerpat thread pool | `api/files.py`, `api/data.py` | [2026-09-24 #23] |
-| L15 | `csv.Error` (NUL byte, limit pole) v `read_records()` nezachycen → HTTP 500 | `services/repositories/csv_repository.py` | [2026-09-24 #24] |
-| L16 | Download `media_type="text/csv; charset=utf-8-sig"` — nestandardní charset label | `api/files.py` | [2026-09-24 #25] |
-| L17 | Odpojený kód (wip.py, orders_ws.py, order_watcher.py, Overview/Wip) — `wip.py` má race `p.stat()` při přesunu WIP→done; opravit před znovuzapojením | `api/wip.py` | [2026-09-24 #27] |
+(žádné otevřené — L1–L17 uzavřeny 2026-09-24)
 
 ### 📄 DOCS
 
+(žádné otevřené — D1, D2 uzavřeny 2026-09-24)
+
+### 🔧 BUILD (ponecháno — rozhodnutí uživatele)
+
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| D1 | `architecture.md` neodráží RecordDiagram, paramMeta.ts, 2-sekční CSV | `04_docs/architecture.md` | [2026-07-28 hloubkový #20] |
-| D2 | CLAUDE.md zastaralý: `/ws/orders`, `/api/wip`, Overview uvedeny jako aktivní; sekce 6 uvádí 4 symboly DatabaseGateway GVL (reálně 23, `ScadaViewerApp`); `csv_reader.py` neexistuje (→ `file_service.py` + `csv_repository.py`); počty FE testů 102/14 → 51/7 | `CLAUDE.md` | [2026-09-24 #28] |
+| B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-09-24] Audit — docs + úklid nepotřebného kódu
+
+Audit dokumentace (aktuálnost vůči kódu) a hledání mrtvého kódu, nepoužitých překladů, CSS a souborů.
+Ověřeno po úklidu: `pytest` **183 passed**, `vitest` **59 passed**, `tsc` 0 chyb, `npm run build` OK.
+
+### Kód
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| C1 | 🔵 LOW | Mrtvé komponenty / utility — nikde neimportované (nahrazeny `usePlcWatcher`, `downloadOriginal`, `paramMeta`) | `components/Chart.tsx`, `PlcStatus.tsx`, `PlcWatcher.tsx`, `utils/exportCsv.ts` | ✅ Smazáno |
+| C2 | 🔵 LOW | Nepoužitá funkce `has_signal_data()` | `services/signal_reader.py` | ✅ Smazáno |
+| C3 | 🔵 LOW | 34 nepoužitých i18n klíčů (pozůstatky dlaždice „Účet", starého Chart/PlcStatus, Overview) | `i18n/types.ts`, `cs.ts`, `en.ts` | ✅ Smazáno (244 → 210 klíčů) |
+| C4 | 🔵 LOW | 31 nepoužitých CSS pravidel (`stat-*`, `tab-bar*`, `login-card__status*`, `ov-progress*`, `ov-last-record*`, …); design-system třídy `tile--N` ponechány | `styles/*.css` | ✅ Smazáno (−160 řádků, CSS 79 → 76 kB) |
+| C5 | 🔵 LOW | Zastaralé `__pycache__` s bytecode neexistujících modulů (`csv_reader`, `test_csv_reader`) | `**/__pycache__/` | ✅ Smazáno (regeneruje se) |
+| C6 | ℹ️ INFO | Odpojený Overview (`Overview.tsx`, `Wip.tsx`, `useOrderWatcher`, `useWipData`, `overviewHelpers`, `overview.css`, `wip.css`, `api/wip.py`, `orders_ws.py`, `order_watcher.py`) | — | ⏸ Ponecháno záměrně (commit 1d93800) — označeno v CLAUDE.md |
+
+### Dokumentace
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| D3 | ⚠️ MEDIUM | Postup aktualizace „přepsat `scada_viewer.exe`" je u onedir buildu chybný — exe bez nového `_internal/` nefunguje; chyběla záloha `users.toml` | `04_docs/deployment.md` | ✅ Opraveno (celá složka, záloha Config/users.toml, obsah release) |
+| D4 | ⚠️ MEDIUM | Pravidla pro Claude (`.claude/`) odkazovala na neexistující `csv_reader.py`, `test_csv_reader.py`, špatný GVL (DatabaseGateway); chyběl `run_io`, `apiFetch`, výkonové mechanismy | `.claude/rules/*`, `agents/`, `commands/run-tests.md` | ✅ Opraveno |
+| D5 | ⚠️ MEDIUM | Návody na rozšiřování zastaralé: GVL DatabaseGateway, `PlcStatus.tsx`, `Chart.tsx`, `CsvReader`, holý `fetch`, `asyncio.to_thread` pro NAS, stránka bez lazy | `04_docs/how_to_extend.md` | ✅ Opraveno (sekce 1, 2, 3, 5, 9 + principy) |
+| D6 | 🔵 LOW | `frontend-architecture.md` (2026-07-20) zastaralý a duplicitní s CLAUDE.md / architecture.md, bez odkazů | `04_docs/frontend-architecture.md` | ✅ Smazáno |
+| D7 | 🔵 LOW | TypeDoc úvodní stránka: Overview jako hlavní, PLC login přes `in_ready`, špatné pořadí providerů | `01_frontend/docs-index.md` | ✅ Přepsáno |
+| D8 | 🔵 LOW | `architecture.md` — aktuální sekce odkazovaly na smazané komponenty, starý download tok, i18n klíče | `04_docs/architecture.md` | ✅ Opraveno (katalog komponent, provider strom, Database tok, i18n) |
+| D9 | 🔵 LOW | CLAUDE.md — strom souborů (chybějící / smazané soubory, 04_docs, 06_build), zastaralé TODO, „nezasahuje do dat" (mazání existuje) | `CLAUDE.md` | ✅ Opraveno |
+| D10 | 🔵 LOW | `roadmap.md` — počty testů, stav stránek, datum | `04_docs/roadmap.md` | ✅ Opraveno |
+| D11 | ℹ️ INFO | `architecture_critique.md`, `professional_improvements.md` — analýzy k 2026-07-20, většina bodů vyřešena | `04_docs/` | ✅ Označeno jako historické (banner) |
+
+### Build / soubory mimo git — vyžaduje rozhodnutí
+
+| # | Závažnost | Popis | Status |
+|---|-----------|-------|--------|
+| B2 | ⚠️ MEDIUM | `build.bat` kopíruje vývojový `Config.toml` do release → ZIP obsahuje hash hesla a při výměně celé složky na produkci hrozí přepsání produkční konfigurace | ✅ Opraveno — release Config.toml neobsahuje |
+| B3 | 🔵 LOW | `06_build/pdf/pdf_metadata.yaml` bez skriptu `build_pdf.bat` | ⏸ Ponecháno (rozhodnutí uživatele) |
+| B4 | ℹ️ INFO | Lokální artefakty mimo git: `06_build/releases/` (3 staré releasy + 2 ZIP ≈ 155 MB), `06_build/dist` + `build_work` (≈ 63 MB, build je znovu vytvoří), nesledovaná testovací data v `05_user_data/` (≈ 42 MB) | ⏸ Ponecháno (rozhodnutí uživatele) |
+
+**Celkem:** 20 položek | 17 vyřešeno | 3 ponecháno záměrně | 0 otevřeno
+
+---
+
+## [2026-09-24] Uzavření všech otevřených nálezů + výkon
+
+Požadavek: vyřešit vše, M14 varianta B, důraz na rychlost. Ověřeno: `pytest 02_tests/` **183 passed** (+13, nový `test_performance.py`), `vitest` **59 passed / 8**, `tsc` 0 chyb, `npm run build` OK, smoke test reálného serveru (gzip, cache hlavičky, 401 + WWW-Authenticate).
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| M14 | ⚠️ MEDIUM | `/ws/plc` bez autentizace | `api/plc_ws.py` | ✅ Přijaté riziko (varianta B), zdokumentováno |
+| L1 | 🔵 LOW | Titulky diagramů napevno anglicky | `components/RecordDiagram.tsx`, i18n | ✅ Opraveno (`chart.diagramForceTravel`, `chart.diagramSwitchingTimes`) |
+| L2 | 🔵 LOW | `_update_config_file()` nepodporoval literal / multiline TOML stringy; při stejném hashi duplikoval klíč | `api/auth.py` | ✅ Opraveno (regex všech variant + `re.subn` počet) |
+| L3 | 🔵 LOW | Log prefix `[OW]` | `services/order_watcher.py` | ✅ Opraveno (`[SVC]`) |
+| L4 | 🔵 LOW | Výpis disků blokoval na odpojených síťových discích | `api/config_api.py` | ✅ Opraveno (`os.listdrives()`, NAS pool + timeout 5 s) |
+| L5 | 🔵 LOW | Duplicita `SUMMARY_FIELDS` / `EXCLUDE_KEYS` | `pages/ChartView.tsx` | ✅ Uzavřeno — `SUMMARY_FIELDS` už v kódu neexistuje |
+| L6 | 🔵 LOW | `_disconnect()` uvolňoval callbacky před `close()` | `services/ads_monitor.py` | ✅ Opraveno (nejdřív `close()`) |
+| L7 | 🔵 LOW | Počáteční broadcast při zavřeném event loopu | `services/ads_monitor.py` | ✅ Opraveno (`RuntimeError` ošetřen) |
+| L8 | 🔵 LOW | Lockout jen na loginu | `api/users_api.py` | ✅ Opraveno (sdílený lockout i pro změnu vlastního hesla) |
+| L9 | 🔵 LOW | `useFiles` bez validace `total` / `pages` | `hooks/useData.ts` | ✅ Opraveno (typové kontroly) |
+| L14 | 🔵 LOW | Zaseknutý NAS vyčerpá thread pool | `services/io_pool.py` (nový) | ✅ Opraveno (vlastní NAS pool, fail-fast 503) |
+| L17 | 🔵 LOW | `wip.py` race na `stat()` | `api/wip.py` | ✅ Opraveno |
+| D1 | 📄 DOCS | `architecture.md` bez RecordDiagram / paramMeta / CSV formátů | `04_docs/architecture.md` | ✅ Opraveno (+ Fáze 21, výkon, vrstvy, API) |
+| P1 | ⚡ VÝKON | Signálová data — parsování | `services/signal_reader.py` | ✅ numpy `loadtxt` + rychlejší Python fallback, jen 9 sloupců: 42 MB soubor ~940 → ~430 ms (výstup ověřen identický) |
+| P2 | ⚡ VÝKON | Signálová data — opakované požadavky | `services/signal_reader.py` | ✅ cache klíčových bodů + hotových odpovědí: < 1 ms |
+| P3 | ⚡ VÝKON | Signálová data — první otevření | `api/data.py` | ✅ prefetch na pozadí po `/api/data` |
+| P4 | ⚡ VÝKON | `/api/signal` serializace | `api/signal.py` | ✅ `JSONResponse` bez `jsonable_encoder` |
+| P5 | ⚡ VÝKON | Přenos dat | `app.py` | ✅ `GZipMiddleware`; `Cache-Control: immutable` pro `/assets/*`, `no-cache` pro HTML |
+| P6 | ⚡ VÝKON | Frontend bundle 1 007 kB v jednom souboru | `App.tsx`, `vite.config.ts`, `utils/exportXlsx.ts` | ✅ lazy stránky + preload v idle, `xlsx` dynamicky, vendor chunky → úvodní JS 641 kB |
+| B1 | 🔧 BUILD | `scada.spec` vylučoval numpy, `hiddenimports` obsahoval neexistující `csv_reader` a chyběly nové moduly | `06_build/exe/scada.spec`, `requirements.txt` | ✅ Opraveno (numpy přidána — exe naroste cca 15–25 MB) |
+
+**Celkem:** 21 položek | 21 uzavřeno | 0 otevřeno
 
 ---
 
@@ -82,21 +137,23 @@ Hloubkový audit celého kódu. Ověřeno po opravách: `pytest 02_tests/` **158
 | 13 | 🔵 LOW | `/ws/plc` odregistroval socket jen při `WebSocketDisconnect` — jiná výjimka nechala mrtvý socket v registru | `api/plc_ws.py` | ✅ Opraveno (`finally`) |
 | 14 | 🔵 LOW | Settings uložil 401 odpověď `/api/config` jako `ConfigData` → pád stránky na `config.data.*` | `pages/Settings.tsx` | ✅ Opraveno |
 | 15 | ⚠️ MEDIUM | Žádná globální obsluha 401 ve frontendu (restart backendu / TTL 8 h → „přihlášen", ale vše padá) | `context/AuthContext.tsx`, `utils/apiFetch.ts`, `api/dependencies.py` | ✅ Opraveno 2026-09-24 (401 + `WWW-Authenticate: Bearer` → `apiFetch` → odhlášení + hláška „Relace vypršela"; PLC token se obnoví automaticky) |
-| 16 | ⚠️ MEDIUM | `/ws/plc` bez autentizace; chybějící `Origin` projde | `api/plc_ws.py` | ⬜ Otevřeno (M14) |
-| 17 | ⚠️ MEDIUM | `/api/files` čte všechny CSV celé při každém volání (bez mtime cache) | `csv_repository.py` | ⬜ Otevřeno (M15) |
-| 18 | ⚠️ MEDIUM | `/api/signal` — 400k řádků do Python listů při každém požadavku, bez cache | `signal_reader.py` | ⬜ Otevřeno (M16) |
+| 16 | ⚠️ MEDIUM | `/ws/plc` bez autentizace; chybějící `Origin` projde | `api/plc_ws.py` | ✅ Uzavřeno 2026-09-24 — přijaté riziko (varianta B): WS musí fungovat před loginem kvůli PLC auto-loginu; data read-only, intranet. Zdokumentováno v `plc_ws.py` |
+| 17 | ⚠️ MEDIUM | `/api/files` čte všechny CSV celé při každém volání (bez mtime cache) | `csv_repository.py` | ✅ Opraveno 2026-09-24 (cache metadat dle `(mtime_ns, size)`, úklid smazaných souborů) |
+| 18 | ⚠️ MEDIUM | `/api/signal` — 400k řádků do Python listů při každém požadavku, bez cache | `signal_reader.py` | ✅ Opraveno 2026-09-24 (LRU cache 2 souborů, per-path zámek, `array('d')` ~4× méně paměti; opakovaný požadavek ~940 ms → ~60 ms, výstup identický) |
 | 19 | 🔵 LOW | `isLoggedIn` true i bez PLC tokenu, když plc-login selže | `context/AuthContext.tsx` | ✅ Opraveno 2026-09-24 (`isLoggedIn = localLogin \|\| (plcLoggedIn && plcToken)`) |
-| 20 | 🔵 LOW | `/auth/change-password` bez TTL kontroly a lockoutu | `api/auth.py` | ⬜ Otevřeno (L11) |
-| 21 | 🔵 LOW | Admin mění vlastní heslo bez aktuálního hesla | `api/users_api.py` | ⬜ Otevřeno (L12) |
-| 22 | 🔵 LOW | Rate limit počítá statické assety | `app.py` | ⬜ Otevřeno (L13) |
-| 23 | 🔵 LOW | Timeout nezastaví worker vlákno (thread pool exhaustion při zaseknutém NAS) | `api/files.py`, `api/data.py` | ⬜ Otevřeno (L14) |
-| 24 | 🔵 LOW | `csv.Error` v `read_records()` nezachycen → 500 | `csv_repository.py` | ⬜ Otevřeno (L15) |
-| 25 | 🔵 LOW | Nestandardní `charset=utf-8-sig` v download hlavičce | `api/files.py` | ⬜ Otevřeno (L16) |
+| 20 | 🔵 LOW | `/auth/change-password` bez TTL kontroly a lockoutu | `api/auth.py` | ✅ Opraveno 2026-09-24 (TTL kontrola + lockout 5/10 min + PBKDF2 v to_thread) |
+| 21 | 🔵 LOW | Admin mění vlastní heslo bez aktuálního hesla | `api/users_api.py` | ✅ Opraveno 2026-09-24 (vlastní heslo vždy s `current_password`) |
+| 22 | 🔵 LOW | Rate limit počítá statické assety | `app.py` | ✅ Opraveno 2026-09-24 (limit jen pro `/api/*`) |
+| 23 | 🔵 LOW | Timeout nezastaví worker vlákno (thread pool exhaustion při zaseknutém NAS) | `api/files.py`, `api/data.py` | ✅ Opraveno 2026-09-24 (`services/io_pool.run_io` — NAS ve vlastním poolu 4 vláken, plný pool → okamžitě 503) |
+| 24 | 🔵 LOW | `csv.Error` v `read_records()` nezachycen → 500 | `csv_repository.py` | ✅ Opraveno 2026-09-24 (`csv.Error` zachycen → prázdný výsledek) |
+| 25 | 🔵 LOW | Nestandardní `charset=utf-8-sig` v download hlavičce | `api/files.py` | ✅ Opraveno 2026-09-24 (`charset=utf-8`) |
 | 26 | 🔵 LOW | `SignalCharts` neresetoval zoom data při změně souboru bez unmountu | `pages/ChartView.tsx` | ✅ Opraveno (`key` dle souboru) |
-| 27 | 🔵 LOW | Odpojený kód (`wip.py` race na `p.stat()`, `orders_ws`, `order_watcher`, Overview) | `api/wip.py` | ⬜ Otevřeno (L17) |
-| 28 | 📄 DOCS | CLAUDE.md zastaralý (odpojené endpointy, ADS symboly, `csv_reader.py`, počty testů) | `CLAUDE.md` | ⬜ Otevřeno (D2) |
+| 27 | 🔵 LOW | Odpojený kód (`wip.py` race na `p.stat()`, `orders_ws`, `order_watcher`, Overview) | `api/wip.py` | ✅ Opraveno 2026-09-24 (bezpečný `stat()` při přesunu souboru, `_normalize_key`, `None` klíče) |
+| 28 | 📄 DOCS | CLAUDE.md zastaralý (odpojené endpointy, ADS symboly, `csv_reader.py`, počty testů) | `CLAUDE.md` | ✅ Opraveno 2026-09-24 (soubory, API tabulka, ADS symboly, stránky, testy, konvence apiFetch) |
 
-**Celkem:** 28 nálezů | 17 opraveno | 11 otevřeno  _(M13 + L10 opraveny dodatečně — testy: pytest 160, vitest 59/8)_
+**Celkem:** 28 nálezů | 28 uzavřeno (27 opraveno, 1 přijaté riziko) | 0 otevřeno  _(testy: pytest 183, vitest 59/8)_
+
+**M14 — rozhodnutí 2026-09-24: varianta B (přijaté riziko).** `/ws/plc` zůstává bez autentizace — PLC auto-login čte `plc_operator_login` z tohoto WS před přihlášením. Data jsou read-only, aplikace běží v intranetu. Při otevření mimo intranet přejít na variantu A (před loginem jen `ads_status` + `plc_operator_login`).
 
 **Poznámka k nasazení:** frontend změny vyžadují `npm run build` (provedeno) — produkce běží z `01_frontend/dist/` přes port 8080.
 

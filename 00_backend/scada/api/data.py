@@ -9,7 +9,7 @@ Zodpovědnost:
   - Validuje formát datumových parametrů (from/to) explicitně před voláním service.
     Důvod: ValueError ze service by mohl mít více příčin — explicitní validace
     vrátí HTTP 422 s přesnou zprávou o špatném datu dřív než začneme číst soubor.
-  - Deleguje čtení na DataReader service (asyncio.to_thread — synchronní I/O).
+  - Deleguje čtení na DataReader service (run_io — NAS ve vlastním poolu).
   - Počítá počet stránek ze serveru — klient nezná total a per_page zároveň.
 
 Rozhraní:
@@ -33,10 +33,37 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from scada.api.dependencies import require_auth
 from scada.models import DataResponse
+from scada.services.io_pool import NasBusyError, run_io
 from scada.services.protocols import DataReader
+from scada.services.signal_reader import prepare_signal_response
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+
+# Běžící prefetch úlohy — silná reference, jinak by je GC mohl zrušit před dokončením
+_prefetch_tasks: set[asyncio.Task] = set()
+# Buckety musí odpovídat frontendu (SignalCharts.tsx: fetchSignal(..., 'overview', 1000))
+_PREFETCH_BUCKETS = 1000
+
+
+def _warm_signal(reader: DataReader, file: str, location: str, file_type: str,
+                 encoding: str, separator: str) -> None:
+    """Naplní cache signálových dat (overview + zoom) — běží na pozadí po /api/data."""
+    path = reader.resolve_path(file, location, file_type)
+    if path is None:
+        return
+    for mode in ('overview', 'zoom_op', 'zoom_rp'):
+        prepare_signal_response(path, mode, _PREFETCH_BUCKETS, encoding, separator)
+
+
+async def _prefetch_signal(*args) -> None:
+    location = args[2]
+    try:
+        await run_io(location, _warm_signal, *args)
+    except NasBusyError:
+        pass                                   # NAS visí — prefetch přeskočit, není kritický
+    except Exception as exc:                   # prefetch nesmí shodit nic dalšího
+        log.debug("[API]   signal prefetch %s selhal: %s", args[1], exc)
 
 
 @router.get("/data", response_model=DataResponse, dependencies=[Depends(require_auth)])
@@ -94,7 +121,8 @@ async def get_data(
     timeout = 30.0 if location == 'remote' else 10.0
     try:
         records, total, group_counts, file_expected_count = await asyncio.wait_for(
-            asyncio.to_thread(
+            run_io(
+                location,
                 reader.read_records,
                 file_id=file, location=location, file_type=file_type,
                 from_date=from_date, to_date=to_date,
@@ -116,6 +144,15 @@ async def get_data(
     pages = max(1, (total + effective_per_page - 1) // effective_per_page) if per_page > 0 else 1
     # Detekce přítomnosti signálových dat (sectioned CSV propaguje _has_signal flag)
     has_signal = any(r.get('_has_signal') == 'true' for r in records)
+    if has_signal:
+        # Uživatel typicky otevře záložku Signal — parsování (~0,4 s / 40 MB) proběhne
+        # na pozadí hned teď, grafy se pak zobrazí z cache okamžitě.
+        cfg  = request.app.state.config.data
+        task = asyncio.create_task(_prefetch_signal(
+            reader, file, location, file_type, cfg.csv_encoding, cfg.csv_separator,
+        ))
+        _prefetch_tasks.add(task)
+        task.add_done_callback(_prefetch_tasks.discard)
     return DataResponse(
         records=records, total=total, page=page, pages=pages, per_page=per_page,
         group_counts=group_counts or None,

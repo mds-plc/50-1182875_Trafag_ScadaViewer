@@ -6,7 +6,7 @@ REST endpoint pro signálová data z testovacích CSV souborů (/api/signal).
 
 Zodpovědnost:
   - Validuje vstupní parametry (file, location, type, mode)
-  - Deleguje čtení a decimaci na signal_reader service (asyncio.to_thread)
+  - Deleguje čtení a decimaci na signal_reader service (run_io)
   - Vrací sloupcová data + klíčové body (FP/OP/RP/TTP)
 
 Rozhraní:
@@ -24,10 +24,11 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
+from scada.services.io_pool import run_io
 from scada.api.dependencies import require_auth
 from scada.services.signal_reader import prepare_signal_response
-from scada.services.repositories.csv_repository import _parse_sectioned
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ async def get_signal(
     file_type: str        = Query('testing',     description="production | testing", alias="type"),
     mode:      str        = Query('overview',    description="overview | results | hysteresis | zoom_op | zoom_rp"),
     buckets:   int        = Query(1000, ge=100, le=5000, description="Počet bucketů decimace"),
-) -> dict:
+) -> JSONResponse:
     """Vrátí decimovaná signálová data pro interaktivní grafy.
 
     Args:
@@ -70,7 +71,7 @@ async def get_signal(
     # resolve_path + exists() na UNC cestě blokuje — nesmí běžet v event loopu
     try:
         path = await asyncio.wait_for(
-            asyncio.to_thread(request.app.state.csv_reader.resolve_path, file, location, file_type),
+            run_io(location, request.app.state.csv_reader.resolve_path, file, location, file_type),
             timeout=timeout,
         )
     except asyncio.TimeoutError:
@@ -81,7 +82,8 @@ async def get_signal(
 
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(
+            run_io(
+                location,
                 _read_signal,
                 path=path,
                 mode=mode,
@@ -101,22 +103,16 @@ async def get_signal(
     if result is None:
         raise HTTPException(status_code=404, detail="Soubor neobsahuje signálová data")
 
-    return result
+    # JSONResponse přímo — bez jsonable_encoder, který by v Pythonu procházel ~18k čísel
+    return JSONResponse(content=result)
 
 
 def _read_signal(
     path, mode: str, n_buckets: int, encoding: str, separator: str,
 ) -> dict | None:
-    """Synchronní čtení signálových dat — voláno přes asyncio.to_thread."""
-    # Načíst AnalyzedParameters pro klíčové body
-    analyzed: dict[str, str] = {}
-    with open(path, encoding=encoding, newline='') as f:
-        sections = _parse_sectioned(f, separator)
-        analyzed = sections.get('analyzedparameters', {})
-
+    """Synchronní čtení signálových dat — voláno přes run_io (parsování je cachované)."""
     return prepare_signal_response(
         path=path,
-        analyzed=analyzed,
         mode=mode,
         n_buckets=n_buckets,
         encoding=encoding,

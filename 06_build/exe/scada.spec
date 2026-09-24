@@ -26,19 +26,21 @@ a = Analysis(
         'anyio', 'anyio._backends._asyncio',
         'httptools', 'websockets',
         # deps
-        'pyads', 'tomli',
+        'pyads', 'tomli', 'numpy',
         # scada submoduly
         'scada', 'scada.config', 'scada.constants', 'scada.logging_setup',
         'scada.models', 'scada.app',
         'scada.api', 'scada.api.auth', 'scada.api.config_api', 'scada.api.data',
         'scada.api.files', 'scada.api.health', 'scada.api.orders_ws',
         'scada.api.plc_ws', 'scada.api.status', 'scada.api.wip',
-        'scada.services', 'scada.services.ads_monitor',
-        'scada.services.csv_reader', 'scada.services.order_watcher',
+        'scada.api.signal', 'scada.api.users_api', 'scada.api.dependencies',
+        'scada.services', 'scada.services.ads_monitor', 'scada.services.order_watcher',
         'scada.services.ws_manager', 'scada.services.file_service',
+        'scada.services.signal_reader', 'scada.services.io_pool', 'scada.services.protocols',
         'scada.services.repositories', 'scada.services.repositories.csv_repository',
     ],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'scipy', 'IPython', 'jupyter', 'pytest'],
+    # numpy NENÍ vyloučena — signal_reader ji používá pro rychlé parsování [SignalData]
+    excludes=['tkinter', 'matplotlib', 'scipy', 'IPython', 'jupyter', 'pytest'],
     noarchive=False,
 )
 

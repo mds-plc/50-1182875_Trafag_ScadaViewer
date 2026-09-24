@@ -28,6 +28,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Query, Request
 
 from scada.api.dependencies import require_auth
+from scada.services.repositories.csv_repository import _normalize_key
 from scada.models import CsvRecordModel, WipResponse
 
 router = APIRouter()
@@ -70,12 +71,22 @@ def _find_and_read_wip(
             return None, []
         candidates = matched
 
-    newest = max(candidates, key=lambda p: p.stat().st_mtime)
+    # DatabaseGateway může soubor mezi glob() a stat() přesunout (WIP → done) → přeskočit
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return -1.0
+
+    newest = max(candidates, key=_mtime)
+    if _mtime(newest) < 0:
+        return None, []
 
     try:
         with newest.open("r", encoding=encoding, newline="") as f:
             reader = csv.DictReader(f, delimiter=separator)
-            rows = [{k.lower(): v for k, v in row.items()} for row in reader]
+            # _normalize_key: stejné klíče jako /api/data; k=None = přebytečné hodnoty řádku
+            rows = [{_normalize_key(k): v for k, v in row.items() if k} for row in reader]
     except (OSError, csv.Error) as exc:
         log.warning("[WIP]   nelze číst %s: %s", newest.name, exc)
         return newest.name, []

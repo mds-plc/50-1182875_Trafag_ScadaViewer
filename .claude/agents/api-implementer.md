@@ -18,13 +18,15 @@ Specializovaný agent pro implementaci REST/WebSocket endpointů a napojení na 
 4. Zachová FastAPI vzory z `.claude/rules/fastapi-patterns.md`
 5. Napíše testy do příslušného souboru:
    - API endpoint → `02_tests/test_api.py`
-   - CsvReader metoda → `02_tests/test_csv_reader.py`
+   - Repository / service / výkon (cache, io_pool) → `02_tests/test_performance.py` nebo `test_api.py`
    - Config/logging → `02_tests/test_scada.py`
 
 ## Důležité kontextové detaily
 
 - **Stav synchronizace** se dedukuje ze složkové struktury (`done_local/` / `done_remote/`),
   ScadaViewer **nečte** žádný `sync_state.json`
-- **file_id** je vždy název souboru ve tvaru `*_DONE.csv` — validuje `_validate_params()`
-- Všechny synchronní I/O operace musí být zabaleny do `asyncio.to_thread()` (viz fastapi-patterns.md)
+- **file_id** je vždy název souboru ve tvaru `*_DONE.csv` — validuje `CsvRepository.validate_params()`
+  (odmítá `/`, `\`, `..`, `:`, NUL, > 255 znaků)
+- Souborové I/O přes `run_io(location, …)` z `services/io_pool.py` (NAS ve vlastním poolu), viz fastapi-patterns.md
+- Chráněný endpoint = `Depends(require_auth)` / `require_role(...)`; frontend volá přes `apiFetch`
 - Response modely jsou v `scada/models.py` (Pydantic v2)

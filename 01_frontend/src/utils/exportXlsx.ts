@@ -11,7 +11,6 @@
  *   Fallback pro Firefox / Safari:
  *   XLSX.writeFile() stáhne soubor do výchozí složky Stažené soubory.
  */
-import * as XLSX from 'xlsx'
 import { apiFetch } from './apiFetch'
 
 /**
@@ -37,6 +36,9 @@ export async function exportXlsx(rows: Record<string, unknown>[], filename: stri
       }>
     }>
   }
+
+  // Dynamický import — SheetJS (~400 kB) se stáhne až při prvním exportu, ne při startu aplikace
+  const XLSX = await import('xlsx')
 
   try {
     const ws = XLSX.utils.json_to_sheet(rows)

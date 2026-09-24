@@ -52,7 +52,7 @@ class OrderWatcher:
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
-        log.info("[OW]    OrderWatcher spuštěn")
+        log.info("[SVC]   OrderWatcher spuštěn")
 
     async def stop(self) -> None:
         if self._task:
@@ -61,7 +61,7 @@ class OrderWatcher:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        log.info("[OW]    OrderWatcher zastaven")
+        log.info("[SVC]   OrderWatcher zastaven")
 
     # ------------------------------------------------------------------
 
@@ -77,9 +77,9 @@ class OrderWatcher:
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
-                log.warning("[OW]    čtení wip trvá příliš dlouho (>10 s) — přeskakuji cyklus")
+                log.warning("[SVC]   čtení wip trvá příliš dlouho (>10 s) — přeskakuji cyklus")
             except Exception as exc:
-                log.warning("[OW]    chyba při čtení wip: %s", exc)
+                log.warning("[SVC]   chyba při čtení wip: %s", exc)
             await asyncio.sleep(_POLL_INTERVAL)
 
     def _read_new_rows(self) -> list[dict[str, str]]:
@@ -99,7 +99,7 @@ class OrderWatcher:
             active = set(wip_dir.glob("*.csv"))
             stale  = [p for p in self._line_count if p.parent == wip_dir and p not in active]
             for p in stale:
-                log.info("[OW]    soubor uzavřen: %s", p.name)
+                log.info("[SVC]   soubor uzavřen: %s", p.name)
                 del self._line_count[p]
 
             for csv_path in sorted(active):
@@ -114,20 +114,20 @@ class OrderWatcher:
                 reader = csv.DictReader(f, delimiter=self._csv_separator)
                 all_rows = list(reader)
         except (OSError, csv.Error) as exc:
-            log.warning("[OW]    nelze číst %s: %s", path.name, exc)
+            log.warning("[SVC]   nelze číst %s: %s", path.name, exc)
             return []
 
         prev_count = self._line_count.get(path)
 
         if prev_count is None:
             # Nový soubor — odešli initial snapshot (všechny existující záznamy)
-            log.info("[OW]    nový soubor: %s (%d řádků)", path.name, len(all_rows))
+            log.info("[SVC]   nový soubor: %s (%d řádků)", path.name, len(all_rows))
             self._line_count[path] = len(all_rows)
             return [_normalize(r) for r in all_rows]
 
         new_rows = all_rows[prev_count:]
         if new_rows:
-            log.debug("[OW]    %s: %d nových řádků", path.name, len(new_rows))
+            log.debug("[SVC]   %s: %d nových řádků", path.name, len(new_rows))
             self._line_count[path] = len(all_rows)
         return [_normalize(r) for r in new_rows]
 

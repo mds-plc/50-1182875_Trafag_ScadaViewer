@@ -26,6 +26,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 
+from scada.services.io_pool import NasBusyError, run_io
 from scada.api.dependencies import require_auth
 from scada.models import StatusResponse
 
@@ -46,10 +47,10 @@ async def get_status(request: Request) -> StatusResponse:
     if cfg.data.remote_path:
         try:
             remote_available = await asyncio.wait_for(
-                asyncio.to_thread(Path(cfg.data.remote_path).exists),
+                run_io("remote", Path(cfg.data.remote_path).exists),
                 timeout=_NAS_TIMEOUT_S,
             )
-        except (OSError, PermissionError, asyncio.TimeoutError):
+        except (OSError, PermissionError, asyncio.TimeoutError, NasBusyError):
             remote_available = False
 
     return StatusResponse(remote_available=remote_available)

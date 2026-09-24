@@ -45,6 +45,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -111,6 +112,7 @@ from scada.config import AppConfig, load_users
 from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
+from scada.services.io_pool import NasBusyError
 from scada.services.repositories.csv_repository import CsvRepository
 from scada.services.ws_manager import manager
 
@@ -176,6 +178,14 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"]        = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
+        # Vite assety mají hash v názvu (index-CV00pAay.js) → obsah se pod stejnou URL nikdy
+        # nezmění; prohlížeč je může držet natrvalo bez revalidace (žádné 304 kolečko).
+        # index.html hash nemá → vždy revalidovat, aby se nový build projevil okamžitě.
+        path = request.url.path
+        if path.startswith("/assets/") and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif not path.startswith(("/api/", "/ws/")):
+            response.headers.setdefault("Cache-Control", "no-cache")
         return response
 
 
@@ -218,8 +228,11 @@ class _RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Limitujeme jen API — statické assety (JS chunky, fonty, obrázky) se do limitu
+        # nepočítají, jinak by jedno načtení SPA spotřebovalo desítky požadavků.
         # Whitelist: zdravotní endpointy nesmí být rate limitovány (NSSM watchdog)
-        if request.url.path in ("/api/health", "/api/status"):
+        path = request.url.path
+        if not path.startswith("/api/") or path in ("/api/health", "/api/status"):
             return await call_next(request)
 
         ip  = request.client.host if request.client else "unknown"
@@ -280,11 +293,14 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app = FastAPI(title="ScadaViewer", version="0.1.0", lifespan=lifespan)
 
     # Middleware — starlette aplikuje v opačném pořadí přidání (LIFO):
-    # požadavek projde: CORS → RateLimit → RequestId → SecurityHeaders → router
-    # odpověď projde:   router → SecurityHeaders → RequestId → RateLimit → CORS
+    # požadavek projde: CORS → GZip → RateLimit → RequestId → SecurityHeaders → router
+    # odpověď projde:   router → SecurityHeaders → RequestId → RateLimit → GZip → CORS
     app.add_middleware(_SecurityHeadersMiddleware, csp=_build_csp(_FRONTEND_DIST))
     app.add_middleware(_RequestIdMiddleware)
     app.add_middleware(_RateLimitMiddleware, max_per_minute=rate_limit)
+    # GZip — JSON odpovědi (/api/data, /api/signal ~190 kB) a JS/CSS bundle jsou dobře
+    # komprimovatelné (typicky 5–10×). Přidáno až po ostatních → nejvíc vně (komprimuje finální tělo).
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     if cfg.server.cors_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -293,6 +309,12 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
             allow_headers=["Content-Type", "Authorization"],
             allow_credentials=False,
         )
+
+    @app.exception_handler(NasBusyError)
+    async def _nas_busy(_request: Request, exc: NasBusyError) -> JSONResponse:
+        # Všechna NAS vlákna visí na nedostupném NAS → okamžitě 503, žádné čekání
+        log.warning("[APP]   %s", exc)
+        return JSONResponse(status_code=503, content={"detail": "Vzdálené úložiště (NAS) nereaguje — zkuste později."})
 
     app.include_router(plc_ws.router,     prefix="/ws",  tags=["plc"])
     app.include_router(health.router,     prefix="/api", tags=["health"])

@@ -10,6 +10,9 @@ Zodpovědnost:
   - decimate_minmax() — min-max bucketing (zachová píky/propadliny)
   - extract_zoom_window() — nedecimovaný výřez kolem bodu
   - find_key_points() — FP/OP/RP/TTP indexy z AnalyzedParameters
+  - load_signal() — cache naparsovaných dat (max 2 soubory, invalidace dle mtime/size);
+    souběžné požadavky na tentýž soubor (overview + zoom_op + zoom_rp) parsují jen jednou
+  - prepare_signal_response() — sestaví odpověď pro GET /api/signal
 
 Napojení:
   Závisí na: csv_repository._parse_sectioned (pro AnalyzedParameters)
@@ -17,73 +20,138 @@ Napojení:
 """
 from __future__ import annotations
 
-import csv
+import io
 import logging
 import math
-from io import StringIO
+import threading
+from array import array
+from collections import OrderedDict
 from pathlib import Path
+
+from scada.services.repositories.csv_repository import _parse_sectioned
+
+try:                      # volitelné — rychlé parsování; bez numpy funguje Python cesta
+    import numpy as _np
+except ImportError:       # pragma: no cover
+    _np = None
 
 log = logging.getLogger(__name__)
 
+# Cache naparsovaných signálových dat. Jeden soubor ≈ 400k × 11 hodnot; v array('d')
+# ~35 MB (Python list floatů by byl ~4× víc). Držíme max 2 soubory.
+_CACHE_MAX = 2
+_cache: OrderedDict[Path, tuple[tuple[int, int], dict[str, array] | None, dict[str, dict]]] = OrderedDict()
+_cache_lock = threading.Lock()                       # chrání _cache a _path_locks
+_path_locks: dict[Path, threading.Lock] = {}         # jeden parser na soubor současně
+
+# Cache hotových odpovědí (~100–200 kB každá): (path, mtime, size, varianta, buckets) → dict
+_RESP_CACHE_MAX = 12
+_resp_cache: OrderedDict[tuple, dict | None] = OrderedDict()
+
 # Sloupce SignalData (pořadí v CSV)
+# u_shunt_nc / u_shunt_no v souboru jsou, ale frontend je nezobrazuje → neparsují se
 _SIGNAL_COLS = [
     'ts', 'position', 'force',
-    'u_nc', 'u_no', 'u_shunt_nc', 'u_shunt_no',
+    'u_nc', 'u_no',
     'i_nc', 'i_no', 'r_nc', 'r_no',
 ]
+
+
+_PARSE_BLOCK = 20_000   # řádků na blok (Python cesta) — kompromis rychlost / přechodná paměť
+
+
+def _parse_numpy(text: str, separator: str, targets: list[tuple[int, array]]) -> bool:
+    """Rychlá cesta — numpy.loadtxt (C parser, ~2× rychlejší než Python cesta).
+
+    Vrátí False při vadných datech (chybějící / nečíselná hodnota) → volající použije
+    Python cestu, která vadné hodnoty nahradí 0.0 a zachová zarovnání sloupců.
+    """
+    try:
+        data = _np.loadtxt(
+            io.StringIO(text), delimiter=separator, dtype=_np.float64, ndmin=2,
+            usecols=[i for i, _ in targets], comments=None,
+        )
+    except ValueError:
+        return False
+    for k, (_, arr) in enumerate(targets):
+        arr.frombytes(_np.ascontiguousarray(data[:, k]).tobytes())
+    return True
+
+
+def _parse_python(text: str, separator: str, targets: list[tuple[int, array]], n_cols: int) -> None:
+    """Záložní cesta bez numpy — po blocích: split → zip(*rows) → map(float) (v C)."""
+    lines = text.splitlines()
+    for b in range(0, len(lines), _PARSE_BLOCK):
+        rows = [ln.split(separator) for ln in lines[b:b + _PARSE_BLOCK] if ln.strip()]
+        if rows:
+            _append_rows(rows, targets, n_cols)
+
+
+def _append_rows(rows: list[list[str]], targets: list[tuple[int, array]], n_cols: int) -> None:
+    """Přidá blok řádků do sloupců. Rychlá cesta v C, pomalá jen pro vadný blok."""
+    if all(len(r) >= n_cols for r in rows):
+        cols = list(zip(*rows))
+        try:
+            converted = [(arr, array('d', map(float, cols[i]))) for i, arr in targets]
+        except ValueError:
+            pass                               # nečíselná hodnota → pomalá cesta
+        else:
+            for arr, values in converted:      # extend až po úspěchu všech → zarovnání drží
+                arr.extend(values)
+            return
+    for r in rows:
+        for i, arr in targets:
+            try:
+                arr.append(float(r[i]))
+            except (ValueError, IndexError):
+                arr.append(0.0)
 
 
 def read_signal_data(
     path: Path,
     encoding: str = 'utf-8-sig',
     separator: str = ';',
-) -> dict[str, list[float]] | None:
+) -> dict[str, array] | None:
     """Parsuje [SignalData] sekci z CSV souboru.
 
     Vrací dict se sloupcovými daty: {'ts': [...], 'position': [...], ...}
     Vrátí None pokud soubor neobsahuje [SignalData] sekci.
     """
-    found = False
-    header: list[str] | None = None
-    columns: dict[str, list[float]] = {col: [] for col in _SIGNAL_COLS}
+    columns: dict[str, array] = {col: array('d') for col in _SIGNAL_COLS}
 
     with open(path, encoding=encoding, newline='') as f:
+        # 1) Přeskočit na [SignalData]
+        for raw_line in f:
+            if raw_line.strip().lower() == '[signaldata]':
+                break
+        else:
+            return None
+
+        # 2) Hlavička — odstranit [jednotka], lowercase
+        header: list[str] = []
         for raw_line in f:
             line = raw_line.strip()
-            if not line:
-                continue
-            if line.startswith('[') and line.endswith(']'):
-                section = line[1:-1].lower()
-                if section == 'signaldata':
-                    found = True
-                    header = None
-                    continue
-                elif found:
-                    break  # hit next section after SignalData
-                continue
-            if not found:
-                continue
-            if header is None:
-                # Parse header — strip [unit] suffixes, lowercase
-                raw_headers = [h.strip() for h in line.split(separator)]
-                header = []
-                for h in raw_headers:
+            if line:
+                for h in line.split(separator):
                     bracket = h.find('[')
-                    name = h[:bracket].strip().lower() if bracket >= 0 else h.strip().lower()
-                    header.append(name)
-                continue
-            # Data row
-            vals = line.split(separator)
-            for i, col_name in enumerate(header):
-                if col_name in columns:
-                    # Chybějící / neparsovatelná hodnota → 0.0; všechny sloupce musí mít
-                    # stejnou délku, jinak decimate_minmax() indexuje mimo rozsah.
-                    try:
-                        columns[col_name].append(float(vals[i]))
-                    except (ValueError, IndexError):
-                        columns[col_name].append(0.0)
+                    header.append((h[:bracket] if bracket >= 0 else h).strip().lower())
+                break
 
-    if not found or len(columns.get('ts', [])) == 0:
+        # 3) Data — zbytek souboru najednou (~40 MB), oříznout na případnou další sekci
+        rest = f.read()
+    cut = rest.find('\n[')
+    if cut >= 0:
+        rest = rest[:cut]
+    if not rest.strip():
+        return None
+
+    targets = [(i, columns[name]) for i, name in enumerate(header) if name in columns]
+    if not targets:
+        return None
+    if not (_np is not None and _parse_numpy(rest, separator, targets)):
+        _parse_python(rest, separator, targets, len(header))
+
+    if len(columns['ts']) == 0:
         return None
 
     # Sloupce, které soubor neobsahuje, vynechat (prázdný list by rozbil decimaci)
@@ -254,25 +322,45 @@ def find_key_points(
     return points
 
 
-def has_signal_data(
+def load_signal(
     path: Path,
     encoding: str = 'utf-8-sig',
-) -> bool:
-    """Rychlá kontrola — obsahuje CSV soubor [SignalData] sekci?"""
-    try:
-        with open(path, encoding=encoding) as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if line.lower() == '[signaldata]':
-                    return True
-        return False
-    except OSError:
-        return False
+    separator: str = ';',
+) -> tuple[dict[str, array] | None, dict[str, dict]]:
+    """Vrátí (signal sloupce | None, klíčové body FP/OP/RP/TTP) — z cache, nebo naparsuje soubor.
+
+    Klíčové body se počítají jednou při načtení (argmin přes ~400k vzorků ≈ 40 ms).
+
+    Cache se invaliduje změnou mtime/size. Per-path zámek zajistí, že souběžné
+    požadavky na stejný soubor čekají na jedno parsování místo trojího.
+    """
+    st  = path.stat()
+    sig = (st.st_mtime_ns, st.st_size)
+    with _cache_lock:
+        lock = _path_locks.setdefault(path, threading.Lock())
+    with lock:
+        with _cache_lock:
+            hit = _cache.get(path)
+            if hit is not None and hit[0] == sig:
+                _cache.move_to_end(path)
+                return hit[1], hit[2]
+
+        with open(path, encoding=encoding, newline='') as f:
+            analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
+        raw        = read_signal_data(path, encoding, separator)
+        key_points = find_key_points(analyzed, raw) if raw is not None else {}
+
+        with _cache_lock:
+            _cache[path] = (sig, raw, key_points)
+            _cache.move_to_end(path)
+            while len(_cache) > _CACHE_MAX:
+                evicted, _ = _cache.popitem(last=False)
+                _path_locks.pop(evicted, None)
+        return raw, key_points
 
 
 def prepare_signal_response(
     path: Path,
-    analyzed: dict[str, str],
     mode: str = 'overview',
     n_buckets: int = 1000,
     encoding: str = 'utf-8-sig',
@@ -282,7 +370,6 @@ def prepare_signal_response(
 
     Args:
         path: cesta k CSV souboru
-        analyzed: AnalyzedParameters dict (z _parse_sectioned)
         mode: 'overview' | 'results' | 'hysteresis' | 'zoom_op' | 'zoom_rp'
         n_buckets: počet bucketů pro decimaci
         encoding: kódování CSV
@@ -290,12 +377,34 @@ def prepare_signal_response(
 
     Returns:
         dict s daty pro frontend, nebo None pokud signal data chybí.
+        Hotové odpovědi se cachují (overview/results/hysteresis sdílí stejná decimovaná
+        data) — opakované otevření / přepnutí záložky je bez výpočtu.
     """
-    raw = read_signal_data(path, encoding, separator)
+    st      = path.stat()
+    variant = mode if mode in ('zoom_op', 'zoom_rp') else 'decimated'
+    key     = (path, st.st_mtime_ns, st.st_size, variant, n_buckets if variant == 'decimated' else 0)
+    with _cache_lock:
+        if key in _resp_cache:
+            _resp_cache.move_to_end(key)
+            return _resp_cache[key]
+
+    result = _build_response(path, variant, n_buckets, encoding, separator)
+
+    with _cache_lock:
+        _resp_cache[key] = result
+        _resp_cache.move_to_end(key)
+        while len(_resp_cache) > _RESP_CACHE_MAX:
+            _resp_cache.popitem(last=False)
+    return result
+
+
+def _build_response(
+    path: Path, mode: str, n_buckets: int, encoding: str, separator: str,
+) -> dict | None:
+    """Vypočte odpověď z (cachovaných) surových dat — decimace nebo zoom výřez."""
+    raw, key_points = load_signal(path, encoding, separator)
     if raw is None:
         return None
-
-    key_points = find_key_points(analyzed, raw)
 
     if mode in ('zoom_op', 'zoom_rp'):
         point_key = 'op' if mode == 'zoom_op' else 'rp'
@@ -319,10 +428,11 @@ def _convert_units(
     n = len(data.get('ts', []))
     result: dict = {
         'ts_ms':     [v / 1_000_000 for v in data.get('ts', [])],
-        'position':  data.get('position', []),
-        'force':     data.get('force', []),
-        'u_nc':      data.get('u_nc', []),
-        'u_no':      data.get('u_no', []),
+        # list(): data mohou být array('d') (zoom / malý soubor) — JSON umí jen list
+        'position':  list(data.get('position', [])),
+        'force':     list(data.get('force', [])),
+        'u_nc':      list(data.get('u_nc', [])),
+        'u_no':      list(data.get('u_no', [])),
         'i_nc_ma':   [v * 1000 for v in data.get('i_nc', [])],
         'i_no_ma':   [v * 1000 for v in data.get('i_no', [])],
         'r_nc_log':  [_safe_log10(v) for v in data.get('r_nc', [])],

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada import __version__
 from scada.api.dependencies import require_auth, require_role
+from scada.services.io_pool import NasBusyError, run_io
 from scada.models import (
     ConfigAuthInfo,
     ConfigAdsInfo,
@@ -129,6 +131,14 @@ def _list_children(path_str: str) -> dict[str, object]:
 
     # Prázdná cesta → seznam Windows disků
     if not path_str.strip():
+        # os.listdrives() (Python 3.12+, Windows) čte seznam z OS bez přístupu k disku —
+        # na odpojeném namapovaném síťovém disku neblokuje (Path.exists() ano, až desítky s)
+        if hasattr(os, "listdrives"):
+            try:
+                drives = sorted(d.replace("\\", "/") for d in os.listdrives())
+                return {"path": "", "parent": None, "children": drives}
+            except OSError:
+                pass
         drives: list[str] = []
         for letter in string.ascii_uppercase:
             d = Path(f"{letter}:/")
@@ -171,4 +181,11 @@ async def list_fs(path: str = "") -> dict[str, object]:
     Funguje na libovolném OS — bez GUI závislostí.
     """
     log.debug("[API]   GET /api/config/fs path=%r", path)
-    return await asyncio.to_thread(_list_children, path)
+    # UNC / namapovaný síťový disk může viset — běží v NAS poolu (nezablokuje lokální I/O)
+    # s timeoutem; UI dostane prázdný seznam s chybou místo čekání.
+    location = "remote" if path.startswith(("\\\\", "//")) else "local"
+    try:
+        return await asyncio.wait_for(run_io(location, _list_children, path), timeout=5.0)
+    except (asyncio.TimeoutError, NasBusyError):
+        log.warning("[API]   folder picker: timeout pro %r", path)
+        return {"path": path, "parent": None, "children": [], "error": "timeout"}

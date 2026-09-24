@@ -3,7 +3,7 @@
 > Dokument pro vývojáře. Popisuje co zbývá před nasazením do produkce a v jakém pořadí to dělat.
 > Aktualizovat při každé změně stavu.
 >
-> Poslední aktualizace: 2026-07-31 (kritický audit + security opravy)
+> Poslední aktualizace: 2026-09-24 (hloubkový audit, výkon, úklid dokumentace a kódu)
 
 ---
 
@@ -12,15 +12,17 @@
 | Oblast | Stav | Poznámka |
 |--------|------|---------|
 | Backend (FastAPI, API, ADS) | ✅ Hotovo | Viz CLAUDE.md sekce 13 |
-| Frontend (všechny stránky) | ✅ Hotovo | 5 stránek + ChartView record detail |
+| Frontend (všechny stránky) | ✅ Hotovo | Database (hlavní), ChartView (+ record detail, Signal Data), Settings, Info; Overview odpojen (2026-09-23), kód zachován |
 | Autentizace (PBKDF2, multi-user) | ✅ Hotovo | users.toml, role, Bearer tokeny, PLC auto-login |
 | Security middleware | ✅ Hotovo | CSP (SHA-256 hash), SecurityHeaders, RateLimit, CORS, WS origin |
 | Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat` |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Kritický audit + opravy | ✅ Hotovo | Session TTL (8 h), sessions.clear() scope, privilege escalation — viz audit_log.md 2026-07-31 |
 | Self-hosted fonty | ✅ Hotovo | @fontsource — DM Sans + DM Mono bundlovány do buildu; aplikace funguje bez internetu |
-| Backend testy | ✅ Hotovo | **146 testů** (config, API integration, security, ADS monitor, users); `pytest 02_tests/ -v` |
-| Frontend testy | ✅ Hotovo | **51 testů**, 7 souborů Vitest; `npm run test` |
+| Backend testy | ✅ Hotovo | **183 testů** (config, API, security, ADS monitor, users, výkon/cache); `pytest 02_tests/ -v` |
+| Frontend testy | ✅ Hotovo | **59 testů**, 8 souborů Vitest; `npm run test` |
+| Hloubkový audit 2026-09-24 | ✅ Hotovo | 28 nálezů uzavřeno (M14 přijaté riziko) — viz audit_log.md |
+| Výkon | ✅ Hotovo | cache metadat + signálových dat, numpy parser, prefetch, NAS pool, gzip, code-splitting |
 | Dokumentace kódu | ✅ Hotovo | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Řazení sloupců (Database) | ✅ Hotovo | Klik na záhlaví → server-side sort |
 | Hromadné mazání (Database) | ✅ Hotovo | Checkboxy + batch-delete endpoint + potvrzovací modal |
@@ -96,7 +98,7 @@ Viz `04_docs/deployment.md` pro detaily.
 
 - [x] Build pipeline: `build.bat` → exe funguje *(✅ 2026-07-29)*
 - [x] Security: CSP, SecurityHeaders, RateLimit, CORS, WS origin check *(✅ 2026-07-30)*
-- [x] Testy: 146 backend + 51 frontend, vše zelené *(✅ 2026-07-31)*
+- [x] Testy: 183 backend + 59 frontend, vše zelené *(✅ 2026-09-24)*
 - [x] Dokumentace kódu: strukturované hlavičky ve všech klíčových souborech *(✅ 2026-07-31)*
 - [ ] AnalyzedParams: zákaznické sloupce zobrazeny dle dohody s Trafag
 - [ ] Produkční Config.toml: cors_origins, ADS net_id, cesty k datům

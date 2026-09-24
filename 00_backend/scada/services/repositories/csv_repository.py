@@ -89,6 +89,10 @@ class CsvRepository:
 
     def __init__(self, cfg: DataConfig) -> None:
         self._cfg = cfg
+        # Cache metadat: cesta → ((mtime_ns, size), meta). Bez ní /api/files při každém
+        # volání (auto-refresh 30 s) četl všechny CSV celé kvůli record_count — na NAS drahé.
+        # Soubory DONE se po uzavření nemění; změna mtime/size cache invaliduje.
+        self._meta_cache: dict[Path, tuple[tuple[int, int], dict | None]] = {}
 
     # ------------------------------------------------------------------
     # Skenování složek
@@ -97,21 +101,9 @@ class CsvRepository:
     def list_local(self, file_type: str) -> list[dict]:
         """Skenuje done_local/ + done_remote/ — vrátí surová metadata bez datumového filtru."""
         base = Path(self._cfg.local_path)
-        folders = [
-            ('done_local',  base / file_type / 'done_local'),
-            ('done_remote', base / file_type / 'done_remote'),
-        ]
-        results = []
-        for sync_status, folder in folders:
-            if not folder.exists():
-                continue
-            for csv_path in sorted(folder.glob('*_DONE.csv'), reverse=True):
-                try:
-                    meta = self.read_file_meta(csv_path, file_type, 'local', sync_status)
-                    if meta:
-                        results.append(meta)
-                except Exception as exc:
-                    log.warning("[CSV]   přeskočen %s: %s", csv_path.name, exc)
+        results: list[dict] = []
+        for sync_status in ('done_local', 'done_remote'):
+            results.extend(self._scan_folder(base / file_type / sync_status, file_type, 'local', sync_status))
 
         results.sort(key=lambda x: x['created_at'], reverse=True)
         log.debug("[CSV]   list_local %s → %d souborů", file_type, len(results))
@@ -123,16 +115,42 @@ class CsvRepository:
         if not folder.exists():
             log.warning("[CSV]   NAS složka nedostupná: %s", folder)
             return []
-        results = []
+        results = self._scan_folder(folder, file_type, 'remote', None)
+        log.debug("[CSV]   list_remote %s → %d souborů", file_type, len(results))
+        return results
+
+    def _scan_folder(
+        self,
+        folder:      Path,
+        file_type:   str,
+        location:    str,
+        sync_status: str | None,
+    ) -> list[dict]:
+        """Metadata všech *_DONE.csv ve složce — z cache, soubor čte jen při změně mtime/size."""
+        if not folder.exists():
+            return []
+        results: list[dict] = []
+        seen: set[Path] = set()
         for csv_path in sorted(folder.glob('*_DONE.csv'), reverse=True):
+            seen.add(csv_path)
             try:
-                meta = self.read_file_meta(csv_path, file_type, 'remote', None)
+                st  = csv_path.stat()
+                sig = (st.st_mtime_ns, st.st_size)
+                hit = self._meta_cache.get(csv_path)
+                if hit is not None and hit[0] == sig:
+                    meta = hit[1]
+                else:
+                    meta = self.read_file_meta(csv_path, file_type, location, sync_status)
+                    self._meta_cache[csv_path] = (sig, meta)
                 if meta:
-                    results.append(meta)
+                    results.append(dict(meta))   # kopie — volající nesmí měnit cache
             except Exception as exc:
                 log.warning("[CSV]   přeskočen %s: %s", csv_path.name, exc)
 
-        log.debug("[CSV]   list_remote %s → %d souborů", file_type, len(results))
+        # Úklid: smazané / přesunuté soubory (done_local → done_remote) z cache odstranit
+        # list(dict) je pod GIL atomický — souběžné požadavky (to_thread) mohou cache měnit
+        for stale in [p for p in list(self._meta_cache) if p.parent == folder and p not in seen]:
+            self._meta_cache.pop(stale, None)
         return results
 
     # ------------------------------------------------------------------
@@ -334,7 +352,8 @@ class CsvRepository:
                         records.append(rec)
                     elif offset < total <= offset + per_page:
                         records.append(rec)
-        except (OSError, UnicodeDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, csv.Error) as exc:
+            # csv.Error: NUL byte, překročený field_size_limit — poškozený soubor ≠ HTTP 500
             log.error("[CSV]   chyba čtení %s: %s", path.name, exc)
             return [], 0, {}, None
         return records, total, group_counts, file_expected_count

@@ -278,12 +278,6 @@
   gap: var(--space-3);
 }
 
-.testing-hero__nok {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
 /* SECTION TABS — hlavní úroveň záložek (sekce CSV souboru) */
 
 .cv-section-tabs {
@@ -478,13 +472,6 @@
 }
 
 /* PARAMS PLACEHOLDER */
-
-.chart-params-placeholder {
-  padding: var(--space-8) var(--space-6);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  font-style: italic;
-}
 
 /* RECORD DIAGRAM */
 

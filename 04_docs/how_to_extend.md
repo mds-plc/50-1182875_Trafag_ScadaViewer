@@ -21,65 +21,55 @@
 
 ## 1. Přidat nový ADS symbol
 
-**Kdy:** Chceš monitorovat další PLC proměnnou (BOOL/INT/REAL) na stránce Overview.
+**Kdy:** Chceš číst další PLC proměnnou (BOOL / UINT / STRING…).
+
+> **Pravidlo:** Symbol musí nejdřív existovat v PLC ve struktuře `ST_ADS_API_ScadaViewerApp`
+> (GVL `GV_IO_ADS_API.ScadaViewerApp`) — export struktury je v `05_user_data/plc_communication/*.xml`.
+> Změny GVL konzultovat s automatizačním inženýrem.
 
 ### Krok 1 — constants.py
 
 ```python
 # 00_backend/scada/constants.py
-GVL_BASE = "GV_IO_ADS_API.DatabaseGateway"
+GVL_SV = "GV_IO_ADS_API.ScadaViewerApp"
 
 SYM: dict[str, str] = {
-    "in_heartbeat":     f"{GVL_BASE}.In.Status.Heartbeat",
-    "in_ready":         f"{GVL_BASE}.In.Status.Ready",
-    "in_local":         f"{GVL_BASE}.In.Status.LocalStorage",
-    "in_remote":        f"{GVL_BASE}.In.Status.RemoteStorage",
-    # ↓ Přidej sem nový symbol
-    "in_order_active":  f"{GVL_BASE}.In.Status.OrderActive",   # příklad
+    "mode":         f"{GVL_SV}.Out.Status.Mode",
+    # ↓ nový symbol — klíč = krátký alias (snake_case), hodnota = plná ADS cesta
+    "cycle_count":  f"{GVL_SV}.Out.Status.CycleCount",
+}
+
+# Jen pro ne-BOOL typy (BOOL je výchozí, 1 byte):
+SYM_TYPES: dict[str, tuple[type, int]] = {
+    "cycle_count": (pyads.PLCTYPE_UINT, 2),
 }
 ```
 
-> **Pravidlo:** Klíč = krátký alias (snake_case), hodnota = plná ADS adresa.
-> Po implementaci AdsMonitor se symbol automaticky zaregistruje v notifikacích.
+### Krok 2 — Backend: nic dalšího
 
-### Krok 2 — AdsMonitor (až bude implementován)
+`AdsMonitor._connect()` iteruje celý `SYM` a zaregistruje notifikaci (`ADSTRANS_SERVERONCHA`)
+automaticky. Hodnota jde do `monitor.current_values[alias]` a přes WS `/ws/plc` jako
+`{"symbol": "cycle_count", "value": 123, "ts": "…"}`. Po výpadku ADS se mažou i z WS cache.
 
-```python
-# 00_backend/scada/services/ads_monitor.py
-# Pokud AdsMonitor iteruje SYM automaticky → žádná změna
-# Pokud registruješ manuálně:
-for sym_key, sym_path in SYM.items():
-    plc.add_device_notification(sym_path, ...)
+### Krok 3 — Frontend: použít v komponentě
+
+```tsx
+import { usePlc } from '../context/PlcContext'
+
+const { status, adsConnected } = usePlc()
+const cycles = adsConnected ? status['cycle_count']?.value : undefined   // bez ADS nezobrazovat
 ```
 
-### Krok 3 — Frontend reaguje automaticky
-
-`PlcContext.tsx` ukládá všechny zprávy jako `status[symbol]`.
-`PlcStatus.tsx` zobrazuje všechny přijaté symboly dynamicky — **žádná změna v komponentě není nutná**.
-
-### Krok 4 — (Volitelné) Přidat popis symbolu
-
-Pokud chceš lokalizovaný název místo holého klíče `in_order_active`:
-
-```ts
-// src/i18n/types.ts — přidat do sekce plc
-plcSymbols?: Record<string, string>
-
-// src/i18n/cs.ts
-plcSymbols: { 'in_order_active': 'Zakázka aktivní' }
-
-// src/i18n/en.ts
-plcSymbols: { 'in_order_active': 'Order active' }
-
-// PlcStatus.tsx
-const label = t.plcSymbols?.[s.symbol] ?? s.symbol
-```
+Není žádná generická komponenta, která by zobrazovala všechny symboly — symbol se zobrazí
+jen tam, kde ho komponenta explicitně použije.
 
 ### Checklist
 
-- [ ] `constants.py` — přidán do `SYM`
-- [ ] `CLAUDE.md § 6` — aktualizovat tabulku ADS symbolů
-- [ ] Otestovat: backend loguje `[ADS] registrován symbol in_order_active`
+- [ ] Symbol existuje v PLC GVL `ScadaViewerApp`
+- [ ] `constants.py` — `SYM` (+ `SYM_TYPES` pro ne-BOOL)
+- [ ] Komponenta čte `status[alias]` jen při `adsConnected`
+- [ ] `CLAUDE.md § 6` — tabulka ADS symbolů
+- [ ] Log backendu: `[ADS]   notifikace: cycle_count → …`
 
 ---
 
@@ -100,56 +90,68 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Query, Request
+
+from scada.api.dependencies import require_auth
+from scada.services.io_pool import run_io
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 
 
-@router.get("/stats")
-async def get_stats(request: Request):
-    # Synchronní I/O vždy přes asyncio.to_thread() — nablokuje event loop!
-    # result = await asyncio.to_thread(some_service.compute, ...)
-    return {"example": 42}
+@router.get("/stats", dependencies=[Depends(require_auth)])      # ← autentizace
+async def get_stats(request: Request, location: str = Query('local')):
+    reader = request.app.state.csv_reader
+    # Souborové I/O VŽDY přes run_io — NAS ve vlastním poolu, lokál v to_thread
+    result = await asyncio.wait_for(
+        run_io(location, reader.list_files, location=location),
+        timeout=30.0 if location == 'remote' else 10.0,
+    )
+    return {"count": len(result)}
 ```
 
-> **Pravidlo:** Každé synchronní I/O (soubory, síť, DB) MUSÍ jít přes `asyncio.to_thread()`.
-> Viz `fastapi-patterns.md` a audit_log.md — kritická chyba při blokujícím I/O.
+> **Pravidla:**
+> - Každé souborové / síťové I/O přes `run_io(location, …)` (ne holý `asyncio.to_thread`) —
+>   zaseknutý NAS pak nezablokuje zbytek aplikace. CPU práce (hash) → `asyncio.to_thread`.
+> - Chráněný endpoint = `Depends(require_auth)` nebo `Depends(require_role("admin"))`.
+> - Velká JSON odpověď (tisíce čísel) → `return JSONResponse(content=result)`.
+> Viz `.claude/rules/fastapi-patterns.md`.
 
 ### Krok 2 — Registrovat v app.py
 
 ```python
 # 00_backend/scada/app.py
-from scada.api import files, data, status, plc_ws, stats   # ← přidat import
+from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, stats
 
-app.include_router(stats.router, prefix="/api", tags=["stats"])   # ← přidat řádek
+app.include_router(stats.router, prefix="/api", tags=["stats"])
 ```
 
-> **Pořadí registrace:** Nový router přidej **před** `StaticFiles` (pokud je aktivní).
+> **Pořadí registrace:** routery vždy **před** `app.mount("/", StaticFiles…)`.
+> Nový modul přidej i do `hiddenimports` v `06_build/exe/scada.spec`.
 
 ### Krok 3 — Přidat typ odpovědi (frontend)
 
 ```ts
 // src/types/index.ts
 export interface StatsResponse {
-  example: number
+  count: number
 }
 ```
 
-### Krok 4 — Přidat hook do useData.ts
+### Krok 4 — Přidat hook
 
-Vzor AbortController je povinný — bez něj race conditions při React 18 Strict Mode:
+AbortController + `apiFetch` jsou povinné (race conditions ve Strict Mode; odhlášení při vypršelé session):
 
 ```ts
-// src/hooks/useData.ts
+// src/hooks/useStats.ts
+import { apiFetch } from '../utils/apiFetch'
+
 export function useStats() {
+  const { token } = useAuth()
   const [data,    setData]    = useState<StatsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const { t } = useLang()
-  const tRef = useRef(t)
-  tRef.current = t
 
   const fetchStats = useCallback(async () => {
     abortRef.current?.abort()
@@ -158,17 +160,17 @@ export function useStats() {
 
     setLoading(true); setError(null)
     try {
-      const res = await fetch('/api/stats', { signal: ctrl.signal })
+      const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+      const res = await apiFetch('/api/stats', { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json: StatsResponse = await res.json()
-      setData(json)
+      setData(await res.json() as StatsResponse)
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return
-      setError(e instanceof Error ? e.message : tRef.current.common.errorLoading)
+      setError(e instanceof Error ? e.message : 'Error')
       setLoading(false)
     }
-  }, [])
+  }, [token])
 
   return { data, loading, error, fetchStats }
 }
@@ -218,10 +220,15 @@ export default function NewPage() {
 ### Krok 2 — Přidat route do App.tsx
 
 ```tsx
-// src/App.tsx
-import NewPage from './pages/NewPage'
+// src/App.tsx — code-splitting: stránka ve vlastním chunku
+const loadNewPage = () => import('./pages/NewPage')
+const NewPage     = lazy(loadNewPage)
 
-// Uvnitř <Routes>:
+function preloadPages(): void {
+  void loadChartView(); void loadSettings(); void loadInfo(); void loadNewPage()   // ← přidat
+}
+
+// Uvnitř <Routes> (obaleno <Suspense>):
 <Route path="/new" element={<NewPage />} />
 ```
 
@@ -229,7 +236,7 @@ import NewPage from './pages/NewPage'
 
 ```tsx
 // src/components/Sidebar.tsx — do pole NAV_ITEMS
-{ to: '/new', icon: <SomeIcon size={17} />, label: t.nav.newPage },
+{ to: '/new', label: t.nav.newPage, icon: SomeIcon, extraPaths: [] },
 ```
 
 Ikony: viz [lucide.dev](https://lucide.dev) — importovat z `lucide-react`.
@@ -353,75 +360,45 @@ Pro texty s proměnnými (např. "Soubor: ORDER_001.csv"):
 
 ## 5. Přidat nový CSV sloupec
 
-**Kdy:** DatabaseGateway začne zapisovat nový sloupec (po dohodě s Trafag).
+**Kdy:** DatabaseGateway začne zapisovat nový sloupec / parametr (po dohodě s Trafag).
 
 > **Pravidlo:** Nejdřív domluvit název sloupce s DatabaseGateway týmem.
-> CsvReader normalizuje klíče na lowercase — sloupec `MyColumn` → klíč `mycolumn`.
+> `CsvRepository._normalize_key()` klíče normalizuje: lowercase + odstraní jednotku
+> v hranatých závorkách — `OF_OperatingForce [N]` → `of_operatingforce`.
 
-### Krok 1 — Aktualizovat typ CsvRecord
+### Krok 1 — Backend: nic
 
-```ts
-// src/types/index.ts
-export interface CsvRecord {
-  timestamp:       string
-  order?:          string   // pouze production
-  microswitch_id:  string
-  microswitch_name: string
-  // ↓ Přidat nový sloupec
-  pressure_bar?:   string   // nový zákaznický sloupec (vždy string z CSV)
-  [key: string]: string | undefined  // fallback pro neznámé sloupce
-}
-```
+`CsvRecordModel` má `extra='allow'` — nový sloupec projde API automaticky
+(ve všech 3 formátech CSV: jednodílný, dvoudílný, sekční).
 
-### Krok 2 — Zobrazit v ExpandedRow (Database.tsx)
-
-```tsx
-// src/pages/Database.tsx — přidat do cols array
-const cols = dataType === 'production'
-  ? [
-      { key: 'timestamp',       label: t.db.colTimestamp },
-      { key: 'order',           label: t.db.colOrder     },
-      { key: 'microswitch_id',  label: t.db.colId        },
-      { key: 'microswitch_name', label: t.db.colSwitch   },
-      { key: 'pressure_bar',    label: t.db.colPressure  }, // ← přidat
-    ]
-  : [ /* testing cols */ ]
-```
-
-### Krok 3 — Přidat překlad názvu sloupce
+### Krok 2 — Zařadit parametr do skupiny
 
 ```ts
-// src/i18n/types.ts — do sekce db
-colPressure: string
-
-// cs.ts
-colPressure: 'Tlak [bar]'
-
-// en.ts
-colPressure: 'Pressure [bar]'
+// src/utils/paramMeta.ts — jediný zdroj popisků parametrů
+export const PARAM_LABELS   = { …, pr_pressure: 'PR' }                        // zkratka
+export const PARAM_TOOLTIPS = { …, pr_pressure: 'Pressure [bar]' }            // popis + jednotka
+export const PARAM_GROUPS   = [ …,
+  { id: 'forces', label: 'Forces', unit: 'N', color: '#d97706',
+    keys: ['of_operatingforce', …, 'pr_pressure'] },                         // ← do skupiny
+]
 ```
 
-### Krok 4 — Přidat do ChartView
+Zařazením do `PARAM_GROUPS` se sloupec automaticky objeví v záložkách tabulky ChartView
+(`TABLE_TABS`) i v `ParamTable` detailu záznamu (`RecordDiagram.tsx`).
 
-```tsx
-// src/pages/ChartView.tsx — přidat do výběru osy Y
-// src/components/Chart.tsx — aktualizovat dataKey na nový sloupec
-<Line dataKey="pressure_bar" stroke={tokens.accent} dot={false} />
+### Krok 3 — (Volitelně) Typ
+
+```ts
+// src/types/index.ts — jen pokud s polem pracuje kód explicitně
+export interface CsvRecord { …; pr_pressure?: string }
 ```
-
-### Krok 5 — Aktualizovat dokumentaci
-
-- `CLAUDE.md § 6` — tabulka CSV sloupců
-- `04_docs/architecture.md` — datový model
 
 ### Checklist
 
 - [ ] Domluveno s DatabaseGateway týmem (název, formát, jednotka)
-- [ ] `types/index.ts` — `CsvRecord` aktualizován
-- [ ] `pages/Database.tsx` — přidán do `cols`
-- [ ] `i18n/*.ts` — přeložený název sloupce
-- [ ] `pages/ChartView.tsx` + `components/Chart.tsx` — vizualizace
-- [ ] `CLAUDE.md § 6` — dokumentace CSV formátu
+- [ ] `utils/paramMeta.ts` — `PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS`
+- [ ] Sentinel hodnota (≥ 999999 = otevřený kontakt) — ChartView ji u neelektrických veličin skrývá
+- [ ] `CLAUDE.md § 6` — tabulka CSV sloupců
 
 ---
 
@@ -549,10 +526,10 @@ Pokud DatabaseGateway sync interval změní zákazník, aktualizuj oba hodnoty.
 
 **Kdy:** Přibude nová kategorie souborů (vedle `production` a `testing`).
 
-### Backend — CsvReader
+### Backend — CsvRepository
 
 ```python
-# 00_backend/scada/services/csv_reader.py
+# 00_backend/scada/services/repositories/csv_repository.py
 _SAFE_FILE_TYPE = frozenset({'production', 'testing', 'calibration'})  # ← přidat
 ```
 
@@ -569,8 +546,11 @@ DatabaseGateway musí zapisovat do nové podsložky:
 ### Frontend
 
 ```ts
-// src/pages/Database.tsx — DataType type a tlačítka
-type DataType = 'production' | 'testing' | 'calibration'
+// src/hooks/useDatabaseState.ts — DataType + validace z localStorage
+export type DataType = 'production' | 'testing' | 'calibration'
+const isDataType = (v: unknown): v is DataType => v === 'production' || v === 'testing' || v === 'calibration'
+
+// src/pages/Database.tsx
 
 // Přidat třetí tab button
 <button onClick={() => setDataType('calibration')}>
@@ -582,9 +562,9 @@ Přidat překlady `tabCalibration` do `i18n/types.ts`, `cs.ts`, `en.ts`.
 
 ### Checklist
 
-- [ ] `csv_reader.py _SAFE_FILE_TYPE` — nový typ povolen
+- [ ] `csv_repository.py _SAFE_FILE_TYPE` — nový typ povolen
 - [ ] DatabaseGateway — složková struktura domluvena
-- [ ] Frontend `Database.tsx` — nový tab + DataType
+- [ ] Frontend `useDatabaseState.ts` (DataType, isDataType) + `Database.tsx` (tab)
 - [ ] i18n — přeložený název tabu
 - [ ] `CLAUDE.md` — aktualizovat popis datových typů
 
@@ -593,13 +573,14 @@ Přidat překlady `tabCalibration` do `i18n/types.ts`, `cs.ts`, `en.ts`.
 ## Obecné principy při rozšiřování
 
 ### Backend
-1. Synchronní I/O vždy v `asyncio.to_thread()` — nikdy přímo v `async def`
+1. Souborové / síťové I/O vždy přes `run_io(location, …)` (NAS pool); CPU práce `asyncio.to_thread()`
 2. Error handling: `try/except (OSError, PermissionError)` → `HTTPException(503/404/500)`
-3. Logging: `log.debug("[MOD] ...")` s 7-znakovým prefixem
-4. Vstupní validace v `_validate_params()` nebo na začátku endpointu
+3. Logging: `log.debug("[MOD]   ...")` s 7-znakovým prefixem (`[API]`, `[ADS]`, `[CSV]`, `[SVC]`, `[WS]`)
+4. Vstupní validace v `CsvRepository.validate_params()` nebo na začátku endpointu
+5. Výkon: neobcházet cache (`_meta_cache`, `signal_reader` cache) — viz `fastapi-patterns.md`
 
 ### Frontend
-1. Každý nový fetch — AbortController vzor (viz `useData.ts`)
+1. Každý nový fetch — `apiFetch` + AbortController vzor (viz `useData.ts`)
 2. Každý viditelný text — přes `t.*` (nikdy hardcoded)
 3. Každý nový styl — design tokeny z `variables.css`
 4. TypeScript: explicitní interface, žádné `any`

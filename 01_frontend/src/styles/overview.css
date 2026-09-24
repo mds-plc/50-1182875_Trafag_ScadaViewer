@@ -244,32 +244,7 @@
   flex-direction: column;
 }
 
-
 /* ── Progress bar v ORDER tile ──────────────────────────────────────────── */
-
-.ov-progress {
-  display:     flex;
-  align-items: center;
-  gap:         var(--space-2);
-}
-.ov-progress__bar {
-  flex:          1;
-  height:        6px;
-  background:    var(--color-surface-2);
-  border-radius: 3px;
-  overflow:      hidden;
-}
-.ov-progress__fill {
-  height:        100%;
-  background:    var(--color-success);
-  border-radius: 3px;
-  transition:    width 0.4s ease;
-}
-.ov-progress__text {
-  font-size:   var(--font-size-xs);
-  color:       var(--color-text-muted);
-  white-space: nowrap;
-}
 
 /* ── Boxy ────────────────────────────────────────────────────────────────── */
 
@@ -474,23 +449,7 @@
   flex-shrink: 0;
 }
 
-.ov-kpi__meta {
-  font-size:   var(--font-size-xs);
-  font-family: var(--font-mono);
-  color:       var(--color-text-muted);
-  margin-top:  auto;
-  padding-top: var(--space-3);
-  border-top:  1px solid var(--color-border);
-}
-
-
 /* ── Tile header — pravá strana (timestamp + akční tlačítka) ────────────── */
-
-.tile__header-right {
-  display:     flex;
-  align-items: center;
-  gap:         var(--space-3);
-}
 
 .ov-ts-mono {
   font-size:   var(--font-size-xs);
@@ -500,38 +459,6 @@
 }
 
 /* ── Poslední záznam ────────────────────────────────────────────────────── */
-
-.ov-last-record {
-  display:   flex;
-  flex-wrap: wrap;
-  gap:       var(--space-2) var(--space-8);
-  padding:   var(--space-3) 0 var(--space-2);
-}
-
-.ov-last-record__field {
-  display:        flex;
-  flex-direction: column;
-  gap:            var(--space-1);
-  min-width:      120px;
-}
-
-.ov-last-record__label {
-  font-size:      var(--font-size-xs);
-  font-weight:    600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color:          var(--color-text-muted);
-}
-
-.ov-last-record__value {
-  font-size:   var(--font-size-lg);
-  font-weight: 700;
-  color:       var(--color-text-primary);
-}
-
-.ov-last-record__value--mono {
-  font-family: var(--font-mono);
-}
 
 /* ── Seznam posledních záznamů (tile--4 vedle grafu) ────────────────────── */
 
@@ -683,11 +610,6 @@
   text-align: center;
   color:      var(--color-text-muted);
   font-size:  var(--font-size-sm);
-}
-
-.ov-records__count {
-  font-weight: 400;
-  color:       var(--color-text-muted);
 }
 
 /* ── WIP soubor — název v tile header ───────────────────────────────────── */

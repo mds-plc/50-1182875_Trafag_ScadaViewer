@@ -42,7 +42,8 @@ const fetchData = useCallback(async () => {
 
   setLoading(true)
   try {
-    const res = await fetch(url, { signal: ctrl.signal })
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+    const res = await apiFetch(url, { signal: ctrl.signal, headers })   // ne holý fetch!
     const data = await res.json()
     setData(data)
     setLoading(false)
@@ -53,6 +54,18 @@ const fetchData = useCallback(async () => {
   }
 }, [url])
 ```
+
+## apiFetch — VŽDY pro autentizovaná volání
+
+`utils/apiFetch.ts` — stejné API jako `fetch`. Při 401 + `WWW-Authenticate: Bearer` vyšle
+událost `scada:unauthorized` → `AuthContext` odhlásí (lokální login) nebo obnoví PLC login.
+Holý `fetch` jen pro veřejné endpointy (`/api/health`, `/api/auth/login`).
+
+## Code-splitting
+
+Nová stránka (kromě hlavní Database) → `lazy(() => import('./pages/X'))` v `App.tsx`
++ přidat do `preloadPages()`. Těžké knihovny použité jen v akci (např. `xlsx`) → dynamický
+`await import('…')` uvnitř funkce.
 
 ## WebSocket — pattern s reconnect (PlcContext vzor)
 

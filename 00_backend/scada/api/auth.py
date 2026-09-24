@@ -87,6 +87,15 @@ def _clear_failures(ip: str) -> None:
     _FAILURES.pop(ip, None)
 
 
+# TOML string libovolné varianty: multiline basic, multiline literal, basic, literal
+_TOML_STRING = '|'.join([
+    r'"""[\s\S]*?"""',
+    r"'''[\s\S]*?'''",
+    r'"[^"\n]*"',
+    r"'[^'\n]*'",
+])
+
+
 def _update_config_file(config_path, new_hash: str) -> bool:
     """
     Aktualizuje password_hash v Config.toml (regex replace).
@@ -94,21 +103,22 @@ def _update_config_file(config_path, new_hash: str) -> bool:
 
     Vrátí True pokud soubor byl úspěšně aktualizován.
 
-    Poznámka k L2: regex `"[^"]*"` nepokrývá TOML multiline stringy (\"\"\"...\"\"\").
-    PBKDF2 hashe jsou vždy ve formátu `salt:hexdigest` (žádné newlines) — multiline
-    formát se v praxi nevyskytuje. Při chybějící shodě padá regex přes větev `'[auth]'`.
+    Regex pokrývá všechny TOML varianty stringu — basic, literal i multiline — hodnota
+    se přepíše na basic string. Chybí-li klíč, doplní se do sekce [auth] (nebo ji vytvoří).
     """
     if config_path is None:
         return False
     try:
         text     = config_path.read_text(encoding='utf-8')
         # Lambda jako replacement zabraňuje interpretaci escape sekvencí (\1, \2…) v new_hash.
-        new_text = re.sub(
-            r'(password_hash\s*=\s*)"[^"]*"',
+        new_text, n = re.subn(
+            r'(password_hash\s*=\s*)(' + _TOML_STRING + ')',
             lambda m: f'{m.group(1)}"{new_hash}"',
             text,
+            count=1,
         )
-        if new_text == text:
+        # n (ne porovnání textu) — stejný hash by jinak vedl k duplicitnímu klíči
+        if n == 0:
             if '[auth]' in text:
                 new_text = re.sub(
                     r'(\[auth\][^\[]*)',
@@ -261,9 +271,16 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
     if not body.new_password or not body.new_password.strip():
         raise HTTPException(status_code=400, detail="Nové heslo nesmí být prázdné")
 
-    # Ověř session token
-    session = request.app.state.sessions.get(body.token)
-    if session is None:
+    client_ip = request.client.host if request.client else "0.0.0.0"
+    # Stejný lockout jako login — ukradený token nesmí umožnit neomezené hádání hesla
+    if _is_locked(client_ip):
+        raise HTTPException(status_code=429, detail="Příliš mnoho neúspěšných pokusů — zkuste za 10 minut")
+
+    # Ověř session token včetně TTL (stejné pravidlo jako require_auth)
+    sessions = request.app.state.sessions
+    session  = sessions.get(body.token)
+    if session is None or time.time() - session.get("created_at", 0.0) > SESSION_TTL_SECS:
+        sessions.pop(body.token, None)
         raise HTTPException(status_code=401, detail="Neplatný token — přihlaste se znovu")
 
     users    = request.app.state.users
@@ -274,12 +291,14 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
     if user is None:
         raise HTTPException(status_code=401, detail="Uživatel nenalezen")
 
-    # Ověř aktuální heslo
-    if not verify_password(body.current_password, user.password_hash):
+    # Ověř aktuální heslo (PBKDF2 mimo event loop)
+    if not await asyncio.to_thread(verify_password, body.current_password, user.password_hash):
+        _record_failure(client_ip)
         log.warning("[AUTH]  změna hesla: špatné aktuální heslo pro %r", username)
         raise HTTPException(status_code=401, detail="Špatné aktuální heslo")
 
-    new_hash = hash_password(body.new_password)
+    _clear_failures(client_ip)
+    new_hash = await asyncio.to_thread(hash_password, body.new_password)
     user.password_hash = new_hash
 
     # Persistuj — users.toml má přednost před Config.toml

@@ -1,5 +1,9 @@
 # ScadaViewer — Kritická analýza architektury
 
+> ⚠️ **Historický dokument** — analýza ke stavu 2026-07-20. Většina bodů je vyřešena;
+> aktuální stav a otevřené nálezy viz `04_docs/audit_log.md` (sekce „Aktuálně otevřené nálezy")
+> a `04_docs/roadmap.md`. Dokument se dále neaktualizuje.
+
 > Původní datum: 2026-07-19
 > Aktualizováno: 2026-07-20
 > Účel: hloubkový rozbor vrstev, propojení a rozšiřitelnosti — ne hledání bugů,

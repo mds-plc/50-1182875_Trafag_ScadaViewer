@@ -242,27 +242,3 @@
 /* DIVIDER */
 
 .divider          { width: 100%; height: 1px; background: var(--color-border); }
-.divider--vertical { width: 1px; height: 18px; background: var(--color-border); }
-
-/* STAT VALUE */
-
-.stat-value {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
-  font-variant-numeric: tabular-nums;
-}
-
-.stat-value--success { color: var(--color-success); }
-.stat-value--warning { color: var(--color-warning); }
-.stat-value--danger  { color: var(--color-danger);  }
-.stat-value--accent  { color: var(--color-accent);  }
-
-.stat-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  margin-top: var(--space-1);
-}

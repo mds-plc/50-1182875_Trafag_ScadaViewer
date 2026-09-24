@@ -101,8 +101,9 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       const json = await res.json()
       if (!Array.isArray(json.files)) throw new Error(tRef.current.common.errorInvalidResponse)
       setFiles(json.files)
-      setTotal(json.total  ?? json.files.length)
-      setPages(json.pages  ?? 1)
+      // Validace tvaru odpovědi — neočekávaný typ nesmí rozbít stránkování
+      setTotal(typeof json.total === 'number' ? json.total : json.files.length)
+      setPages(typeof json.pages === 'number' && json.pages >= 1 ? json.pages : 1)
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return   // přerušeno novějším requestem — ignorovat

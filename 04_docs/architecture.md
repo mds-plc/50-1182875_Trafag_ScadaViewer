@@ -460,6 +460,30 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 - **Skrytý badge při offline** — průmyslový SCADA standard: místo chybového stavu v badgeu jednoduchá ikona; operátor okamžitě ví co se děje
 - **WIP REST + WS merge** — obnovení stránky ztrácí WS historii; REST snapshot + dedup dle `timestamp` zajistí konzistenci bez race condition
 
+### Fáze 21 — Hloubkový audit + výkon (2026-09-24)
+
+**Oprava chyb (audit 2026-09-24, viz `audit_log.md`):** zápis cest do `Config.toml`, stale `.js`
+v `src/` (tsconfig `noEmit`), folder picker bez tokenu, neúplný XLSX export, staré PLC hodnoty
+ve WS cache po výpadku ADS, `:` v `file_id`, signálová data v event loopu.
+
+**Autentizace:** `require_auth` vrací 401 + `WWW-Authenticate: Bearer`; frontend volá API přes
+`utils/apiFetch.ts`, který při neplatné session vyšle `scada:unauthorized` → `AuthContext`
+odhlásí (lokální login: hláška „Relace vypršela") nebo tiše obnoví PLC login.
+`isLoggedIn = localLogin || (plcLoggedIn && plcToken)`.
+
+**Výkon:**
+
+| Oblast | Řešení | Efekt |
+|--------|--------|-------|
+| `/api/files` | cache metadat v `CsvRepository._meta_cache` dle `(mtime_ns, size)` | auto-refresh nečte CSV znovu |
+| `/api/signal` — parsování | numpy `loadtxt` (fallback: Python po blocích `zip` + `map(float)`), jen 9 zobrazovaných sloupců, `array('d')` | 42 MB soubor ~940 → ~430 ms |
+| `/api/signal` — cache | `load_signal()` LRU 2 souborů + per-path zámek; klíčové body počítány jednou; cache hotových odpovědí (12) | další režimy / záložky < 1 ms |
+| `/api/signal` — prefetch | `/api/data` u souboru s `[SignalData]` spustí parsování na pozadí | záložka Signal se otevře z cache |
+| NAS I/O | `services/io_pool.run_io()` — NAS ve vlastním poolu (4 vlákna); plný pool → okamžitě 503 | zaseknutý NAS nezpomalí lokální disk ani login |
+| Přenos | `GZipMiddleware` (JSON + JS/CSS), `Cache-Control: immutable` pro `/assets/*` | 5–10× méně dat, žádné 304 revalidace |
+| Frontend bundle | code-splitting (ChartView/Settings/Info lazy + preload v idle), `xlsx` dynamický import, vendor chunky `react` / `charts` | úvodní JS 1 007 → 641 kB |
+| Login | PBKDF2 v `asyncio.to_thread` | login neblokuje WS broadcast |
+
 ---
 
 ## Tok dat
@@ -502,7 +526,26 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
     [status.py]
     GET /api/status → remote_available: bool
     (Path.exists() na UNC cestě, timeout 3 s)
+
+[signal.py] GET /api/signal ──► [signal_reader.py]
+                                  load_signal()  — LRU cache (2 soubory), numpy/Python parser
+                                  prepare_signal_response() — cache hotových odpovědí
+                                  decimate_minmax() / extract_zoom_window()
+
+Veškeré blokující I/O: services/io_pool.run_io(location, …)
+  local  → asyncio.to_thread (výchozí pool)
+  remote → vlastní NAS pool (4 vlákna); plný → NasBusyError → HTTP 503 okamžitě
 ```
+
+### CSV formáty (DatabaseGateway)
+
+| Formát | Rozpoznání | Struktura | Zpracování |
+|--------|-----------|-----------|------------|
+| Jednodílný (starý) | 1. sloupec řádku 1 = `Timestamp` | hlavička + datové řádky | `csv.DictReader` od začátku |
+| Dvoudílný (production) | 1. řádek není `Timestamp` ani `[` | ř. 1–2 metadata (`Order;Microswitch_ID;Microswitch_Name`), ř. 3 prázdný, ř. 4+ data | metadata se injektují do každého záznamu |
+| Sekční (testing) | 1. řádek začíná `[` | `[Metadata]`, `[TestingParameters]`, `[AnalyzedParameters]`, `[NokInfo]`, `[MeasuredInfo]` — vždy hlavička + 1 řádek; `[SignalData]` ~400k řádků | `_parse_sectioned()` sloučí sekce do 1 záznamu, na `[SignalData]` se zastaví (`_has_signal`); signál čte `signal_reader` |
+
+Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`OF_OperatingForce [N]` → `of_operatingforce`).
 
 ---
 
@@ -512,12 +555,13 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 |--------|---------|-------------|
 | Entrypoint | `main.py` | argparse, sys.path setup, load_config, uvicorn.run |
 | App factory | `app.py` | FastAPI, lifespan (try/finally start/stop), router registrace, app.state |
-| API | `api/plc_ws.py`, `api/files.py`, `api/data.py`, `api/status.py`, `api/health.py`, `api/auth.py` | HTTP/WS — validace requestu, volání service, mapování na HTTP kódy |
-| Business service | `services/file_service.py`, `services/ads_monitor.py`, `services/ws_manager.py` | Business logika: filtrování, stránkování, sync_status, ADS→WS bridge |
-| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení, metadata, validace vstupů (`validate_params`) |
+| API | `api/plc_ws.py`, `api/files.py`, `api/data.py`, `api/signal.py`, `api/status.py`, `api/health.py`, `api/auth.py`, `api/users_api.py`, `api/config_api.py`, `api/dependencies.py` | HTTP/WS — validace requestu, volání service, mapování na HTTP kódy, autentizace (Bearer) |
+| Business service | `services/file_service.py`, `services/signal_reader.py`, `services/ads_monitor.py`, `services/ws_manager.py` | Business logika: filtrování, stránkování, sync_status, signálová data (decimace, klíčové body, cache), ADS→WS bridge |
+| I/O pool | `services/io_pool.py` | `run_io()` — NAS operace ve vlastním poolu s okamžitým 503 při zaseknutí; lokální I/O v `to_thread` |
+| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení (3 formáty), metadata + cache (mtime/size), validace vstupů (`validate_params`) |
 | Protocol/Interface | `services/protocols.py` | `DataReader` Protocol (PEP 544); API vrstva závisí na abstrakci — lze vyměnit za SqliteReader |
 | Config | `config.py`, `constants.py` | Dataclasses + load_config (tomllib), ADS symboly |
-| Utils | `src/utils/formatting.ts`, `src/utils/exportCsv.ts` | Sdílené formátovací funkce, CSV export s BOM |
+| Utils | `src/utils/apiFetch.ts`, `formatting.ts`, `exportXlsx.ts`, `downloadOriginal.ts`, `paramMeta.ts`, `groupColors.ts` | Autentizovaný fetch (401 → odhlášení), formátování, exporty (XLSX vždy celý soubor), metadata parametrů (`PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS` — sdíleno ChartView + RecordDiagram), barvy skupin |
 
 ---
 
@@ -526,16 +570,23 @@ Klíčové změny: `.db-icon-btn` 28→44 px, `.pagination__btn` 30→44 px, `.f
 | Endpoint | Metoda | Popis |
 |----------|--------|-------|
 | `/ws/plc` | WebSocket | Live PLC hodnoty — broadcast při každé ADS notifikaci + `{type:"ads_status"}` |
-| `/ws/orders` | WebSocket | Live CSV záznamy z wip/ složek — broadcast nových řádků (OrderWatcher) |
+| `/ws/orders` | WebSocket | ⏸ odpojeno (2026-09-23) — live CSV záznamy z wip/ (OrderWatcher) |
 | `/api/health` | GET | `{status, version, checks}` — zdravotní stav (NSSM watchdog, monitoring) |
 | `/api/files` | GET | Seznam zakázek; `?location=local\|remote&type=production\|testing&page=1&per_page=50` |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` |
 | `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=` |
-| `/api/wip` | GET | Záznamy aktuální WIP zakázky; `?order=X` → `{file, records[], total}` |
+| `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
+| `/api/signal` | GET | Decimovaná signálová data `?file=&location=&type=&mode=&buckets=` (overview / results / hysteresis / zoom_op / zoom_rp) |
+| `/api/files/{file_id}/download` | GET | Originální CSV soubor |
+| `/api/files/batch-delete` | POST | Hromadné mazání (max 200) |
 | `/api/status` | GET | `{remote_available: bool}` |
 | `/api/auth/login` | POST | `{username, password}` → `{token}`; PBKDF2-HMAC-SHA256 |
 | `/api/auth/logout` | POST | `{token}` → 204; odstraní session |
+| `/api/auth/plc-login` | POST | Token pro PLC operátora (dle `plc_operator_login`) |
+| `/api/auth/change-password` | POST | Změna hesla (TTL + lockout) |
+| `/api/users`, `/api/users/{u}`, `/api/users/{u}/password` | GET/POST/DELETE | Správa uživatelů (admin+); vlastní heslo vždy s `current_password` |
+| `/api/config`, `/api/config/paths`, `/api/config/fs` | GET/PATCH/GET | Konfigurace, cesty k úložišti (admin+), folder picker (admin+) |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
 ### WebSocket zpráva — formát JSON
@@ -632,7 +683,6 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 |-----------|--------|-------------|---------------|
 | `AppLogo` | `AppLogo.tsx` | SVG logo 4 čtverce | — |
 | `AdsStatus` | `AdsStatus.tsx` | Pulsující dot (zelený/červený) dle `connected` | — (čte z PlcContext) |
-| `Chart` | `Chart.tsx` | Recharts `LineChart` wrapper; auto-detekce numerických sloupců z `records[0]` | `records: CsvRecord[]` |
 | `DataTable` | `DataTable.tsx` | Generická tabulka; content-based React key (ne index) | `columns`, `rows`, `onRowClick?` |
 | `DeleteModal` | `DeleteModal.tsx` | Potvrzovací dialog mazání souboru | `target`, `onCancel`, `onConfirm` |
 | `ErrorBoundary` | `ErrorBoundary.tsx` | Class component; `getDerivedStateFromError` + `componentDidCatch`; Consumer (ne hook) | children |
@@ -640,10 +690,12 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 | `LoadingSpinner` | `LoadingSpinner.tsx` | Animovaný ring + `t.common.loading` | — |
 | `LoginOverlay` | `LoginOverlay.tsx` | PLC waiting state + lokální formulář | — (čte z AuthContext) |
 | `Pagination` | `Pagination.tsx` | `[<] Stránka X z Y [>]`; skryta pokud `pages <= 1` | `page`, `pages`, `onPage` |
-| `PlcStatus` | `PlcStatus.tsx` | SCADA grid: symbol + hodnota (bool/num/str) + timestamp; lokale dle jazyka | — (čte z PlcContext) |
-| `PlcWatcher` | `PlcWatcher.tsx` | Renderuje `null`; side-effect: toast při změně `connected` | — |
-| `Sidebar` | `Sidebar.tsx` | Levá navigace — 4 `NavLink`; logo v patičce | — |
+| `RecordDiagram` | `RecordDiagram.tsx` | Detail záznamu: ForceTravelDiagram + TimeDiagram (SVG) + ParamTable; maximize modal | `record: CsvRecord` |
+| `SignalCharts` | `SignalCharts.tsx` | 5 záložek signálových grafů (Recharts); data z `/api/signal` přes `useSignalData` | `fileId`, `location`, `fileType` |
+| `Sidebar` | `Sidebar.tsx` | Levá navigace — 3 `NavLink` (Database, Settings, Info); logo = odkaz na /database | — |
 | `Topbar` | `Topbar.tsx` | Horní lišta — 3 skupiny s oddělovači: [ADS+User] \| [Lang+Theme] \| [Datetime] | — |
+
+> PLC toast notifikace řeší hook `hooks/usePlcWatcher.ts` (volaný v `AppShell`), ne komponenta.
 
 ### FileTable — props interface
 
@@ -667,20 +719,11 @@ interface Props {
 }
 ```
 
-### Chart — auto-detekce sloupců
+### ChartView — výběr sloupců tabulky
 
-```tsx
-// Numerické sloupce z prvního záznamu, vylučuje metadata
-const EXCLUDE_KEYS = new Set(['timestamp', 'order', 'microswitch_id', 'microswitch_name', 'group', 'expected_count'])
-
-const numericKeys = useMemo(() => {
-  if (!records[0]) return []
-  return Object.keys(records[0]).filter(k =>
-    !EXCLUDE_KEYS.has(k) && typeof records[0][k] === 'number'
-  )
-}, [records])
-// Pro každý klíč = jedna čára v grafu; cyklické barvy z GROUP_COLORS
-```
+Sloupce nejsou auto-detekované — určuje je `PARAM_GROUPS` z `utils/paramMeta.ts`
+(záložky `TABLE_TABS`) + pevné `FIXED_COLS`. Zobrazí se jen sloupce, které mají v datech
+neprázdnou hodnotu; sentinel ≥ 999999 (otevřený kontakt) se u neelektrických veličin skrývá.
 
 ---
 
@@ -776,7 +819,8 @@ useEffect([fetchFiles]) → GET /api/files → files[]
    → při přepnutí záložky: reset page=1, expandedId=null
 
 Expand (production): useFileRecords → GET /api/data?file=...
-Download: downloadCsv → GET /api/data?file=... (všechny záznamy) → exportCsv()
+Download CSV:  downloadCsv → GET /api/files/{id}/download → originální soubor (downloadOriginal.ts)
+Download XLSX: downloadXlsx → exportFileXlsx() → GET /api/data?per_page=0 (celý soubor) → SheetJS (dynamický import)
 Delete: deleteFile → DELETE /api/files/{id}?location=&type= → toast + fetchFiles()
 ```
 
@@ -818,14 +862,17 @@ ChartView
 │       └── <DataTable columns={tableColumns} rows={records}
 │               onRowClick → navigate(/chart?...&record=N) />
 │
-└── (Testing) records.length > 0:
-    ├── <OrderSummary record={records[0]} />  ← flat bar: Order | Switch | ID
-    ├── <tile tile--12> → <Chart records={records} />
-    └── <tile tile--12> → params placeholder
+└── (Testing — sekční CSV, 1 záznam):
+    ├── <TestingHero>                 ← switch, ID, čas, OK/NOK
+    ├── dvouúrovňové záložky: sekce (Testing params / Measured info / Analyzed / NOK info / Signal)
+    │   └── pod-záložky dle PARAM_GROUPS (Síly, Pozice, Časy, Odpory…)
+    └── sekce Signal (jen has_signal) → <SignalCharts key={soubor}>
+        5 záložek: Overview · Results · Hysteresis · Switching · Timing
+        data: GET /api/signal (overview hned, zoom_op/zoom_rp líně) — z backend cache
 ```
 
-**`tableColumns`** = `Object.keys(records[0]).filter(k => !SUMMARY_FIELDS.has(k))`
-kde `SUMMARY_FIELDS = new Set(['order', 'microswitch_id', 'microswitch_name'])` — tato pole jsou v `OrderHero`, ne v tabulce.
+**`tableColumns`** = `FIXED_COLS` + klíče aktivní záložky (`TABLE_TABS`), jen sloupce s neprázdnou
+hodnotou; sentinel ≥ 999999 (otevřený kontakt) se u neelektrických veličin vynechá.
 
 **Navigace na record detail** (klik na řádek):
 ```tsx
@@ -844,11 +891,17 @@ ChartView
 │  record = records[N]
 │
 ├── chart-header: [← Zpět] [nadpis "Record detail — fileId (N+1 / total)"]
-├── <OrderSummary record={record} />   ← order | microswitch_name | microswitch_id
-├── <tile> → key-value grid všech polí (vylučuje SUMMARY_FIELDS)
-│   .chart-record-fields → .chart-record-field (key + value)
-└── <tile> → params placeholder ("Graf parametrů bude doplněn po AnalyzedParams...")
+├── <OrderSummary record={record} /> + rd-meta badge
+└── <RecordDiagram record={record}>        (components/RecordDiagram.tsx)
+    ├── ForceTravelDiagram  — SVG 840×500 (odpovídá HMI screen 29): síla vs. dráha, FP/OP/RP/TTP
+    ├── TimeDiagram         — SVG 840×470 (HMI screen 30): spínací časy kontaktů NC/NO
+    ├── ParamTable          — 5 skupin z PARAM_GROUPS (utils/paramMeta.ts), jednotky µm / µs / Ω
+    └── maximize modal (Escape zavře); titulky přes i18n (chart.diagramForceTravel / diagramSwitchingTimes)
 ```
+
+`utils/paramMeta.ts` je jediný zdroj popisků parametrů — `PARAM_LABELS` (zkratky),
+`PARAM_TOOLTIPS` (popis + jednotka) a `PARAM_GROUPS` (id, label, unit, color, keys);
+používá ho ChartView (záložky tabulky) i RecordDiagram (ParamTable).
 
 ---
 
@@ -1012,12 +1065,12 @@ LangProvider               ← i18n CS/EN (outermost — dostupný všem)
                 └── AuthProvider  ← isLoggedIn, isLocalLogin, login(), logout()
                     └── AppShell  ← useBackendOnline() → polling /api/health každých 10 s
                         ├── [offline-banner]  ← fixed banner pokud backend nedostupný
-                        ├── PlcWatcher        ← side-effect: PLC toast notifikace
+                        ├── usePlcWatcher()   ← hook v AppShell: PLC toast notifikace
                         ├── LoginOverlay      ← podmíněný (!isLoggedIn)
                         ├── Sidebar
                         ├── Topbar            ← 3 skupiny: [ADS+User] | [Lang+Theme] | [Datetime]
                         └── <Routes>
-                            ├── /          → Overview
+                            ├── /          → přesměrování na /database (Overview odpojen 2026-09-23)
                             ├── /database  → Database  (F5/Escape klávesové zkratky)
                             ├── /chart     → ChartView (CSV export)
                             ├── /settings  → Settings
@@ -1045,16 +1098,17 @@ Bez externích knihoven. Přeložené řetězce jsou typované TS objekty — ch
 ```ts
 t.common   // loading, noData, cancel, delete, refresh, from, to, errorInvalidResponse, errorLoading
 t.nav      // overview, database, settings, info
-t.plc      // connected, disconnected, disconnectedDetail, waitingForData, toastConnected, toastDisconnected
+t.plc      // connected, disconnected, toastConnected, toastDisconnected
 t.db       // title, tabLocal, tabRemote, colCreated, colOrder, colSwitch, colGroup, colRecords, colSync,
            // badgeSynced, showRecords, openInChart, noRecords, noFilesLocal/Remote,
            // footerFiles, footerTotalRecords, deleteTitle/Body/Btn/Success/Error,
            // rangeRecords, clearFilter, page, of, groupDistribution, totalVsExpected, orderDetail
-t.chart    // title, filters, records, noData, noNumericData, exportCsv,
-           // backToDatabase, recordDetail, paramsPlaceholder
+t.chart    // diagramForceTravel, diagramSwitchingTimes, records, exportCsv, backToDatabase,
+           // recordDetail, section*, signal*, print, … (úplný seznam: i18n/types.ts)
 t.settings // title, serverTile, description
 t.info     // title, appTile, projectTile
-t.login    // waitingPLC, orLocal, username, password, signIn, errorCredentials, localAccess, signOut
+t.login    // waitingPLC, orLocal, username, password, signIn, errorCredentials, errorServer,
+           // sessionExpired, localAccess, signOut
 t.error    // title, message, retry
 ```
 

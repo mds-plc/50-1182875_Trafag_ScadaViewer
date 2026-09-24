@@ -9,7 +9,7 @@ Zodpovědnost:
   - GET /api/files/{file_id}: metadata konkrétního souboru.
   - DELETE /api/files/{file_id}: smazání lokálního souboru (NAS mazání zakázáno — 403).
   - POST /api/files/batch-delete: hromadné mazání (max 200 souborů, HTTP 200 vždy).
-  - Veškeré I/O jde přes asyncio.to_thread() — event loop nesmí čekat na disk.
+  - Veškeré I/O jde přes run_io() — NAS ve vlastním poolu, lokální disk v to_thread.
   - UNC cesty (NAS) mají timeout 30 s; lokální disk 10 s (pojistka).
 
 Rozhraní:
@@ -33,6 +33,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
+from scada.services.io_pool import run_io
 from scada.api.dependencies import require_auth, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
@@ -73,7 +74,8 @@ async def list_files(
     timeout = 30.0 if location == "remote" else 10.0
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(
+            run_io(
+                location,
                 reader.list_files_paginated,
                 location=location,
                 file_type=file_type,
@@ -116,7 +118,7 @@ async def delete_file(
     """
     reader: DataReader = request.app.state.csv_reader
     try:
-        result = await asyncio.to_thread(reader.delete_file, file_id, location, file_type)
+        result = await run_io(location, reader.delete_file, file_id, location, file_type)
     except (OSError, PermissionError) as exc:
         log.error("[API]   DELETE /api/files/%s I/O chyba: %s", file_id, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
@@ -143,7 +145,7 @@ async def batch_delete_files(
     deleted, failed, errors = 0, 0, []
     for fid in body.file_ids:
         try:
-            result = await asyncio.to_thread(reader.delete_file, fid, body.location, body.file_type)
+            result = await run_io(body.location, reader.delete_file, fid, body.location, body.file_type)
         except (OSError, PermissionError) as exc:
             log.error("[API]   batch-delete %s I/O chyba: %s", fid, exc)
             failed += 1
@@ -176,7 +178,7 @@ async def get_file(
     """
     reader: DataReader = request.app.state.csv_reader
     try:
-        meta = await asyncio.to_thread(reader.get_file, file_id, location, file_type)
+        meta = await run_io(location, reader.get_file, file_id, location, file_type)
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/files/%s I/O chyba: %s", file_id, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
@@ -197,7 +199,7 @@ async def download_file(
     timeout = 30.0 if location == "remote" else 10.0
     try:
         path = await asyncio.wait_for(
-            asyncio.to_thread(reader.resolve_path, file_id, location, file_type),
+            run_io(location, reader.resolve_path, file_id, location, file_type),
             timeout=timeout,
         )
     except asyncio.TimeoutError:
@@ -212,5 +214,5 @@ async def download_file(
     return FileResponse(
         path=path,
         filename=file_id,
-        media_type="text/csv; charset=utf-8-sig",
+        media_type="text/csv; charset=utf-8",   # BOM je součástí souboru
     )

@@ -31,7 +31,9 @@ def load_config(path) → AppConfig  # tomllib / tomli fallback
 GVL_BASE = "GV_IO_ADS_API.DatabaseGateway"
 SYM: dict[str, str] = { "in_ready": f"{GVL_BASE}.In.Status.Ready", ... }
 ```
-→ ScadaViewer `constants.py` sleduje **stejný GVL a stejné symboly** (Heartbeat, Ready, LocalStorage, RemoteStorage).
+→ ScadaViewer `constants.py` přebírá **vzor** (`GVL_… + SYM dict`), ale má **vlastní GVL**
+  `GV_IO_ADS_API.ScadaViewerApp` — 23 Out symbolů (mode, zakázka, boxy 1–6, `plc_operator_login`)
+  + 2 In symboly (`sv_heartbeat`, `sv_ready`). Struktura GVL: `05_user_data/plc_communication/*.xml`.
 
 ### CSV formát dat
 ```
@@ -40,9 +42,10 @@ csv_separator = ";"
 csv_encoding  = "utf-8-sig"
 # Sloupce (production): Timestamp;Order;Microswitch_ID;Microswitch_Name
 # Sloupce (testing):    Timestamp;Microswitch_ID;Microswitch_Name
-# Klíče normalizovány na lowercase při čtení v CsvReader
+# Klíče normalizovány v CsvRepository (_normalize_key: lowercase + bez [jednotky])
 ```
-→ `csv_reader.py` musí číst **přesně tento formát**.
+→ `services/repositories/csv_repository.py` čte **3 formáty**: jednodílný, dvoudílný (production)
+  a sekční (testing — `[Metadata]`, `[AnalyzedParameters]`, …, `[SignalData]`).
 
 ### Složková struktura výstupů DatabaseGateway
 ```
@@ -55,7 +58,7 @@ csv_encoding  = "utf-8-sig"
     ├── done_local/
     └── done_remote/
 ```
-→ `csv_reader.py` scanuje `done_local/` a `done_remote/` (ne `wip/`).
+→ `csv_repository.py` scanuje `done_local/` a `done_remote/` (ne `wip/` — Overview/WIP je odpojený).
 
 ### sync_state.json
 ScadaViewer tento soubor **nečte**. Stav synchronizace dedukuje ze složkové struktury:
@@ -107,7 +110,7 @@ Při implementaci **libovolné části** ScadaViewer:
 |--------------------|---------|
 | `config.py` | `DatabaseGateway/00_src/db_gateway/config.py` |
 | `constants.py` | `DatabaseGateway/00_src/db_gateway/constants.py` |
-| `services/csv_reader.py` | `DatabaseGateway/00_src/db_gateway/io/file_manager.py` |
+| `services/repositories/csv_repository.py` | `DatabaseGateway/00_src/db_gateway/io/file_manager.py` |
 | `06_build/exe/build.bat` | `Analyzing/06_build/exe/build.bat` |
 | `06_build/exe/nssm_install.bat` | `DatabaseGateway/06_build/exe/nssm_install.bat` |
 | `06_build/exe/scada.spec` | `DatabaseGateway/06_build/exe/db_gateway.spec` |

@@ -299,15 +299,16 @@ class AdsMonitor:
         """Zavře ADS spojení. Notifikace jsou zrušeny automaticky AMS routerem při close()."""
         if self._plc is None:
             return
-        self._handles.clear()
-        self._callback_refs.clear()
-        self.current_values.clear()
-
+        # Nejdřív zavřít spojení (AMS router zruší notifikace), teprve pak uvolnit
+        # callback reference — jinak by pozdní notifikace mohla volat uvolněný callback
         try:
             self._plc.close()
         except Exception as exc:
             log.debug("[ADS]   plc.close() selhal: %s", exc)
 
+        self._handles.clear()
+        self._callback_refs.clear()
+        self.current_values.clear()
         self._plc = None
         log.info("[ADS]   Odpojeno")
 
@@ -329,9 +330,12 @@ class AdsMonitor:
                 value = _decode_read(raw, pt)
                 self.current_values[name] = value
                 payload = {"symbol": name, "value": value, "ts": ts}
-                asyncio.run_coroutine_threadsafe(
-                    self._manager.broadcast(payload), self._loop
-                )
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self._manager.broadcast(payload), self._loop
+                    )
+                except RuntimeError:
+                    return   # event loop zavřený (shutdown během připojování) — nic neposílat
                 log.debug("[ADS]   počáteční hodnota: %s = %s", name, value)
             except pyads.ADSError as exc:
                 log.warning("[ADS]   počáteční čtení selhalo [%s]: %s", name, exc)

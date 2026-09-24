@@ -678,8 +678,8 @@ export default function RecordDiagram({ record }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [maximized])
 
-  const TITLE_FORCE = 'Force – Travel'
-  const TITLE_TIME  = 'Contact Switching Times'
+  const TITLE_FORCE = t.chart.diagramForceTravel
+  const TITLE_TIME  = t.chart.diagramSwitchingTimes
 
   return (
     <>

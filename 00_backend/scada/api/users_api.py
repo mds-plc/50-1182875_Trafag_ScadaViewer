@@ -11,10 +11,12 @@ Změny se projeví okamžitě v paměti i na disku.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from scada.api.auth import _clear_failures, _is_locked, _record_failure
 from scada.api.dependencies import ROLE_LEVELS, require_auth, require_role
 from scada.config import VALID_ROLES, UserEntry, hash_password, save_users, verify_password
 from scada.models import ChangeUserPasswordRequest, CreateUserRequest, UserModel
@@ -82,7 +84,7 @@ async def create_user(
     new_user = UserEntry(
         username=body.username.strip(),
         display_name=body.display_name.strip() or body.username.strip(),
-        password_hash=hash_password(body.password),
+        password_hash=await asyncio.to_thread(hash_password, body.password),
         role=body.role,
     )
     users.append(new_user)
@@ -138,8 +140,8 @@ async def change_user_password(
     """
     Změní heslo uživatele.
 
-    Admin+ smí měnit heslo komukoliv (bez current_password).
-    Operátor/technician smí měnit jen vlastní heslo (s current_password).
+    Admin+ smí měnit heslo jiným uživatelům s nižší rolí (bez current_password).
+    Vlastní heslo mění kdokoli (i admin) jen s current_password.
 
     HTTP 400 — prázdné nové heslo.
     HTTP 401 — špatné aktuální heslo (vlastní účet).
@@ -168,14 +170,21 @@ async def change_user_password(
         if target_level >= caller_level:
             raise HTTPException(status_code=403, detail="Nelze změnit heslo uživatele se stejnou nebo vyšší rolí")
 
-    # Při změně vlastního hesla je povinné aktuální heslo
-    if is_self and not is_admin:
+    # Při změně vlastního hesla je povinné aktuální heslo — i pro admina
+    # (ukradený admin token jinak umožní převzetí účtu bez znalosti hesla)
+    if is_self:
         if not body.current_password:
             raise HTTPException(status_code=400, detail="Aktuální heslo je povinné")
-        if not verify_password(body.current_password, target.password_hash):
+        # Sdílený lockout s /auth/login (5 pokusů / 10 min na IP)
+        client_ip = request.client.host if request.client else "0.0.0.0"
+        if _is_locked(client_ip):
+            raise HTTPException(status_code=429, detail="Příliš mnoho neúspěšných pokusů — zkuste za 10 minut")
+        if not await asyncio.to_thread(verify_password, body.current_password, target.password_hash):
+            _record_failure(client_ip)
             raise HTTPException(status_code=401, detail="Špatné aktuální heslo")
+        _clear_failures(client_ip)
 
-    target.password_hash = hash_password(body.new_password)
+    target.password_hash = await asyncio.to_thread(hash_password, body.new_password)
     _persist(request)
 
     # Pokud si admin mění heslo jiného uživatele, nezneplatňovat všechny sessions
