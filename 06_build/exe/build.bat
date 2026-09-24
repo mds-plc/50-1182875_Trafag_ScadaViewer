@@ -140,13 +140,15 @@ if errorlevel 1 (
 echo.
 
 :: --- Krok 8: Vytvořit ZIP ---
-echo  Cekam na uvolneni souboru (Defender)...
-%SystemRoot%\System32\timeout.exe /t 8 /nobreak > nul
-echo  Vytvarim ZIP: %RELEASE_TAG%.zip ...
+:: Defender / indexer drzi cerstve soubory (base_library.zip) -> az 5 pokusu s pauzou 8 s.
+:: Start-Sleep misto timeout.exe (timeout selze bez konzole, napr. pri spusteni ze skriptu);
+:: -ErrorAction Stop + exit 1 -> chyba Compress-Archive se opravdu projevi v errorlevel
+:: (drive hlasil "ZIP: ..." i kdyz ZIP nevznikl).
+echo  Vytvarim ZIP: %RELEASE_TAG%.zip (ceka na uvolneni souboru Defenderem)...
 powershell -NoProfile -Command ^
-    "Compress-Archive -Path '%RELEASE_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
+    "$ok = $false; for ($i = 1; $i -le 5 -and -not $ok; $i++) { Start-Sleep -Seconds 8; try { Compress-Archive -Path '%RELEASE_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force -ErrorAction Stop; $ok = $true } catch { Write-Host ('  pokus ' + $i + ' selhal: ' + $_.Exception.Message) } }; if (-not $ok) { exit 1 }"
 if errorlevel 1 (
-    echo  [WARN] ZIP vytvoreni selhalo — pokracuji bez ZIP.
+    echo  [WARN] ZIP vytvoreni selhalo -- pokracuji bez ZIP.
 ) else (
     echo  ZIP: %RELEASE_TAG%.zip
 )
