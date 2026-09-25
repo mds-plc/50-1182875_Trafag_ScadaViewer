@@ -644,6 +644,48 @@ Tisk (`window.print`) z detailu zakázky, detailu záznamu a Testing detailu —
 **SPA fallback (`app.py` `_SPAStaticFiles`):** F5 / odkaz na `/chart`, `/settings` vracel
 `{"detail":"Not Found"}` — nyní `index.html`; `/api/*`, `/assets/*` a soubory dál 404.
 
+### Fáze 29 — Limit lokálního úložiště + čištění synchronizovaných souborů (2026-09-25)
+
+DatabaseGateway drží uzavřené zakázky lokálně (`done_local/` → po uploadu `done_remote/`) a sám je
+maže až po `file_retention_days`. ScadaViewer nově hlídá zaplnění lokální složky a dovoluje ji ručně vyčistit.
+
+**Limit a úrovně:**
+- `Config.toml [data] local_max_gb` (výchozí 5 GB, chybí-li klíč); admin+ mění v Nastavení → Připojení
+  (`PATCH /api/config/storage` — přepíše klíč, nebo ho vloží za `csv_encoding`; platí bez restartu).
+- Měří se součet velikostí `*.csv` v `{local_path}/{production,testing}/{wip,done_local,done_remote}`
+  (jen `os.scandir`, bez čtení obsahu).
+- `warning` ≥ 80 % limitu, `critical` ≥ 95 %; pojistka nezávislá na limitu: volné místo na disku
+  < 10 % → warning, < 5 % → critical (`disk_low`).
+
+**Upozornění (frontend):**
+- `StorageContext` — `GET /api/storage` po přihlášení, každých 60 s a po `files_changed` (debounce 1,5 s);
+  toast jen při zhoršení úrovně (ok → warning → critical), ne při každém dotazu.
+- Topbar — chip `HardDrive {pct} %` jen při warning/critical (critical pulzuje), klik → `/database`.
+- Database, záložka Lokální — `StorageBar`: pruh zaplnění, hláška, počet/objem synchronizovaných souborů,
+  tlačítko „Vyčistit synchronizované".
+- Nastavení → Připojení → Úložiště — řádek Zaplnění + Limit (GB; editace jen admin+).
+
+**Čištění (`POST /api/storage/cleanup`, smí každý přihlášený — rozhodnutí zákazníka):**
+- Výchozí = **ověřené**: soubor z `done_remote/` se smaže jen, když na NAS (`{remote_path}/{type}/`)
+  existuje se stejným názvem (case-insensitive) a velikostí. Důvod: Gateway přesouvá do `done_remote/`
+  hned po uploadu, ještě před ověřením (`verified_at`). NAS nedostupný → 503, nic se nesmaže.
+  Běží v NAS poolu (`run_io("remote")`), timeout 60 s; výpis NAS jednou na typ (scandir).
+- `?force=true` = **bez ověření**: smaže vše z `done_remote/`, NAS se nekontaktuje (`asyncio.to_thread`).
+  UI: odkaz v potvrzovacím dialogu → druhý dialog (`role="alertdialog"`) se zvýrazněným rizikem
+  nenávratné ztráty dat; tlačítko „Smazat bez ověření" povolí až zaškrtnutí „Rozumím riziku".
+  Log WARNING se jménem uživatele.
+- `done_local/`, `wip/` a soubory na NAS se nemažou nikdy. Souběh → `CleanupBusyError` → 409.
+- Smazání lokálního souboru Gateway nevadí — `cleanup_orphans()` záznam vyřadí ze `sync_state.json`.
+
+**Nové soubory:** `services/storage_service.py`, `api/storage.py`, `context/StorageContext.tsx`,
+`components/StorageBar.tsx`, `02_tests/test_storage.py`, `src/test/StorageBar.test.tsx`.
+Úpravy: `config.py` (`DataConfig.local_max_gb` + validace > 0), `models.py`, `config_api.py`, `app.py`,
+`Topbar.tsx`, `Database.tsx`, `Settings.tsx`, `App.tsx` (provider), i18n (sekce `storage`),
+`utils/formatting.ts` (`formatBytes`), CSS (`database.css`, `topbar.css`, `settings.css`,
+`components.css` — `.btn:disabled`).
+
+**Stav testů po fázi 29:** Backend 219/219, Frontend 88/88 (11 souborů).
+
 ---
 
 ## Tok dat
@@ -747,6 +789,9 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/auth/change-password` | POST | Změna hesla (TTL + lockout) |
 | `/api/users`, `/api/users/{u}`, `/api/users/{u}/password` | GET/POST/DELETE | Správa uživatelů (admin+); vlastní heslo vždy s `current_password` |
 | `/api/config`, `/api/config/paths`, `/api/config/fs` | GET/PATCH/GET | Konfigurace, cesty k úložišti (admin+), folder picker (admin+) |
+| `/api/config/storage` | PATCH | `{local_max_gb}` — limit lokálního úložiště do Config.toml (admin+) |
+| `/api/storage` | GET | Zaplnění lokálního úložiště vůči limitu + úroveň ok/warning/critical |
+| `/api/storage/cleanup` | POST | Smazání `done_remote/` ověřených na NAS; `?force=true` bez ověření (po potvrzení rizika v UI) |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
 ### WebSocket zpráva — formát JSON
@@ -821,6 +866,19 @@ Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` po
 `remote_available` = výsledek `Path(remote_path).exists()` s timeoutem 3 s — dostupné pouze při aktivním připojení k NAS.
 `remote_path` (interní UNC cesta) **není součástí odpovědi** — předchází odhalení síťové topologie.
 
+### /api/storage — formát odpovědi
+
+```json
+{
+  "used_bytes": 43842936, "limit_bytes": 5368709120, "percent": 0.8, "level": "ok",
+  "file_count": 15, "synced_bytes": 1518, "synced_count": 3,
+  "disk_total_bytes": 1021821579264, "disk_free_bytes": 246261805056, "disk_low": false
+}
+```
+
+`POST /api/storage/cleanup[?force=true]` → `{deleted, freed_bytes, skipped, failed}`;
+`skipped` = na NAS chybí / jiná velikost (jen ověřený režim). 503 = NAS nedostupný, 409 = čištění už běží.
+
 ---
 
 ## Frontend stránky
@@ -852,8 +910,9 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 | `Pagination` | `Pagination.tsx` | `[<] Stránka X z Y [>]`; skryta pokud `pages <= 1` | `page`, `pages`, `onPage` |
 | `RecordDiagram` | `RecordDiagram.tsx` | Detail záznamu: ForceTravelDiagram + TimeDiagram (SVG) + ParamTable; maximize modal | `record: CsvRecord` |
 | `SignalCharts` | `SignalCharts.tsx` | 5 záložek signálových grafů (Recharts); data z `/api/signal` přes `useSignalData` | `fileId`, `location`, `fileType` |
+| `StorageBar` | `StorageBar.tsx` | Zaplnění lokálního úložiště (Database, záložka Lokální) + dialog čištění; krok 2 = smazání bez ověření s potvrzením rizika | — (čte ze StorageContext) |
 | `Sidebar` | `Sidebar.tsx` | Levá navigace — 3 `NavLink` (Database, Settings, Info); logo = odkaz na /database | — |
-| `Topbar` | `Topbar.tsx` | Horní lišta — 3 skupiny s oddělovači: [ADS+User] \| [Lang+Theme] \| [Datetime] | — |
+| `Topbar` | `Topbar.tsx` | Horní lišta — 3 skupiny s oddělovači: [ADS+Úložiště+User] \| [Lang+Theme] \| [Datetime]; chip úložiště jen při warning/critical | — |
 
 > PLC toast notifikace řeší hook `hooks/usePlcWatcher.ts` (volaný v `AppShell`), ne komponenta.
 
@@ -1077,6 +1136,7 @@ Stav v aplikaci je organizován do tří vrstev:
 | `ToastContext` | pod Lang | `toasts[]`, `addToast()`, auto-dismiss 4500ms | — (ephemeral) |
 | `PlcContext` | pod Toast | `status: Record<symbol, PlcStatus>`, `connected: bool` (WS), `adsConnected: bool` (ADS), WebSocket singleton | — (live) |
 | `AuthContext` | pod Plc | `isLoggedIn`, `isLocalLogin`, `login()`, `logout()` | `sessionStorage['scada_token']` |
+| `StorageContext` | pod Auth | `storage: StorageStatus \| null`, `cleaning`, `refresh()`, `cleanup(force?)`; polling 60 s + `files_changed` | — (live) |
 
 ### 2. Stránkový stav (hook)
 
@@ -1223,12 +1283,13 @@ LangProvider               ← i18n CS/EN (outermost — dostupný všem)
         └── PlcProvider    ← WebSocket singleton (status, connected); exponential backoff reconnect
             └── PlcAuth    ← bridge: PLC přihlášení → AuthProvider
                 └── AuthProvider  ← isLoggedIn, isLocalLogin, login(), logout()
+                  └── StorageProvider  ← zaplnění lokálního úložiště (/api/storage), cleanup()
                     └── AppShell  ← useBackendOnline() → polling /api/health každých 10 s
                         ├── [offline-banner]  ← fixed banner pokud backend nedostupný
                         ├── usePlcWatcher()   ← hook v AppShell: PLC toast notifikace
                         ├── LoginOverlay      ← podmíněný (!isLoggedIn)
                         ├── Sidebar
-                        ├── Topbar            ← 3 skupiny: [ADS+User] | [Lang+Theme] | [Datetime]
+                        ├── Topbar            ← 3 skupiny: [ADS+Úložiště+User] | [Lang+Theme] | [Datetime]
                         └── <Routes>
                             ├── /          → přesměrování na /database (Overview odpojen 2026-09-23)
                             ├── /database  → Database  (F5/Escape klávesové zkratky)

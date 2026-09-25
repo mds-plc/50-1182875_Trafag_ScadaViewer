@@ -117,6 +117,23 @@
   font-size: var(--font-size-sm);
 }
 
+/* LOKÁLNÍ ÚLOŽIŠTĚ — jen při varování / kritickém stavu, klik = Database */
+.topbar__chip--storage {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.topbar__chip--warning  { color: var(--color-warning); }
+.topbar__chip--critical { color: var(--color-danger); animation: topbar-storage-pulse 1.6s ease-in-out infinite; }
+
+@keyframes topbar-storage-pulse {
+  50% { opacity: 0.55; }
+}
+
 .topbar__chip-sep {
   width: 1px;
   height: 10px;

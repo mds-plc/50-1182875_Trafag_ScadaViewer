@@ -2,13 +2,16 @@
  * @file Topbar.tsx
  * @description Horní lišta aplikace — název aplikace, indikátor PLC stavu,
  *   přepínač jazyka CS/EN, chip s přihlášením operátora (lokální přístup + odhlášení),
+ *   chip zaplnění lokálního úložiště (jen při varování / kritickém stavu → klik = Database),
  *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
  */
 import { useState, useEffect } from 'react'
-import { UserCheck, LogOut, Moon, Sun } from 'lucide-react'
+import { UserCheck, LogOut, Moon, Sun, HardDrive } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import AdsStatus from './AdsStatus'
 import { usePlc }   from '../context/PlcContext'
 import { useAuth }  from '../context/AuthContext'
+import { useStorage } from '../context/StorageContext'
 import { useLang }  from '../context/LangContext'
 import { useTheme } from '../hooks/useTheme'
 import type { Lang } from '../i18n/types'
@@ -37,6 +40,8 @@ export default function Topbar() {
   const { lang, setLang, t }     = useLang()
   const { time, dateStr }        = useClock(lang)
   const { dark, toggle }         = useTheme()
+  const { storage }              = useStorage()
+  const navigate                 = useNavigate()
 
   return (
     <header className="topbar">
@@ -55,6 +60,17 @@ export default function Topbar() {
           <div className="topbar__chip">
             <AdsStatus connected={adsConnected} />
           </div>
+
+          {storage && storage.level !== 'ok' && (
+            <button
+              className={`topbar__chip topbar__chip--storage topbar__chip--${storage.level}`}
+              onClick={() => navigate('/database')}
+              title={t.storage.chipTitle}
+            >
+              <HardDrive size={14} />
+              <span>{Math.round(storage.percent)} %</span>
+            </button>
+          )}
 
           {isLocalLogin && (
             <div className="topbar__chip topbar__chip--user">

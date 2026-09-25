@@ -194,8 +194,9 @@ class ConfigAdsInfo(BaseModel):
 
 
 class ConfigDataInfo(BaseModel):
-    local_path:  str
-    remote_path: str
+    local_path:   str
+    remote_path:  str
+    local_max_gb: float
 
 
 class ConfigAuthInfo(BaseModel):
@@ -230,6 +231,37 @@ class UpdatePathsRequest(BaseModel):
     """Tělo požadavku PATCH /api/config/paths."""
     local_path:  str
     remote_path: str
+
+
+class UpdateStorageLimitRequest(BaseModel):
+    """Tělo požadavku PATCH /api/config/storage."""
+    local_max_gb: float = Field(gt=0, le=100_000)
+
+
+# ======================================================================
+# /api/storage — zaplnění lokálního úložiště + čištění synchronizovaných
+# ======================================================================
+
+class StorageResponse(BaseModel):
+    """Odpověď GET /api/storage."""
+    used_bytes:       int
+    limit_bytes:      int
+    percent:          float                 # zaplnění limitu [%]
+    level:            Literal["ok", "warning", "critical"]
+    file_count:       int
+    synced_bytes:     int                   # done_remote/ — kandidáti na vyčištění
+    synced_count:     int
+    disk_total_bytes: int | None = None
+    disk_free_bytes:  int | None = None
+    disk_low:         bool = False          # na disku zbývá < 10 % (pojistka nezávislá na limitu)
+
+
+class CleanupResponse(BaseModel):
+    """Odpověď POST /api/storage/cleanup."""
+    deleted:     int
+    freed_bytes: int
+    skipped:     int                        # na NAS chybí / nesedí velikost — ponecháno
+    failed:      int
 
 
 # ======================================================================

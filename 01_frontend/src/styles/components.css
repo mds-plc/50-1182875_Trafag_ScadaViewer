@@ -78,6 +78,12 @@
   background: #fee2e2;
 }
 
+/* Zakázané tlačítko musí být na první pohled neaktivní (např. „Smazat bez ověření" před potvrzením rizika) */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn--sm {
   padding: 9px var(--space-4);
   font-size: var(--font-size-xs);

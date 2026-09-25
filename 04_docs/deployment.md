@@ -135,6 +135,8 @@ local_path    = "C:/apps/scada_data"  # absolutní cesta — výstupní složka 
 remote_path   = "\\\\10.45.124.20\\trafag_data"  # NAS UNC cesta (prázdná = remote tab nedostupný)
 csv_separator = ";"
 csv_encoding  = "utf-8-sig"
+local_max_gb  = 5.0                    # limit lokálního úložiště [GB] — varování ≥ 80 %, kritické ≥ 95 %
+                                       # (lze změnit i v Nastavení → Připojení; chybí-li, platí 5 GB)
 
 [auth]
 # Vygenerovat NOVÉ heslo přes: python -c "import hashlib,secrets,os; ..."
@@ -270,6 +272,8 @@ netsh advfirewall firewall add rule ^
 
 - [ ] `\\remote_path\` je přístupné z cílového PC (`net use \\10.45.124.20\trafag_data`)
 - [ ] Database stránka → záložka Remote zobrazí CSV soubory z NAS
+- [ ] Database → Lokální: pruh „Lokální úložiště" ukazuje zaplnění vůči `local_max_gb` (nastavit dle velikosti disku)
+- [ ] „Vyčistit synchronizované" smaže jen soubory ověřené na NAS (soubory, které na NAS chybí, zůstanou)
 
 ### Provozní test
 

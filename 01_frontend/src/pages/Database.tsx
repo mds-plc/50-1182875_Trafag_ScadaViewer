@@ -9,6 +9,7 @@ import { useLang } from '../context/LangContext'
 import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
 import DeleteModal from '../components/DeleteModal'
+import StorageBar  from '../components/StorageBar'
 
 /**
  * Stránka prohlížeče CSV databáze (/database) — tenký presentační container.
@@ -100,6 +101,9 @@ export default function Database() {
           <span>{t.db.remoteUnavailable}</span>
         </div>
       )}
+
+      {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných souborů */}
+      {location === 'local' && <StorageBar />}
 
       {/* Tabulka + toolbar */}
       <div className="tile tile--12">

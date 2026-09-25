@@ -32,6 +32,11 @@ remote_path = ""
 csv_separator = ";"          # shodné s DatabaseGateway [storage] csv_separator
 csv_encoding  = "utf-8-sig"  # shodné s DatabaseGateway [storage] csv_encoding
 
+# Limit lokálního úložiště [GB] — součet CSV v local_path (wip + done_local + done_remote).
+# ≥ 80 % = varování, ≥ 95 % = kritické (topbar + banner v Database, tlačítko „Vyčistit").
+# Lze změnit i v Nastavení → Připojení (admin+). Chybí-li klíč, platí 5 GB.
+local_max_gb = 5.0
+
 [auth]
 # Vygenerovat hash před nasazením do produkce:
 #   python -c "

@@ -1,6 +1,7 @@
 """
 GET   /api/config      — bezpečná podmnožina konfigurace AppConfig pro Settings UI.
 PATCH /api/config/paths — aktualizace cest k lokálnímu a vzdálenému úložišti.
+PATCH /api/config/storage — limit lokálního úložiště local_max_gb (admin+).
 GET   /api/config/fs   — seznam podsložek pro folder picker v Settings UI.
 
 NIKDY nevrací password_hash ani jiné citlivé hodnoty.
@@ -25,6 +26,7 @@ from scada.models import (
     ConfigResponse,
     ConfigServerInfo,
     UpdatePathsRequest,
+    UpdateStorageLimitRequest,
 )
 
 router = APIRouter()
@@ -49,6 +51,7 @@ async def get_config(request: Request) -> ConfigResponse:
         data=ConfigDataInfo(
             local_path=str(cfg.data.local_path),
             remote_path=cfg.data.remote_path,
+            local_max_gb=cfg.data.local_max_gb,
         ),
         auth=ConfigAuthInfo(
             username=cfg.auth.username,
@@ -114,6 +117,36 @@ async def update_paths(body: UpdatePathsRequest, request: Request) -> None:
     cfg.data.local_path  = Path(local)
     cfg.data.remote_path = remote
     log.info("[API]   PATCH /api/config/paths — local=%s  remote=%s", local, remote)
+
+
+def _write_storage_limit(config_path: Path, local_max_gb: float) -> None:
+    """Zapíše local_max_gb do Config.toml — přepíše existující klíč, jinak ho vloží do [data]."""
+    text  = config_path.read_text(encoding="utf-8")
+    value = f"local_max_gb = {local_max_gb:g}"
+    text, n = re.subn(r'(?m)^local_max_gb\s*=\s*[0-9.eE+-]+', lambda _m: value, text)
+    if n == 0:
+        # Starší Config.toml klíč nemá — vložit za csv_encoding, jinak hned za hlavičku [data]
+        text, n = re.subn(r'(?m)^(csv_encoding[ \t]*=.*)$', lambda m: f"{m.group(1)}\n{value}", text, count=1)
+    if n == 0:
+        text, n = re.subn(r'(?m)^(\[data\][ \t]*)$', lambda m: f"{m.group(1)}\n{value}", text, count=1)
+    if n == 0:
+        raise ValueError("sekce [data] nenalezena v Config.toml")
+    config_path.write_text(text, encoding="utf-8")
+
+
+@router.patch("/config/storage", status_code=204, dependencies=[Depends(require_role("admin"))])
+async def update_storage_limit(body: UpdateStorageLimitRequest, request: Request) -> None:
+    """Změní limit lokálního úložiště — v Config.toml i v paměti (bez restartu)."""
+    config_path: Path | None = request.app.state.config_path
+    if config_path is None:
+        raise HTTPException(status_code=500, detail="config_path není dostupný v app.state")
+    try:
+        await asyncio.to_thread(_write_storage_limit, config_path, body.local_max_gb)
+    except Exception as exc:
+        log.error("[API]   PATCH /api/config/storage selhalo: %s", exc)
+        raise HTTPException(status_code=500, detail="Nepodařilo se zapsat konfiguraci")
+    request.app.state.config.data.local_max_gb = body.local_max_gb
+    log.info("[API]   PATCH /api/config/storage — local_max_gb=%g", body.local_max_gb)
 
 
 def _norm(p: Path) -> str:

@@ -280,4 +280,42 @@ export interface Translations {
     successDeleted:  string
     successPassword: string
   }
+  storage: {
+    title:          string
+    usage:          string   // „{used} z {limit}"
+    files:          string
+    synced:         string   // „synchronizováno na NAS: {count} souborů ({size})"
+    warning:        string
+    critical:       string
+    diskLow:        string   // „na disku zbývá jen {free}"
+    cleanBtn:       string
+    cleaning:       string
+    nothingToClean: string
+    confirmTitle:   string
+    confirmBody:    string   // „Smaže se až {count} souborů ({size}) …"
+    confirmNote:    string
+    cleanDone:      string   // „Vyčištěno: {count} souborů, uvolněno {size}"
+    cleanSkipped:   string   // „{count} souborů ponecháno — na NAS nenalezeny"
+    cleanFailed:    string
+    cleanNas:       string
+    cleanBusy:      string
+    forceLink:      string
+    forceTitle:     string
+    forceBody:      string   // „Smaže se všech {count} souborů ({size}) …"
+    forceRiskTitle: string
+    forceRisk:      string
+    forceAck:       string
+    forceBtn:       string
+    forceDone:      string   // „Smazáno bez ověření: {count} souborů, uvolněno {size}"
+    toastWarning:   string
+    toastCritical:  string
+    chipTitle:      string
+    usageLabel:     string
+    limitLabel:     string
+    limitSaved:     string
+    limitError:     string
+    limitAdminOnly: string
+    helpLimit:      string
+    helpUsage:      string
+  }
 }

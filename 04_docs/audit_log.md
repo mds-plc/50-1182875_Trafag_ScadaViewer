@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-24 (všechny nálezy uzavřeny + výkonové úpravy)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-25 (limit lokálního úložiště + čištění — bez nových nálezů)**.
 
 ### 🔴 HIGH
 
@@ -40,6 +40,35 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-09-25] Nová funkce — limit lokálního úložiště + čištění synchronizovaných souborů
+
+Požadavek: upozornit obsluhu, že se lokální složka (kam DatabaseGateway ukládá, než soubory po retenci
+sám smaže) blíží limitu, a umožnit vyčistit soubory, které už jsou na NAS. Detail: `architecture.md` Fáze 29.
+
+### Rozhodnutí uživatele
+
+| # | Otázka | Rozhodnutí |
+|---|--------|-----------|
+| D1 | Jak určit limit | Pevný limit v GB — `Config.toml [data] local_max_gb` (výchozí 5), editace v Nastavení (admin+); pojistka: málo místa na disku |
+| D2 | Kde upozornit | Topbar chip (warning ≥ 80 %, critical ≥ 95 %) + `StorageBar` v Database + toast při zhoršení |
+| D3 | Bezpečnost čištění | Výchozí: smazat jen soubory ověřené na NAS (název + velikost); NAS nedostupný → nic se nesmaže |
+| D4 | Kdo smí čistit | Každý přihlášený uživatel (`require_auth`), maže se vše synchronizované |
+| D5 | Mazání bez ověření | Povoleno (`?force=true`) — jen po druhém dialogu se zvýrazněným rizikem ztráty dat a zaškrtnutím „Rozumím riziku"; log WARNING se jménem |
+
+### Bezpečnostní poznámky
+
+| # | Závažnost | Popis | Status |
+|---|-----------|-------|--------|
+| S1 | ℹ️ INFO | DatabaseGateway přesouvá do `done_remote/` hned po uploadu (před `verified_at`) — složka sama není důkaz, proto ověření proti výpisu NAS | ✅ Řešeno návrhem |
+| S2 | ⚠️ PŘIJATÉ RIZIKO | `force=true` smaže i neověřené soubory — ztráta dat, pokud upload nedoběhl. Zmírnění: dvoukrokové potvrzení, výchozí fokus na Zrušit, audit v logu | ✅ Přijato uživatelem |
+| S3 | ℹ️ INFO | `done_local/`, `wip/` a NAS se nemažou nikdy (ani s `force`); souběh čištění → 409 | ✅ Testováno |
+| S4 | 🔵 LOW | `.btn:disabled` neměl vizuální stav — zakázané „Smazat bez ověření" vypadalo aktivně | ✅ Opraveno (`components.css`, globálně) |
+
+Ověřeno: `pytest` **219 passed** (+18 `test_storage.py`), `vitest` **88 passed** (+ `StorageBar.test.tsx`),
+`tsc` 0 chyb, `npm run build` OK; ruční průchod na testovacím serveru (kopie dat, fiktivní ADS) přes Playwright.
 
 ---
 

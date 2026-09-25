@@ -1,7 +1,7 @@
 /**
  * @file App.tsx
  * @description Kořenová komponenta aplikace — BrowserRouter, provider nesting
- *   (ToastProvider > PlcProvider > PlcAuth > AppShell) a definice 5 cest + fallback.
+ *   (ToastProvider > PlcProvider > PlcAuth > StorageProvider > AppShell) a definice 5 cest + fallback.
  *   PlcAuth přemosťuje PLC přihlášení z PlcContext do AuthContext.
  *   Neznámé cesty jsou přesměrovány na /.
  */
@@ -11,6 +11,7 @@ import { LangProvider } from './context/LangContext'
 import { PlcProvider, usePlc } from './context/PlcContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { StorageProvider } from './context/StorageContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { usePlcWatcher } from './hooks/usePlcWatcher'
 import Sidebar      from './components/Sidebar'
@@ -96,7 +97,9 @@ export default function App() {
         <ToastProvider>
           <PlcProvider>
             <PlcAuth>
-              <AppShell />
+              <StorageProvider>
+                <AppShell />
+              </StorageProvider>
             </PlcAuth>
           </PlcProvider>
         </ToastProvider>

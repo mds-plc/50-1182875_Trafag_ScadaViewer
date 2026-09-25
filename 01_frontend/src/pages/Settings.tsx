@@ -9,10 +9,12 @@ import { ChevronRight, Folder, FolderOpen, HardDrive, Info, Cpu, Network, Slider
 import { useLang }     from '../context/LangContext'
 import { useToast }    from '../context/ToastContext'
 import { useAuth }     from '../context/AuthContext'
+import { useStorage }  from '../context/StorageContext'
 import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
 import LoadingSpinner  from '../components/LoadingSpinner'
 import { apiFetch } from '../utils/apiFetch'
+import { formatBytes } from '../utils/formatting'
 
 // ---------------------------------------------------------------------------
 // HelpButton — info tlačítko s výskakovacím popiskem
@@ -189,7 +191,7 @@ interface HealthData {
 interface ConfigData {
   server: { version: string }
   ads:    { net_id: string; port: number }
-  data:   { local_path: string; remote_path: string }
+  data:   { local_path: string; remote_path: string; local_max_gb: number }
 }
 
 interface StatusData {
@@ -505,6 +507,9 @@ export default function Settings() {
   const [pathBusy,       setPathBusy]       = useState(false)
   const [pickerOpen,     setPickerOpen]     = useState(false)
   const [statusChecking, setStatusChecking] = useState(false)
+  const [limitGb,        setLimitGb]        = useState('')
+  const [limitBusy,      setLimitBusy]      = useState(false)
+  const { storage, refresh: refreshStorage } = useStorage()
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -562,6 +567,7 @@ export default function Settings() {
     if (config) {
       setLocalPath(config.data.local_path)
       setRemotePath(config.data.remote_path)
+      setLimitGb(String(config.data.local_max_gb))
     }
   }, [config])
 
@@ -597,6 +603,32 @@ export default function Settings() {
       addToast(t.settings.connPathError, 'danger')
     } finally {
       setPathBusy(false)
+    }
+  }
+
+  async function handleSaveLimit() {
+    const value = Number(limitGb.replace(',', '.'))
+    if (!(value > 0)) { addToast(t.storage.limitError, 'danger'); return }
+    setLimitBusy(true)
+    try {
+      const res = await apiFetch('/api/config/storage', {
+        method:  'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ local_max_gb: value }),
+      })
+      if (res.ok) {
+        addToast(t.storage.limitSaved, 'success')
+        void refreshStorage()
+      } else {
+        addToast(t.storage.limitError, 'danger')
+      }
+    } catch {
+      addToast(t.storage.limitError, 'danger')
+    } finally {
+      setLimitBusy(false)
     }
   }
 
@@ -821,6 +853,53 @@ export default function Settings() {
                 </button>
               </div>
               <HelpButton id="localPath" text={t.settings.helpLocalPath} {...hp} />
+            </div>
+
+            <div className="settings-row">
+              <span className="settings-row__label">{t.storage.usageLabel}</span>
+              <div className="settings-row__control settings-storage">
+                {storage ? (
+                  <>
+                    <div className={`settings-storage__track settings-storage__track--${storage.level}`}>
+                      <div className="settings-storage__fill" style={{ width: `${Math.min(100, storage.percent)}%` }} />
+                    </div>
+                    <span>
+                      {t.storage.usage
+                        .replace('{used}',  formatBytes(storage.used_bytes))
+                        .replace('{limit}', formatBytes(storage.limit_bytes))}
+                      {' · '}{Math.round(storage.percent)} % · {storage.file_count} {t.storage.files}
+                    </span>
+                  </>
+                ) : '—'}
+              </div>
+              <HelpButton id="storageUsage" text={t.storage.helpUsage} {...hp} />
+            </div>
+
+            <div className="settings-row">
+              <span className="settings-row__label">{t.storage.limitLabel}</span>
+              <div className="settings-path-control">
+                <input
+                  className="settings-path-input settings-limit-input"
+                  type="number"
+                  min={0.1}
+                  step={0.5}
+                  value={limitGb}
+                  onChange={e => setLimitGb(e.target.value)}
+                  disabled={limitBusy || !isAdmin}
+                  title={isAdmin ? undefined : t.storage.limitAdminOnly}
+                />
+                <span className="settings-meta">GB</span>
+                {isAdmin && (
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={handleSaveLimit}
+                    disabled={limitBusy}
+                  >
+                    {lang === 'cs' ? 'Uložit' : 'Save'}
+                  </button>
+                )}
+              </div>
+              <HelpButton id="storageLimit" text={t.storage.helpLimit} {...hp} />
             </div>
 
             <div className="settings-row">

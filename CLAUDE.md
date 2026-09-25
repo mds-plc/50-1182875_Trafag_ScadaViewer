@@ -24,7 +24,8 @@ Funkce:
 4. *(Overview — live dashboard, odpojen z routingu 2026-09-23, kód zachován)*
 
 > Data do CSV píše **DatabaseGateway**. ScadaViewer je čte; jediný zásah je mazání
-> **lokálních** souborů (role technician+). Soubory na NAS nemaže nikdy.
+> **lokálních** souborů (jednotlivě / hromadně role technician+; „Vyčistit synchronizované"
+> `done_remote/` každý přihlášený). Soubory na NAS nemaže nikdy.
 
 ---
 
@@ -69,9 +70,10 @@ CLAUDE.md                  ← tento soubor
     │   ├── health.py          ← GET /api/health → {status, version, checks}
     │   ├── auth.py            ← POST /api/auth/login + logout + change-password + plc-login
     │   ├── users_api.py       ← CRUD /api/users (admin+)
-    │   ├── config_api.py      ← GET/PATCH /api/config + GET /api/config/fs (folder picker, admin+)
+    │   ├── config_api.py      ← GET/PATCH /api/config (+ /paths, /storage limit) + GET /api/config/fs (folder picker, admin+)
     │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot) — ⏸ odpojeno (2026-09-23)
     │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
+    │   ├── storage.py         ← GET /api/storage (zaplnění vs. local_max_gb) + POST /api/storage/cleanup[?force=true]
     │   └── dependencies.py    ← require_auth(), require_role() Depends factories; 401 nese WWW-Authenticate: Bearer
     └── services/
         ├── __init__.py
@@ -82,6 +84,7 @@ CLAUDE.md                  ← tento soubor
         ├── repositories/csv_repository.py ← CSV I/O, validace file_id, cache metadat (mtime/size)
         ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast — ⏸ odpojeno
         ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP; cache 2 souborů
+        ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
         └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast(); clear_symbols() po výpadku ADS
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
@@ -115,7 +118,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── SignalCharts.tsx   ← 5 záložek Signal Data dle referenčních grafů analýzy (05_user_data/20260921_103124/*.png)
     │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
-    │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(user) + přepínač CS/EN + chip(datetime)
+    │   ├── StorageBar.tsx     ← zaplnění lokálního úložiště (Database/Lokální) + dialog čištění; krok 2 = bez ověření s potvrzením rizika
+    │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(úložiště, jen warning/critical) + chip(user) + CS/EN + chip(datetime)
     ├── i18n/
     │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en'
     │   ├── cs.ts              ← České překlady (~210 klíčů, nested objekt)
@@ -124,6 +128,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
     │   ├── PlcContext.tsx     ← WebSocket singleton, status: Record<symbol, PlcStatus>, connected: bool
     │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, sessionExpired, login(), logout() + sessionStorage
+    │   ├── StorageContext.tsx ← zaplnění úložiště (/api/storage, 60 s + files_changed), toast při zhoršení, cleanup(force?)
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
     ├── hooks/
     │   ├── useData.ts          ← useFiles, useFileRecords, useRemoteStatus, useData
@@ -142,7 +147,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
     │   ├── exportXlsx.ts       ← XLSX export (SheetJS); exportFileXlsx() = vždy celý soubor (per_page=0)
-    │   ├── formatting.ts       ← formatDateTime(iso, withSeconds) + formatDate — sdíleno napříč stránkami
+    │   ├── formatting.ts       ← formatDateTime(iso, withSeconds) + formatDate + formatBytes — sdíleno napříč stránkami
     │   └── overviewHelpers.ts  ← ⏸ jen pro odpojený Overview
     ├── styles/
     │   ├── variables.css      ← design tokeny (barvy, fonty, mezery, stíny, přechody)
@@ -172,6 +177,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_ads_monitor.py        ← AdsMonitor (mock pyads)
 ├── test_performance.py        ← io_pool, signal parser (numpy/Python), cache, prefetch, gzip, cache hlavičky
 ├── test_wip_live.py           ← rozpracovaná zakázka v /api/files, FilesWatcher (files_changed)
+├── test_storage.py            ← zaplnění úložiště, čištění (ověřené / force), PATCH /api/config/storage
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
@@ -379,6 +385,9 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
 | `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty (admin+) |
+| `/api/config/storage` | PATCH | `{local_max_gb}` — limit lokálního úložiště do Config.toml, bez restartu (admin+) |
+| `/api/storage` | GET | Zaplnění lokálního úložiště — `{used_bytes, limit_bytes, percent, level, synced_count, synced_bytes, disk_low, …}` |
+| `/api/storage/cleanup` | POST | Smaže `done_remote/` soubory ověřené na NAS (název+velikost; NAS nedostupný → 503); `?force=true` bez ověření — UI jen po potvrzení rizika; 409 = už běží |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
 > **Výkon:** GZip pro odpovědi > 1 kB; `/assets/*` s `Cache-Control: immutable` (hash v názvu), HTML `no-cache`.
@@ -480,7 +489,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
-| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`) | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
@@ -509,10 +518,12 @@ remote_path   = "\\\\synology\\orders"
 
 csv_separator = ";"          # oddělovač sloupců (DatabaseGateway Config.toml)
 csv_encoding  = "utf-8-sig"  # BOM UTF-8 (Excel kompatibilní)
+local_max_gb  = 5.0          # limit lokálního úložiště [GB]; ≥80 % varování, ≥95 % kritické (volitelné, výchozí 5)
 ```
 
 Konfigurace se načítá při startu přes `load_config()` → `AppConfig` dataclass.
-Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart nutný.
+Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart nutný
+(výjimky: cesty `PATCH /api/config/paths` a limit `PATCH /api/config/storage` platí okamžitě).
 
 ---
 
@@ -735,14 +746,15 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **201 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 10 souborů) — **80 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **219 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 11 souborů) — **88 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
 | Signal Data Charts (Fáze 20, 25, 27) | ✅ | `signal_reader.py` + `GET /api/signal` (5 režimů + `range`) + `SignalCharts.tsx` (5 záložek dle referenční analýzy); každý graf v `ZoomPanel` (kolečko / 2 prsty, posun, dvojklik = reset, celá obrazovka, výřez v plném rozlišení) |
 | Sdílená tabulka parametrů (Fáze 26) | ✅ | `ParamTable.tsx` — zkratka · název se vzorcem · hodnota+jednotka · „?" nápověda (`PARAM_DESC`); production detail záznamu i Testing detail |
 | Tiskový protokol A4 (Fáze 28) | ✅ | záhlaví s časem tisku a uživatelem (`PrintMeta`), číslování stran, zarovnané tabulky, bez duplicit/prázdných stran — ověřovat přes Playwright `page.pdf()` |
+| Limit lokálního úložiště + čištění (Fáze 29) | ✅ | `local_max_gb` (Config.toml / Nastavení admin+); topbar chip + `StorageBar` + toast; čištění `done_remote/` ověřené na NAS (každý přihlášený), `force` bez ověření jen po potvrzení rizika — viz audit_log 2026-09-25 |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
 

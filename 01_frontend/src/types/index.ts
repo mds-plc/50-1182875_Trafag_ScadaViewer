@@ -42,3 +42,25 @@ export interface DataFilter {
   page?:     number   // stránka (od 1); default 1
   perPage?:  number   // počet záznamů; 0 = vše; default 200
 }
+
+/** Zaplnění lokálního úložiště — GET /api/storage */
+export interface StorageStatus {
+  used_bytes:       number
+  limit_bytes:      number
+  percent:          number                          // zaplnění limitu [%]
+  level:            'ok' | 'warning' | 'critical'   // ≥ 80 % varování, ≥ 95 % kritické (nebo málo místa na disku)
+  file_count:       number
+  synced_bytes:     number                          // done_remote/ — lze vyčistit
+  synced_count:     number
+  disk_total_bytes: number | null
+  disk_free_bytes:  number | null
+  disk_low:         boolean                         // na disku zbývá < 10 %
+}
+
+/** Výsledek POST /api/storage/cleanup */
+export interface CleanupResult {
+  deleted:     number
+  freed_bytes: number
+  skipped:     number   // na NAS chybí / nesedí velikost — ponecháno
+  failed:      number
+}

@@ -8,8 +8,9 @@
  *   - Clear button vymaže datum filtry (volá setDateFrom('') + setDateTo(''))
  *   - remote alert viditelný jen při location='remote' + remoteAvailable=false
  *   - Refresh button → volá fetchFiles()
+ *   - StorageBar (zaplnění lokálního úložiště) jen na záložce Local
  *
- * Strategie: mockujeme useDatabaseState, FileTable a DeleteModal.
+ * Strategie: mockujeme useDatabaseState, FileTable, DeleteModal a StorageBar.
  * Testy se tak soustředí čistě na JSX logiku Database.tsx
  * bez závislosti na interní logice subkomponent.
  */
@@ -87,6 +88,10 @@ vi.mock('../components/FileTable', () => ({
 
 vi.mock('../components/DeleteModal', () => ({
   default: () => null,
+}))
+
+vi.mock('../components/StorageBar', () => ({
+  default: () => <div data-testid="storage-bar" />,
 }))
 
 // -----------------------------------------------------------------------
@@ -171,6 +176,14 @@ describe('Database page', () => {
     // Alert se zobrazí při location=remote + remoteAvailable=false
     renderDatabase({ location: 'remote', remoteAvailable: false })
     expect(screen.getByText(/remote storage is unavailable/i)).toBeInTheDocument()
+  })
+
+  it('StorageBar is shown only on the local tab', () => {
+    const { unmount } = renderDatabase({ location: 'local' })
+    expect(screen.getByTestId('storage-bar')).toBeInTheDocument()
+    unmount()
+    renderDatabase({ location: 'remote' })
+    expect(screen.queryByTestId('storage-bar')).toBeNull()
   })
 
   it('Refresh button click calls fetchFiles()', () => {

@@ -130,7 +130,7 @@ def _build_csp(frontend_dist: Path) -> str:
 from scada import __version__
 from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users
-from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal
+from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, storage
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
 from scada.services.files_watcher import FilesWatcher
@@ -352,6 +352,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app.include_router(data.router,       prefix="/api", tags=["data"])
     app.include_router(status.router,     prefix="/api", tags=["status"])
     app.include_router(signal.router,    prefix="/api", tags=["signal"])
+    app.include_router(storage.router,    prefix="/api", tags=["storage"])
 
     # React frontend — automaticky aktivní pokud existuje build (Docker / produkce).
     # V dev módu (npm run dev na :5173) adresář dist/ neexistuje → přeskočeno.
