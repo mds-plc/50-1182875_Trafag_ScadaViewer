@@ -47,6 +47,9 @@ Skript provede:
 1. `npm install` + `npm run build` → `01_frontend/dist/` (React build)
 2. `pyinstaller 06_build/exe/scada.spec` → `06_build/dist/scada_viewer/` (**složka**: exe + `_internal/`)
 3. Kopie do `06_build/releases/v<verze>_<datum>/scada_viewer/` + ZIP `v<verze>_<datum>.zip`
+   (ZIP až 5 pokusů po 8 s — Windows Defender krátce drží čerstvé soubory; při selhání `[WARN]`)
+   Před releasem zvednout `__version__` v `00_backend/scada/__init__.py` (+ `01_frontend/package.json`) —
+   existující tag = build proběhne, ale tag ani GitHub release se nevytvoří.
 4. Git tag `v<verze>` + (volitelně) GitHub release přes `gh`
 
 ### Krok A2: Obsah release balíčku

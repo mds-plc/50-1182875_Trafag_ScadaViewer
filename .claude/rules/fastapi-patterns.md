@@ -139,6 +139,8 @@ result = await asyncio.wait_for(
 - `CsvRepository._meta_cache` — metadata souborů dle `(mtime_ns, size)`
 - `signal_reader` — LRU cache naparsovaných souborů + cache hotových odpovědí; numpy parser
 - `/api/data` spouští prefetch signálu na pozadí (`_prefetch_tasks`)
+- `/api/signal?mode=range&t0=&t1=` (přiblížený graf) — odpověď se NEcachuje (rozsahy se mění plynule),
+  jen surová data (`load_signal`); výřez `extract_time_range()` (bisect) + min-max decimace
 - Velké JSON odpovědi (`/api/signal`) → `JSONResponse(content=…)` (bez `jsonable_encoder`)
 - `GZipMiddleware`, `Cache-Control: immutable` pro `/assets/*`
 

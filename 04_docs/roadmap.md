@@ -3,7 +3,7 @@
 > Dokument pro vývojáře. Popisuje co zbývá před nasazením do produkce a v jakém pořadí to dělat.
 > Aktualizovat při každé změně stavu.
 >
-> Poslední aktualizace: 2026-09-24 (hloubkový audit, výkon, úklid dokumentace a kódu)
+> Poslední aktualizace: 2026-09-25 (release v2.0.0 — živá Database, zoom grafů, jednotné parametry, tiskový protokol)
 
 ---
 
@@ -15,12 +15,12 @@
 | Frontend (všechny stránky) | ✅ Hotovo | Database (hlavní), ChartView (+ record detail, Signal Data), Settings, Info; Overview odpojen (2026-09-23), kód zachován |
 | Autentizace (PBKDF2, multi-user) | ✅ Hotovo | users.toml, role, Bearer tokeny, PLC auto-login |
 | Security middleware | ✅ Hotovo | CSP (SHA-256 hash), SecurityHeaders, RateLimit, CORS, WS origin |
-| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat` |
+| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.0.0** (2026-09-24) |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Kritický audit + opravy | ✅ Hotovo | Session TTL (8 h), sessions.clear() scope, privilege escalation — viz audit_log.md 2026-07-31 |
 | Self-hosted fonty | ✅ Hotovo | @fontsource — DM Sans + DM Mono bundlovány do buildu; aplikace funguje bez internetu |
-| Backend testy | ✅ Hotovo | **199 testů** (config, API, security, ADS monitor, users, výkon/cache); `pytest 02_tests/ -v` |
-| Frontend testy | ✅ Hotovo | **77 testů**, 10 souborů Vitest; `npm run test` |
+| Backend testy | ✅ Hotovo | **201 testů** (config, API, security, ADS monitor, users, výkon/cache); `pytest 02_tests/ -v` |
+| Frontend testy | ✅ Hotovo | **80 testů**, 10 souborů Vitest; `npm run test` |
 | Hloubkový audit 2026-09-24 | ✅ Hotovo | 28 nálezů uzavřeno (M14 přijaté riziko) — viz audit_log.md |
 | Výkon | ✅ Hotovo | cache metadat + signálových dat, numpy parser, prefetch, NAS pool, gzip, code-splitting |
 | Dokumentace kódu | ✅ Hotovo | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |

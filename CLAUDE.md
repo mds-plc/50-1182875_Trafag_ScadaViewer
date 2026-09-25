@@ -137,12 +137,12 @@ CLAUDE.md                  ← tento soubor
     │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
     │   └── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     ├── utils/
-    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞)
+    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
     │   ├── exportXlsx.ts       ← XLSX export (SheetJS); exportFileXlsx() = vždy celý soubor (per_page=0)
-    │   ├── formatting.ts       ← formatDateTime — sdíleno FileTable/ExpandedRow
+    │   ├── formatting.ts       ← formatDateTime(iso, withSeconds) + formatDate — sdíleno napříč stránkami
     │   └── overviewHelpers.ts  ← ⏸ jen pro odpojený Overview
     ├── styles/
     │   ├── variables.css      ← design tokeny (barvy, fonty, mezery, stíny, přechody)
@@ -156,7 +156,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── login.css          ← .login-overlay, .login-card, přihlašovací formulář
     │   ├── toast.css          ← .toast-container, .toast--success/danger/warning/info
     │   ├── database.css       ← .db-* — tabs, toolbar, table, expand, modal, NAS alert
-    │   ├── chart.css          ← .chart-*, .rd-* — ChartView, RecordDiagram, tisk
+    │   ├── chart.css          ← .chart-*, .rd-*, .testing-hero — ChartView, RecordDiagram; na konci blok „PROTOKOL" (tisk A4)
     │   ├── settings.css       ← .settings-* — záložky, řádky, folder picker, uživatelé
     │   ├── info.css           ← .info-*
     │   ├── signal-charts.css  ← .sig-* — záložky, gridy, subploty signálových grafů
@@ -481,7 +481,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`) | `FileTable`, `DeleteModal`, `Pagination` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `Chart`, `DataTable`, `SignalCharts` | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: TestingHero + dvouúrovňové záložky (sekce/pod-záložky) + **Signal Data** (5 grafů, podmíněně) |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`) | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -720,7 +720,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Hooks (useFiles, useFileRecords, useRemoteStatus, useData) | ✅ | useData.ts — AbortController (race condition fix), reset stavu při přepnutí záložky |
 | Stránka Database (local/remote, expand, delete modal) | ✅ | auto-refresh 30s, NAS banner, mazání; skupinový BarChart + count tile v expand; CSV download v každém řádku; Testing: přímý navigate |
 | Stránka Overview | ⏸ odpojeno | hero badge (16 módů) + zakázka KPI + boxy grid (6) + mini Recharts LineChart + live záznamy (/ws/orders) |
-| Stránka ChartView — order detail | ✅ | Production: OrderHero + skupiny + klikací tabulka → record detail; Testing: TestingHero + dvouúrovňové záložky + **Signal Data** (5 interaktivních grafů, decimace 400k→2k, FP/OP/RP/TTP); **Tisk**: skupinové tabulky |
+| Stránka ChartView — order detail | ✅ | Production: OrderHero + skupiny + klikací tabulka → record detail; Testing: hero + záložky sekcí (ParamTable jako production) + **Signal Data** (5 grafů, decimace 400k→2k, FP/OP/RP/TTP, zoom + celá obrazovka); **Tisk**: protokol A4 |
 | Stránka ChartView — record detail (?record=N) | ✅ | RecordDiagram: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818, časy v měřítku) + ParamTable (5 skupin); rd-meta badge; maximize modal; tlačítko Tisk |
 | Stránka Settings | ✅ | 3 dlaždice: Předvolby (lang/theme/perPage/refresh), Připojení (/api/health+config+status), Účet (change-password, logout) |
 | WebSocket /ws/orders + OrderWatcher | ⏸ odpojeno | order_watcher.py polls wip/; orders_ws.py endpoint; useOrderWatcher.ts hook |
@@ -730,7 +730,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller; kiosk_start.bat pro 2 obrazovky |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.0.0**) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
@@ -740,7 +740,9 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
-| Signal Data Charts (Fáze 20) | ✅ | `signal_reader.py` + `GET /api/signal` (5 režimů) + `SignalCharts.tsx` (5 záložek Recharts); min-max decimace 400k→2k; FP/OP/RP/TTP |
+| Signal Data Charts (Fáze 20, 25, 27) | ✅ | `signal_reader.py` + `GET /api/signal` (5 režimů + `range`) + `SignalCharts.tsx` (5 záložek dle referenční analýzy); každý graf v `ZoomPanel` (kolečko / 2 prsty, posun, dvojklik = reset, celá obrazovka, výřez v plném rozlišení) |
+| Sdílená tabulka parametrů (Fáze 26) | ✅ | `ParamTable.tsx` — zkratka · název se vzorcem · hodnota+jednotka · „?" nápověda (`PARAM_DESC`); production detail záznamu i Testing detail |
+| Tiskový protokol A4 (Fáze 28) | ✅ | záhlaví s časem tisku a uživatelem (`PrintMeta`), číslování stran, zarovnané tabulky, bez duplicit/prázdných stran — ověřovat přes Playwright `page.pdf()` |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
 

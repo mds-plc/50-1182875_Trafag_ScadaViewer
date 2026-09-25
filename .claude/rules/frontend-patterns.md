@@ -171,6 +171,23 @@ const numericKeys = useMemo(() => {
 }, [records])
 ```
 
+## Parametry, grafy, tisk — sdílené stavební bloky (nerozbíjet)
+
+- **Hodnoty měřených parametrů** VŽDY přes `formatParam()` / `paramUnit()` z `utils/paramMeta.ts`
+  (N 2 des. místa, µm/µs celá čísla, odpor mΩ = Ω×1000, ≥ 999 999 → ∞). Nikdy ruční `toFixed`.
+  Nový parametr: `PARAM_LABELS` + `PARAM_TOOLTIPS` (anglicky, se vzorcem) + `PARAM_DESC` (česká nápověda)
+  + skupina v `PARAM_GROUPS` (nebo `EXTRA_FORMAT` pro vstupy testu).
+- **Tabulka parametrů** = `components/ParamTable.tsx` (production detail záznamu i Testing detail).
+- **Barvy boxů 1–6** = `CATEGORY_COLORS` / `categoryColor()` (`utils/groupColors.ts`) = `.db-cat-badge[data-cat]`.
+- **Grafy Signal Data** vždy uvnitř `<ZoomPanel>` (zoom osy X, celá obrazovka); render funkce dostane
+  `(domain, hiRows)` — řádky filtrovat `sliceRows()`, osy Y přes autoscale z viditelných dat.
+- **Recharts:** `XAxis type="number"` vždy (kategoriální osa = nevykreslené `ReferenceLine`);
+  `ReferenceArea` s `ifOverflow="hidden"`; synchronizované grafy `syncMethod="value"`.
+- **Široký obsah v buňce tabulky** (rozbalený řádek): obal `width: 0; min-width: 100%` + `overflow-x: auto`
+  — jinak roztáhne celou tabulku přes obrazovku.
+- **Tisk:** styly v bloku „PROTOKOL" na konci `styles/chart.css`; obrazovkové prvky `cv-screen-only`,
+  tiskové `cv-print-only`; ověřit PDF přes Playwright `page.pdf()` (testovací server s fiktivním ADS).
+
 ## TypeScript — pravidla
 
 - Vždy explicitní typy pro props, state, API response

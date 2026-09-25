@@ -616,6 +616,9 @@ Každý graf Signal Data je v `components/ZoomPanel.tsx`:
 **Drobné úpravy UI (2026-09-24):**
 - Database: rozpracovaná zakázka (nelze mazat) má místo koše neviditelný zástupný prvek
   (`.db-icon-btn--placeholder`) — tlačítka CSV / XLSX jsou ve všech řádcích na stejném místě.
+- Database: rozbalený detail zakázky (`.db-expand`) má `width: 0; min-width: 100%` — široká
+  tabulka záznamů (~30 sloupců) dřív roztáhla celou hlavní tabulku přes šířku obrazovky
+  (1076 → 1471 px při 1366 px); teď roluje vodorovně uvnitř `.db-subtable-wrap`, buňky `nowrap`.
 - Testing detail: hlavička (`.testing-hero`) v jednom řádku zleva — typ spínače + ID │ Čas měření │
   Doba měření │ OK/NOK (dřív roztaženo na krajní strany); nižší výška.
 
@@ -1021,8 +1024,8 @@ ChartView
 │
 └── (Testing — sekční CSV, 1 záznam):
     ├── <TestingHero>                 ← switch, ID, čas, OK/NOK
-    ├── dvouúrovňové záložky: sekce (Testing params / Measured info / Analyzed / NOK info / Signal)
-    │   └── pod-záložky dle PARAM_GROUPS (Síly, Pozice, Časy, Odpory…)
+    ├── záložky sekcí: Nastavení testu / Měření / Výsledky / NOK hodnocení / Signal
+    │   └── tabulky přes sdílenou <ParamTable> (Výsledky = všechny PARAM_GROUPS jako production)
     └── sekce Signal (jen has_signal) → <SignalCharts key={soubor}>
         5 záložek: Overview · Results · Hysteresis · Switching · Timing
         data: GET /api/signal (overview hned, zoom_op/zoom_rp líně) — z backend cache
@@ -1633,6 +1636,8 @@ Dvouúrovňový detail testovacích souborů (sekční CSV formát `[Metadata] +
 ```
 
 **Stav testů po fázi 19:** Backend 146/146, Frontend build OK.
+
+> Pod-záložky Výsledků a vlastní tabulky Testing detailu nahradila ve Fázi 26 sdílená `ParamTable`.
 
 ---
 
