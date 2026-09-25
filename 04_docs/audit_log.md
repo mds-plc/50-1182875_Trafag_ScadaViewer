@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-25 (limit lokálního úložiště + čištění — bez nových nálezů)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-25 (revize textů CS/EN — nálezy opraveny)**.
 
 ### 🔴 HIGH
 
@@ -40,6 +40,42 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-09-25] Revize textů CS/EN + časový průběh zakázky + kompaktní ukazatel úložiště
+
+Detail implementace: `architecture.md` Fáze 30 a 31.
+
+### Rozhodnutí uživatele
+
+| # | Otázka | Rozhodnutí |
+|---|--------|-----------|
+| D1 | Odborné názvy v CS (Production/Testing, skupiny a názvy parametrů, NOK kategorie) | Ponechat anglicky v obou jazycích |
+| D2 | Nápověda „?" parametrů byla jen česky | Doplnit anglickou verzi (`PARAM_DESC_EN`) |
+| D3 | Třídění 1–6: Skupina / Kat. / Box | Jednotně **Kategorie** (EN Category) |
+| D4 | Odznaky sloupce Sync | Anglicky v obou jazycích: In progress / Local / Synced, sloupec „Sync" |
+| D5 | Časový průběh zakázky | Jen graf vyrobených kusů v čase + řada parametrů, stejná výška jako sloupcový graf, přepnutí bez posunu obsahu |
+| D6 | Ukazatel úložiště | Kompaktní prvek v úrovni přepínačů Lokální/Vzdálená, s viditelným popiskem „Lokální úložiště" |
+
+### Nálezy revize textů
+
+| # | Závažnost | Popis | Status |
+|---|-----------|-------|--------|
+| T1 | ⚠️ MEDIUM | Nápověda parametrů jen česky i v režimu EN | ✅ `PARAM_DESC_EN` + `paramDesc(key, lang)` |
+| T2 | ⚠️ MEDIUM | Natvrdo zapsané texty mimo i18n — CS v EN režimu (stránkování, topbar, „Vybrat vše", „Nápověda", „Uložit") a EN v CS režimu (NOK Categories, Forward/Return, KAT./Timestamp/Status, osa „NOK M.") | ✅ Převedeno do i18n |
+| T3 | ⚠️ MEDIUM | Chybné tvary s čísly („1 souborů", „3 vybraných", „1 files") | ✅ Přeformulováno bez skloňování |
+| T4 | 🔵 LOW | „Záznamů na stránce" řídí počet souborů v Databázi | ✅ „Souborů na stránce" |
+| T5 | 🔵 LOW | Nekonzistence: „PLC Připojeno", „Kontroluji...", Title Case v EN nadpisech, „Skupina" vs „Kategorie" | ✅ Sjednoceno |
+| T6 | 🔵 LOW | Zastaralý popis aplikace v Info (živý přehled PLC je odpojený) | ✅ Přepsáno |
+| T7 | 🔵 LOW | Nápovědy v Nastavení s žargonem („backend hlásí stav Degradovaný") | ✅ Přepsáno |
+| T8 | 🔵 LOW | 7 nepoužívaných i18n klíčů | ✅ Odstraněno |
+| T9 | ℹ️ INFO | Datum a desetinná čárka i v EN režimu v českém formátu (cs-CZ) | ⏸ Ponecháno — neměněno |
+| T10 | ℹ️ INFO | Odpojený Overview / WIP má vlastní texty mimo i18n (`overviewHelpers.ts`, `Wip.tsx`) | ⏸ Ponecháno (kód se nezobrazuje) |
+
+Ověřeno: `pytest` **225 passed** (+6 `test_timeline.py`), `vitest` **101 passed** (14 souborů, nové
+`i18n.test.ts`, `orderTimeline.test.ts`, `useContentScroll.test.tsx`), `tsc` 0 chyb, `npm run build` OK;
+Playwright: v režimu EN žádný český text na 6 obrazovkách, měření výšky při přepnutí grafu, obnova pozice po Zpět.
 
 ---
 

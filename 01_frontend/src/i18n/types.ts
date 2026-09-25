@@ -17,9 +17,10 @@ export interface Translations {
     errorInvalidResponse: string
     errorLoading: string
     backendOffline: string
+    save: string
+    help: string
   }
   nav: {
-    overview: string
     database: string
     settings: string
     info: string
@@ -72,7 +73,6 @@ export interface Translations {
     of: string
     colGroup: string
     colStatus: string
-    groupDistribution: string
     totalVsExpected: string
     orderDetail: string
     downloadXlsx: string
@@ -81,6 +81,9 @@ export interface Translations {
     clearSelection: string
     batchConfirmTitle: string
     batchConfirmBody: string
+    selectAll: string
+    prevPage: string
+    nextPage: string
   }
   chart: {
     diagramForceTravel: string
@@ -88,12 +91,25 @@ export interface Translations {
     openContact: string
     colCategory: string
     unitPcs: string
-    records: string
     exportCsv: string
     backToDatabase: string
     recordDetail: string
     categoryDistribution: string
     categoryNote: string
+    timelineView: string
+    tlStart: string
+    tlEnd: string
+    tlTotal: string
+    tlAvgGap: string
+    tlMedianGap: string
+    tlMaxGap: string
+    tlBefore: string
+    tlPauses: string
+    tlRate: string
+    tlRateUnit: string
+    tlPauseHelp: string
+    tlPieces: string
+    tlTooFew: string
     paramsTitle: string
     paramAbbr: string
     paramName: string
@@ -129,10 +145,13 @@ export interface Translations {
     sigReverse: string
     sigThreshold: string
     sigAnalysis: string
-    sigSwitchAt: string
-    sigHysteresisBand: string
     sigTime: string
     sigOpenContact: string
+    catNokTrafag: string
+    catNokMaker: string
+    nokCategories: string
+    forceTravelAria: string
+    switchTimesAria: string
   }
   settings: {
     title: string
@@ -180,8 +199,9 @@ export interface Translations {
     helpNas:             string
     helpRemotePath:      string
     // Účet tile
-    accountSave:        string
     accountPwdWrong:    string
+    themeToLight: string
+    themeToDark: string
   }
   overview: {
     title:          string

@@ -64,3 +64,9 @@ export interface CleanupResult {
   skipped:     number   // na NAS chybí / nesedí velikost — ponecháno
   failed:      number
 }
+
+/** Časový průběh zakázky — GET /api/timeline (sloupcový formát, seřazeno podle času) */
+export interface OrderTimeline {
+  timestamps: string[]            // ISO 8601
+  categories: (number | null)[]   // kategorie 1–6 ke každé časové značce
+}

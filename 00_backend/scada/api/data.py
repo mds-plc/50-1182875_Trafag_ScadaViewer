@@ -14,6 +14,7 @@ Zodpovědnost:
 
 Rozhraní:
   GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count)
+  GET /api/timeline → TimelineResponse (timestamps[], categories[]) — časový průběh zakázky
   Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše)
   Vyžaduje autentizaci: Depends(require_auth)
 
@@ -32,7 +33,7 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from scada.api.dependencies import require_auth
-from scada.models import DataResponse
+from scada.models import DataResponse, TimelineResponse
 from scada.services.io_pool import NasBusyError, run_io
 from scada.services.protocols import DataReader
 from scada.services.signal_reader import prepare_signal_response
@@ -159,3 +160,37 @@ async def get_data(
         file_expected_count=file_expected_count,
         has_signal=has_signal,
     )
+
+
+@router.get("/timeline", response_model=TimelineResponse, dependencies=[Depends(require_auth)])
+async def get_timeline(
+    request:   Request,
+    file:      str = Query(...,          description="Název souboru (file_id)"),
+    location:  str = Query('local',      description="local | remote"),
+    file_type: str = Query('production', description="production | testing", alias="type"),
+) -> TimelineResponse:
+    """
+    Časové značky a kategorie VŠECH záznamů zakázky (bez stránkování, bez parametrů).
+
+    Frontend (ChartView → Časový průběh) ho načte až po přepnutí na graf — běžné otevření
+    detailu zakázky nezatěžuje. Testing soubory → 404 (jeden záznam, časová osa nedává smysl).
+    """
+    if file_type != 'production':
+        raise HTTPException(status_code=404, detail="Časový průběh je jen pro production zakázky")
+    reader: DataReader = request.app.state.csv_reader
+    timeout = 30.0 if location == 'remote' else 10.0
+    try:
+        result = await asyncio.wait_for(
+            run_io(location, reader.read_timeline, file, location, file_type),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error("[API]   /api/timeline timeout (%s, %s, %.0f s)", file, location, timeout)
+        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.")
+    except (OSError, PermissionError) as exc:
+        log.error("[API]   /api/timeline I/O chyba (%s): %s", file, exc)
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Soubor nenalezen")
+    timestamps, categories = result
+    return TimelineResponse(timestamps=timestamps, categories=categories)

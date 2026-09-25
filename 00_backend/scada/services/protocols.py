@@ -84,3 +84,10 @@ class DataReader(Protocol):
         page:     int = 1,
         per_page: int = 0,
     ) -> tuple[list[dict], int, dict[str, int], int | None]: ...
+
+    def read_timeline(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> tuple[list[str], list[int | None]] | None: ...

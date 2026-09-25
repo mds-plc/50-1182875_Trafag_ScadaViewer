@@ -5,7 +5,7 @@
  *   PlcAuth přemosťuje PLC přihlášení z PlcContext do AuthContext.
  *   Neznámé cesty jsou přesměrovány na /.
  */
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { LangProvider } from './context/LangContext'
 import { PlcProvider, usePlc } from './context/PlcContext'
@@ -14,6 +14,7 @@ import { ToastProvider } from './context/ToastContext'
 import { StorageProvider } from './context/StorageContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { usePlcWatcher } from './hooks/usePlcWatcher'
+import { useContentScroll } from './hooks/useContentScroll'
 import Sidebar      from './components/Sidebar'
 import Topbar       from './components/Topbar'
 import LoginOverlay from './components/LoginOverlay'
@@ -51,6 +52,9 @@ function AppShell() {
   const { t } = useLang()
   const online = useBackendOnline()
   usePlcWatcher()
+  // Nová stránka začíná nahoře; Zpět vrátí pozici (např. v tabulce záznamů zakázky)
+  const contentRef = useRef<HTMLElement>(null)
+  useContentScroll(contentRef)
 
   // Přednačíst ostatní stránky, až prohlížeč nemá co dělat (neblokuje první vykreslení)
   useEffect(() => {
@@ -71,7 +75,7 @@ function AppShell() {
       <div className="app">
         <Sidebar />
         <Topbar />
-        <main className="content">
+        <main className="content" ref={contentRef}>
           <ErrorBoundary>
             <Suspense fallback={<LoadingSpinner />}>
             <Routes>

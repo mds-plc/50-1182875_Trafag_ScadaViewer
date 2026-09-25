@@ -1,8 +1,10 @@
 /**
  * @file StorageBar.tsx
  * @description Zaplnění lokálního úložiště na stránce Database (záložka Lokální) —
- *   ukazatel vůči limitu, varování (≥ 80 %) / kritické (≥ 95 %) a tlačítko
- *   „Vyčistit synchronizované" s potvrzovacím dialogem. Stav z StorageContext.
+ *   kompaktní prvek v hlavičce vedle přepínačů Lokální/Vzdálená (stejná výška a styl jako
+ *   .db-tabs): ikona + popisek „Lokální úložiště", mini ukazatel, „použito / limit · %" a tlačítko koše. Varování (≥ 80 %)
+ *   a kritické (≥ 95 %) jen obarví okraj a text; podrobnosti v title. Tlačítko otevře
+ *   dialog „Vyčistit synchronizované". Stav z StorageContext.
  *   Krok 2 (odkaz v dialogu): smazání BEZ ověření na NAS — zvýrazněné riziko ztráty dat,
  *   tlačítko povolí až zaškrtnuté „Rozumím riziku"; výchozí fokus na Zrušit.
  */
@@ -23,43 +25,45 @@ export default function StorageBar() {
   const s = t.storage
   const alert = storage.level !== 'ok'
   const canClean = storage.synced_count > 0 && !cleaning
+  const synced = s.synced
+    .replace('{count}', String(storage.synced_count))
+    .replace('{size}',  formatBytes(storage.synced_bytes))
+  // Popisek po najetí / pro čtečky: název, zaplnění, stav, disk, synchronizované soubory
+  const details = [
+    `${s.title}: ${s.usage.replace('{used}', formatBytes(storage.used_bytes)).replace('{limit}', formatBytes(storage.limit_bytes))} (${Math.round(storage.percent)} %)`,
+    alert ? (storage.level === 'critical' ? s.critical : s.warning) : '',
+    storage.disk_low && storage.disk_free_bytes !== null ? s.diskLow.replace('{free}', formatBytes(storage.disk_free_bytes)) : '',
+    synced,
+  ].filter(Boolean).join('\n')
 
   return (
     <>
-      <div className={`db-storage db-storage--${storage.level}`} role={alert ? 'alert' : undefined}>
-        <div className="db-storage__head">
-          {alert ? <AlertTriangle size={16} /> : <HardDrive size={16} />}
-          <span className="db-storage__title">{s.title}</span>
+      <div
+        className={`db-storage db-storage--${storage.level}`}
+        role={alert ? 'alert' : undefined}
+        title={details}
+        aria-label={details}
+      >
+        <span className="db-storage__info">
+          {alert ? <AlertTriangle size={14} /> : <HardDrive size={14} />}
+          <span className="db-storage__label">{s.title}</span>
+          <span className="db-storage__track" aria-hidden>
+            <span className="db-storage__fill" style={{ width: `${Math.min(100, storage.percent)}%` }} />
+          </span>
           <span className="db-storage__usage">
-            {s.usage
-              .replace('{used}',  formatBytes(storage.used_bytes))
-              .replace('{limit}', formatBytes(storage.limit_bytes))}
+            {formatBytes(storage.used_bytes)} / {formatBytes(storage.limit_bytes)}
             {' · '}<strong>{Math.round(storage.percent)} %</strong>
           </span>
-          {alert && (
-            <span className="db-storage__msg">
-              {storage.level === 'critical' ? s.critical : s.warning}
-              {storage.disk_low && storage.disk_free_bytes !== null &&
-                ' ' + s.diskLow.replace('{free}', formatBytes(storage.disk_free_bytes))}
-            </span>
-          )}
-          <button
-            className={`btn btn--sm ${alert ? 'btn--danger' : 'btn--secondary'} db-storage__btn`}
-            onClick={() => setStep('confirm')}
-            disabled={!canClean}
-            title={storage.synced_count === 0 ? s.nothingToClean : undefined}
-          >
-            <Trash2 size={14} /> {cleaning ? s.cleaning : s.cleanBtn}
-          </button>
-        </div>
-        <div className="db-storage__track" aria-hidden>
-          <div className="db-storage__fill" style={{ width: `${Math.min(100, storage.percent)}%` }} />
-        </div>
-        <div className="db-storage__sub">
-          {s.synced
-            .replace('{count}', String(storage.synced_count))
-            .replace('{size}',  formatBytes(storage.synced_bytes))}
-        </div>
+        </span>
+        <button
+          className="db-storage__btn"
+          onClick={() => setStep('confirm')}
+          disabled={!canClean}
+          aria-label={s.cleanBtn}
+          title={storage.synced_count === 0 ? s.nothingToClean : `${s.cleanBtn} — ${synced}`}
+        >
+          <Trash2 size={15} className={cleaning ? 'db-storage__btn-icon--busy' : undefined} />
+        </button>
       </div>
 
       {step === 'confirm' && (

@@ -106,8 +106,8 @@ export default function Topbar() {
           <button
             className="topbar__theme-btn"
             onClick={toggle}
-            title={dark ? 'Světlý režim' : 'Tmavý režim'}
-            aria-label={dark ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}
+            title={dark ? t.settings.themeToLight : t.settings.themeToDark}
+            aria-label={dark ? t.settings.themeToLight : t.settings.themeToDark}
           >
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </button>

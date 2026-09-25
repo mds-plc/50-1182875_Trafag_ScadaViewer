@@ -3,6 +3,9 @@
  * @description Stránka detailu (/chart) — dva módy:
  *   1. Detail zakázky (?file=&location=&type=)
  *   2. Detail záznamu  (?file=&location=&type=&record=N)
+ *   Detail zakázky (production): dlaždice grafu s přepínačem Rozložení kategorií / Časový průběh
+ *   (OrderTimelineChart — načte /api/timeline až po prvním přepnutí; volba se pamatuje v localStorage).
+ *   Obě zobrazení leží v jedné buňce gridu (neaktivní visibility:hidden) — přepnutí nemění výšku.
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -27,6 +30,7 @@ import Pagination     from '../components/Pagination'
 import ParamTable from '../components/ParamTable'
 import RecordDiagram  from '../components/RecordDiagram'
 import SignalCharts   from '../components/SignalCharts'
+import OrderTimelineChart from '../components/OrderTimelineChart'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
@@ -40,6 +44,14 @@ const FIXED_COLS = ['timestamp', 'sortingcategory', 'status',
 type TabId = 'forces' | 'positions' | 'travel' | 'times' | 'electric'
 const TABLE_TABS = PARAM_GROUPS as { id: TabId; label: string; color: string; keys: string[] }[]
 
+/** Graf v detailu zakázky — volba se pamatuje (per prohlížeč, jen pohodlí). */
+type OrderChartView = 'categories' | 'timeline'
+const LS_ORDER_CHART = 'scada_order_chart'
+
+function loadOrderChartView(): OrderChartView {
+  try { return localStorage.getItem(LS_ORDER_CHART) === 'timeline' ? 'timeline' : 'categories' } catch { return 'categories' }
+}
+
 /** Sekce testovacího CSV souboru — hlavní úroveň záložek (metadata jsou v hero). */
 type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info' | 'signal'
 
@@ -50,7 +62,8 @@ const CatAxisTick = (props: CatAxisTickProps) => {
   const idx   = (payload?.value ?? 1) - 1
   const isNok = idx >= 4
   const nums  = ['1', '2', '3', '4', '5', '6']
-  const descs = ['OK', 'OK', 'OK', 'OK', 'NOK T.', 'NOK M.']
+  const { t } = useLang()
+  const descs = ['OK', 'OK', 'OK', 'OK', t.chart.catNokTrafag, t.chart.catNokMaker]
   const color = isNok ? '#dc2626' : '#16a34a'
   return (
     <g transform={`translate(${x},${y})`}>
@@ -321,6 +334,13 @@ export default function ChartView() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabId>('forces')
   const [section, setSection] = useState<SectionId>('testing_params')
+  const [orderChart, setOrderChartRaw] = useState<OrderChartView>(loadOrderChartView)
+  const [timelineUsed, setTimelineUsed] = useState(orderChart === 'timeline')   // načíst až po 1. otevření
+  const setOrderChart = (v: OrderChartView) => {
+    setOrderChartRaw(v)
+    if (v === 'timeline') setTimelineUsed(true)
+    try { localStorage.setItem(LS_ORDER_CHART, v) } catch { /* ignore */ }
+  }
 
   // Absolutní index záznamu → stránka, na které leží
   const pageForRecord = recordIdx != null
@@ -354,6 +374,13 @@ export default function ChartView() {
   }, [records, activeTab])
 
   const cellRenderer = useMemo(() => makeChartCellRenderer(t.chart.openContact), [t])
+  // Obecné sloupce podle jazyka (PARAM_LABELS jsou odborné zkratky — jazykově neutrální)
+  const colLabels = useMemo(() => ({
+    ...PARAM_LABELS,
+    timestamp:       t.db.colTimestamp,
+    sortingcategory: t.chart.colCategory,
+    status:          t.db.colStatus,
+  }), [t])
 
   const backBtn = (
     <button className="btn btn--secondary btn--sm" onClick={() => navigate(-1)}>
@@ -449,9 +476,40 @@ export default function ChartView() {
 
             <div className="tile tile--12 mb-4">
               <div className="tile__header">
-                <span className="tile__title">{t.chart.categoryDistribution}</span>
+                <span className="tile__title">
+                  {orderChart === 'timeline' ? t.chart.timelineView : t.chart.categoryDistribution}
+                </span>
+                <div className="cv-param-tabs cv-chart-switch cv-screen-only" role="tablist">
+                  <button
+                    role="tab"
+                    aria-selected={orderChart === 'categories'}
+                    className={`cv-param-tab${orderChart === 'categories' ? ' cv-param-tab--active' : ''}`}
+                    onClick={() => setOrderChart('categories')}
+                  >
+                    {t.chart.categoryDistribution}
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={orderChart === 'timeline'}
+                    className={`cv-param-tab${orderChart === 'timeline' ? ' cv-param-tab--active' : ''}`}
+                    onClick={() => setOrderChart('timeline')}
+                  >
+                    {t.chart.timelineView}
+                  </button>
+                </div>
               </div>
-              <CategoryChart groupCounts={groupCounts} total={total} />
+              <div className="cv-order-chart">
+                <div className={`cv-order-chart__view${orderChart === 'categories' ? '' : ' cv-order-chart__view--hidden'}`}
+                     aria-hidden={orderChart !== 'categories'}>
+                  <CategoryChart groupCounts={groupCounts} total={total} />
+                </div>
+                {timelineUsed && (
+                  <div className={`cv-order-chart__view${orderChart === 'timeline' ? '' : ' cv-order-chart__view--hidden'}`}
+                       aria-hidden={orderChart !== 'timeline'}>
+                    <OrderTimelineChart fileId={fileId} location={location} fileType={fileType} enabled={timelineUsed} />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Obrazovka — záložková tabulka */}
@@ -503,7 +561,7 @@ export default function ChartView() {
               <DataTable
                 columns={tableColumns}
                 rows={records}
-                columnLabels={PARAM_LABELS}
+                columnLabels={colLabels}
                 columnTooltips={PARAM_TOOLTIPS}
                 columnUnits={paramUnit}
                 cellRenderer={cellRenderer}
@@ -534,7 +592,7 @@ export default function ChartView() {
                     <DataTable
                       columns={tabCols}
                       rows={numberedRows}
-                      columnLabels={{ ...PARAM_LABELS, _row_num: '#' }}
+                      columnLabels={{ ...colLabels, _row_num: '#' }}
                       columnTooltips={PARAM_TOOLTIPS}
                       columnUnits={paramUnit}
                       cellRenderer={cellRenderer}

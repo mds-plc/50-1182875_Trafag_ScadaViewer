@@ -506,78 +506,85 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* LOKÁLNÍ ÚLOŽIŠTĚ — zaplnění + vyčištění synchronizovaných (StorageBar) */
+/* LOKÁLNÍ ÚLOŽIŠTĚ — kompaktní prvek v hlavičce (StorageBar), vzhled jako .db-tabs */
 
 .db-storage {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  background: var(--color-surface);
+  align-items: center;
+  gap: 2px;
+  padding: 3px 3px 3px var(--space-3);
+  background: var(--color-surface-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  --storage-color: var(--color-accent);
+  color: var(--color-text-muted);
+  --storage-color: var(--color-text-muted);
+  --storage-fill:  var(--color-accent);
 }
 
-.db-storage--warning {
-  background: var(--color-warning-muted);
-  border-color: rgba(217, 119, 6, 0.3);
-  border-left: 4px solid var(--color-warning);
-  --storage-color: var(--color-warning);
-}
+.db-storage--warning  { border-color: rgba(217, 119, 6, 0.45); --storage-color: var(--color-warning); --storage-fill: var(--color-warning); }
+.db-storage--critical { border-color: rgba(220, 38, 38, 0.5);  --storage-color: var(--color-danger);  --storage-fill: var(--color-danger); }
 
-.db-storage--critical {
-  background: var(--color-danger-muted);
-  border-color: rgba(220, 38, 38, 0.3);
-  border-left: 4px solid var(--color-danger);
-  --storage-color: var(--color-danger);
-}
-
-.db-storage__head {
+.db-storage__info {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  min-height: 40px;
+  padding-right: var(--space-2);
+  color: var(--storage-color);
+  white-space: nowrap;
 }
 
-.db-storage__head > svg { color: var(--storage-color); flex-shrink: 0; }
-
-.db-storage__title {
+.db-storage__label {
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
 }
 
-.db-storage__usage { font-family: var(--font-mono); font-size: var(--font-size-xs); }
-
-.db-storage__msg {
-  color: var(--storage-color);
-  font-weight: var(--font-weight-medium);
-}
-
-.db-storage__btn {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 44px;   /* touch target */
-}
+.db-storage--warning .db-storage__label,
+.db-storage--critical .db-storage__label { color: var(--storage-color); }
 
 .db-storage__track {
-  height: 8px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
   overflow: hidden;
 }
 
 .db-storage__fill {
+  display: block;
   height: 100%;
-  background: var(--storage-color);
+  background: var(--storage-fill);
   transition: width var(--transition-fast);
 }
 
-.db-storage__sub { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.db-storage__usage {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.db-storage--warning .db-storage__usage,
+.db-storage--critical .db-storage__usage { color: var(--storage-color); }
+
+.db-storage__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: calc(var(--radius-md) - 2px);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.db-storage__btn:hover:not(:disabled) { background: var(--color-surface); color: var(--color-danger); }
+.db-storage__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.db-storage--critical .db-storage__btn:not(:disabled) { color: var(--color-danger); }
+
+.db-storage__btn-icon--busy { animation: db-storage-busy 1s ease-in-out infinite; }
+@keyframes db-storage-busy { 50% { opacity: 0.3; } }
 
 .db-storage__note {
   margin-top: var(--space-3);

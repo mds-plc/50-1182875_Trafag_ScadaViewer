@@ -22,7 +22,7 @@ export default function Pagination({ page, pages, onPage }: Props) {
         className="pagination__btn"
         disabled={page <= 1}
         onClick={() => onPage(page - 1)}
-        aria-label="Předchozí stránka"
+        aria-label={t.db.prevPage}
       >
         <ChevronLeft size={15} />
       </button>
@@ -35,7 +35,7 @@ export default function Pagination({ page, pages, onPage }: Props) {
         className="pagination__btn"
         disabled={page >= pages}
         onClick={() => onPage(page + 1)}
-        aria-label="Další stránka"
+        aria-label={t.db.nextPage}
       >
         <ChevronRight size={15} />
       </button>

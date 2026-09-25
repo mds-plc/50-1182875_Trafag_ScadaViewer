@@ -45,6 +45,7 @@ function PointLabel({ x, y, label, value, dx = 8, dy = 0, anchor = 'start', colo
 // viewBox: 0 0 840 500
 
 function ForceTravelDiagram({ record }: Props) {
+  const { t } = useLang()
   const val = makeVal(record)
   const uid = useId()
 
@@ -88,7 +89,7 @@ function ForceTravelDiagram({ record }: Props) {
 
   return (
     <svg className="rd-svg" viewBox="0 0 840 500" xmlns="http://www.w3.org/2000/svg"
-      aria-label="Force–Travel hysteresis diagram">
+      aria-label={t.chart.forceTravelAria}>
       <defs>
         <marker id={uid + 'ftB'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TRAVEL} /></marker>
@@ -291,9 +292,9 @@ function ForceTravelDiagram({ record }: Props) {
 
       {/* Legenda */}
       <line x1={710} y1={160} x2={742} y2={160} stroke={C_FWD} strokeWidth={2.5} />
-      <text x={747} y={164} fontSize={10} fill="#64748b">Forward</text>
+      <text x={747} y={164} fontSize={10} fill="#64748b">{t.chart.sigForward}</text>
       <line x1={710} y1={178} x2={742} y2={178} stroke={C_RET} strokeWidth={2} strokeDasharray="8,5" />
-      <text x={747} y={182} fontSize={10} fill="#64748b">Return</text>
+      <text x={747} y={182} fontSize={10} fill="#64748b">{t.chart.sigReverse}</text>
     </svg>
   )
 }
@@ -321,6 +322,7 @@ const NO_BOUNCES: [number, number][] = [
 ]
 
 function TimeDiagram({ record }: Props) {
+  const { t } = useLang()
   const val = makeVal(record)
   const uid = useId()
 
@@ -397,7 +399,7 @@ function TimeDiagram({ record }: Props) {
 
   return (
     <svg className="rd-svg" viewBox="0 0 840 470" xmlns="http://www.w3.org/2000/svg"
-      aria-label="Contact switching times — U_NC and U_NO voltage">
+      aria-label={t.chart.switchTimesAria}>
       <defs>
         <marker id={uid + 'tmG'}  markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill={C_TIME} /></marker>
@@ -489,13 +491,14 @@ const NOK_CATEGORIES = [
 ] as const
 
 function NokPanel({ record }: Props) {
+  const { t } = useLang()
   // Zobrazit panel jen pokud existuje alespoň jedno nokcategory_* pole
   const hasAny = NOK_CATEGORIES.some(c => record[c.key] != null && String(record[c.key] ?? '') !== '')
   if (!hasAny) return null
 
   return (
     <div className="rd-nok-panel">
-      <span className="rd-nok-panel__title">NOK Categories</span>
+      <span className="rd-nok-panel__title">{t.chart.nokCategories}</span>
       <span className="rd-nok-panel__cats">
         {NOK_CATEGORIES.map(c => {
           const isFail = String(record[c.key]) === '1'
@@ -588,7 +591,7 @@ export default function RecordDiagram({ record }: Props) {
                 {maximized === 'force' ? TITLE_FORCE : TITLE_TIME}
               </span>
               <button className="rd-modal-close" onClick={() => setMaximized(null)}
-                aria-label="Close">×</button>
+                aria-label={t.chart.close}>×</button>
             </div>
             {maximized === 'force'
               ? <ForceTravelDiagram record={record} />

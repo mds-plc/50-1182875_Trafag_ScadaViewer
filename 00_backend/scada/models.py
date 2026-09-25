@@ -106,6 +106,16 @@ class DataResponse(BaseModel):
 
 
 # ======================================================================
+# /api/timeline — časový průběh zakázky
+# ======================================================================
+
+class TimelineResponse(BaseModel):
+    """Odpověď GET /api/timeline — sloupcový formát (menší JSON než pole objektů)."""
+    timestamps: list[str]          # ISO 8601, seřazeno vzestupně
+    categories: list[int | None]   # kategorie 1–6 ke každé časové značce (None = neznámá)
+
+
+# ======================================================================
 # /api/status — dostupnost vzdáleného úložiště
 # ======================================================================
 

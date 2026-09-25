@@ -7,7 +7,7 @@
  */
 import React, { useState } from 'react'
 import { useLang } from '../context/LangContext'
-import { PARAM_DESC, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, paramUnit } from '../utils/paramMeta'
+import { PARAM_LABELS, PARAM_TOOLTIPS, formatParam, paramDesc, paramUnit } from '../utils/paramMeta'
 
 export interface ParamGroup {
   id:    string
@@ -31,7 +31,7 @@ interface Props {
 
 export default function ParamTable({ record, groups, title, bare = false, hideMissing = false }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
-  const { t } = useLang()
+  const { t, lang } = useLang()
 
   const hasValue = (k: string) => record[k] != null && String(record[k]).trim() !== ''
 
@@ -63,7 +63,7 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
                 const u       = paramUnit(k)
                 // název bez jednotky: 'Pre-travel [µm] (OP − FP)' → 'Pre-travel (OP − FP)'
                 const name    = (PARAM_TOOLTIPS[k] ?? PARAM_LABELS[k] ?? k).replace(/\s*\[[^\]]*\]/, '')
-                const desc    = PARAM_DESC[k]
+                const desc    = paramDesc(k, lang)
                 return (
                   <React.Fragment key={k}>
                     <tr className={`rd-pt__row${missing ? ' rd-pt__row--missing' : ''}`}>

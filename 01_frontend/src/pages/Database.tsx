@@ -41,6 +41,9 @@ export default function Database() {
         <h1 className="page-title">{t.db.title}</h1>
         <div className="db-controls">
 
+          {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných (jen záložka Lokální) */}
+          {location === 'local' && <StorageBar />}
+
           {/* Local / Remote */}
           <div className="db-tabs">
             <button
@@ -101,9 +104,6 @@ export default function Database() {
           <span>{t.db.remoteUnavailable}</span>
         </div>
       )}
-
-      {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných souborů */}
-      {location === 'local' && <StorageBar />}
 
       {/* Tabulka + toolbar */}
       <div className="tile tile--12">
@@ -178,7 +178,7 @@ export default function Database() {
             <div className="db-modal__body">
               {t.db.batchConfirmBody}
               <div style={{ marginTop: 'var(--space-3)', fontWeight: 600 }}>
-                ({selectedIds.size} {t.db.selectedCount})
+                ({t.db.selectedCount}: {selectedIds.size})
               </div>
             </div>
             <div className="db-modal__actions">

@@ -273,7 +273,8 @@ export const ALL_PARAM_KEYS: string[] = PARAM_GROUPS.flatMap(g => g.keys)
 
 // ── České popisy parametrů ──────────────────────────────────────────────────
 
-/** Český popis parametru (nápověda „?" v tabulkách parametrů) — význam, výpočet, jednotka. */
+/** Český popis parametru (nápověda „?" v tabulkách parametrů) — význam, výpočet, jednotka.
+ *  Anglická verze: PARAM_DESC_EN; výběr podle jazyka přes paramDesc(key, lang). */
 export const PARAM_DESC: Record<string, string> = {
   of_operatingforce:
     'Síla [N] v bodě sepnutí (OP). Pokud je příliš velká nebo malá, spínač neodpovídá specifikaci.',
@@ -352,4 +353,89 @@ export const PARAM_DESC: Record<string, string> = {
     'Celková doba měření [s] — délka záznamu signálu (dopředný i zpětný chod).',
   meas_ts:
     'Čas měření zapsaný PLC (unixový čas) — zobrazen jako datum a čas.',
+}
+
+/** Anglický popis parametru — stejné klíče jako PARAM_DESC (nápověda „?" v režimu EN). */
+export const PARAM_DESC_EN: Record<string, string> = {
+  of_operatingforce:
+    'Force [N] at the operating point (OP). If it is too high or too low, the switch does not meet the specification.',
+  rf_realisingforce:
+    'Force [N] at which the contact releases on the return stroke (RP). Together with OF it defines the force hysteresis.',
+  ttf_totaltravelforce:
+    'Maximum force [N] at the end of travel (TTP). Must not exceed the permitted limit for the switch type.',
+  fp_freeposition:
+    'Rest position of the actuator [µm] without external force — the reference point for all travel values.',
+  op_operatingposition:
+    'Position [µm] where the contact switches on the forward stroke (absolute position). PT = OP − FP.',
+  rp_realeasingposition:
+    'Position [µm] where the contact releases on the return stroke (absolute position). MD = OP − RP.',
+  ttp_totaltravelposition:
+    'Position [µm] at the end of travel — the deepest point of actuation during the measurement. TT = TTP − FP.',
+  pt_pretravel:
+    'Pre-travel [µm] — distance from FP to OP (PT = OP − FP). Must be sufficient for reliable switching.',
+  ot_overtravel:
+    'Overtravel [µm] — reserve beyond the operating point (OT = TTP − OP). Protects the contact from overload.',
+  rt_realisingtravel:
+    'Releasing travel [µm] — distance from the end of travel back to the releasing point (RT = TTP − RP).',
+  md_movementdifferential:
+    'Movement differential [µm] — distance between OP and RP (MD = OP − RP, position hysteresis). Larger MD = more stable switching.',
+  tt_totaltravel:
+    'Total travel [µm] — distance from FP to TTP (TT = TTP − FP).',
+  ut_unstabletime:
+    'Unstable time [µs] — duration of contact oscillation right after switching, before the contact settles.',
+  rt_reversetime:
+    'Reverse time [µs] — window in which the contact briefly reverses towards the closed state (NC closes for a moment).',
+  bt_bouncetime:
+    'Bounce time [µs] — total duration of contact bounce after switching. Longer BT = more noise, slower response.',
+  ot_operatingtime:
+    'Operating time [µs] — total switching time, the sum UT + RevT + BT.',
+  r_nc_operatingposition_neg:
+    'Resistance [mΩ] of the normally closed (NC) contact at the operating point (OP), negative pole. High resistance = degradation.',
+  r_nc_operatingposition_pos:
+    'Resistance [mΩ] of the NC contact at the operating point (OP), positive pole.',
+  r_nc_releasingposition_neg:
+    'Resistance [mΩ] of the NC contact at the releasing point (RP), negative pole.',
+  r_nc_releasingposition_pos:
+    'Resistance [mΩ] of the NC contact at the releasing point (RP), positive pole.',
+  r_no_operatingposition_neg:
+    'Resistance [mΩ] of the normally open (NO) contact at the operating point (OP), negative pole. Low resistance = properly closed.',
+  r_no_operatingposition_pos:
+    'Resistance [mΩ] of the NO contact at the operating point (OP), positive pole.',
+  r_no_releasingposition_neg:
+    'Resistance [mΩ] of the NO contact at the releasing point (RP), negative pole.',
+  r_no_releasingposition_pos:
+    'Resistance [mΩ] of the NO contact at the releasing point (RP), positive pole.',
+  drive_distance:
+    'Drive distance [mm] — how far the drive actuates the microswitch during the test (stroke length).',
+  drive_velocity:
+    'Drive velocity [mm/s] during the measurement. Affects the position resolution between samples.',
+  drive_acceleration:
+    'Drive acceleration [mm/s²] when starting.',
+  drive_deceleration:
+    'Drive deceleration [mm/s²] when braking at the end of the stroke.',
+  drive_jerk:
+    'Drive jerk [mm/s³] — rate of change of acceleration; a lower value = smoother start and stop.',
+  electric_current:
+    'Measuring current through the contact set for the test [mA] (the CSV header incorrectly states [A]).',
+  electric_voltage:
+    'Voltage of the contact measuring circuit [V].',
+  measuring_baseperiod:
+    'Base sampling period of the measurement [ms].',
+  measuring_oversampling:
+    'Oversampling — how many samples are taken per base period.',
+  measuring_samplesreserve:
+    'Samples reserve — number of extra samples recorded before and after the measurement.',
+  limits_distancemax:
+    'Maximum permitted distance [mm] — the measurement stops when exceeded (protects the microswitch).',
+  limits_forcemax:
+    'Maximum permitted force [N] — the measurement stops when exceeded (protects the microswitch and the sensor).',
+  measuretime:
+    'Total measurement time [s] — length of the signal record (forward and return stroke).',
+  meas_ts:
+    'Measurement time written by the PLC (Unix time) — shown as date and time.',
+}
+
+/** Nápověda parametru v jazyce UI; chybí-li anglická verze, vrátí českou. */
+export function paramDesc(key: string, lang: 'cs' | 'en'): string | undefined {
+  return lang === 'en' ? (PARAM_DESC_EN[key] ?? PARAM_DESC[key]) : PARAM_DESC[key]
 }

@@ -28,11 +28,12 @@ interface HelpButtonProps {
 }
 
 function HelpButton({ id, text, openHelp, setOpenHelp }: HelpButtonProps) {
+  const { t } = useLang()
   return (
     <div className="settings-help-wrap">
       <button
         className="settings-help-btn"
-        aria-label="Nápověda"
+        aria-label={t.common.help}
         onClick={e => {
           e.stopPropagation()
           setOpenHelp(openHelp === id ? null : id)
@@ -404,7 +405,7 @@ function UsersTab({ token }: UsersTabProps) {
                         className="btn btn--primary btn--sm"
                         disabled={pwdBusy}
                         onClick={() => handleChangePwd(u.username)}
-                      >{t.settings.accountSave}</button>
+                      >{t.common.save}</button>
                       <button
                         className="btn btn--secondary btn--sm"
                         onClick={() => { setPwdTarget(null); setPwdValue(''); setPwdCurrent('') }}
@@ -849,7 +850,7 @@ export default function Settings() {
                   onClick={handleSavePath}
                   disabled={pathBusy}
                 >
-                  {lang === 'cs' ? 'Uložit' : 'Save'}
+                  {t.common.save}
                 </button>
               </div>
               <HelpButton id="localPath" text={t.settings.helpLocalPath} {...hp} />
@@ -867,7 +868,7 @@ export default function Settings() {
                       {t.storage.usage
                         .replace('{used}',  formatBytes(storage.used_bytes))
                         .replace('{limit}', formatBytes(storage.limit_bytes))}
-                      {' · '}{Math.round(storage.percent)} % · {storage.file_count} {t.storage.files}
+                      {' · '}{Math.round(storage.percent)} % · {t.storage.files}: {storage.file_count}
                     </span>
                   </>
                 ) : '—'}
@@ -895,7 +896,7 @@ export default function Settings() {
                     onClick={handleSaveLimit}
                     disabled={limitBusy}
                   >
-                    {lang === 'cs' ? 'Uložit' : 'Save'}
+                    {t.common.save}
                   </button>
                 )}
               </div>
@@ -932,7 +933,7 @@ export default function Settings() {
                   onClick={handleSavePath}
                   disabled={pathBusy}
                 >
-                  {lang === 'cs' ? 'Uložit' : 'Save'}
+                  {t.common.save}
                 </button>
               </div>
               <HelpButton id="remotePath" text={t.settings.helpRemotePath} {...hp} />

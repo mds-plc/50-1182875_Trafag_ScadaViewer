@@ -661,8 +661,8 @@ maže až po `file_retention_days`. ScadaViewer nově hlídá zaplnění lokáln
 - `StorageContext` — `GET /api/storage` po přihlášení, každých 60 s a po `files_changed` (debounce 1,5 s);
   toast jen při zhoršení úrovně (ok → warning → critical), ne při každém dotazu.
 - Topbar — chip `HardDrive {pct} %` jen při warning/critical (critical pulzuje), klik → `/database`.
-- Database, záložka Lokální — `StorageBar`: pruh zaplnění, hláška, počet/objem synchronizovaných souborů,
-  tlačítko „Vyčistit synchronizované".
+- Database, záložka Lokální — `StorageBar` (od Fáze 31 kompaktní prvek v hlavičce vedle přepínačů
+  Lokální/Vzdálená): zaplnění, stav, tlačítko „Vyčistit synchronizované".
 - Nastavení → Připojení → Úložiště — řádek Zaplnění + Limit (GB; editace jen admin+).
 
 **Čištění (`POST /api/storage/cleanup`, smí každý přihlášený — rozhodnutí zákazníka):**
@@ -685,6 +685,50 @@ maže až po `file_retention_days`. ScadaViewer nově hlídá zaplnění lokáln
 `components.css` — `.btn:disabled`).
 
 **Stav testů po fázi 29:** Backend 219/219, Frontend 88/88 (11 souborů).
+
+### Fáze 30 — Časový průběh zakázky + skrolování při navigaci (2026-09-25)
+
+**Časový průběh (detail production zakázky):**
+- Dlaždice grafu má přepínač **Rozložení kategorií | Časový průběh** (volba v `localStorage['scada_order_chart']`).
+- `OrderTimelineChart`: jedna řada KPI z CELÉ zakázky — začátek, konec, celková doba, průměr / medián
+  mezi kusy, nejdelší prodleva (title = čas kusu), prodlevy (počet · součet), výkon ks/h — a graf
+  „vyrobené kusy v čase" (kumulativně, `stepAfter`; vodorovný úsek = prodleva), výška 270 px jako sloupcový graf.
+- Obě zobrazení leží v jedné buňce CSS gridu (`.cv-order-chart`, neaktivní `visibility:hidden`) —
+  přepnutí nemění výšku dlaždice ani pozici tabulky (ověřeno měřením: 436 px / 808 px v obou).
+- Data: `GET /api/timeline?file=&location=&type=` → `{timestamps[], categories[]}` (sloupcově, seřazeno,
+  neparsovatelný čas vynechán; testing → 404). `CsvRepository.read_records(timeline=[])` sbírá časy
+  ve stejném průchodu jako `group_counts`; `FileService.read_timeline()`. Načítá se až po prvním
+  přepnutí (`useOrderTimeline`, modulová cache 5 zakázek).
+- Výpočty v `utils/orderTimeline.ts` (čisté funkce, testované): prodleva = mezera > 5× medián a ≥ 1 min;
+  výkon = (n − 1) / celková doba (včetně prodlev); kumulativní řada zředěná na ≤ ~1 000 bodů.
+
+**Skrolování (`hooks/useContentScroll.ts`, volán v AppShell na `<main class="content">`):**
+- Stránka skroluje v `.content`, ne v okně — React Router pozici neřeší.
+- PUSH / REPLACE (např. detail záznamu z tabulky zakázky) → nahoru; POP (Zpět / Vpřed) → obnova
+  uložené pozice (uložena průběžně ze scroll událostí; obnova po snímcích, dokud je stránka dost
+  vysoká, max. 2 s nebo do zásahu uživatele). Cache časové osy zajišťuje, že se po návratu obsah
+  nad tabulkou vykreslí hned a obnovená pozice sedí.
+
+**Stav testů po fázi 30:** Backend 225/225, Frontend 97/97.
+
+### Fáze 31 — Kompaktní ukazatel úložiště + revize textů CS/EN (2026-09-25)
+
+**Ukazatel lokálního úložiště:** široká lišta nad tabulkou nahrazena prvkem v hlavičce Database
+(`.db-storage`, stejná výška 48 px a styl jako `.db-tabs`): ikona + popisek „Lokální úložiště",
+mini ukazatel, „použito / limit · %", tlačítko koše. Warning/critical jen obarví okraj a text;
+detail v `title`. Prvek je první v řadě `.db-controls` — přepínače se při změně záložky nepohnou.
+
+**Revize textů (rozhodnutí uživatele):**
+- Odborné názvy zůstávají anglicky v obou jazycích (Production/Testing, skupiny parametrů,
+  názvy parametrů, NOK kategorie); stavové odznaky sloupce Sync anglicky (In progress / Local / Synced).
+- Třídění 1–6 jednotně **Kategorie** (EN Category); `PARAM_LABELS` jsou jazykově neutrální zkratky,
+  obecné sloupce (čas, kategorie, stav) přeloženy v `ChartView` (`colLabels`).
+- Nápověda „?" parametrů dvojjazyčně: `PARAM_DESC` (CS) + `PARAM_DESC_EN`, výběr `paramDesc(key, lang)`.
+- Počty bez skloňování: „Souborů: 3", „Vybráno: 3" (dříve „1 souborů", „3 vybraných").
+- Natvrdo zapsané texty převedeny do i18n (stránkování, topbar, Nastavení, RecordDiagram, osa kategorií).
+- Nové `src/test/i18n.test.ts` — prázdné texty, shodné zástupné symboly, čeština v EN, EN nápovědy.
+
+**Stav testů po fázi 31:** Backend 225/225, Frontend 101/101 (14 souborů).
 
 ---
 
@@ -780,6 +824,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=` |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data `?file=&location=&type=&mode=&buckets=` (overview / results / hysteresis / zoom_op / zoom_rp) |
+| `/api/timeline` | GET | Časový průběh zakázky `?file=&location=&type=` → `{timestamps[], categories[]}` (jen production) |
 | `/api/files/{file_id}/download` | GET | Originální CSV soubor |
 | `/api/files/batch-delete` | POST | Hromadné mazání (max 200) |
 | `/api/status` | GET | `{remote_available: bool}` |
@@ -910,7 +955,8 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 | `Pagination` | `Pagination.tsx` | `[<] Stránka X z Y [>]`; skryta pokud `pages <= 1` | `page`, `pages`, `onPage` |
 | `RecordDiagram` | `RecordDiagram.tsx` | Detail záznamu: ForceTravelDiagram + TimeDiagram (SVG) + ParamTable; maximize modal | `record: CsvRecord` |
 | `SignalCharts` | `SignalCharts.tsx` | 5 záložek signálových grafů (Recharts); data z `/api/signal` přes `useSignalData` | `fileId`, `location`, `fileType` |
-| `StorageBar` | `StorageBar.tsx` | Zaplnění lokálního úložiště (Database, záložka Lokální) + dialog čištění; krok 2 = smazání bez ověření s potvrzením rizika | — (čte ze StorageContext) |
+| `StorageBar` | `StorageBar.tsx` | Kompaktní ukazatel lokálního úložiště v hlavičce Database (záložka Lokální) + dialog čištění; krok 2 = smazání bez ověření s potvrzením rizika | — (čte ze StorageContext) |
+| `OrderTimelineChart` | `OrderTimelineChart.tsx` | Časový průběh zakázky — řada KPI + graf vyrobených kusů v čase (přepínač v detailu zakázky) | `fileId`, `location`, `fileType`, `enabled` |
 | `Sidebar` | `Sidebar.tsx` | Levá navigace — 3 `NavLink` (Database, Settings, Info); logo = odkaz na /database | — |
 | `Topbar` | `Topbar.tsx` | Horní lišta — 3 skupiny s oddělovači: [ADS+Úložiště+User] \| [Lang+Theme] \| [Datetime]; chip úložiště jen při warning/critical | — |
 
@@ -1378,6 +1424,9 @@ Umístění: vpravo v Topbar, před hodinami.
 | `useWipData` | `hooks/useWipData.ts` | REST `/api/wip?order=X`; historický snapshot WIP po obnovení stránky; AbortController |
 | `useBackendOnline` | `hooks/useBackendOnline.ts` | Polling `/api/health` každých 10 s → offline banner |
 | `useKeyShortcuts` | `hooks/useKeyShortcuts.ts` | Globální klávesové zkratky; skip při fokusu inputu |
+| `useOrderTimeline` | `hooks/useOrderTimeline.ts` | `/api/timeline` líně (až `enabled`); modulová cache 5 zakázek; AbortController |
+| `useContentScroll` | `hooks/useContentScroll.ts` | Skrolování `.content` při navigaci: PUSH → nahoru, POP → obnova pozice |
+| `useStorage` | `context/StorageContext.tsx` | Zaplnění lokálního úložiště; `{ storage, cleaning, refresh, cleanup(force?) }` |
 | `useLang` | `context/LangContext.tsx` | i18n hook; `{ lang, setLang, t }` |
 | `usePlc` | `context/PlcContext.tsx` | WebSocket stav; `{ status, connected, adsConnected }` |
 | `useAuth` | `context/AuthContext.tsx` | Přihlášení; `{ isLoggedIn, isLocalLogin, login, logout }` |

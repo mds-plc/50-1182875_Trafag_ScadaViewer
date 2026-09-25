@@ -2,7 +2,7 @@
  * @file StorageBar.test.tsx
  * @description Testy ukazatele lokálního úložiště (Database):
  *   - bez stavu (před prvním načtením) se nic nevykreslí
- *   - úroveň ok: bez varování; warning / critical: hláška + role="alert"
+ *   - úroveň ok: bez varování; warning / critical: role="alert" + hláška v popisku (title)
  *   - tlačítko Vyčistit je zakázané, když nejsou synchronizované soubory
  *   - potvrzovací dialog → cleanup(); Zrušit cleanup nevolá
  *   - smazání bez ověření: riziko zobrazeno, tlačítko povolí až „Rozumím riziku“ → cleanup(true)
@@ -55,17 +55,19 @@ describe('StorageBar', () => {
     render(<StorageBar />, { wrapper: Wrapper })
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByText('40 %')).toBeInTheDocument()
+    expect(screen.getByText(/2,0 GB \/ 5,0 GB/)).toBeInTheDocument()
   })
 
   it('warning and critical levels show an alert message', () => {
     storage = make({ level: 'warning', percent: 85 })
     const { unmount } = render(<StorageBar />, { wrapper: Wrapper })
-    expect(screen.getByRole('alert')).toHaveTextContent(/approaching its limit/i)
+    expect(screen.getByRole('alert').getAttribute('title')).toMatch(/approaching its limit/i)
     unmount()
     storage = make({ level: 'critical', percent: 97, disk_low: true, disk_free_bytes: 2 * GB })
     render(<StorageBar />, { wrapper: Wrapper })
-    expect(screen.getByRole('alert')).toHaveTextContent(/almost full/i)
-    expect(screen.getByRole('alert')).toHaveTextContent(/left on the disk/i)
+    const title = screen.getByRole('alert').getAttribute('title') ?? ''
+    expect(title).toMatch(/almost full/i)
+    expect(title).toMatch(/left on the disk/i)
   })
 
   it('clean button is disabled without synced files', () => {

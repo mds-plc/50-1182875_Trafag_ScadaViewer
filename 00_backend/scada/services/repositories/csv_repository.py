@@ -365,10 +365,14 @@ class CsvRepository:
         to_date:   str | None = None,
         page:     int = 1,
         per_page: int = 0,     # 0 = všechny záznamy
+        timeline: list[tuple[str, str]] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
         Přečte záznamy z CSV souboru.
         Vrátí (records, total_matching, group_counts, file_expected_count).
+
+        timeline: je-li předán seznam, doplní se do něj (timestamp, kategorie) KAŽDÉHO záznamu
+        celého souboru (po filtru) — časový průběh zakázky bez přenášení všech parametrů.
 
         per_page=0: vrátí všechny záznamy (zpětná kompatibilita).
         per_page>0: stránkování — O(1) paměť; prochází celý soubor pro total_matching.
@@ -452,6 +456,8 @@ class CsvRepository:
                     grp = str(rec.get('group', '') or rec.get('sortingcategory', '') or '').strip()
                     if grp:
                         group_counts[grp] = group_counts.get(grp, 0) + 1
+                    if timeline is not None:
+                        timeline.append((rec.get('timestamp', '') or '', grp))
                     if file_expected_count is None:
                         ec = rec.get('expected_count', '')
                         if ec:

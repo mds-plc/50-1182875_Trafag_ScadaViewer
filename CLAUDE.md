@@ -118,12 +118,13 @@ CLAUDE.md                  ← tento soubor
     │   ├── SignalCharts.tsx   ← 5 záložek Signal Data dle referenčních grafů analýzy (05_user_data/20260921_103124/*.png)
     │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
-    │   ├── StorageBar.tsx     ← zaplnění lokálního úložiště (Database/Lokální) + dialog čištění; krok 2 = bez ověření s potvrzením rizika
+    │   ├── StorageBar.tsx     ← kompaktní ukazatel lokálního úložiště v hlavičce Database (vedle Lokální/Vzdálená) + dialog čištění; krok 2 = bez ověření s potvrzením rizika
+    │   ├── OrderTimelineChart.tsx ← časový průběh zakázky: řada KPI (doba, průměr/medián, prodlevy, ks/h) + graf vyrobených kusů v čase
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(úložiště, jen warning/critical) + chip(user) + CS/EN + chip(datetime)
     ├── i18n/
     │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en'
-    │   ├── cs.ts              ← České překlady (~210 klíčů, nested objekt)
-    │   └── en.ts              ← Anglické překlady (~210 klíčů, nested objekt)
+    │   ├── cs.ts              ← České překlady (~295 klíčů, nested objekt)
+    │   └── en.ts              ← Anglické překlady (~295 klíčů, nested objekt) — kontroluje test/i18n.test.ts
     ├── context/
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
     │   ├── PlcContext.tsx     ← WebSocket singleton, status: Record<symbol, PlcStatus>, connected: bool
@@ -140,9 +141,12 @@ CLAUDE.md                  ← tento soubor
     │   ├── usePlcWatcher.ts    ← toast při změně PLC připojení (volán v AppShell)
     │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders — ⏸ jen pro odpojený Overview
     │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
-    │   └── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
+    │   ├── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
+    │   ├── useOrderTimeline.ts ← GET /api/timeline líně (až po přepnutí grafu); modulová cache 5 zakázek
+    │   └── useContentScroll.ts ← skrolování <main.content>: nová stránka nahoru, Zpět = obnova pozice (volán v AppShell)
     ├── utils/
-    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
+    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
+    │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
@@ -178,6 +182,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_performance.py        ← io_pool, signal parser (numpy/Python), cache, prefetch, gzip, cache hlavičky
 ├── test_wip_live.py           ← rozpracovaná zakázka v /api/files, FilesWatcher (files_changed)
 ├── test_storage.py            ← zaplnění úložiště, čištění (ověřené / force), PATCH /api/config/storage
+├── test_timeline.py           ← GET /api/timeline (všechny záznamy, řazení, kategorie, 404)
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
@@ -382,6 +387,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
+| `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno; jen production, jinak 404) |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
 | `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty (admin+) |
@@ -490,7 +496,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
 | Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`) | ✅ Production: OrderHero + skupiny + klikací tabulka; Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + klikací tabulka; Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -746,14 +752,16 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **219 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 11 souborů) — **88 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **225 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 14 souborů) — **101 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, i18n |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
 | Signal Data Charts (Fáze 20, 25, 27) | ✅ | `signal_reader.py` + `GET /api/signal` (5 režimů + `range`) + `SignalCharts.tsx` (5 záložek dle referenční analýzy); každý graf v `ZoomPanel` (kolečko / 2 prsty, posun, dvojklik = reset, celá obrazovka, výřez v plném rozlišení) |
 | Sdílená tabulka parametrů (Fáze 26) | ✅ | `ParamTable.tsx` — zkratka · název se vzorcem · hodnota+jednotka · „?" nápověda (`PARAM_DESC`); production detail záznamu i Testing detail |
 | Tiskový protokol A4 (Fáze 28) | ✅ | záhlaví s časem tisku a uživatelem (`PrintMeta`), číslování stran, zarovnané tabulky, bez duplicit/prázdných stran — ověřovat přes Playwright `page.pdf()` |
+| Časový průběh zakázky + skrolování (Fáze 30) | ✅ | přepínač v detailu zakázky (KPI + graf vyrobených kusů, bez posunu obsahu), `/api/timeline`; nová stránka začíná nahoře, Zpět obnoví pozici |
+| Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |
 | Limit lokálního úložiště + čištění (Fáze 29) | ✅ | `local_max_gb` (Config.toml / Nastavení admin+); topbar chip + `StorageBar` + toast; čištění `done_remote/` ověřené na NAS (každý přihlášený), `force` bez ověření jen po potvrzení rizika — viz audit_log 2026-09-25 |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
@@ -785,7 +793,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | **TypeScript** místo JS | Data z API mají jasnou strukturu (CSV sloupce, ADS symboly, sync_state.json). Typy v `types/index.ts` zachytí překlepy a špatné přístupy k datům před runtime. Refaktoring (nové CSV sloupce, nové ADS symboly) je bezpečný — editor ukáže všechna místa ke změně. |
 | **FastAPI** místo Flask/Django | Nativní async WebSocket podpora (kritické pro ADS→WS bridge). Moderní lifespan pattern (startup/shutdown). Automatický Swagger UI. Flask je synchronní, Django přetěžký. |
 | **Recharts** místo Chart.js/Plotly | React-native komponenty (ne wrapper nad canvas knihovnou). Declarativní API — `<LineChart data={records}>`. Dostatečné pro průmyslové grafy (čárový, sloupcový). Plotly je výkonnější, ale zbytečně velký pro tento use case. |
-| **Custom i18n** místo i18next | i18next přidává ~50 KB + konfiguraci. Pro ~40 klíčů ve 2 jazycích je dostačující vlastní `LangContext` s typovanými TS objekty `cs.ts`/`en.ts`. Typy zajistí, že chybějící klíč odhalí TypeScript při buildu — bez nutnosti externího nástroje. |
+| **Custom i18n** místo i18next | i18next přidává ~50 KB + konfiguraci. Pro ~300 klíčů ve 2 jazycích je dostačující vlastní `LangContext` s typovanými TS objekty `cs.ts`/`en.ts`. Typy zajistí, že chybějící klíč odhalí TypeScript při buildu — bez nutnosti externího nástroje. |
 
 ---
 

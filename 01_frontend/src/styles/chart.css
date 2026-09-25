@@ -488,6 +488,64 @@
   font-family: var(--font-mono);
 }
 
+/* ČASOVÝ PRŮBĚH ZAKÁZKY (OrderTimelineChart)
+   Obě zobrazení grafu zakázky leží v jedné buňce gridu → výška dlaždice = vyšší z nich,
+   přepnutí nic neposune. Neaktivní zobrazení visibility:hidden (drží místo, nereaguje). */
+
+.cv-chart-switch { margin-left: auto; }
+
+.cv-order-chart { display: grid; }
+.cv-order-chart__view { grid-area: 1 / 1; min-width: 0; }
+.cv-order-chart__view--hidden { visibility: hidden; pointer-events: none; }
+
+.cv-timeline__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+}
+
+.cv-timeline__msg {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Řada parametrů — stejná výška jako KPI OK/NOK nad sloupcovým grafem, nezalamuje se */
+.cv-timeline__kpis {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  overflow-x: auto;
+}
+
+.cv-timeline__kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 0 auto;
+  min-height: 44px;
+  padding: 2px var(--space-3);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.cv-timeline__kpi-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cv-timeline__kpi-val {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.25;
+}
+
 /* PARAMS PLACEHOLDER */
 
 /* RECORD DIAGRAM */
@@ -1054,4 +1112,10 @@
   /* Souhrn záznamu / zakázky */
   .chart-summary { padding: 6px 10px !important; margin-bottom: 8px !important; }
   .order-hero { break-inside: avoid; }
+}
+
+/* Protokol — graf zakázky: tisknout jen aktivní zobrazení (KPI; grafy se netisknou) */
+@media print {
+  .cv-order-chart { display: block; }
+  .cv-order-chart__view--hidden { display: none !important; }
 }

@@ -109,6 +109,10 @@ function MyComponent() {
 ```
 
 Nový přeložitelný řetězec → přidat do `i18n/types.ts` (Translations interface) + `i18n/cs.ts` + `i18n/en.ts`.
+Žádné natvrdo zapsané texty v JSX ani v `title` / `aria-label` (ani `lang === 'cs' ? … : …`).
+Terminologie (rozhodnutí uživatele 2026-09-25): odborné názvy parametrů, skupin, NOK kategorií a
+Production/Testing anglicky v obou jazycích; třídění 1–6 = „Kategorie" / „Category"; odznaky Sync
+anglicky (In progress / Local / Synced). Počty bez skloňování: „Souborů: 3", ne „3 souborů".
 Class komponenty (ErrorBoundary) používají `LangContext.Consumer`, ne hook.
 
 ## Sidebar — aktivní stav pro vnořené cesty
@@ -176,6 +180,7 @@ const numericKeys = useMemo(() => {
 - **Hodnoty měřených parametrů** VŽDY přes `formatParam()` / `paramUnit()` z `utils/paramMeta.ts`
   (N 2 des. místa, µm/µs celá čísla, odpor mΩ = Ω×1000, ≥ 999 999 → ∞). Nikdy ruční `toFixed`.
   Nový parametr: `PARAM_LABELS` + `PARAM_TOOLTIPS` (anglicky, se vzorcem) + `PARAM_DESC` (česká nápověda)
+  + `PARAM_DESC_EN` (anglická nápověda — hlídá `test/i18n.test.ts`); zobrazovat přes `paramDesc(key, lang)`
   + skupina v `PARAM_GROUPS` (nebo `EXTRA_FORMAT` pro vstupy testu).
 - **Tabulka parametrů** = `components/ParamTable.tsx` (production detail záznamu i Testing detail).
 - **Barvy boxů 1–6** = `CATEGORY_COLORS` / `categoryColor()` (`utils/groupColors.ts`) = `.db-cat-badge[data-cat]`.

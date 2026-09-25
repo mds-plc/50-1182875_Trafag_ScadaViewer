@@ -33,27 +33,27 @@ describe('Pagination', () => {
 
   it('renders navigation buttons when pages > 1', () => {
     renderPagination({ page: 2, pages: 5, onPage: vi.fn() })
-    expect(screen.getByRole('button', { name: /předchozí/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /další/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /previous page/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /next page/i })).toBeInTheDocument()
   })
 
   it('disables previous button on first page', () => {
     renderPagination({ page: 1, pages: 3, onPage: vi.fn() })
-    expect(screen.getByRole('button', { name: /předchozí/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /další/i })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /previous page/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /next page/i })).not.toBeDisabled()
   })
 
   it('disables next button on last page', () => {
     renderPagination({ page: 3, pages: 3, onPage: vi.fn() })
-    expect(screen.getByRole('button', { name: /další/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /předchozí/i })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /next page/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /previous page/i })).not.toBeDisabled()
   })
 
   it('calls onPage(page - 1) when previous is clicked', async () => {
     const user = userEvent.setup()
     const onPage = vi.fn()
     renderPagination({ page: 3, pages: 5, onPage })
-    await user.click(screen.getByRole('button', { name: /předchozí/i }))
+    await user.click(screen.getByRole('button', { name: /previous page/i }))
     expect(onPage).toHaveBeenCalledOnce()
     expect(onPage).toHaveBeenCalledWith(2)
   })
@@ -62,7 +62,7 @@ describe('Pagination', () => {
     const user = userEvent.setup()
     const onPage = vi.fn()
     renderPagination({ page: 3, pages: 5, onPage })
-    await user.click(screen.getByRole('button', { name: /další/i }))
+    await user.click(screen.getByRole('button', { name: /next page/i }))
     expect(onPage).toHaveBeenCalledOnce()
     expect(onPage).toHaveBeenCalledWith(4)
   })

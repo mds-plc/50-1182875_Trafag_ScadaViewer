@@ -499,7 +499,7 @@ export default function FileTable({
           {selectedIds.size > 0 && (
             <div className="db-batch-toolbar">
               <span className="db-batch-toolbar__count">
-                <strong>{selectedIds.size}</strong> {t.db.selectedCount}
+                {t.db.selectedCount}: <strong>{selectedIds.size}</strong>
               </span>
               <button className="btn btn--danger btn--sm" onClick={onBatchDelete}>
                 {t.db.deleteSelected}
@@ -518,7 +518,7 @@ export default function FileTable({
                     type="checkbox"
                     checked={files.length > 0 && files.every(f => selectedIds.has(f.file_id))}
                     onChange={() => files.every(f => selectedIds.has(f.file_id)) ? onClearSelect() : onSelectAll()}
-                    title="Vybrat vše"
+                    title={t.db.selectAll}
                   />
                 </th>
                 <th className="db-th db-th--num">#</th>

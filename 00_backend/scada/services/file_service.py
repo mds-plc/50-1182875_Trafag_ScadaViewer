@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date as _date
+from datetime import datetime as _dt
 from pathlib import Path
 
 from scada.services.protocols import PagedResult
@@ -217,6 +218,44 @@ class FileService:
         self._repo.delete_file(path)
         log.info("[SVC]   delete_file %s (%s/%s)", file_id, location, file_type)
         return 'ok'
+
+    # ------------------------------------------------------------------
+    # Časový průběh zakázky
+    # ------------------------------------------------------------------
+
+    def read_timeline(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> tuple[list[str], list[int | None]] | None:
+        """
+        Časové značky a kategorie všech záznamů souboru, seřazené podle času.
+
+        BUSINESS PRAVIDLO: jen production (testing soubor = jeden záznam). Záznamy bez
+        parsovatelného času se vynechají — do časové osy nepatří.
+
+        Returns:
+            (timestamps ISO, kategorie 1–6 | None) nebo None, pokud soubor neexistuje.
+        """
+        path = self._repo.resolve_path(file_id, location, file_type)
+        if path is None or not path.exists():
+            return None
+        points: list[tuple[str, str]] = []
+        self._repo.read_records(path, page=1, per_page=1, timeline=points)
+        valid: list[tuple[str, int | None]] = []
+        for ts, grp in points:
+            try:
+                _dt.fromisoformat(ts)
+            except (ValueError, TypeError):
+                continue
+            try:
+                cat: int | None = int(grp) if grp else None
+            except ValueError:
+                cat = None
+            valid.append((ts, cat))
+        valid.sort(key=lambda p: p[0])
+        return [p[0] for p in valid], [p[1] for p in valid]
 
     # ------------------------------------------------------------------
     # Záznamy
