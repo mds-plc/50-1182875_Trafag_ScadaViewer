@@ -18,6 +18,8 @@ export const en: Translations = {
     backendOffline:       'Server unavailable — checking connection…',
     save: 'Save',
     help: 'Help',
+    remoteChip: 'Remote access · view only',
+    remoteReadOnly: 'You are connected remotely. Deleting, storage cleanup and settings changes are only possible on the machine PC.',
   },
   nav: {
     database: 'Database',
@@ -122,6 +124,7 @@ export const en: Translations = {
     zoomReset:             'Reset zoom',
     zoomHint:              'Zoom: Ctrl + scroll or two fingers',
     zoomHintFs:            'Scroll / two fingers = zoom · drag = pan · double-click = reset · Esc = close',
+    printPreparing: 'Preparing print…',
     print:                 'Print',
     testingDetail:         'Measurement detail',
     sectionTestingParams:  'Test setup',
@@ -258,6 +261,7 @@ export const en: Translations = {
     sessionExpired:   'Session expired — please sign in again.',
     localAccess:      'Local access',
     signOut:          'Sign out',
+    remoteHint: 'Remote access — sign in with your account.',
   },
   error: {
     title:   'Application error',

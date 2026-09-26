@@ -240,3 +240,9 @@
   color: #64748b;
   letter-spacing: 0.04em;
 }
+
+/* Vzdálený přístup — informační chip (jen prohlížení) */
+.topbar__chip--remote {
+  color: #93c5fd;
+  font-size: var(--font-size-sm);
+}

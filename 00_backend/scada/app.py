@@ -233,7 +233,8 @@ class _RateLimitMiddleware(BaseHTTPMiddleware):
 
     LIMITY (výchozí 120/min):
       - Jeden uživatel, 3 záložky, auto-refresh 30s → ~6 req/min (20× pod limitem)
-      - NSSM watchdog /api/health každých 10s → 6 req/min
+      - /api/health (offline indikátor frontendu, externí monitoring) — mimo limit
+      - Limit je na IP adresu: kancelářské PC za NAT / proxy sdílí jednu IP → sdílí i limit
       - Runaway skript → hit limit po 120 req/min → 429, log varování
 
     JAK ROZŠÍŘIT:

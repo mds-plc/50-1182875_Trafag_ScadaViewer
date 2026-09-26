@@ -19,6 +19,8 @@ export interface Translations {
     backendOffline: string
     save: string
     help: string
+    remoteChip: string
+    remoteReadOnly: string
   }
   nav: {
     database: string
@@ -123,6 +125,7 @@ export interface Translations {
     zoomReset: string
     zoomHint: string
     zoomHintFs: string
+    printPreparing: string
     print: string
     testingDetail: string
     sectionTestingParams: string
@@ -267,6 +270,7 @@ export interface Translations {
     sessionExpired: string
     localAccess: string
     signOut: string
+    remoteHint: string
   }
   error: {
     title: string

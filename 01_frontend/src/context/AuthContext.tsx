@@ -17,7 +17,8 @@
  *   - isLoggedIn = true jen s platným tokenem (lokální session nebo získaný PLC token).
  *
  * Rozhraní:
- *   AuthProvider({ children, plcLoggedIn })   — obaluje strom pod PlcProvider
+ *   AuthProvider({ children, plcLoggedIn, clientLocal }) — obaluje strom pod PlcProvider;
+ *     clientLocal=false (vzdálený přístup) → bez PLC auto-loginu, isRemote=true (jen prohlížení)
  *   useAuth()                                  — AuthContextType: isLoggedIn, token, role,
  *                                                username, displayName, login(), logout()
  *   AuthContextType                            — TypeScript interface hodnoty kontextu
@@ -56,6 +57,8 @@ export interface AuthContextType {
   token:        string | null
   /** true = lokální session byla serverem odmítnuta (vypršela / restart backendu) */
   sessionExpired: boolean
+  /** true = prohlížeč není na PC u stroje (GET /api/auth/client) — jen prohlížení, bez PLC auto-loginu */
+  isRemote: boolean
   /** POST /api/auth/login; vrátí 'ok', 'invalid' (HTTP 401) nebo 'error' při síťové chybě */
   login:  (username: string, password: string) => Promise<LoginResult>
   logout: () => void
@@ -67,6 +70,9 @@ interface Props {
   children: React.ReactNode
   /** true = uživatel přihlášen z PLC terminálu (Out.Status.UserLoggedIn). */
   plcLoggedIn: boolean
+  /** true = PC u stroje, false = vzdálený přístup, null = nezjištěno (useClientLocal v App.tsx).
+   *  Výchozí true — testy a jednoduché použití se chovají jako hlavní klient u stroje. */
+  clientLocal?: boolean | null
 }
 
 // type guard pro response /api/auth/login i /api/auth/plc-login — oba endpointy
@@ -80,7 +86,7 @@ function isLoginResponse(data: unknown): data is { token: string; role: string; 
   )
 }
 
-export function AuthProvider({ children, plcLoggedIn }: Props) {
+export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Props) {
   // lokální login — přežije F5
   const [localLogin,   setLocalLogin]   = useState(() => Boolean(sessionStorage.getItem(TOKEN_KEY)))
   const [localToken,   setLocalToken]   = useState<string | null>(() => sessionStorage.getItem(TOKEN_KEY))
@@ -122,7 +128,8 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
 
   // auto-login / auto-logout při změně PLC příznaku
   useEffect(() => {
-    if (plcLoggedIn && !localLogin && !plcToken && !plcLoginInFlightRef.current) {
+    // PLC auto-login jen na PC u stroje (vzdáleně ho server odmítne — nezkoušet vůbec)
+    if (plcLoggedIn && clientLocal === true && !localLogin && !plcToken && !plcLoginInFlightRef.current) {
       let cancelled = false
       plcLoginInFlightRef.current = true
 
@@ -155,7 +162,7 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
         body:    JSON.stringify({ token: t }),
       }).catch(() => {})
     }
-  }, [plcLoggedIn, localLogin, plcToken])
+  }, [plcLoggedIn, clientLocal, localLogin, plcToken])
 
   async function login(user: string, password: string): Promise<LoginResult> {
     if (!user.trim() || !password.trim()) return 'invalid'
@@ -236,6 +243,7 @@ export function AuthProvider({ children, plcLoggedIn }: Props) {
       role:        effectiveRole,
       token,
       sessionExpired,
+      isRemote: clientLocal === false,
       login,
       logout,
     }}>

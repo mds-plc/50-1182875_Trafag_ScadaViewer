@@ -14,7 +14,12 @@ import { useStorage } from '../context/StorageContext'
 import { useLang } from '../context/LangContext'
 import { formatBytes } from '../utils/formatting'
 
-export default function StorageBar() {
+interface Props {
+  /** Vzdálený přístup — ukazatel zůstane, čištění jen na PC u stroje */
+  readOnly?: boolean
+}
+
+export default function StorageBar({ readOnly = false }: Props) {
   const { storage, cleaning, cleanup } = useStorage()
   const { t } = useLang()
   const [step, setStep] = useState<'none' | 'confirm' | 'force'>('none')
@@ -55,7 +60,7 @@ export default function StorageBar() {
             {' · '}<strong>{Math.round(storage.percent)} %</strong>
           </span>
         </span>
-        <button
+        {!readOnly && <button
           className="db-storage__btn"
           onClick={() => setStep('confirm')}
           disabled={!canClean}
@@ -63,7 +68,7 @@ export default function StorageBar() {
           title={storage.synced_count === 0 ? s.nothingToClean : `${s.cleanBtn} — ${synced}`}
         >
           <Trash2 size={15} className={cleaning ? 'db-storage__btn-icon--busy' : undefined} />
-        </button>
+        </button>}
       </div>
 
       {step === 'confirm' && (

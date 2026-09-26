@@ -24,9 +24,9 @@ from __future__ import annotations
 import bisect
 import io
 import logging
-import math
 import threading
 from array import array
+import statistics
 from collections import OrderedDict
 from pathlib import Path
 
@@ -39,8 +39,14 @@ except ImportError:       # pragma: no cover
 
 log = logging.getLogger(__name__)
 
-# Práh napětí kontaktu pro detekci přepnutí (shodně s referenční analýzou — „Threshold 5V")
+# Práh přepnutí — shodně s Analyzing (pipeline._compute_switching_threshold, Config
+# [detection] switching_threshold_ratio = 0.5): klidové U_NC + (maximum U_NC − klidové) × 0,5.
+# Klidové U_NC = medián před bodem FP. Při dnešních 0–10 V vychází ~5 V; při jiném napětí
+# měřicího obvodu se práh posune stejně jako v analýze (čáry OP/RP pak sedí s výsledky).
+_SWITCH_THRESHOLD_RATIO = 0.5
+# Záložní pevný práh, když U_NC nemá rozsah (přepnutí nenastalo / chybí data)
 _SWITCH_THRESHOLD_V = 5.0
+_MIN_U_NC_RANGE_V   = 1.0
 # Zoom okno kolem OP / RP: ±600 vzorků při 20 kHz = ±30 ms
 _ZOOM_HALF_SAMPLES = 600
 
@@ -242,6 +248,22 @@ def extract_time_range(
     return {col: columns[col][start:end] for col in columns}
 
 
+def switching_threshold(u_nc: list[float], fp_idx: int | None) -> float:
+    """Práh přepnutí U_NC [V] — stejný vzorec jako Analyzing (klidové + (max − klidové) × 0,5).
+
+    Klidové napětí = medián U_NC před FP (NC sepnut, ~0 V); medián je odolný vůči náběhu
+    napájení na začátku záznamu. Bez rozsahu U_NC (přepnutí nenastalo) → _SWITCH_THRESHOLD_V.
+    """
+    if not u_nc:
+        return _SWITCH_THRESHOLD_V
+    end = fp_idx if fp_idx is not None and fp_idx > 0 else max(1, len(u_nc) // 10)
+    baseline = statistics.median(u_nc[:end])
+    saturated = max(u_nc)
+    if saturated - baseline < _MIN_U_NC_RANGE_V:
+        return _SWITCH_THRESHOLD_V
+    return baseline + (saturated - baseline) * _SWITCH_THRESHOLD_RATIO
+
+
 def find_key_points(
     analyzed: dict[str, str],
     signal: dict[str, list[float]],
@@ -256,10 +278,11 @@ def find_key_points(
         dict s klíči 'fp', 'op', 'rp', 'ttp', každý obsahuje
         {idx, ts_ms, position, force, source}.
 
-    OP a RP se určují stejně jako v referenční analýze (Analyzing — grafy results /
-    switching_detail): okamžik, kdy napětí U_NC projde prahem _SWITCH_THRESHOLD_V
-    (OP: NC se rozepne → U_NC stoupne; RP: NC se sepne → U_NC klesne). Pokud U_NC
-    chybí nebo práh nikdy nepřekročí, fallback = nejbližší poloha k analyzované hodnotě.
+    OP a RP se určují stejně jako v Analyzing: okamžik, kdy napětí U_NC projde prahem
+    switching_threshold() (OP: NC se rozepne → U_NC stoupne; RP: NC se sepne → U_NC klesne).
+    Pokud U_NC chybí nebo práh nikdy nepřekročí, fallback = nejbližší poloha k analyzované hodnotě.
+    Výsledek obsahuje navíc klíč 'threshold_v' (float) — použitý práh; _convert_units ho
+    vytáhne do odpovědi jako switch_threshold_v.
     """
     position = signal.get('position', [])
     force    = signal.get('force', [])
@@ -326,7 +349,7 @@ def find_key_points(
             start = max(start, 1)
             if len(u_nc) < end:
                 return None
-        thr = _SWITCH_THRESHOLD_V
+        thr = threshold_v
         for i in range(start, end):
             prev, cur = u_nc[i - 1], u_nc[i]
             if (rising and prev < thr <= cur) or (not rising and prev >= thr > cur):
@@ -337,9 +360,13 @@ def find_key_points(
 
     # FP — Free Position
     fp_val = _get_pos('freeposition')
+    fp_idx: int | None = None
     if fp_val is not None:
         fp_idx = _argmin_abs(position, fp_val, 0, ttp_idx + 1) if ttp_idx > 0 else 0
         points['fp'] = _point(fp_idx)
+
+    # Práh přepnutí jako v Analyzing (klidové U_NC před FP → maximum, 50 %)
+    threshold_v = switching_threshold(list(u_nc), fp_idx)
 
     # OP — Operating Position (v první polovině — sestupná část)
     op_edge = _edge(1, ttp_idx + 1, rising=True)
@@ -360,6 +387,7 @@ def find_key_points(
         rp_idx = _argmin_abs(position, rp_val, ttp_idx, n)
         points['rp'] = _point(rp_idx)
 
+    points['threshold_v'] = threshold_v   # type: ignore[assignment] — viz docstring
     return points
 
 
@@ -495,7 +523,9 @@ def _convert_units(
         'i_no_ma':   [v * 1000 for v in data.get('i_no', [])],
         'r_nc_ohm':  [_clip_ohm(v) for v in data.get('r_nc', [])],
         'r_no_ohm':  [_clip_ohm(v) for v in data.get('r_no', [])],
-        'key_points': key_points,
+        # threshold_v není klíčový bod — do odpovědi zvlášť (frontend: čára prahu v grafu napětí)
+        'key_points': {k: v for k, v in key_points.items() if k != 'threshold_v'},
+        'switch_threshold_v': key_points.get('threshold_v', _SWITCH_THRESHOLD_V),
         'params':     params or {},
         'total_raw':  n,
     }

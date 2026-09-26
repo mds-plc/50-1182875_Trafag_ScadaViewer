@@ -486,14 +486,22 @@ function UsersTab({ token }: UsersTabProps) {
 // Komponenta Settings
 // ---------------------------------------------------------------------------
 
+/** Stavová tečka (zelená / červená) — mimo komponentu Settings, aby se při každém renderu
+ *  nevytvářela nová komponenta (React by tečky pokaždé odmontoval a znovu vytvořil). */
+function StatusDot({ ok }: { ok: boolean }) {
+  return <span className={`settings-status__dot settings-status__dot--${ok ? 'ok' : 'error'}`} />
+}
+
 export default function Settings() {
   const { lang, setLang, t } = useLang()
   const { addToast }         = useToast()
   const { dark, toggle: toggleTheme } = useTheme()
   const { perPage, setPerPage, refreshMs, setRefreshMs } = useSettings()
-  const { token, role } = useAuth()
+  const { token, role, isRemote } = useAuth()
 
   const isAdmin = ['admin', 'manufacturer'].includes(role ?? '')
+  // Vzdálený přístup = jen prohlížení: bez ukládání konfigurace a správy uživatelů
+  const canEdit = !isRemote
 
   const [activeTab, setActiveTab] = useState<Tab>('preferences')
   const [openHelp,  setOpenHelp]  = useState<string | null>(null)
@@ -633,10 +641,6 @@ export default function Settings() {
     }
   }
 
-  function StatusDot({ ok }: { ok: boolean }) {
-    return <span className={`settings-status__dot settings-status__dot--${ok ? 'ok' : 'error'}`} />
-  }
-
   // Help props shorthand
   const hp = { openHelp, setOpenHelp }
 
@@ -680,7 +684,7 @@ export default function Settings() {
             <Network size={13} />
             {t.settings.connTile}
           </button>
-          {isAdmin && (
+          {isAdmin && canEdit && (
             <button
               className={`db-tab${activeTab === 'users' ? ' db-tab--active' : ''}`}
               onClick={() => setActiveTab('users')}
@@ -766,13 +770,14 @@ export default function Settings() {
         )}
 
         {/* ── Uživatelé ── */}
-        {activeTab === 'users' && isAdmin && (
+        {activeTab === 'users' && isAdmin && canEdit && (
           <UsersTab token={token} />
         )}
 
         {/* ── Připojení ── */}
         {activeTab === 'connection' && (
           <>
+            {isRemote && <div className="settings-remote-note">{t.common.remoteReadOnly}</div>}
             {/* Podsekce: PLC / ADS */}
             <div className="settings-section-header settings-section-header--first">
               <Cpu size={13} />
@@ -834,24 +839,26 @@ export default function Settings() {
                   className="settings-path-input"
                   value={localPath}
                   onChange={e => setLocalPath(e.target.value)}
-                  disabled={pathBusy}
+                  disabled={pathBusy || !canEdit}
                   spellCheck={false}
                 />
-                <button
-                  className="btn btn--secondary btn--sm settings-browse-btn"
-                  onClick={() => setPickerOpen(true)}
-                  disabled={pathBusy}
-                  title={t.settings.connBrowse}
-                >
-                  <FolderOpen size={14} />
-                </button>
-                <button
-                  className="btn btn--primary btn--sm"
-                  onClick={handleSavePath}
-                  disabled={pathBusy}
-                >
-                  {t.common.save}
-                </button>
+                {canEdit && <>
+                  <button
+                    className="btn btn--secondary btn--sm settings-browse-btn"
+                    onClick={() => setPickerOpen(true)}
+                    disabled={pathBusy}
+                    title={t.settings.connBrowse}
+                  >
+                    <FolderOpen size={14} />
+                  </button>
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={handleSavePath}
+                    disabled={pathBusy}
+                  >
+                    {t.common.save}
+                  </button>
+                </>}
               </div>
               <HelpButton id="localPath" text={t.settings.helpLocalPath} {...hp} />
             </div>
@@ -886,11 +893,11 @@ export default function Settings() {
                   step={0.5}
                   value={limitGb}
                   onChange={e => setLimitGb(e.target.value)}
-                  disabled={limitBusy || !isAdmin}
-                  title={isAdmin ? undefined : t.storage.limitAdminOnly}
+                  disabled={limitBusy || !isAdmin || !canEdit}
+                  title={!canEdit ? t.common.remoteReadOnly : isAdmin ? undefined : t.storage.limitAdminOnly}
                 />
                 <span className="settings-meta">GB</span>
-                {isAdmin && (
+                {isAdmin && canEdit && (
                   <button
                     className="btn btn--primary btn--sm"
                     onClick={handleSaveLimit}
@@ -925,16 +932,18 @@ export default function Settings() {
                   className="settings-path-input"
                   value={remotePath}
                   onChange={e => setRemotePath(e.target.value)}
-                  disabled={pathBusy}
+                  disabled={pathBusy || !canEdit}
                   spellCheck={false}
                 />
-                <button
-                  className="btn btn--primary btn--sm"
-                  onClick={handleSavePath}
-                  disabled={pathBusy}
-                >
-                  {t.common.save}
-                </button>
+                {canEdit && (
+                  <button
+                    className="btn btn--primary btn--sm"
+                    onClick={handleSavePath}
+                    disabled={pathBusy}
+                  >
+                    {t.common.save}
+                  </button>
+                )}
               </div>
               <HelpButton id="remotePath" text={t.settings.helpRemotePath} {...hp} />
             </div>

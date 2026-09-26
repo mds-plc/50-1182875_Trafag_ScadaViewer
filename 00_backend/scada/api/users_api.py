@@ -17,7 +17,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada.api.auth import _clear_failures, _is_locked, _record_failure
-from scada.api.dependencies import ROLE_LEVELS, require_auth, require_role
+from scada.api.dependencies import REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, is_local_client, require_auth, require_local, require_role
 from scada.config import VALID_ROLES, UserEntry, hash_password, save_users, verify_password
 from scada.models import ChangeUserPasswordRequest, CreateUserRequest, UserModel
 
@@ -47,7 +47,7 @@ async def list_users(
     ]
 
 
-@router.post("/users", response_model=UserModel, status_code=201)
+@router.post("/users", response_model=UserModel, status_code=201, dependencies=[Depends(require_local)])
 async def create_user(
     body:    CreateUserRequest,
     request: Request,
@@ -94,7 +94,7 @@ async def create_user(
     return UserModel(username=new_user.username, display_name=new_user.display_name, role=new_user.role)
 
 
-@router.delete("/users/{username}", status_code=204)
+@router.delete("/users/{username}", status_code=204, dependencies=[Depends(require_local)])
 async def delete_user(
     username: str,
     request:  Request,
@@ -147,7 +147,11 @@ async def change_user_password(
     HTTP 401 — špatné aktuální heslo (vlastní účet).
     HTTP 403 — nedostatečná oprávnění (jiný uživatel).
     HTTP 404 — cílový uživatel nenalezen.
+    HTTP 403 — vzdálený přístup a cizí účet (vzdáleně jen vlastní heslo).
     """
+    # Vzdáleně jen změna VLASTNÍHO hesla — cizí účty spravovat jen na PC u stroje
+    if not is_local_client(request) and username != session.get("username"):
+        raise HTTPException(status_code=403, detail=REMOTE_READ_ONLY_DETAIL)
     if not body.new_password.strip():
         raise HTTPException(status_code=400, detail="Nové heslo nesmí být prázdné")
 

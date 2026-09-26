@@ -193,6 +193,12 @@ const numericKeys = useMemo(() => {
 - **Tisk:** styly v bloku „PROTOKOL" na konci `styles/chart.css`; obrazovkové prvky `cv-screen-only`,
   tiskové `cv-print-only`; ověřit PDF přes Playwright `page.pdf()` (testovací server s fiktivním ADS).
 
+## Kontrola kódu — `npm run lint`
+
+ESLint (`01_frontend/eslint.config.mjs`) hlídá `rules-of-hooks` (chyba), `exhaustive-deps`,
+`no-explicit-any` (chyba) a `no-console`. Spustit po každé úpravě frontendu spolu s `npx tsc --noEmit`
+a `npm run test`; výsledek musí být 0 chyb a 0 varování. Build (`npm run build`) lint nespouští.
+
 ## TypeScript — pravidla
 
 - Vždy explicitní typy pro props, state, API response

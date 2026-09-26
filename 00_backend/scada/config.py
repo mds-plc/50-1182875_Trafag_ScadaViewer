@@ -41,6 +41,9 @@ else:
 
 log = logging.getLogger(__name__)
 
+# Klienti „u stroje" — lokální smyčka (kiosk / hlavní klient otevírá http://localhost:8080)
+DEFAULT_LOCAL_CLIENTS: list[str] = ["127.0.0.1", "::1"]
+
 
 @dataclass
 class ServerConfig:
@@ -51,10 +54,15 @@ class ServerConfig:
     port:         TCP port (1–65535); výchozí 8080
     cors_origins: povolené Origins pro CORS middleware i WebSocket origin check;
                   [] = bez omezení (dev), ["*"] = vše, ["http://host:8080"] = konkrétní
+    local_clients: adresy klientů „u stroje" (IP nebo CIDR rozsah). Hlavní klient otevírá
+                  http://localhost:8080 → 127.0.0.1 / ::1. Jen odsud funguje PLC auto-login
+                  a zápisové akce (mazání, čištění, nastavení, správa uživatelů);
+                  ostatní klienti = vzdálený přístup, jen prohlížení.
     """
     host: str
     port: int
     cors_origins: list[str] = field(default_factory=list)
+    local_clients: list[str] = field(default_factory=lambda: list(DEFAULT_LOCAL_CLIENTS))
 
 
 @dataclass
@@ -217,6 +225,12 @@ def _validate_config(cfg: AppConfig) -> None:
         raise ValueError(f"[server] port musí být 1–65535, dostali jsme: {cfg.server.port}")
     if not (1 <= cfg.ads.port <= 65535):
         raise ValueError(f"[ads] port musí být 1–65535, dostali jsme: {cfg.ads.port}")
+    import ipaddress
+    for entry in cfg.server.local_clients:
+        try:
+            ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            raise ValueError(f"[server] local_clients: neplatná IP adresa / rozsah: {entry!r}") from None
     if not cfg.ads.net_id.strip():
         raise ValueError("[ads] net_id nesmí být prázdný (např. '5.80.201.232.1.1')")
     if len(cfg.data.csv_separator) != 1:

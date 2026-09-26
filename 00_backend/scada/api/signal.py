@@ -81,7 +81,7 @@ async def get_signal(
         )
     except asyncio.TimeoutError:
         log.error("[API]   /api/signal resolve timeout (%s, %s)", file, location)
-        raise HTTPException(status_code=504, detail="Úložiště nedostupné — timeout.")
+        raise HTTPException(status_code=504, detail="Úložiště nedostupné — timeout.") from None
     if path is None:
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
@@ -102,10 +102,10 @@ async def get_signal(
         )
     except asyncio.TimeoutError:
         log.error("[API]   /api/signal timeout (%s, %s, %.0f s)", file, location, timeout)
-        raise HTTPException(status_code=504, detail="Čtení signálových dat trvá příliš dlouho.")
+        raise HTTPException(status_code=504, detail="Čtení signálových dat trvá příliš dlouho.") from None
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/signal I/O chyba (%s): %s", file, exc)
-        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}")
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
 
     if result is None:
         raise HTTPException(status_code=404, detail="Soubor neobsahuje signálová data")

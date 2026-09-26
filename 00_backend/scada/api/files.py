@@ -16,7 +16,7 @@ Rozhraní:
   GET    /api/files                    → FilesResponse (files[], total, page, pages)
   GET    /api/files/{file_id}          → OrderFileModel
   GET    /api/files/{file_id}/download → FileResponse (originální CSV)
-  DELETE /api/files/{file_id}          → 204 / 403 / 404 / 503
+  DELETE /api/files/{file_id}          → 204 / 403 (NAS nebo vzdálený přístup) / 404 / 503
   POST   /api/files/batch-delete       → BatchDeleteResult (deleted, failed, errors[])
 
 Napojení:
@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from scada.services.io_pool import run_io
-from scada.api.dependencies import require_auth, require_role
+from scada.api.dependencies import require_auth, require_local, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
 
@@ -106,7 +106,8 @@ async def list_files(
     )
 
 
-@router.delete("/files/{file_id}", status_code=204, dependencies=[Depends(require_role("technician"))])
+@router.delete("/files/{file_id}", status_code=204,
+               dependencies=[Depends(require_role("technician")), Depends(require_local)])
 async def delete_file(
     file_id:   str,
     request:   Request,
@@ -133,7 +134,7 @@ async def delete_file(
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
 
-@router.post("/files/batch-delete", response_model=BatchDeleteResult)
+@router.post("/files/batch-delete", response_model=BatchDeleteResult, dependencies=[Depends(require_local)])
 async def batch_delete_files(
     body:    BatchDeleteRequest,
     request: Request,

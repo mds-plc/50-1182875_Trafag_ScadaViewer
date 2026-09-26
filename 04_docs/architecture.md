@@ -582,7 +582,7 @@ zkratka · název (bez jednotky, se vzorcem, např. „Pre-travel (OP − FP)") 
   (`drive_*`, `electric_*`, `measuring_*`, `limits_*`) a MeasuredInfo (`measuretime`, `meas_ts`).
 - `formatParam`/`paramUnit` znají i vstupy testu (`EXTRA_FORMAT`: jednotky dle hlavičky CSV,
   pevná desetinná místa); `meas_ts` (unix s) → datum a čas. `MEASUREDINFO_GROUPS` pro tabulku.
-- `Electric_Current` se zobrazuje v **mA** — hlavička CSV z DatabaseGateway chybně uvádí `[A]`
+- `Electric_Current` se zobrazuje v **mA** — starší CSV z DatabaseGateway mají v hlavičce chybně `[A]` (opraveno v DatabaseGateway 2026-09-26 na `[mA]`; ScadaViewer jednotku z hlavičky ignoruje, funguje s oběma)
   (potvrzeno uživatelem 2026-09-24; opravit hlavičku v DatabaseGateway).
 - Testing „Results" = stejná tabulka se všemi skupinami jako produkce (dřívější podzáložky zrušeny);
   hero zobrazuje čas přes `formatDateTime`.
@@ -730,6 +730,67 @@ detail v `title`. Prvek je první v řadě `.db-controls` — přepínače se p�
 
 **Stav testů po fázi 31:** Backend 225/225, Frontend 101/101 (14 souborů).
 
+### Fáze 32 — Tisk grafů Signal Data + nadpisy grafů (2026-09-25)
+
+- **Tiskový protokol Testing** obsahuje nově i grafy Signal Data — všech 5 podzáložek pod sebou
+  (Přehled, Výsledky + souhrn analýzy, Hystereze, Detail spínání, Časování), od nové strany.
+- `SignalCharts` má režim `printAll` (bez lišty záložek, nadpis každé podzáložky, data zoom_op/zoom_rp
+  načtena hned) a `onReady` (po načtení všech řad + 2 snímcích vykreslení).
+- `ChartView`: tlačítko Tisk i **Ctrl+P** (`TestingPrintShortcut`) nejdřív připojí tiskovou verzi
+  a teprve po `onReady` (max. 15 s) zavolá `window.print()`; tlačítko ukazuje „Připravuji tisk…".
+- Tisková verze leží **mimo obrazovku v šířce obsahu A4** (`.cv-print-signal`, 700 px,
+  `visibility:hidden`) — `ResponsiveContainer` změří šířku předem, v `@media print` se jen zobrazí.
+  Mřížky vždy 2 sloupce OP | RP; Hystereze a Časování se nedělí mezi stránky.
+- Omezení: tisk přes menu prohlížeče (bez tlačítka / Ctrl+P) grafy neobsahuje, pokud nebyly dříve připraveny.
+- **Nadpisy grafů** (`.zp__title`) odsazené 64 px od rámečku (za číslicemi osy Y) s podkladem
+  v barvě plochy; v mřížkách odsazení od okraje buňky.
+
+### Fáze 33 — Vzdálený přístup z kanceláře (2026-09-25)
+
+PC u stroje má dvě síťovky (síť stroje 192.168.1.x s PLC, firemní síť s DHCP). Server naslouchá na
+všech (`host = "0.0.0.0"`); kancelář otevírá `http://<IP/DNS firemní síťovky>:8080`.
+
+- **Rozlišení klienta** podle adresy TCP spojení: `[server] local_clients` (IP / CIDR, výchozí
+  `127.0.0.1`, `::1`) = **u stroje**; cokoli jiného = **vzdálený přístup**. Kiosk otevírá
+  `http://localhost:8080`. Síť stroje se do `local_clients` nepřidává (notebook se statickou IP).
+- `api/dependencies.py`: `is_local_client()` (+ IPv4-mapped IPv6), `require_local` → 403
+  „Vzdálený přístup je jen pro prohlížení…". Na: `DELETE /api/files/{id}`, `POST /api/files/batch-delete`,
+  `POST /api/storage/cleanup`, `PATCH /api/config/paths|storage`, `GET /api/config/fs`, `POST/DELETE /api/users`;
+  `POST /api/users/{u}/password` vzdáleně jen pro vlastní účet.
+- `POST /api/auth/plc-login` jen u stroje (jinak by přihlášení obsluhy na terminálu otevřelo
+  aplikaci bez hesla komukoli v síti). Nový veřejný `GET /api/auth/client` → `{local}`.
+- `main.py`: `uvicorn.run(proxy_headers=False)` — `X-Forwarded-For` se nevěří nikdy.
+- Frontend: `useClientLocal` (v `PlcAuth`, opakuje dotaz, dokud server neodpoví) →
+  `AuthProvider clientLocal` → `isRemote`. Vzdáleně: bez PLC auto-loginu, LoginOverlay jen formulář,
+  topbar čip „Vzdálený přístup · jen prohlížení" + jméno uživatele, Database bez mazání / výběru / koše
+  (`readOnly`), Nastavení bez ukládání a bez záložky Uživatelé (vysvětlující pruh).
+- Testy: `conftest.py` — TestClient se ve výchozím stavu hlásí jako `127.0.0.1` (u stroje);
+  `test_remote_access.py` předává `client=("10.x.x.x", port)`.
+- Nasazení (síť, DHCP, firewall s `remoteip`, proxy, NAS pod servisním účtem, uživatelé):
+  `04_docs/deployment.md`. Role `manufacturer` (Výrobce) nad `admin` — nižší role nesmí zakládat vyšší,
+  měnit jí heslo ani ji mazat.
+
+### Fáze 34 — Sladění se sesterskými projekty (2026-09-26)
+
+Kontrola společných věcí ScadaViewer × DatabaseGateway × Analyzing (ADS, složky, názvy souborů,
+formát CSV, názvy / jednotky / vzorce parametrů, kategorie, NAS). Shoda ve všech bodech kromě:
+
+- **Práh přepnutí OP/RP** — ScadaViewer měl pevných 5 V, Analyzing 50 % rozsahu U_NC.
+  Nově `signal_reader.switching_threshold()`: klidové U_NC (medián před FP) + (maximum − klidové) × 0,5,
+  bez rozsahu (< 1 V) → záložních 5 V. Odpověď `/api/signal` nese `switch_threshold_v`
+  (graf napětí kreslí čáru a popisek „Práh … V" podle něj). Na reálných datech 0–10 V = 5,0 V (beze změny).
+- **NAS** — nastavení přebírat z DatabaseGateway `[server]` (host/share → `remote_path`,
+  `production_path` / `testing_path` = `{remote_path}\Production|Testing`); jeden účet NAS pro obě aplikace
+  (jinak chyba Windows 1219) — `deployment.md`.
+- **MD** se znaménkem (OP − RP) — nápověda doplněna o zápornou hysterezi.
+- **Electric_Current** — DatabaseGateway nově zapisuje hlavičku `[mA]`; starší soubory `[A]` (ScadaViewer
+  jednotku z hlavičky ignoruje).
+- Opravy v sesterských projektech: DatabaseGateway (hlavička `[mA]`, odmítnutí `;` a řídicích znaků
+  v čísle zakázky / názvu spínače, komentář struktury složek, dokumentace NAS), Analyzing (popis MD).
+
+**Stav testů po fázi 34 + auditu 2026-09-26:** Backend 247/247, Frontend 107/107 (15 souborů),
+`npm run lint` 0 problémů. **Verze 2.1.0.**
+
 ---
 
 ## Tok dat
@@ -832,6 +893,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/auth/logout` | POST | `{token}` → 204; odstraní session |
 | `/api/auth/plc-login` | POST | Token pro PLC operátora (dle `plc_operator_login`) |
 | `/api/auth/change-password` | POST | Změna hesla (TTL + lockout) |
+| `/api/auth/client` | GET | Veřejné — `{local}`: prohlížeč u stroje (`server.local_clients`) / vzdáleně |
 | `/api/users`, `/api/users/{u}`, `/api/users/{u}/password` | GET/POST/DELETE | Správa uživatelů (admin+); vlastní heslo vždy s `current_password` |
 | `/api/config`, `/api/config/paths`, `/api/config/fs` | GET/PATCH/GET | Konfigurace, cesty k úložišti (admin+), folder picker (admin+) |
 | `/api/config/storage` | PATCH | `{local_max_gb}` — limit lokálního úložiště do Config.toml (admin+) |
@@ -1426,6 +1488,7 @@ Umístění: vpravo v Topbar, před hodinami.
 | `useKeyShortcuts` | `hooks/useKeyShortcuts.ts` | Globální klávesové zkratky; skip při fokusu inputu |
 | `useOrderTimeline` | `hooks/useOrderTimeline.ts` | `/api/timeline` líně (až `enabled`); modulová cache 5 zakázek; AbortController |
 | `useContentScroll` | `hooks/useContentScroll.ts` | Skrolování `.content` při navigaci: PUSH → nahoru, POP → obnova pozice |
+| `useClientLocal` | `hooks/useClientLocal.ts` | `/api/auth/client` — u stroje / vzdáleně; opakuje (2 s → 10 s), dokud server neodpoví |
 | `useStorage` | `context/StorageContext.tsx` | Zaplnění lokálního úložiště; `{ storage, cleaning, refresh, cleanup(force?) }` |
 | `useLang` | `context/LangContext.tsx` | i18n hook; `{ lang, setLang, t }` |
 | `usePlc` | `context/PlcContext.tsx` | WebSocket stav; `{ status, connected, adsConnected }` |

@@ -3,10 +3,11 @@
  * @description Horní lišta aplikace — název aplikace, indikátor PLC stavu,
  *   přepínač jazyka CS/EN, chip s přihlášením operátora (lokální přístup + odhlášení),
  *   chip zaplnění lokálního úložiště (jen při varování / kritickém stavu → klik = Database),
+ *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje),
  *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
  */
 import { useState, useEffect } from 'react'
-import { UserCheck, LogOut, Moon, Sun, HardDrive } from 'lucide-react'
+import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import AdsStatus from './AdsStatus'
 import { usePlc }   from '../context/PlcContext'
@@ -36,7 +37,7 @@ function useClock(lang: Lang) {
 
 export default function Topbar() {
   const { adsConnected }         = usePlc()
-  const { isLocalLogin, logout } = useAuth()
+  const { isLocalLogin, logout, isRemote, displayName, username } = useAuth()
   const { lang, setLang, t }     = useLang()
   const { time, dateStr }        = useClock(lang)
   const { dark, toggle }         = useTheme()
@@ -61,6 +62,13 @@ export default function Topbar() {
             <AdsStatus connected={adsConnected} />
           </div>
 
+          {isRemote && (
+            <div className="topbar__chip topbar__chip--remote" title={t.common.remoteReadOnly}>
+              <Globe size={14} />
+              <span>{t.common.remoteChip}</span>
+            </div>
+          )}
+
           {storage && storage.level !== 'ok' && (
             <button
               className={`topbar__chip topbar__chip--storage topbar__chip--${storage.level}`}
@@ -75,7 +83,8 @@ export default function Topbar() {
           {isLocalLogin && (
             <div className="topbar__chip topbar__chip--user">
               <UserCheck size={14} />
-              <span>{t.login.localAccess}</span>
+              {/* Vzdáleně jméno uživatele — „Lokální přístup" by vedle čipu Vzdálený přístup mátl */}
+              <span>{isRemote ? (displayName ?? username ?? t.login.localAccess) : t.login.localAccess}</span>
               <div className="topbar__chip-sep" />
               <button className="topbar__logout" onClick={logout} title={t.login.signOut}>
                 <LogOut size={15} />

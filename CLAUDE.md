@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.0.0"
+    ├── __init__.py            ← __version__ = "2.1.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -74,7 +74,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot) — ⏸ odpojeno (2026-09-23)
     │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
     │   ├── storage.py         ← GET /api/storage (zaplnění vs. local_max_gb) + POST /api/storage/cleanup[?force=true]
-    │   └── dependencies.py    ← require_auth(), require_role() Depends factories; 401 nese WWW-Authenticate: Bearer
+    │   └── dependencies.py    ← require_auth(), require_role(), is_local_client() / require_local() (vzdáleně jen prohlížení); 401 nese WWW-Authenticate: Bearer
     └── services/
         ├── __init__.py
         ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
@@ -88,7 +88,8 @@ CLAUDE.md                  ← tento soubor
         └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast(); clear_symbols() po výpadku ADS
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
-├── package.json           ← závislosti (viz sekce Závislosti)
+├── package.json           ← závislosti (viz sekce Závislosti); skripty dev / build / test / lint
+├── eslint.config.mjs      ← `npm run lint`: rules-of-hooks, exhaustive-deps, no-explicit-any, no-console
 ├── vite.config.ts         ← proxy /api → :8080, /ws → ws://:8080
 ├── tsconfig.json          ← strict mode, noEmit (tsc nesmí generovat .js do src/ — Vite by je bral před .tsx)
 ├── index.html
@@ -111,7 +112,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── ErrorBoundary.tsx  ← class component, getDerivedStateFromError
     │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (skupiny, count tile, akce)
     │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…" (i Suspense fallback)
-    │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář + „Relace vypršela")
+    │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář + „Relace vypršela"; vzdáleně jen formulář)
     │   ├── Pagination.tsx     ← [<] Stránka X z Y [>]
     │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818, časy v měřítku) + ParamTable
     │   ├── ParamTable.tsx     ← sdílená tabulka parametrů (zkratka/název/hodnota+jednotka/„?" nápověda) — production detail záznamu + Testing detail
@@ -143,7 +144,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
     │   ├── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     │   ├── useOrderTimeline.ts ← GET /api/timeline líně (až po přepnutí grafu); modulová cache 5 zakázek
-    │   └── useContentScroll.ts ← skrolování <main.content>: nová stránka nahoru, Zpět = obnova pozice (volán v AppShell)
+    │   ├── useContentScroll.ts ← skrolování <main.content>: nová stránka nahoru, Zpět = obnova pozice (volán v AppShell)
+    │   └── useClientLocal.ts   ← GET /api/auth/client — u stroje / vzdáleně; opakuje, dokud server neodpoví (kiosk po startu PC)
     ├── utils/
     │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
     │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration
@@ -183,6 +185,8 @@ CLAUDE.md                  ← tento soubor
 ├── test_wip_live.py           ← rozpracovaná zakázka v /api/files, FilesWatcher (files_changed)
 ├── test_storage.py            ← zaplnění úložiště, čištění (ověřené / force), PATCH /api/config/storage
 ├── test_timeline.py           ← GET /api/timeline (všechny záznamy, řazení, kategorie, 404)
+├── test_remote_access.py      ← vzdálený přístup: PLC login jen u stroje, zápisy 403, čtení OK, local_clients
+├── test_signal_threshold.py   ← práh přepnutí U_NC jako Analyzing (klidové + (max − klidové) × 0,5)
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
@@ -375,7 +379,8 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/auth/login` | POST | Přihlášení; vrátí `{token, role, display_name}` |
 | `/api/auth/logout` | POST | Odhlášení; zneplatní session token |
 | `/api/auth/change-password` | POST | Změní heslo; ověří token (vč. TTL) + aktuální heslo; lockout 5 pokusů / 10 min; zneplatní session |
-| `/api/auth/plc-login` | GET | PLC auto-login check (symbol `plc_operator_login`) |
+| `/api/auth/plc-login` | POST | PLC auto-login (symbol `plc_operator_login`) — **jen z PC u stroje**, vzdáleně 403 |
+| `/api/auth/client` | GET | Veřejné — `{local: bool}`: je prohlížeč na PC u stroje (`server.local_clients`)? |
 | `/api/users` | GET / POST | Seznam uživatelů / přidání nového (admin+) |
 | `/api/users/{username}` | DELETE | Smazání uživatele (admin+) |
 | `/api/users/{username}/password` | POST | Změna hesla — admin+ jiným s nižší rolí; vlastní heslo vždy s `current_password` |
@@ -403,13 +408,19 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 > **Autentizace:** chráněné endpointy vyžadují `Authorization: Bearer <token>`. Neplatný / vypršelý
 > token → **401 + `WWW-Authenticate: Bearer`**; frontend (`utils/apiFetch.ts`) podle hlavičky uživatele
 > odhlásí. Jiné 401 (špatné aktuální heslo) hlavičku nemají. Rate limit (120/min) platí jen pro `/api/*`.
+>
+> **Vzdálený přístup (Fáze 33):** klient „u stroje" = adresa spojení v `[server] local_clients`
+> (výchozí `127.0.0.1`, `::1` — kiosk otevírá `http://localhost:8080`). Ostatní (kancelář přes firemní
+> síť) = **jen prohlížení**: zápisové endpointy (mazání, čištění úložiště, `PATCH /api/config/*`,
+> `/api/config/fs`, správa uživatelů) mají `Depends(require_local)` → 403; vzdáleně jen vlastní heslo.
+> PLC auto-login jen u stroje. uvicorn běží s `proxy_headers=False` (X-Forwarded-For se nevěří nikdy).
 
 ### /api/health — formát odpovědi
 
 ```json
 {
   "status":  "ok",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "checks": {
     "local_storage": true,
     "ads":           false
@@ -507,8 +518,10 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 
 ```toml
 [server]
-host = "0.0.0.0"   # 0.0.0.0 = přístupné z celé LAN; "127.0.0.1" = pouze localhost
+host = "0.0.0.0"   # 0.0.0.0 = všechny síťovky (síť stroje i firemní síť); "127.0.0.1" = pouze localhost
 port = 8080
+cors_origins = ["*"]                 # i pro WebSocket origin check; při DHCP ve firemní síti ["*"]
+local_clients = ["127.0.0.1", "::1"] # „u stroje" (volitelné, výchozí); síť stroje NEPŘIDÁVAT
 
 [ads]
 net_id = "5.80.201.232.1.1"   # AMS Net ID PLC — zjistit v TwinCAT → System → Routes
@@ -747,13 +760,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.0.0**) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.1.0**) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **225 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 14 souborů) — **101 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, i18n |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **247 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 15 souborů) — **107 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n; `npm run lint` (ESLint) 0 problémů |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -761,6 +774,10 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Sdílená tabulka parametrů (Fáze 26) | ✅ | `ParamTable.tsx` — zkratka · název se vzorcem · hodnota+jednotka · „?" nápověda (`PARAM_DESC`); production detail záznamu i Testing detail |
 | Tiskový protokol A4 (Fáze 28) | ✅ | záhlaví s časem tisku a uživatelem (`PrintMeta`), číslování stran, zarovnané tabulky, bez duplicit/prázdných stran — ověřovat přes Playwright `page.pdf()` |
 | Časový průběh zakázky + skrolování (Fáze 30) | ✅ | přepínač v detailu zakázky (KPI + graf vyrobených kusů, bez posunu obsahu), `/api/timeline`; nová stránka začíná nahoře, Zpět obnoví pozici |
+| Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
+| Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
+| Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Audit kvality + ESLint (2026-09-26) | ✅ | 14 nálezů / 9 opraveno (mj. retry `useClientLocal`, `proxy_headers=False`, atomický zápis Config.toml); otevřené A6, A7, A9–A11 — viz audit_log |
 | Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |
 | Limit lokálního úložiště + čištění (Fáze 29) | ✅ | `local_max_gb` (Config.toml / Nastavení admin+); topbar chip + `StorageBar` + toast; čištění `done_remote/` ověřené na NAS (každý přihlášený), `force` bez ověření jen po potvrzení rizika — viz audit_log 2026-09-25 |
 | NSSM service | ✅ | nssm_install.bat |
@@ -772,13 +789,16 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 
 ### Čeká na Trafag
 1. Zákaznické CSV sloupce (AnalyzedParams) do ChartView — viz `roadmap.md` otázky 1–6
-2. Produkční `Config.toml` — `cors_origins` (omezit z `["*"]`), ADS `net_id`, cesty k datům
+2. Produkční `Config.toml` — ADS `net_id`, cesty k datům (`cors_origins = ["*"]` doporučeno při DHCP — viz deployment.md)
 3. Test na produkčním PC (exe, ADS, NAS, NSSM) + rozhodnutí HTTPS
 
 ### Volitelné (po předání)
 4. Vyhledávání v Database (fulltext filtr)
 5. Znovuzapojení Overview (kód zachován) — před tím projít `api/wip.py`, `order_watcher.py`
 6. Pokud se aplikace otevře mimo intranet: autentizace `/ws/plc` (varianta A, audit M14)
+7. Otevřené nálezy auditu 2026-09-26: A6 (limity na IP za NAT — ověřit u IT), A7 (rozdělit ChartView / Settings),
+   A9 (cesty v `/api/config` vzdáleně), A10 (min. délka hesla), A11 (dva endpointy změny hesla)
+8. HTTPS přes reverzní proxy — nutné nejdřív předávat adresu klienta (jinak všichni = localhost = plná práva)
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.

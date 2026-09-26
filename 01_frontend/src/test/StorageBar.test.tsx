@@ -22,7 +22,6 @@ vi.mock('../context/StorageContext', () => ({
   useStorage: () => ({ storage, cleaning: false, refresh: vi.fn(), cleanup }),
 }))
 
-// eslint-disable-next-line import/first
 import StorageBar from '../components/StorageBar'
 
 const GB = 1024 ** 3
@@ -116,5 +115,12 @@ describe('StorageBar', () => {
     const buttons = screen.getAllByRole('button', { name: /clean synced files/i })
     fireEvent.click(buttons[buttons.length - 1])
     expect(cleanup).toHaveBeenCalledWith()
+  })
+
+  it('readOnly (remote access) keeps the gauge but hides the clean button', () => {
+    storage = make()
+    render(<StorageBar readOnly />, { wrapper: Wrapper })
+    expect(screen.getByText('40 %')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /clean synced files/i })).toBeNull()
   })
 })

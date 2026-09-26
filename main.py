@@ -62,6 +62,10 @@ def main() -> None:
         host=cfg.server.host,
         port=cfg.server.port,
         log_level="debug" if args.debug else "info",
+        # Bez reverzní proxy — hlavičkám X-Forwarded-For nevěřit nikdy. Rozlišení „u stroje /
+        # vzdáleně" (server.local_clients) stojí na adrese TCP spojení; s proxy_headers by stačila
+        # proměnná prostředí FORWARDED_ALLOW_IPS="*" a vzdálený klient by si podvrhl 127.0.0.1.
+        proxy_headers=False,
     )
 
 

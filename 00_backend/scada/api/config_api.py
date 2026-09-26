@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada import __version__
-from scada.api.dependencies import require_auth, require_role
+from scada.api.dependencies import require_auth, require_local, require_role
 from scada.services.io_pool import NasBusyError, run_io
 from scada.models import (
     ConfigAuthInfo,
@@ -60,6 +60,14 @@ async def get_config(request: Request) -> ConfigResponse:
     )
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Zapíše soubor atomicky (tmp + os.replace) — výpadek napájení uprostřed zápisu nesmí
+    nechat poškozený Config.toml (aplikace by po restartu nenastartovala)."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
     """Přepíše local_path a remote_path v Config.toml (regex replace)."""
     text = config_path.read_text(encoding="utf-8")
@@ -82,10 +90,10 @@ def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
         log.warning("[API]   _write_paths: klíč local_path nenalezen v %s", config_path)
     if n2 == 0:
         log.warning("[API]   _write_paths: klíč remote_path nenalezen v %s", config_path)
-    config_path.write_text(text, encoding="utf-8")
+    _atomic_write_text(config_path, text)
 
 
-@router.patch("/config/paths", status_code=204, dependencies=[Depends(require_role("admin"))])
+@router.patch("/config/paths", status_code=204, dependencies=[Depends(require_role("admin")), Depends(require_local)])
 async def update_paths(body: UpdatePathsRequest, request: Request) -> None:
     """
     Aktualizuje cesty k úložišti v Config.toml a v in-memory konfiguraci.
@@ -111,7 +119,7 @@ async def update_paths(body: UpdatePathsRequest, request: Request) -> None:
         await asyncio.to_thread(_write_paths, config_path, local, remote)
     except Exception as exc:
         log.error("[API]   PATCH /api/config/paths selhalo: %s", exc)
-        raise HTTPException(status_code=500, detail="Nepodařilo se zapsat konfiguraci")
+        raise HTTPException(status_code=500, detail="Nepodařilo se zapsat konfiguraci") from exc
 
     cfg = request.app.state.config
     cfg.data.local_path  = Path(local)
@@ -131,10 +139,10 @@ def _write_storage_limit(config_path: Path, local_max_gb: float) -> None:
         text, n = re.subn(r'(?m)^(\[data\][ \t]*)$', lambda m: f"{m.group(1)}\n{value}", text, count=1)
     if n == 0:
         raise ValueError("sekce [data] nenalezena v Config.toml")
-    config_path.write_text(text, encoding="utf-8")
+    _atomic_write_text(config_path, text)
 
 
-@router.patch("/config/storage", status_code=204, dependencies=[Depends(require_role("admin"))])
+@router.patch("/config/storage", status_code=204, dependencies=[Depends(require_role("admin")), Depends(require_local)])
 async def update_storage_limit(body: UpdateStorageLimitRequest, request: Request) -> None:
     """Změní limit lokálního úložiště — v Config.toml i v paměti (bez restartu)."""
     config_path: Path | None = request.app.state.config_path
@@ -144,7 +152,7 @@ async def update_storage_limit(body: UpdateStorageLimitRequest, request: Request
         await asyncio.to_thread(_write_storage_limit, config_path, body.local_max_gb)
     except Exception as exc:
         log.error("[API]   PATCH /api/config/storage selhalo: %s", exc)
-        raise HTTPException(status_code=500, detail="Nepodařilo se zapsat konfiguraci")
+        raise HTTPException(status_code=500, detail="Nepodařilo se zapsat konfiguraci") from exc
     request.app.state.config.data.local_max_gb = body.local_max_gb
     log.info("[API]   PATCH /api/config/storage — local_max_gb=%g", body.local_max_gb)
 
@@ -206,7 +214,9 @@ def _list_children(path_str: str) -> dict[str, object]:
     return {"path": _norm(p), "parent": parent, "children": children}
 
 
-@router.get("/config/fs", dependencies=[Depends(require_role("admin"))])
+# Jen u stroje: slouží výběru cesty pro uložení (to je vzdáleně zakázané) a vzdáleně by
+# odhaloval strukturu disků serveru.
+@router.get("/config/fs", dependencies=[Depends(require_role("admin")), Depends(require_local)])
 async def list_fs(path: str = "") -> dict[str, object]:
     """
     Vrátí seznam podsložek pro folder picker v Settings UI.

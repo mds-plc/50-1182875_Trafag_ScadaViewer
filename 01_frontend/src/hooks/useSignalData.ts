@@ -33,6 +33,8 @@ export interface SignalData {
   r_nc_ohm: (number | null)[]
   r_no_ohm: (number | null)[]
   key_points: Record<string, KeyPoint>
+  /** Práh přepnutí U_NC [V] — shodně s Analyzing (klidové + (max − klidové) × 0,5) */
+  switch_threshold_v?: number
   /** AnalyzedParameters souboru jako čísla (klíče po _normalize_key, jednotky dle CSV) */
   params: Record<string, number>
   total_raw: number

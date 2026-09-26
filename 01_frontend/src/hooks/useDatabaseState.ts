@@ -96,7 +96,7 @@ const isString   = (v: unknown): v is string => typeof v === 'string'
 export function useDatabaseState() {
   const { addToast } = useToast()
   const { t }        = useLang()
-  const { token }    = useAuth()
+  const { token, isRemote } = useAuth()
   const { perPage, refreshMs } = useSettings()
 
   const [location,     setLocationRaw]  = useState<Location>(() => _lsGet('location', 'local' as Location, isLocation))
@@ -155,7 +155,7 @@ export function useDatabaseState() {
     fetchFiles()
     const id = setInterval(fetchFiles, refreshMs)
     return () => clearInterval(id)
-  }, [fetchFiles, remoteAvailable, refreshMs])
+  }, [fetchFiles, location, remoteAvailable, refreshMs])
 
   // Okamžitá aktualizace — backend (FilesWatcher) hlásí přes WS změnu lokálních složek:
   // nová / uzavřená zakázka, nový záznam v rozpracované zakázce, sync na NAS.
@@ -278,6 +278,7 @@ export function useDatabaseState() {
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
     showSync, totalRecords,
+    readOnly: isRemote,   // vzdálený přístup — bez mazání (server ho stejně odmítne)
     deleteFile, downloadCsv, downloadXlsx,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   }

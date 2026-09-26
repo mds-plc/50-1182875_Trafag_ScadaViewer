@@ -351,6 +351,8 @@ interface Props {
   onSelectAll:      () => void
   onClearSelect:    () => void
   onBatchDelete:    () => void
+  /** Vzdálený přístup — bez výběru a mazání (jen prohlížení) */
+  readOnly?:        boolean
 }
 
 export default function FileTable({
@@ -359,7 +361,7 @@ export default function FileTable({
   page, pages, total, totalRecords,
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
   sortBy, sortDir, onSort,
-  selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete,
+  selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, readOnly = false,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
@@ -395,7 +397,7 @@ export default function FileTable({
           }
         >
           <td className="db-td db-td--check" onClick={e => e.stopPropagation()}>
-            {!isWip && (
+            {!isWip && !readOnly && (
               <input
                 type="checkbox"
                 checked={selectedIds.has(file.file_id)}
@@ -461,7 +463,7 @@ export default function FileTable({
             >
               <Download size={14} /> XLSX
             </button>
-            {isWip ? (
+            {readOnly ? null : isWip ? (
               // Rozpracovanou zakázku nelze smazat — prázdné místo stejné šířky,
               // aby tlačítka CSV / XLSX zůstala ve všech řádcích na stejné pozici
               <span className="db-icon-btn db-icon-btn--placeholder" aria-hidden="true" />
@@ -496,7 +498,7 @@ export default function FileTable({
       {(files.length > 0 || (!loading && !error)) && (
         <>
           {/* Batch toolbar — viditelný jen pokud je něco vybráno */}
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && !readOnly && (
             <div className="db-batch-toolbar">
               <span className="db-batch-toolbar__count">
                 {t.db.selectedCount}: <strong>{selectedIds.size}</strong>
@@ -514,12 +516,12 @@ export default function FileTable({
             <thead>
               <tr>
                 <th className="db-th db-td--check" onClick={e => e.stopPropagation()}>
-                  <input
+                  {!readOnly && <input
                     type="checkbox"
                     checked={files.length > 0 && files.every(f => selectedIds.has(f.file_id))}
                     onChange={() => files.every(f => selectedIds.has(f.file_id)) ? onClearSelect() : onSelectAll()}
                     title={t.db.selectAll}
-                  />
+                  />}
                 </th>
                 <th className="db-th db-th--num">#</th>
                 <SortTh col="created_at">{t.db.colCreated}</SortTh>

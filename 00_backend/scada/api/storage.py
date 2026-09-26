@@ -11,6 +11,7 @@ Zodpovědnost:
     ?force=true → smaže VŠE z done_remote/ bez ověření (NAS se nekontaktuje, lokální I/O);
     frontend to dovolí jen po potvrzení rizika ztráty dat.
   - Obojí smí každý přihlášený uživatel (rozhodnutí zákazníka); force jen po potvrzení rizika v UI.
+    Čištění jen z PC u stroje (require_local) — vzdálený přístup je jen pro prohlížení.
 
 Rozhraní:
   GET  /api/storage          → StorageResponse
@@ -27,7 +28,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from scada.api.dependencies import require_auth
+from scada.api.dependencies import require_auth, require_local
 from scada.models import CleanupResponse, StorageResponse
 from scada.services.io_pool import run_io
 from scada.services.storage_service import (
@@ -56,7 +57,7 @@ async def get_storage(request: Request) -> StorageResponse:
     return StorageResponse(**usage)
 
 
-@router.post("/storage/cleanup", response_model=CleanupResponse)
+@router.post("/storage/cleanup", response_model=CleanupResponse, dependencies=[Depends(require_local)])
 async def cleanup_storage(
     request: Request,
     force:   bool = Query(False, description="true = smazat vše z done_remote/ BEZ ověření na NAS"),

@@ -6,7 +6,7 @@
  *   Overlay zmizí automaticky, jakmile isLoggedIn === true.
  */
 import { useState } from 'react'
-import { Loader } from 'lucide-react'
+import { Loader, Globe } from 'lucide-react'
 import AppLogo   from './AppLogo'
 import AdsStatus from './AdsStatus'
 import { usePlc }  from '../context/PlcContext'
@@ -19,7 +19,7 @@ import { useLang } from '../context/LangContext'
  */
 export default function LoginOverlay() {
   const { adsConnected } = usePlc()
-  const { login, sessionExpired } = useAuth()
+  const { login, sessionExpired, isRemote } = useAuth()
   const { t }         = useLang()
 
   const [username,  setUsername]  = useState('')
@@ -55,17 +55,27 @@ export default function LoginOverlay() {
 
         <div className="login-card__divider" />
 
-        <AdsStatus connected={adsConnected} />
+        {isRemote ? (
+          // Vzdálený přístup — PLC auto-login tu nefunguje, jen vlastní účet
+          <div className="login-card__waiting">
+            <Globe size={14} />
+            <span>{t.login.remoteHint}</span>
+          </div>
+        ) : (
+          <>
+            <AdsStatus connected={adsConnected} />
 
-        <div className="login-card__waiting">
-          <Loader size={14} className="login-card__spinner" />
-          <span>{t.login.waitingPLC}</span>
-        </div>
+            <div className="login-card__waiting">
+              <Loader size={14} className="login-card__spinner" />
+              <span>{t.login.waitingPLC}</span>
+            </div>
+          </>
+        )}
 
         <div className="login-card__divider" />
 
         <form className="login-card__form" onSubmit={e => { void handleSubmit(e) }}>
-          <div className="login-card__form-label">{t.login.orLocal}</div>
+          {!isRemote && <div className="login-card__form-label">{t.login.orLocal}</div>}
 
           <input
             className="login-card__input"

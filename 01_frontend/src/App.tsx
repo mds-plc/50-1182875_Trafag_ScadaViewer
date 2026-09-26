@@ -15,6 +15,7 @@ import { StorageProvider } from './context/StorageContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { usePlcWatcher } from './hooks/usePlcWatcher'
 import { useContentScroll } from './hooks/useContentScroll'
+import { useClientLocal } from './hooks/useClientLocal'
 import Sidebar      from './components/Sidebar'
 import Topbar       from './components/Topbar'
 import LoginOverlay from './components/LoginOverlay'
@@ -40,11 +41,13 @@ import { WifiOff } from 'lucide-react'
 /** Symbol PLC přihlášení uživatele (Out.Status.UserLoggedIn BOOL). */
 const PLC_LOGIN_SYMBOL = 'plc_operator_login'
 
-/** Čte PLC přihlášení z kontextu — musí být uvnitř PlcProvider. */
+/** Čte PLC přihlášení z kontextu — musí být uvnitř PlcProvider. Předá i to, zda je prohlížeč
+ *  na PC u stroje (vzdáleně bez PLC auto-loginu, jen prohlížení). */
 function PlcAuth({ children }: { children: React.ReactNode }) {
   const { status } = usePlc()
+  const clientLocal = useClientLocal()
   const plcLoggedIn = status[PLC_LOGIN_SYMBOL]?.value === true
-  return <AuthProvider plcLoggedIn={plcLoggedIn}>{children}</AuthProvider>
+  return <AuthProvider plcLoggedIn={plcLoggedIn} clientLocal={clientLocal}>{children}</AuthProvider>
 }
 
 function AppShell() {

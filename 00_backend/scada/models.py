@@ -141,6 +141,11 @@ class LoginResponse(BaseModel):
     display_name: str
 
 
+class ClientInfoResponse(BaseModel):
+    """Odpověď GET /api/auth/client — je tento prohlížeč na PC u stroje?"""
+    local: bool   # False = vzdálený přístup (jen prohlížení, bez PLC auto-loginu)
+
+
 # ======================================================================
 # /api/users — správa uživatelů
 # ======================================================================

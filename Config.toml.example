@@ -6,14 +6,21 @@
 [server]
 host = "0.0.0.0"   # naslouchá na všech síťových rozhraních (výrobní LAN + kancelářská síť)
 port = 8080
-# cors_origins: seznam adres, ze kterých prohlížeče smí volat API.
-#   - Kiosk na stejném PC nepotřebuje záznam (stejný origin).
-#   - Každý vzdálený přístup (jiné PC, jiná IP) musí být uveden.
-#   PC má dvě síťovky → dvě IP adresy → oba origins:
-cors_origins = [
-    "http://192.168.1.10:8080",   # výrobní síť (IP produkčního PC)
-    # "http://X.X.X.X:8080",      # kancelářská síť Trafag — doplnit při nasazení
-]
+# cors_origins: adresy, přes které prohlížeče aplikaci otevírají — kontroluje se i živé spojení
+#   (WebSocket: stav PLC, automatická aktualizace). Kiosk na PC u stroje (localhost) záznam nepotřebuje.
+#   ["*"] = libovolná adresa — DOPORUČENO při DHCP ve firemní síti (IP PC u stroje se může změnit).
+#   Konkrétní seznam musí obsahovat KAŽDOU adresu / DNS jméno, přes které se otevírá, např.
+#   ["http://10.40.84.25:8080", "http://stroj-trafag.firma.local:8080"] — viz 04_docs/deployment.md.
+cors_origins = ["*"]
+
+# local_clients — adresy klientů „u stroje" (IP nebo CIDR rozsah).
+# Hlavní klient na PC u stroje otevírá http://localhost:8080 → 127.0.0.1 / ::1.
+# Jen odsud funguje PLC auto-login a zápisové akce (mazání, čištění úložiště, nastavení,
+# správa uživatelů). Ostatní klienti (např. kancelář přes druhou síťovou kartu) = vzdálený
+# přístup: přihlášení vlastním účtem, jen prohlížení. Chybí-li klíč, platí výchozí hodnota.
+# NEPŘIDÁVAT síť stroje (např. 192.168.1.0/24) — notebook se statickou adresou by dostal plná práva
+# a PLC auto-login bez hesla.
+local_clients = ["127.0.0.1", "::1"]
 
 [ads]
 net_id = "X.X.X.X.1.1"   # AMS Net ID PLC runtime — zjistit v TwinCAT → System → Routes
@@ -24,7 +31,10 @@ port   = 851               # TwinCAT PLC runtime port (851 = výchozí)
 # PROD: absolutní cesta ke sdílené složce, kam DatabaseGateway zapisuje CSV
 local_path = "05_user_data/test_db_output"
 
-# NAS — UNC cesta; prázdná = Remote tab vždy nedostupný
+# NAS — UNC cesta ke sdílené složce; prázdná = Remote tab vždy nedostupný.
+# MUSÍ odpovídat DatabaseGateway Config.toml [server]: remote_path = \\{host}\{share}
+# a jeho production_path / testing_path = {remote_path}\Production a {remote_path}\Testing.
+# Přihlášení k NAS: stejný účet jako DatabaseGateway (cmdkey pro servisní účet — viz 04_docs/deployment.md).
 # POZOR: v TOML basic stringu musí být každý \ zapsán jako \\
 # Příklad: \\\\10.45.124.20\\trafag_test
 remote_path = ""

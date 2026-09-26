@@ -17,6 +17,10 @@
  * u kategoriální osy by se referenční čáry bodů nevykreslily a hystereze by byla zkreslená.
  * Hodnoty se formátují přes formatParam (stejně jako tabulky a detail záznamu).
  *
+ * Tisk (`printAll`): všech 5 záložek pod sebou s nadpisy, bez lišty záložek; data detailů
+ * (zoom_op / zoom_rp) se načtou hned a `onReady` ohlásí, že je vše vykreslené (ChartView pak
+ * otevře tiskový dialog).
+ *
  * Každý graf je v ZoomPanel: přiblížení osy X kolečkem / dvěma prsty, posun tažením,
  * dvojklik = základní velikost, tlačítko = celá obrazovka. Osy Y se při přiblížení
  * dopočítají z viditelných dat; časové grafy celého záznamu si pro výřez dotáhnou data
@@ -41,6 +45,10 @@ interface Props {
   fileId: string
   location: string
   fileType: string
+  /** Tiskový protokol: všechny záložky pod sebou (bez lišty záložek) */
+  printAll?: boolean
+  /** printAll: zavoláno, jakmile jsou načtená a vykreslená data všech záložek */
+  onReady?: () => void
 }
 
 type TabId = 'overview' | 'results' | 'hysteresis' | 'switching' | 'timing'
@@ -63,8 +71,8 @@ const KP_PARAM: Record<string, string> = {
 }
 const BAND = { ut: '#f59e0b', revt: '#6366f1', bt: '#ef4444' }
 
-/** Práh napětí pro detekci přepnutí (= backend _SWITCH_THRESHOLD_V) */
-const SWITCH_THRESHOLD_V = 5
+/** Záložní práh přepnutí [V] — skutečný posílá backend (switch_threshold_v, výpočet jako Analyzing) */
+const DEFAULT_SWITCH_THRESHOLD_V = 5
 /** Nejmenší šířka přiblížení [ms] — celý záznam (data v plném rozlišení) / detailní okna */
 const MIN_SPAN_MS = 0.5
 const MIN_SPAN_ZOOM_MS = 0.2
@@ -177,7 +185,8 @@ function kpLines(kp: Record<string, KeyPoint>, withLabels: boolean, yAxisId?: st
 }
 
 /** Napětí NC / NO. */
-function voltageChart(rows: Row[], extra: ReactNode, xDomain: Domain, showThreshold = false) {
+function voltageChart(rows: Row[], extra: ReactNode, xDomain: Domain, thresholdV: number | null = null) {
+  const showThreshold = thresholdV != null
   return (
     <LineChart data={rows} margin={{ top: showThreshold ? 26 : 14, right: 12, bottom: 4, left: 0 }}>
       <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
@@ -185,7 +194,7 @@ function voltageChart(rows: Row[], extra: ReactNode, xDomain: Domain, showThresh
       <YAxis tick={{ fontSize: 10 }} domain={[-0.5, 10.5]} ticks={[0, 2, 4, 6, 8, 10]} width={36} />
       <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 2)} />
       <Legend wrapperStyle={{ fontSize: 10 }} />
-      {showThreshold && <ReferenceLine y={SWITCH_THRESHOLD_V} stroke={C.muted} strokeDasharray="2 3" />}
+      {showThreshold && <ReferenceLine y={thresholdV} stroke={C.muted} strokeDasharray="2 3" />}
       <Line dataKey="u_nc" name="U_NC [V]" stroke={C.nc} dot={false} strokeWidth={1.2} isAnimationActive={false} />
       <Line dataKey="u_no" name="U_NO [V]" stroke={C.no} dot={false} strokeWidth={1.2} isAnimationActive={false} />
       {extra}
@@ -245,26 +254,40 @@ function forcePositionChart(rows: Row[], extra: ReactNode, xDomain: Domain) {
 
 // ── Hlavní komponenta ────────────────────────────────────────────────────────
 
-export default function SignalCharts({ fileId, location, fileType }: Props) {
+export default function SignalCharts({ fileId, location, fileType, printAll = false, onReady }: Props) {
   const { t } = useLang()
   const { token } = useAuth()
   const { data, loading, error, fetchSignal } = useSignalData()
-  const { data: zoomOp, fetchSignal: fetchZoomOp } = useSignalData()
-  const { data: zoomRp, fetchSignal: fetchZoomRp } = useSignalData()
+  const { data: zoomOp, loading: loadingOp, error: errorOp, fetchSignal: fetchZoomOp } = useSignalData()
+  const { data: zoomRp, loading: loadingRp, error: errorRp, fetchSignal: fetchZoomRp } = useSignalData()
   const [tab, setTab] = useState<TabId>('overview')
+  /** Zobrazit záložku — v tisku všechny */
+  const show = (id: TabId) => printAll || tab === id
 
   useEffect(() => {
     fetchSignal(fileId, location, fileType, 'overview', 1000)
   }, [fileId, location, fileType, fetchSignal])
 
   // Zoom data až při otevření detailu (backend je má z prefetch cache okamžitě)
-  const needZoom = tab === 'switching' || tab === 'timing'
+  const needZoom = printAll || tab === 'switching' || tab === 'timing'
   useEffect(() => {
     if (needZoom && !zoomOp) fetchZoomOp(fileId, location, fileType, 'zoom_op', 1000)
   }, [needZoom, zoomOp, fileId, location, fileType, fetchZoomOp])
   useEffect(() => {
     if (needZoom && !zoomRp) fetchZoomRp(fileId, location, fileType, 'zoom_rp', 1000)
   }, [needZoom, zoomRp, fileId, location, fileType, fetchZoomRp])
+
+  // Tisk: ohlásit připravenost, až jsou načtené všechny řady (i s chybou — tisk nesmí viset)
+  const allLoaded = !loading && (data != null || error != null)
+    && ((zoomOp != null || errorOp != null) && !loadingOp)
+    && ((zoomRp != null || errorRp != null) && !loadingRp)
+  useEffect(() => {
+    if (!printAll || !allLoaded || !onReady) return
+    // dva snímky: Recharts dokreslí SVG až po změření kontejneru
+    let f2 = 0
+    const f1 = requestAnimationFrame(() => { f2 = requestAnimationFrame(onReady) })
+    return () => { cancelAnimationFrame(f1); cancelAnimationFrame(f2) }
+  }, [printAll, allLoaded, onReady])
 
   /** Přiblížený výřez celého záznamu v plném rozlišení (ZoomPanel) */
   const loadRange = useCallback(async (d: Domain, signal: AbortSignal) =>
@@ -295,6 +318,7 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
 
   const kp = data.key_points ?? {}
   const P  = data.params ?? {}
+  const thresholdV = data.switch_threshold_v ?? DEFAULT_SWITCH_THRESHOLD_V
   // časová osa od 0 (záznam začíná těsně po startu měření)
   const tDom: Domain = [Math.min(0, Math.floor(data.ts_ms[0] ?? 0)), Math.ceil(data.ts_ms[data.ts_ms.length - 1] ?? 1)]
   const posAxis   = niceAxis(...minMax(data.position), 6, true)
@@ -322,21 +346,28 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
   )
 
   const timeLabel = `${t.chart.sigTime} [ms]`
+  /** Nadpis podzáložky v tiskovém protokolu */
+  const printTitle = (id: TabId) => printAll && (
+    <h4 className="sig-print-title">{tabs.find(x => x.id === id)?.label}</h4>
+  )
 
   return (
-    <div className="sig-charts">
-      <div className="sig-tabs">
-        {tabs.map(x => (
-          <button key={x.id} className={`sig-tab${tab === x.id ? ' sig-tab--active' : ''}`} onClick={() => setTab(x.id)}>
-            {x.label}
-          </button>
-        ))}
-        <span className="sig-tabs__info">{data.total_raw.toLocaleString()} {t.chart.signalSamples}</span>
-      </div>
+    <div className={`sig-charts${printAll ? ' sig-charts--print' : ''}`}>
+      {!printAll && (
+        <div className="sig-tabs">
+          {tabs.map(x => (
+            <button key={x.id} className={`sig-tab${tab === x.id ? ' sig-tab--active' : ''}`} onClick={() => setTab(x.id)}>
+              {x.label}
+            </button>
+          ))}
+          <span className="sig-tabs__info">{data.total_raw.toLocaleString()} {t.chart.signalSamples}</span>
+        </div>
+      )}
 
       {/* ── 1. Přehled ─────────────────────────────────────────────── */}
-      {tab === 'overview' && (
-        <div className="sig-overview">
+      {show('overview') && (
+        <div className="sig-overview sig-section">
+          {printTitle('overview')}
           <ZoomPanel title={`${t.chart.sigPosition} [µm]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
             {(d, hi) => {
               const v = hi ?? sliceRows(rows, 'ts_ms', d)
@@ -378,8 +409,9 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
       )}
 
       {/* ── 2. Výsledky ────────────────────────────────────────────── */}
-      {tab === 'results' && (
-        <div className="sig-results">
+      {show('results') && (
+        <div className="sig-results sig-section">
+          {printTitle('results')}
           {headline && <div className="sig-headline">{headline}</div>}
           <div className="sig-results__layout">
             <div className="sig-results__charts">
@@ -412,8 +444,8 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
                   )
                 }}
               </ZoomPanel>
-              <ZoomPanel title={`${t.chart.sigVoltage} [V] — ${t.chart.sigThreshold} ${SWITCH_THRESHOLD_V} V`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
-                {(d, hi) => voltageChart(hi ?? sliceRows(rows, 'ts_ms', d), kpLines(kp, false), d, true)}
+              <ZoomPanel title={`${t.chart.sigVoltage} [V] — ${t.chart.sigThreshold} ${thresholdV.toFixed(1)} V`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
+                {(d, hi) => voltageChart(hi ?? sliceRows(rows, 'ts_ms', d), kpLines(kp, false), d, thresholdV)}
               </ZoomPanel>
               <ZoomPanel title={`${t.chart.sigCurrent} [mA]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
                 {(d, hi) => currentChart(hi ?? sliceRows(rows, 'ts_ms', d), kpLines(kp, false), d)}
@@ -428,8 +460,9 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
       )}
 
       {/* ── 3. Hystereze ───────────────────────────────────────────── */}
-      {tab === 'hysteresis' && (
-        <div className="sig-hysteresis">
+      {show('hysteresis') && (
+        <div className="sig-hysteresis sig-section">
+          {printTitle('hysteresis')}
           <div className="sig-chips">
             {(['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] as const)
               .filter(k => P[k] != null)
@@ -476,8 +509,9 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
       )}
 
       {/* ── 4. Detail přepnutí (±20 ms) ────────────────────────────── */}
-      {tab === 'switching' && (
-        <div className="sig-grid-2x3">
+      {show('switching') && (
+        <div className="sig-grid-2x3 sig-section">
+          {printTitle('switching')}
           {(['v', 'i', 'fp'] as const).flatMap(row => (['op', 'rp'] as const).map(side => {
             const rowsZ = side === 'op' ? opRows : rpRows
             const p = kp[side]
@@ -514,8 +548,9 @@ export default function SignalCharts({ fileId, location, fileType }: Props) {
       )}
 
       {/* ── 5. Časování — úseky UT / RevT / BT po OP ───────────────── */}
-      {tab === 'timing' && (
-        <div className="sig-timing">
+      {show('timing') && (
+        <div className="sig-timing sig-section">
+          {printTitle('timing')}
           <TimingLegend params={P} />
           <div className="sig-grid-2x2">
             {(['v', 'i'] as const).flatMap(row => (['op', 'rp'] as const).map(side => {

@@ -62,6 +62,7 @@ const defaultState = {
   fetchFiles:     mockFetchFiles,
   remoteAvailable: null as boolean | null,
   showSync:       true,
+  readOnly:       false,
   totalRecords:   0,
   deleteFile:     mockDeleteFile,
   downloadCsv:    mockDownloadCsv,
@@ -98,9 +99,7 @@ vi.mock('../components/StorageBar', () => ({
 // Imports (až po mockách)
 // -----------------------------------------------------------------------
 
-// eslint-disable-next-line import/first
 import Database from '../pages/Database'
-// eslint-disable-next-line import/first
 import { useDatabaseState } from '../hooks/useDatabaseState'
 
 // -----------------------------------------------------------------------

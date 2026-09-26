@@ -376,3 +376,14 @@
 .settings-limit-input {
   flex: 0 0 120px;
 }
+
+/* Vzdálený přístup — vysvětlení nad záložkou Připojení (jen prohlížení) */
+.settings-remote-note {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-muted);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}

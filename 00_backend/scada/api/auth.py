@@ -8,6 +8,9 @@ Zodpovědnost:
   - login: ověří username + heslo vůči app.state.users (PBKDF2-HMAC-SHA256),
     vydá session token. Chrání brute-force útok: lockout po 5 pokusech / 10 min.
   - plc-login: bez hesla — autenticitu zajišťuje PLC příznak UserLoggedIn z ADS monitoru.
+    JEN z PC u stroje (server.local_clients) — jinak by přihlášení obsluhy na terminálu
+    otevřelo přístup každému prohlížeči v síti (vzdálený uživatel se přihlašuje heslem).
+  - client: veřejné — {local} pro frontend (vzdálený přístup = jen prohlížení).
     Vydá token s rolí "operator"; token žije jen v paměti prohlížeče (ne sessionStorage).
   - logout: invaliduje token v app.state.sessions (fire-and-forget, vždy 204).
   - change-password: ověří aktuální heslo, přepíše hash v users.toml / Config.toml
@@ -16,7 +19,8 @@ Zodpovědnost:
 
 Rozhraní:
   POST /api/auth/login           → LoginResponse { token, role, display_name }
-  POST /api/auth/plc-login       → LoginResponse { token, role="operator", display_name }
+  POST /api/auth/plc-login       → LoginResponse { token, role="operator", display_name } / 403 (vzdálený klient)
+  GET  /api/auth/client          → ClientInfoResponse { local }
   POST /api/auth/logout          → 204 (vždy, i pro neznámý token)
   POST /api/auth/change-password → 204 / 400 / 401
 
@@ -32,12 +36,12 @@ import re
 import secrets
 import time
 
-from scada.api.dependencies import SESSION_TTL_SECS
+from scada.api.dependencies import SESSION_TTL_SECS, is_local_client
 
 from fastapi import APIRouter, HTTPException, Request
 
 from scada.config import hash_password, save_users, verify_password
-from scada.models import ChangePasswordRequest, LoginRequest, LoginResponse, LogoutRequest
+from scada.models import ChangePasswordRequest, ClientInfoResponse, LoginRequest, LoginResponse, LogoutRequest
 
 router = APIRouter()
 log    = logging.getLogger(__name__)
@@ -212,6 +216,8 @@ async def plc_login(request: Request) -> LoginResponse:
     Raises:
         HTTPException(403): ADS není připojeno nebo PLC příznak není nastaven.
     """
+    if not is_local_client(request):
+        raise HTTPException(status_code=403, detail="PLC přihlášení je možné jen na PC u stroje")
     monitor = request.app.state.monitor
     plc_logged_in = bool(monitor.current_values.get("plc_operator_login", False))
     if not plc_logged_in:
@@ -229,6 +235,12 @@ async def plc_login(request: Request) -> LoginResponse:
     log.info("[AUTH]  PLC přihlášení: plc_operator (sessions celkem: %d)",
              len(request.app.state.sessions))
     return LoginResponse(token=token, role="operator", display_name="PLC Operátor")
+
+
+@router.get("/auth/client", response_model=ClientInfoResponse)
+async def client_info(request: Request) -> ClientInfoResponse:
+    """Je tento prohlížeč na PC u stroje? Veřejné (potřebné už na přihlašovací obrazovce)."""
+    return ClientInfoResponse(local=is_local_client(request))
 
 
 @router.post("/auth/logout", status_code=204)

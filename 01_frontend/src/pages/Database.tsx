@@ -28,7 +28,7 @@ export default function Database() {
     sortBy, sortDir, onSort,
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
-    showSync, totalRecords,
+    showSync, totalRecords, readOnly,
     deleteFile, downloadCsv, downloadXlsx,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   } = useDatabaseState()
@@ -42,7 +42,7 @@ export default function Database() {
         <div className="db-controls">
 
           {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných (jen záložka Lokální) */}
-          {location === 'local' && <StorageBar />}
+          {location === 'local' && <StorageBar readOnly={readOnly} />}
 
           {/* Local / Remote */}
           <div className="db-tabs">
@@ -158,6 +158,7 @@ export default function Database() {
           onSelectAll={selectAll}
           onClearSelect={clearSelect}
           onBatchDelete={() => setBatchConfirm(true)}
+          readOnly={readOnly}
         />
       </div>
 

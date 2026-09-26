@@ -18,6 +18,8 @@ export const cs: Translations = {
     backendOffline:       'Server nedostupný — kontroluji spojení…',
     save: 'Uložit',
     help: 'Nápověda',
+    remoteChip: 'Vzdálený přístup · jen prohlížení',
+    remoteReadOnly: 'Jste připojeni vzdáleně. Mazání, čištění úložiště a změny nastavení jsou možné jen na PC u stroje.',
   },
   nav: {
     database: 'Databáze',
@@ -122,6 +124,7 @@ export const cs: Translations = {
     zoomReset:             'Základní velikost',
     zoomHint:              'Přiblížení: Ctrl + kolečko nebo dva prsty',
     zoomHintFs:            'Kolečko / dva prsty = přiblížení · tažení = posun · dvojklik = základní velikost · Esc = zavřít',
+    printPreparing: 'Připravuji tisk…',
     print:                 'Tisk',
     testingDetail:         'Detail měření',
     sectionTestingParams:  'Nastavení testu',
@@ -258,6 +261,7 @@ export const cs: Translations = {
     sessionExpired:   'Relace vypršela — přihlaste se prosím znovu.',
     localAccess:      'Lokální přístup',
     signOut:          'Odhlásit se',
+    remoteHint: 'Vzdálený přístup — přihlaste se svým účtem.',
   },
   error: {
     title:   'Chyba aplikace',

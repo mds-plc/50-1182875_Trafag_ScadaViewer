@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-25 (revize textů CS/EN — nálezy opraveny)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-26 (hloubkový audit kvality kódu a architektury)**.
 
 ### 🔴 HIGH
 
@@ -16,7 +16,12 @@
 
 ### ⚠️ MEDIUM
 
-(žádné otevřené — M14 uzavřen jako přijaté riziko, viz záznam 2026-09-24)
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| A6 | Rate limit (120/min) i blokace přihlášení (5 pokusů / 10 min) jsou na IP — kancelářská PC za NAT / proxy sdílí jednu IP → sdílí limit i blokaci | `app.py`, `api/auth.py` | [2026-09-26 audit] |
+| A7 | `ChartView.tsx` (868 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena) | `pages/` | [2026-09-26 audit] |
+
+(M14 — `/ws/plc` bez autentizace — přijaté riziko, viz záznam 2026-09-24; platí i pro vzdálený přístup z firemní sítě)
 
 #### Uzavřené MEDIUM nálezy
 | # | Popis | Stav | Poznámka |
@@ -29,7 +34,11 @@
 
 ### 🔵 LOW
 
-(žádné otevřené — L1–L17 uzavřeny 2026-09-24)
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+| A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
+| A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
+| A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
 
 ### 📄 DOCS
 
@@ -40,6 +49,80 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-09-25/26] Tisk grafů, vzdálený přístup, sladění se sesterskými projekty — rozhodnutí
+
+Detail implementace: `architecture.md` Fáze 32–34, nasazení `deployment.md`.
+
+| # | Otázka | Rozhodnutí uživatele |
+|---|--------|---------------------|
+| R1 | Tisk Testing | Protokol má obsahovat vše včetně grafů Signal Data (všech 5 podzáložek) |
+| R2 | Odkud vzdálený přístup | Z firemní sítě s účtem; kdo smí dovnitř = účty (`users.toml`) |
+| R3 | Co smí vzdálení uživatelé | **Jen prohlížet** (i admin) — zápisy jen na PC u stroje |
+| R4 | HTTPS | Zatím ne (firemní síť) — hesla po síti nešifrovaně, vědomé rozhodnutí |
+| R5 | Notebook se statickou IP v síti stroje | Nemá mít práva „u stroje" → `local_clients` jen localhost |
+| R6 | Účty | MDS = `manufacturer` (nad adminy), Panek + Sidak = `admin`, výchozí `admin` odstraněn |
+| R7 | NAS | ScadaViewer jen čte; nastavení podle DatabaseGateway; jeden účet NAS; služby pod servisním účtem + `cmdkey` |
+| R8 | Nesoulady se sesterskými projekty | Opravit hlavičku `[mA]`, odmítání `;` / řídicích znaků, práh přepnutí jako Analyzing, popis MD; hodiny PLC (Meas_TS o 19 h mimo) řeší uživatel |
+
+| # | Závažnost | Popis | Status |
+|---|-----------|-------|--------|
+| S1 | ⚠️ MEDIUM | PLC auto-login vydával operátorský token každému prohlížeči v síti, když byla obsluha přihlášena na terminálu — kritické s přístupem z kanceláře | ✅ Opraveno — jen u stroje |
+| S2 | ℹ️ INFO | `/ws/plc` bez autentizace (M14) platí i pro firemní síť | ⏸ Přijaté riziko |
+| S3 | ℹ️ INFO | HTTPS přes reverzní proxy na stejném PC by udělalo ze všech klientů localhost (plná práva) | ⏸ Zdokumentováno — před HTTPS nutná úprava |
+
+---
+
+## [2026-09-26] Audit — vše (hloubková analýza kvality kódu a architektury)
+
+Rozsah: backend (FastAPI, služby, repozitáře), frontend (React, hooky, typy), ADS, bezpečnost
+(nově vzdálený přístup z firemní sítě), dokumentace, architektura. Nástroje: ruční revize,
+`ruff` (F, E9, B, S, SIM, UP), jednorázově ESLint `react-hooks` (rules-of-hooks, exhaustive-deps),
+testy. Kontrola pravidel projektu (apiFetch, AbortController, bez `any`, bez console.log):
+dodrženo (jediná výjimka v odpojené stránce `Wip.tsx`).
+
+**Metriky:** backend 5 623 ř. Pythonu, frontend 9 943 ř. TS/TSX (bez testů); testy backend 247,
+frontend 107 (15 souborů); `tsc` strict + noUnused* 0 chyb; ruff bez skutečných chyb (B008 = idiom
+FastAPI, SIM/B905 styl).
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| A1 | 🔴 HIGH | Zjištění „u stroje / vzdáleně" se provedlo jen jednou při načtení stránky. Kiosk se po startu PC otevře dřív, než naběhne služba → dotaz selže, `clientLocal` zůstane `null` → **PLC auto-login nefunguje až do ručního obnovení stránky** | `hooks/useClientLocal.ts` | ✅ Opraveno — opakování 2 s → max. 10 s, dokud server neodpoví; test `useClientLocal.test.ts` |
+| A2 | ⚠️ MEDIUM | Rozlišení u stroje / vzdáleně závisí na tom, že uvicorn nevěří `X-Forwarded-For` — výchozí stav, ale stačí proměnná prostředí `FORWARDED_ALLOW_IPS="*"` a vzdálený klient si podvrhne `127.0.0.1` (plná práva + PLC auto-login) | `main.py` | ✅ Opraveno — `uvicorn.run(proxy_headers=False)` |
+| A3 | ⚠️ MEDIUM | `GET /api/config/fs` (procházení disků serveru) bylo dostupné i vzdáleně (admin) — slouží jen k uložení cesty (vzdáleně zakázané) a odhaluje strukturu disků | `api/config_api.py` | ✅ Opraveno — `require_local`; test v `test_remote_access.py` |
+| A4 | ⚠️ MEDIUM | Zápis `Config.toml` (cesty, limit úložiště) přímo `write_text` — výpadek napájení uprostřed zápisu = poškozený soubor, aplikace po restartu nenastartuje | `api/config_api.py` | ✅ Opraveno — atomicky (tmp + `os.replace`), stejně jako `users.toml` |
+| A5 | 🔵 LOW | Efekt automatického obnovení Database používá `location`, ale nemá ho v závislostech (funkčně kryto změnou `fetchFiles`, křehké) | `hooks/useDatabaseState.ts` | ✅ Opraveno |
+| A6 | ⚠️ MEDIUM | Rate limit (120/min) i blokace přihlášení (5 chybných pokusů / 10 min) jsou na IP adresu. Při vzdáleném přístupu přes NAT / proxy sdílí celá kancelář jednu IP → sdílí limit; jeden uživatel se špatným heslem zablokuje přihlášení ostatním | `app.py`, `api/auth.py` | ⬜ Otevřeno — ověřit u IT, zda kancelář jde přes NAT/proxy; případně blokaci vázat na IP + jméno |
+| A7 | ⚠️ MEDIUM | `ChartView.tsx` (868 ř.) obsahuje 3 režimy stránky (detail zakázky, záznamu, Testing) s předčasnými návraty — hooky musí být před nimi (workaround `TestingPrintShortcut`); `Settings.tsx` (962 ř.) obsahuje UsersTab, FolderPicker, HelpButton i hlavní stránku; `StatusDot` definovaný uvnitř komponenty se při každém renderu vytvoří znovu | `pages/ChartView.tsx`, `pages/Settings.tsx` | ⬜ Otevřeno — refaktoring na `OrderDetail` / `RecordDetail` / `TestingDetail` a samostatné soubory záložek Nastavení (`StatusDot` přesunut mimo komponentu — ✅ 2026-09-26) |
+| A8 | ⚠️ MEDIUM | Projekt nemá ESLint — `react-hooks/rules-of-hooks` a `exhaustive-deps` nikdo automaticky nehlídá (jednorázová kontrola našla 1 varování = A5) | `01_frontend/package.json` | ✅ Opraveno — ESLint 9 + `eslint-plugin-react-hooks` + `typescript-eslint` (dev), `eslint.config.mjs`, `npm run lint`: rules-of-hooks, exhaustive-deps, no-explicit-any, no-console; výsledek 0 problémů (odpojený Overview/WIP vyřazen) |
+| A9 | 🔵 LOW | `GET /api/config` vrací `local_path`, UNC `remote_path` a ADS `net_id` každému přihlášenému včetně vzdáleného read-only uživatele; `/api/status` přitom `remote_path` záměrně neposílá (topologie sítě) | `api/config_api.py` | ⬜ Otevřeno — rozhodnout: vzdáleně cesty skrýt / jen admin |
+| A10 | 🔵 LOW | Bez minimální délky hesla — lze nastavit `12345678` i `1`; s přístupem z firemní sítě vyšší riziko | `api/users_api.py`, `api/auth.py` | ⬜ Otevřeno — rozhodnutí uživatele (např. min. 8 znaků) |
+| A11 | 🔵 LOW | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password`, `/api/users/{u}/password`) s podobnou logikou | `api/auth.py`, `api/users_api.py` | ⬜ Otevřeno |
+| A12 | 🔵 LOW | `raise HTTPException` uvnitř `except` bez `from exc` / `from None` (5×) | `api/data.py`, `api/signal.py`, `api/config_api.py` | ✅ Opraveno — `from None` / `from exc` (8×); `ruff` B904 čistý |
+| A13 | 🔵 LOW | Nepoužitý `import math` | `services/signal_reader.py` | ✅ Opraveno |
+| A14 | 📄 DOCS | Docstring rate limiteru tvrdil „NSSM watchdog /api/health“ (NSSM nic takového nedělá) | `app.py` | ✅ Opraveno — doplněna i poznámka o sdíleném limitu za NAT |
+
+### Architektura — hodnocení
+
+**Silné stránky:**
+- Jasné vrstvy backendu: `api/` (HTTP) → `services/` (business pravidla) → `repositories/` (I/O); konfigurace přes `app.state`, žádné globální proměnné pro stav požadavku.
+- NAS I/O izolované ve vlastním poolu (`run_io`) s timeouty — zaseknutý NAS neshodí aplikaci.
+- Bezpečnostní vrstvy: Bearer token + role na serveru, vzdálený přístup jen pro prohlížení vynucený serverem (`require_local`), CSP, security hlavičky, validace `file_id` proti path traversal, rate limit.
+- Frontend: sdílené stavební bloky (`ParamTable`, `ZoomPanel`, `formatParam`, `CATEGORY_COLORS`), kontexty oddělené podle odpovědnosti, code-splitting, typovaná i18n s testem (`i18n.test.ts`).
+- Testy pokrývají všechny nové funkce (úložiště, časová osa, vzdálený přístup, práh přepnutí, texty).
+
+**Slabiny:**
+- Velké stránkové komponenty (A7) — největší riziko pro další rozvoj.
+- Chybí automatická kontrola hooků (A8).
+- Sdílené limity při NAT (A6) — závisí na síti Trafag.
+- Stav sessions a cache jen v paměti procesu — restart služby = odhlášení všech (vědomé, jedna instance).
+- Odpojený Overview / WIP kód (`Overview.tsx`, `Wip.tsx`, `api/wip.py`, `order_watcher.py`) — ponecháno záměrně (rozhodnutí uživatele).
+
+Ověřeno po opravách: `pytest` **247 passed**, `vitest` **107 passed** (15 souborů), `tsc` 0 chyb.
+
+**Celkem:** 14 nálezů | 9 opraveno | 5 otevřeno (A6, A7, A9, A10, A11)
 
 ---
 

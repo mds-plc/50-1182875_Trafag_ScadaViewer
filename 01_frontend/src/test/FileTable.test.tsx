@@ -327,4 +327,15 @@ describe('FileTable', () => {
     fireEvent.click(screen.getByRole('button', { name: /Show records up to 22\. 9\. 2026/ }))
     expect(onShow).toHaveBeenCalledWith('2026-09-22')
   })
+
+  it('readOnly (remote access) hides delete buttons and selection', () => {
+    const file = makeFile()
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[file]} total={1} readOnly />
+      </Wrapper>
+    )
+    expect(screen.queryByTitle('Delete')).toBeNull()
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  })
 })

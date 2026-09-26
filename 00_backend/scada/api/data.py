@@ -111,7 +111,7 @@ async def get_data(
                 raise HTTPException(
                     status_code=422,
                     detail=f"Neplatný formát parametru '{_pname}', očekáváno YYYY-MM-DD: {_pval!r}",
-                )
+                ) from None
     # per_page=0 = všechny záznamy (export). Limit na 100 000 řádků
     # zabraňuje neomezenému růstu paměti při obrovském CSV (DoS prevence).
     effective_per_page = per_page if per_page > 0 else 100_000
@@ -133,7 +133,7 @@ async def get_data(
         )
     except asyncio.TimeoutError:
         log.error("[API]   /api/data timeout (%s, %s, %.0f s)", file, location, timeout)
-        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.")
+        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.") from None
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
@@ -186,7 +186,7 @@ async def get_timeline(
         )
     except asyncio.TimeoutError:
         log.error("[API]   /api/timeline timeout (%s, %s, %.0f s)", file, location, timeout)
-        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.")
+        raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.") from None
     except (OSError, PermissionError) as exc:
         log.error("[API]   /api/timeline I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc

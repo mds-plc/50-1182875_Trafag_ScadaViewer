@@ -7,7 +7,7 @@
  *   (OrderTimelineChart — načte /api/timeline až po prvním přepnutí; volba se pamatuje v localStorage).
  *   Obě zobrazení leží v jedné buňce gridu (neaktivní visibility:hidden) — přepnutí nemění výšku.
  */
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Download, ArrowLeft, Printer } from 'lucide-react'
 import {
@@ -317,6 +317,28 @@ function renderChartCell(col: string, value: unknown, row: Record<string, unknow
   return null
 }
 
+/**
+ * Ctrl+P / Cmd+P na Testing detailu: grafy Signal Data ještě nejsou připravené → místo okamžitého
+ * tisku (bez grafů) spustit přípravu jako tlačítko Tisk. Hook v komponentě — ChartView má více
+ * návratových větví, hooky nesmí být podmíněné.
+ */
+function TestingPrintShortcut({ enabled, onPrint }: { enabled: boolean; onPrint: () => void }) {
+  const onPrintRef = useRef(onPrint)
+  onPrintRef.current = onPrint
+  useEffect(() => {
+    if (!enabled) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        onPrintRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [enabled])
+  return null
+}
+
 // ── Hlavní komponenta ────────────────────────────────────────────────────────
 
 export default function ChartView() {
@@ -336,6 +358,11 @@ export default function ChartView() {
   const [section, setSection] = useState<SectionId>('testing_params')
   const [orderChart, setOrderChartRaw] = useState<OrderChartView>(loadOrderChartView)
   const [timelineUsed, setTimelineUsed] = useState(orderChart === 'timeline')   // načíst až po 1. otevření
+  // Tisk Testing: grafy Signal Data se připraví (načtou + vykreslí mimo obrazovku) až při tisku
+  const [signalPrintMounted, setSignalPrintMounted] = useState(false)
+  const [signalPrintReady,   setSignalPrintReady]   = useState(false)
+  const [printPending,       setPrintPending]       = useState(false)
+  const printTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const setOrderChart = (v: OrderChartView) => {
     setOrderChartRaw(v)
     if (v === 'timeline') setTimelineUsed(true)
@@ -353,6 +380,23 @@ export default function ChartView() {
   useEffect(() => {
     setTablePage(recordIdx != null ? Math.floor(recordIdx / RECORDS_PER_PAGE) + 1 : 1)
   }, [fileId, location, fileType, recordIdx])
+
+  // Jiný soubor → tisková verze grafů se připraví znovu
+  useEffect(() => {
+    setSignalPrintMounted(false); setSignalPrintReady(false); setPrintPending(false)
+    clearTimeout(printTimeoutRef.current)
+  }, [fileId, location, fileType])
+
+  const onSignalPrintReady = useCallback(() => setSignalPrintReady(true), [])
+
+  // Čeká se na grafy → jakmile jsou připravené (nebo po 15 s), otevřít tiskový dialog
+  useEffect(() => {
+    if (!printPending) return
+    const go = () => { clearTimeout(printTimeoutRef.current); setPrintPending(false); window.print() }
+    if (signalPrintReady) { go(); return }
+    printTimeoutRef.current = setTimeout(go, 15_000)
+    return () => clearTimeout(printTimeoutRef.current)
+  }, [printPending, signalPrintReady])
 
   // Načíst data při změně souboru nebo stránky tabulky
   useEffect(() => {
@@ -629,6 +673,13 @@ export default function ChartView() {
     signal:         '#8b5cf6',
   }
 
+  /** Tisk protokolu — se signálovými daty nejdřív připravit grafy všech záložek. */
+  const handleTestingPrint = () => {
+    if (!hasSignal || signalPrintReady) { window.print(); return }
+    setSignalPrintMounted(true)
+    setPrintPending(true)
+  }
+
   /** Visible sections — signal tab only shown when CSV has [SignalData]. */
   const visibleSections = (Object.keys(sectionLabels) as SectionId[]).filter(
     id => id !== 'signal' || hasSignal
@@ -673,6 +724,7 @@ export default function ChartView() {
 
   return (
     <div>
+      <TestingPrintShortcut enabled={hasSignal && !signalPrintReady} onPrint={handleTestingPrint} />
       <div className="chart-header">
         {backBtn}
         <h1 className="page-title">{t.chart.testingDetail} — {fileId}</h1>
@@ -733,8 +785,9 @@ export default function ChartView() {
                 <button className="btn btn--secondary btn--sm" onClick={() => exportFileXlsx(fileId, location, fileType, token).catch(() => addToast(t.common.errorLoading, 'danger'))} title={t.db.downloadXlsx}>
                   <Download size={13} /> XLSX
                 </button>
-                <button className="btn btn--secondary btn--sm cv-print-btn" onClick={() => window.print()} title={t.chart.print}>
-                  <Printer size={13} /> {t.chart.print}
+                <button className="btn btn--secondary btn--sm cv-print-btn" onClick={handleTestingPrint}
+                        title={t.chart.print} disabled={printPending}>
+                  <Printer size={13} /> {printPending ? t.chart.printPreparing : t.chart.print}
                 </button>
               </div>
             </div>
@@ -795,6 +848,15 @@ export default function ChartView() {
               {renderNokTable(record)}
             </div>
           </div>
+
+          {/* Tisk — grafy Signal Data (všechny podzáložky); mimo obrazovku, v tisku od nové strany */}
+          {hasSignal && signalPrintMounted && (
+            <div className="cv-print-signal" aria-hidden>
+              <h3 className="cv-print-group__title" style={{ borderColor: sectionColors.signal }}>{sectionLabels.signal}</h3>
+              <SignalCharts key={`print/${location}/${fileType}/${fileId}`} fileId={fileId} location={location}
+                            fileType={fileType} printAll onReady={onSignalPrintReady} />
+            </div>
+          )}
         </>
       )}
 

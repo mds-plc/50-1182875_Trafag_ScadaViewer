@@ -34,3 +34,22 @@ class _OfflineAdsMonitor:
 def _offline_ads_monitor(monkeypatch):
     import scada.app
     monkeypatch.setattr(scada.app, "AdsMonitor", _OfflineAdsMonitor)
+
+
+@pytest.fixture(autouse=True)
+def _testclient_is_local(monkeypatch):
+    """
+    TestClient se standardně hlásí adresou „testclient" → server by ho bral jako vzdálený
+    přístup (jen prohlížení, bez PLC auto-loginu). Většina testů simuluje hlavní klient
+    na PC u stroje → výchozí adresa 127.0.0.1. Testy vzdáleného přístupu (test_remote_access.py)
+    předávají `client=("10.x.x.x", port)` explicitně.
+    """
+    from starlette.testclient import TestClient
+
+    original = TestClient.__init__
+
+    def init(self, *args, **kwargs):
+        kwargs.setdefault("client", ("127.0.0.1", 50000))
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "__init__", init)

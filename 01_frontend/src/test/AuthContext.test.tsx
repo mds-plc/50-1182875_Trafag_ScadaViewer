@@ -366,4 +366,25 @@ describe('AuthContext', () => {
     expect(result.current.sessionExpired).toBe(false)   // PLC relogin je tichý
   })
 
+
+  it('remote client (clientLocal=false) → no PLC auto-login, isRemote=true', async () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AuthProvider plcLoggedIn clientLocal={false}>{children}</AuthProvider>
+    )
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await act(async () => { await Promise.resolve() })
+    expect(fetch).not.toHaveBeenCalled()             // žádný /api/auth/plc-login
+    expect(result.current.isLoggedIn).toBe(false)    // vzdáleně jen přihlášení heslem
+    expect(result.current.isRemote).toBe(true)
+  })
+
+  it('unknown client (clientLocal=null) → waits, no PLC auto-login yet', async () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <AuthProvider plcLoggedIn clientLocal={null}>{children}</AuthProvider>
+    )
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await act(async () => { await Promise.resolve() })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(result.current.isRemote).toBe(false)      // neznámé ≠ vzdálené (UI nic neskrývá, server hlídá)
+  })
 })

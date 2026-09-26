@@ -283,8 +283,13 @@
   pointer-events: none;
 }
 
+/* Nadpis přes horní okraj grafu — odsazený od rámečku i od osy Y (číslice osy ~36–44 px),
+   podklad v barvě plochy, aby nesplýval s mřížkou a čarami */
 .zp__title {
-  margin: 4px 0 0 48px;
+  margin: 6px 0 0 64px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 85%, transparent);
   font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -305,7 +310,9 @@
 }
 
 .zp--header .zp__title {
-  margin: 0;
+  margin: 0 0 0 var(--space-3);
+  padding: 0;
+  background: none;
   font-size: var(--font-size-sm);
   color: var(--color-text-primary);
 }
@@ -402,3 +409,37 @@
 @media print {
   .zp__actions { display: none; }
 }
+
+/* ============================================================
+ * TISKOVÁ VERZE (SignalCharts printAll) — ChartView ji drží mimo obrazovku v šířce
+ * stránky A4 (.cv-print-signal), aby grafy měly v tisku správnou velikost. Pravidla
+ * rozvržení platí i na obrazovce (stejné rozměry mimo obrazovku i v tisku).
+ * ============================================================ */
+.sig-charts--print .sig-section { margin-bottom: 12px; }
+.sig-charts--print .sig-results__layout { display: block; }
+.sig-charts--print .sig-summary { margin-top: 8px; }
+.sig-print-title {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #374151;
+}
+.sig-charts--print .zp__actions,
+.sig-charts--print .zp-hint { display: none !important; }
+
+/* Tisková verze: mřížky vždy 2 sloupce (OP | RP) — šířka grafů se měří mimo obrazovku
+   a v tisku se nesmí změnit (starší @media print výše přepíná na 1 sloupec). Bez rámečku. */
+.sig-charts--print .sig-grid-2x3,
+.sig-charts--print .sig-grid-2x2 { grid-template-columns: 1fr 1fr !important; }
+.sig-charts--print {
+  border: none !important;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+/* Nadpis podzáložky uvnitř mřížky (Detail spínání) — přes celou šířku, ne jako buňka */
+.sig-charts--print .sig-grid-2x3 > .sig-print-title,
+.sig-charts--print .sig-grid-2x2 > .sig-print-title { grid-column: 1 / -1; margin-bottom: 0; }
+.sig-charts--print .sig-timing > .sig-print-title { padding-left: var(--space-3); }

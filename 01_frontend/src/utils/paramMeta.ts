@@ -213,7 +213,7 @@ const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   drive_acceleration:       { unit: 'mm/s²', decimals: 1 },
   drive_deceleration:       { unit: 'mm/s²', decimals: 1 },
   drive_jerk:               { unit: 'mm/s³', decimals: 1 },
-  electric_current:         { unit: 'mA',    decimals: 1 },   // hlavička CSV uvádí [A], hodnota je v mA (potvrzeno)
+  electric_current:         { unit: 'mA',    decimals: 1 },   // hodnota v mA (starší CSV mají v hlavičce chybně [A])
   electric_voltage:         { unit: 'V',     decimals: 1 },
   measuring_baseperiod:     { unit: 'ms',    decimals: 3 },
   measuring_oversampling:   { unit: '',      decimals: 0 },
@@ -297,7 +297,7 @@ export const PARAM_DESC: Record<string, string> = {
   rt_realisingtravel:
     'Uvolňovací zdvih [µm] — dráha od konce zdvihu zpět do bodu uvolnění (RT = TTP − RP).',
   md_movementdifferential:
-    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (MD = OP − RP, polohová hystereze). Větší MD = stabilnější přepínání.',
+    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (MD = OP − RP, polohová hystereze). Větší MD = stabilnější přepínání. Záporné MD = záporná hystereze (RP leží za OP) — spínač neodpovídá běžnému chování.',
   tt_totaltravel:
     'Celkový zdvih [µm] — dráha od FP do TTP (TT = TTP − FP).',
   ut_unstabletime:
@@ -336,7 +336,7 @@ export const PARAM_DESC: Record<string, string> = {
   drive_jerk:
     'Ryv pohonu [mm/s³] — změna zrychlení; nižší hodnota = plynulejší rozjezd a dojezd.',
   electric_current:
-    'Měřicí proud kontaktem nastavený pro test [mA] (hlavička CSV chybně uvádí [A]).',
+    'Měřicí proud kontaktem nastavený pro test [mA] (starší soubory mají v hlavičce CSV chybně [A]).',
   electric_voltage:
     'Napětí měřicího obvodu kontaktů [V].',
   measuring_baseperiod:
@@ -378,7 +378,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   rt_realisingtravel:
     'Releasing travel [µm] — distance from the end of travel back to the releasing point (RT = TTP − RP).',
   md_movementdifferential:
-    'Movement differential [µm] — distance between OP and RP (MD = OP − RP, position hysteresis). Larger MD = more stable switching.',
+    'Movement differential [µm] — distance between OP and RP (MD = OP − RP, position hysteresis). Larger MD = more stable switching. Negative MD = negative hysteresis (RP lies beyond OP) — abnormal switch behaviour.',
   tt_totaltravel:
     'Total travel [µm] — distance from FP to TTP (TT = TTP − FP).',
   ut_unstabletime:
@@ -416,7 +416,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   drive_jerk:
     'Drive jerk [mm/s³] — rate of change of acceleration; a lower value = smoother start and stop.',
   electric_current:
-    'Measuring current through the contact set for the test [mA] (the CSV header incorrectly states [A]).',
+    'Measuring current through the contact set for the test [mA] (older files incorrectly state [A] in the CSV header).',
   electric_voltage:
     'Voltage of the contact measuring circuit [V].',
   measuring_baseperiod:

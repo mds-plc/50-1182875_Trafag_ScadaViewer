@@ -1119,3 +1119,35 @@
   .cv-order-chart { display: block; }
   .cv-order-chart__view--hidden { display: none !important; }
 }
+
+/* Protokol Testing — grafy Signal Data. Na obrazovce mimo viditelnou plochu v šířce obsahu A4
+   (210 − 2×11 mm ≈ 700 px): ResponsiveContainer změří šířku předem, v tisku se jen zobrazí. */
+.cv-print-signal {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 700px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media print {
+  .cv-print-signal {
+    position: static;
+    width: auto;
+    visibility: visible;
+    break-before: page;
+    page-break-before: always;
+  }
+  .cv-print-signal .zp,
+  .cv-print-signal .sig-grid-cell,
+  .cv-print-signal .sig-chips,
+  .cv-print-signal .sig-summary { break-inside: avoid; }
+  .cv-print-signal .sig-print-title { break-after: avoid; }
+  .cv-print-signal .sig-section + .sig-section { break-before: auto; }
+}
+@media print {
+  /* Sekce, které se vejdou na stránku, nedělit (nadpis nezůstane osamocený na konci stránky) */
+  .cv-print-signal .sig-timing,
+  .cv-print-signal .sig-hysteresis { break-inside: avoid; }
+}
