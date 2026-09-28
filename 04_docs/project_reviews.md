@@ -6,6 +6,50 @@
 
 ---
 
+## [2026-09-26] Hodnocení ekosystému v2.1.0 — PLC × Analyzing × DatabaseGateway × NAS × ScadaViewer
+
+**Rozsah:** celé propojení, ne jen ScadaViewer — datová smlouva mezi aplikacemi, integrace přes
+sdílenou složku a NAS, čas, provoz, bezpečnost. Podklad: kontrola společných věcí všech tří projektů
+(`architecture.md` Fáze 34) a hloubkový audit ScadaViewer (`audit_log.md` 2026-09-26).
+
+**Verdikt:** kladný s výhradami. Pro jednu linku a pilotní provoz solidní, pragmatické řešení,
+nadprůměrné na svou velikost. Jednotlivé aplikace jsou kvalitní — **slabiny jsou ve spojích mezi nimi**.
+Pro dlouhodobý provoz a další rozvoj je potřeba zpevnit smlouvu, čas a přehled o stavu celku.
+
+### Silné stránky
+
+| Oblast | Hodnocení |
+|--------|-----------|
+| Rozdělení odpovědností | Každá aplikace jedna role (Analyzing počítá, DatabaseGateway zapisuje a synchronizuje, ScadaViewer zobrazuje); vlastní GVL v PLC — žádné vzájemné přepisování |
+| Izolace výpadků | Výpadek NAS nezastaví výrobu (DatabaseGateway nahraje později) ani ScadaViewer (NAS pool + timeouty) |
+| Kvalita jednotlivých aplikací | Testy (ScadaViewer 247 + 107, DatabaseGateway 69, Analyzing 60), typy, dokumentace, audity, bezpečnost hlídaná serverem |
+| Shoda datové smlouvy | Názvy, jednotky, CSV, složky, kategorie — po kontrole 2026-09-26 v souladu |
+
+### Slabiny a rizika
+
+| # | Oblast | Popis | Dopad |
+|---|--------|-------|-------|
+| E1 | **Implicitní datová smlouva** | Názvy parametrů, jednotky a rozložení CSV jsou zapsané zvlášť ve třech projektech (Analyzing ctypes struktury, DatabaseGateway hlavičky CSV, ScadaViewer `paramMeta.ts`). Žádná společná specifikace, žádná verze formátu v CSV, **žádný test napříč aplikacemi**. Při kontrole 2026-09-26 nalezeno 6 rozjetí (Electric_Current `[A]`/mA, MD abs/znaménko v popisech, práh 5 V / 50 %, retence 30 / 90 dní, přejmenování `RT_ReverseTimeTime`, přístup k NAS) — žádné nezachytil test | Největší riziko do budoucna — změna formátu v jedné aplikaci tiše rozbije jinou |
+| E2 | **Čas** | Hodiny PC a PLC se liší o 19 h (`Timestamp` vs `Meas_TS`). Časové značky v místním čase **bez časové zóny** → při přechodu letní → zimní čas (poslední neděle v říjnu) se hodina opakuje; časový průběh zakázky přes tu noc ukáže záporné / zdvojené mezery a špatnou celkovou dobu | Nesprávná data v detailu testu a v časovém průběhu |
+| E3 | **Integrace přes sdílenou složku** | ScadaViewer stav synchronizace odhaduje ze složky (skutečný stav `sync_state.json` / ověření zná jen DatabaseGateway). Čištění úložiště ve ScadaViewer maže soubory evidované DatabaseGateway (funguje díky úklidu osiřelých záznamů — nezdokumentovaná závislost). Kontrola duplicitní zakázky v DatabaseGateway po vyčištění lokálních souborů přestává platit | Křehké, těžko odhalitelné chyby při změnách |
+| E4 | **Přehled o stavu celku** | ScadaViewer nepozná, že DatabaseGateway neběží nebo nestíhá nahrávat — obsluha vidí jen staré soubory / rostoucí zaplnění úložiště. Žádné společné místo „vše běží" | Výpadek zapisování se může dlouho neodhalit |
+| E5 | **Zabezpečení** | Heslo k NAS čitelně v `DatabaseGateway/Config.toml` (je v gitu); bez HTTPS; `/ws/plc` bez přihlášení; dříve výchozí hesla. Nastaveno na izolovanou firemní síť — s přístupem z kanceláře na hraně, mimo firemní síť by neobstálo | Únik hesla k NAS, odposlech hesel v síti |
+| E6 | **Provoz na jednom PC** | 3 služby + kiosk, rozdílné konvence (`ams_net_id` vs `net_id`, formáty logů), nezávislé verze bez matice kompatibility | Aktualizace jedné aplikace může tiše rozbít druhou |
+
+### Doporučení (podle přínosu) — zatím jen zdokumentováno
+
+| # | Doporučení | Řeší |
+|---|------------|------|
+| 1 | **Společná specifikace formátu** — jeden dokument (názvy, jednotky, sekce CSV, kódy), **verze formátu přímo v CSV** a **test napříč aplikacemi** (DatabaseGateway vygeneruje vzorový soubor → ScadaViewer ho načte a ověří hodnoty) | E1, E6 |
+| 2 | **Čas** — ukládat časové značky s časovou zónou (nebo v UTC) a synchronizovat hodiny PLC s PC (hodiny PLC řeší uživatel) | E2 |
+| 3 | **Stav DatabaseGateway ve ScadaViewer** — běží / neběží, počet nenahraných souborů, poslední úspěšná synchronizace (např. heartbeat + stav do souboru nebo přes ADS) | E4, E3 |
+| 4 | **Heslo k NAS pryč z gitu** — `cmdkey` pro servisní účet a prázdný `[server] host` v DatabaseGateway (postup je v `deployment.md`) | E5 |
+| 5 | **Test na produkčním PC** podle checklistu v `deployment.md` — včetně přístupu z kanceláře a restartu PC | ověření celku |
+
+Otevřené nálezy auditu ScadaViewer (A6 limity na IP za NAT, A7 velké komponenty, A9–A11) viz `audit_log.md`.
+
+---
+
 ## [2026-07-22] Hodnocení v0.1.0 — po dokončení core implementace
 
 **Stav projektu v okamžiku hodnocení:**

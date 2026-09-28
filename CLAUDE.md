@@ -200,6 +200,7 @@ CLAUDE.md                  ← tento soubor
 ├── how_to_extend.md           ← návody: ADS symbol, endpoint, stránka, CSV sloupec, i18n…
 ├── roadmap.md                 ← stav, otázky pro Trafag, definice „hotovo"
 ├── project_reviews.md         ← průběžná hodnocení profesionality projektu
+├── acceptance_test.md         ← závěrečný test před odevzdáním: automatické testy, výpadky, zátěž, soak, bezpečnost
 ├── architecture_critique.md   ← historická analýza (2026-07-20) — neaktualizuje se
 └── professional_improvements.md ← historická roadmapa vylepšení (2026-07-20) — neaktualizuje se
 
@@ -799,6 +800,9 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 7. Otevřené nálezy auditu 2026-09-26: A6 (limity na IP za NAT — ověřit u IT), A7 (rozdělit ChartView / Settings),
    A9 (cesty v `/api/config` vzdáleně), A10 (min. délka hesla), A11 (dva endpointy změny hesla)
 8. HTTPS přes reverzní proxy — nutné nejdřív předávat adresu klienta (jinak všichni = localhost = plná práva)
+9. Zpevnění ekosystému (hodnocení 2026-09-26, `project_reviews.md`): společná specifikace formátu CSV
+   + verze v souboru + test napříč aplikacemi, časové značky s časovou zónou, stav DatabaseGateway
+   ve ScadaViewer, heslo k NAS mimo git
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.
@@ -826,6 +830,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | `04_docs/architecture.md` | Detailní popis architektury, datového toku, API formátů |
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
 | `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |
+| `04_docs/acceptance_test.md` | **Závěrečný test před odevzdáním** — checklist: automatické testy, role, výpadky, zátěž dat a souběhu, dlouhodobý běh, bezpečnost, protokol |
 | `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč |
 | `04_docs/architecture_critique.md` | *Historická* analýza architektury (2026-07-20) — jen pro kontext |
 | `04_docs/professional_improvements.md` | *Historická* roadmapa vylepšení (2026-07-20) — jen pro kontext |
