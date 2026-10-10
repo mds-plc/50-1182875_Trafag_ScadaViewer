@@ -833,3 +833,11 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+/* Počet záznamů se na serveru ještě dopočítává (přehled jde nejdřív z názvů souborů) */
+.db-badge--pending {
+  background: transparent;
+  color: var(--color-text-muted);
+  animation: db-pending-pulse 1.2s ease-in-out infinite;
+}
+@keyframes db-pending-pulse { 50% { opacity: 0.35; } }

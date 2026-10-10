@@ -294,8 +294,11 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     monitor    = AdsMonitor(cfg, manager)
     watcher    = FilesWatcher(cfg.data, manager)   # změny ve složkách → WS files_changed
     # Cache metadat souborů na disku (03_output/cache/) — přežije restart; bez config_path jen v paměti
-    meta_cache = config_path.parent / "03_output" / "cache" / "file_meta.json" if config_path else None
-    csv_reader = FileService(CsvRepository(cfg.data, cache_file=meta_cache))
+    meta_cache = config_path.parent / "03_output" / "cache" / "file_meta.sqlite" if config_path else None
+    if config_path:                                     # starý formát cache (JSON, do v2.1.0) — nahrazen SQLite
+        (config_path.parent / "03_output" / "cache" / "file_meta.json").unlink(missing_ok=True)
+    # background_counts: přehled Databáze z názvů souborů, počty kusů se dopočítají na pozadí
+    csv_reader = FileService(CsvRepository(cfg.data, cache_file=meta_cache, background_counts=True))
 
     users_path = config_path.parent / "users.toml" if config_path else None
 
@@ -314,6 +317,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
             await watcher.start()
             yield
         finally:
+            csv_reader.close()
             await watcher.stop()
             await monitor.stop()
             log.info("[APP]   ScadaViewer stop")

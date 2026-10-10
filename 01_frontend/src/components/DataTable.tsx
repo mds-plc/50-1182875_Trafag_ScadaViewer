@@ -8,8 +8,11 @@
  *   cellRenderer    — vlastní render buňky; null/undefined = výchozí String(value)
  *   fixedColumns    — sloupce vlevo zůstanou při horizontálním scrollu (position: sticky)
  *                     Šířky pevných sloupců musí odpovídat CSS proměnným v components.css.
+ *
+ *   Výkon: komponenta je `memo` — rodič musí předávat stabilní props (useMemo / useCallback),
+ *   jinak se 200řádková tabulka překreslí při každé změně stavu rodiče (např. loading).
  */
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 /** Pevné šířky fixed sloupců — MUSÍ odpovídat left hodnotám v components.css. */
@@ -30,7 +33,7 @@ interface Props {
   fixedColumns?:   string[]
 }
 
-export default function DataTable({
+function DataTable({
   columns, rows, onRowClick,
   columnLabels, columnTooltips, columnUnits, cellRenderer, fixedColumns,
 }: Props) {
@@ -119,3 +122,6 @@ export default function DataTable({
   }
   return tableEl
 }
+
+/** memo: změna stavu rodiče (např. loading) tabulku nepřekresluje, dokud se nezmění data. */
+export default memo(DataTable)

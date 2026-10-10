@@ -432,6 +432,110 @@
   color: #fff;
 }
 
+/* RECORD FILTER — filtr kusů v tabulce detailu zakázky (stav OK/NOK + kategorie 1–6) */
+
+.cv-rec-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.cv-rec-filter__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cv-rec-filter__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cv-rec-filter__seg {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.cv-rec-filter__btn {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cv-rec-filter__btn:last-child { border-right: 0; }
+.cv-rec-filter__btn:hover { background: var(--color-surface-2); color: var(--color-text-primary); }
+
+.cv-rec-filter__btn--active,
+.cv-rec-filter__btn--active:hover { background: var(--color-accent); color: #fff; }
+.cv-rec-filter__btn--ok.cv-rec-filter__btn--active  { background: var(--color-success); }
+.cv-rec-filter__btn--nok.cv-rec-filter__btn--active { background: var(--color-danger); }
+
+.cv-rec-filter__cats {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* --cat-color = barva boxu (CATEGORY_COLORS) — nastavuje RecordFilterBar */
+.cv-rec-filter__cat {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--cat-color);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cv-rec-filter__cat:hover { background: var(--color-surface-2); }
+
+.cv-rec-filter__cat--active,
+.cv-rec-filter__cat--active:hover { background: var(--cat-color); color: #fff; }
+
+.cv-rec-filter__info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.cv-rec-filter__shown {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-rec-filter__clear { min-height: 44px; }
+
+.cv-rec-filter__empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* Tabulka kusů během načítání jiné stránky / filtru — obsah zůstane, jen zešedne */
+.cv-table--loading .data-table-scroll { opacity: 0.55; transition: opacity 0.15s; }
+
 /* CATEGORY CHART — sloupcový přehled kategorií v detailu zakázky */
 
 .cv-cat-chart {
@@ -1059,6 +1163,12 @@
   /* Skupina se nedělí mezi stránky, pokud se vejde na jednu (dlouhé tabulky prohlížeč stejně zalomí,
      záhlaví sloupců se pak opakuje) */
   .cv-print-group { margin-bottom: 10px !important; break-inside: avoid; page-break-inside: avoid; }
+  /* Dlouhá tabulka (> PRINT_LONG_ROWS řádků) se na stránku stejně nevejde — začít hned, ne na nové stránce */
+  .cv-print-group--long { break-inside: auto; page-break-inside: auto; }
+  .cv-print-note {
+    font-size: 10px; color: #4b5563; margin: 0 0 6px; padding: 4px 8px;
+    border-left: 3px solid #9ca3af; background: #f3f4f6;
+  }
   .cv-print-group__title {
     font-size: 11px !important;
     padding: 3px 8px !important;

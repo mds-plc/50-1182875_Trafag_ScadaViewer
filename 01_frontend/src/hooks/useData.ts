@@ -66,6 +66,8 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
   // Datumový filtr skryl všechny soubory → kolik jich je mimo filtr + datum nejnovějšího
   const [hiddenByFilter,  setHiddenByFilter]  = useState(0)
   const [latestCreatedAt, setLatestCreatedAt] = useState<string | null>(null)
+  // Server ještě dopočítává počty kusů (přehled jde nejdřív z názvů souborů)
+  const [countsPending,   setCountsPending]   = useState(false)
   const [total,   setTotal]   = useState(0)
   const [pages,   setPages]   = useState(1)
   const [loading, setLoading] = useState(false)
@@ -78,6 +80,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
     setWip([])
     setHiddenByFilter(0)
     setLatestCreatedAt(null)
+    setCountsPending(false)
     setTotal(0)
     setPages(1)
     setError(null)
@@ -111,6 +114,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       setWip(Array.isArray(json.wip) ? json.wip : [])
       setHiddenByFilter(typeof json.hidden_by_filter === 'number' ? json.hidden_by_filter : 0)
       setLatestCreatedAt(typeof json.latest_created_at === 'string' ? json.latest_created_at : null)
+      setCountsPending(json.counts_pending === true)
       // Validace tvaru odpovědi — neočekávaný typ nesmí rozbít stránkování
       setTotal(typeof json.total === 'number' ? json.total : json.files.length)
       setPages(typeof json.pages === 'number' && json.pages >= 1 ? json.pages : 1)
@@ -122,7 +126,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
     }
   }, [location, type, page, perPage, dateFrom, dateTo, sortBy, sortDir, token])
 
-  return { files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles }
+  return { files, wip, hiddenByFilter, latestCreatedAt, countsPending, total, pages, loading, error, fetchFiles }
 }
 
 /** Počet záznamů na stránku — musí odpovídat výchozímu per_page v api/data.py */
@@ -146,6 +150,8 @@ function useDataFetch() {
   const [pages,             setPages]             = useState(1)
   const [groupCounts,       setGroupCounts]       = useState<Record<string, number>>({})
   const [fileExpectedCount, setFileExpectedCount] = useState<number | null>(null)
+  // Počet záznamů bez filtru status/kategorie (jen při aktivním filtru, jinak null)
+  const [totalAll,          setTotalAll]          = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -165,6 +171,8 @@ function useDataFetch() {
       if (filter.to)        params.set('to',       filter.to)
       if (filter.page     != null) params.set('page',     String(filter.page))
       if (filter.perPage  != null) params.set('per_page', String(filter.perPage))
+      if (filter.status)             params.set('status',   filter.status)
+      if (filter.categories?.length) params.set('category', filter.categories.join(','))
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
       const res = await apiFetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -175,6 +183,7 @@ function useDataFetch() {
       setPages(json.pages ?? 1)
       setGroupCounts(json.group_counts ?? {})
       setFileExpectedCount(json.file_expected_count ?? null)
+      setTotalAll(typeof json.total_all === 'number' ? json.total_all : null)
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return
@@ -183,7 +192,7 @@ function useDataFetch() {
     }
   }, [token])
 
-  return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData }
+  return { records, total, pages, groupCounts, fileExpectedCount, totalAll, loading, error, fetchData }
 }
 
 // ---

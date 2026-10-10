@@ -1,88 +1,47 @@
 /**
  * @file exportXlsx.ts
- * @description Export dat do XLSX souboru pomocí SheetJS (xlsx).
+ * @description Stažení zakázky / testu jako XLSX — soubor sestaví server (GET /api/files/{id}/xlsx).
+ *
+ * Dřív se XLSX skládal v prohlížeči (SheetJS): 50 000 kusů ≈ 15 s a > 1 GB paměti záložky.
+ * Server ho sestaví za ~3 s, s čísly jako čísly, časem jako datem, tučnou zmrazenou hlavičkou
+ * a automatickým filtrem; prohlížeč jen uloží hotový soubor.
  *
  * ULOŽENÍ — "Uložit jako" dialog:
- *   Funkce přednostně použije File System Access API (showSaveFilePicker).
- *   Prohlížeč zobrazí nativní OS dialog "Uložit jako", kde uživatel vybere
- *   libovolné místo — včetně externího USB flash disku nebo síťového disku.
- *   Podporováno v Chrome a Edge (Chromium, verze 86+).
- *
- *   Fallback pro Firefox / Safari:
- *   XLSX.writeFile() stáhne soubor do výchozí složky Stažené soubory.
+ *   Chrome / Edge: File System Access API (showSaveFilePicker) — OS dialog, kam uložit
+ *   (i USB disk nebo síťová složka). Dialog se otevře HNED po kliknutí: prohlížeč ho povolí jen
+ *   krátce po akci uživatele, takže se soubor stahuje až po výběru místa.
+ *   Ostatní prohlížeče: běžné stažení do složky Stažené soubory.
  */
 import { apiFetch } from './apiFetch'
 
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 /**
- * Exportuje záznamy do XLSX souboru.
- * Chrome/Edge: OS dialog "Uložit jako" (showSaveFilePicker).
- * Firefox/Safari: stažení do složky Stažené soubory (XLSX.writeFile fallback).
- *
- * @param rows    pole objektů (záznamy z CSV)
- * @param filename název souboru bez přípony (přidá se .xlsx)
+ * Název XLSX souboru bez přípony CSV — `file_id` je celý název CSV (`…_DONE.csv`).
+ * Bez toho vznikl `…_DONE.csv.xlsx` a Windows se skrytými příponami ho ukázal jako „…_DONE.csv"
+ * — vypadalo to, že se místo XLSX stáhl CSV.
  */
-export async function exportXlsx(rows: Record<string, unknown>[], filename: string): Promise<void> {
-  if (rows.length === 0 || !rows[0] || typeof rows[0] !== 'object') return
+export function xlsxBaseName(fileId: string): string {
+  return fileId.replace(/\.csv$/i, '')
+}
 
-  // Lokální typ pro File System Access API (není ve všech verzích lib.dom.d.ts)
-  type FSAWindow = Window & {
-    showSaveFilePicker: (opts: {
-      suggestedName?: string
-      types?: Array<{ description?: string; accept: Record<string, string[]> }>
-    }) => Promise<{
-      createWritable: () => Promise<{
-        write: (data: BufferSource) => Promise<void>
-        close: () => Promise<void>
-      }>
-    }>
-  }
-
-  // Dynamický import — SheetJS (~400 kB) se stáhne až při prvním exportu, ne při startu aplikace
-  const XLSX = await import('xlsx')
-
-  try {
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Data')
-
-    // File System Access API — nativní dialog "Uložit jako" (Chrome, Edge 86+)
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await (window as FSAWindow).showSaveFilePicker({
-          suggestedName: filename + '.xlsx',
-          types: [{
-            description: 'Excel soubor',
-            accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
-          }],
-        })
-        const writable = await handle.createWritable()
-        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-        await writable.write(buf)
-        await writable.close()
-        return
-      } catch (err) {
-        // Uživatel dialog zavřel (AbortError) — nic neděláme, tiché ukončení
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        // Jiná neočekávaná chyba — pokračovat na fallback
-        console.warn('[exportXlsx] showSaveFilePicker selhalo, fallback na download:', err)
-      }
-    }
-
-    // Fallback: standardní browser download (Firefox, Safari, starší Chrome)
-    XLSX.writeFile(wb, filename + '.xlsx')
-  } catch (e) {
-    console.error('[exportXlsx] export selhal:', e)
-    throw e   // propaguje do downloadXlsx → toast "Chyba načítání"
-  }
+interface WritableLike {
+  write: (data: Blob) => Promise<void>
+  close: () => Promise<void>
+  abort?: () => Promise<void>   // zahodí rozpracovaný zápis (žádný prázdný soubor)
+}
+type FSAWindow = Window & {
+  showSaveFilePicker: (opts: {
+    suggestedName?: string
+    types?: Array<{ description?: string; accept: Record<string, string[]> }>
+  }) => Promise<{ createWritable: () => Promise<WritableLike> }>
 }
 
 /**
- * Stáhne VŠECHNY záznamy souboru (`per_page=0`) a exportuje je do XLSX.
- *
- * Bez `per_page=0` vrací /api/data jen první stránku (200 záznamů) — export by byl
- * potichu neúplný.
+ * Stáhne celý soubor jako XLSX ze serveru a uloží ho.
  *
  * @throws Error při HTTP chybě (volající zobrazí toast); AbortError při zrušení
+ *         (zavřený dialog „Uložit jako" nevyhazuje — tiché ukončení)
  */
 export async function exportFileXlsx(
   fileId:   string,
@@ -91,10 +50,46 @@ export async function exportFileXlsx(
   token:    string | null,
   signal?:  AbortSignal,
 ): Promise<void> {
-  const params  = new URLSearchParams({ file: fileId, location, type: fileType, per_page: '0' })
+  const name = xlsxBaseName(fileId) + '.xlsx'
+
+  // 1) Nejdřív místo uložení — dialog musí přijít hned po kliknutí (user activation)
+  let writable: WritableLike | null = null
+  if ('showSaveFilePicker' in window) {
+    try {
+      const handle = await (window as FSAWindow).showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: 'Excel', accept: { [XLSX_MIME]: ['.xlsx'] } }],
+      })
+      writable = await handle.createWritable()
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return   // dialog zavřen
+      writable = null                                                        // jiná chyba → běžné stažení
+    }
+  }
+
+  // 2) Soubor ze serveru
+  const params  = new URLSearchParams({ location, type: fileType })
   const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-  const res = await apiFetch(`/api/data?${params}`, { signal, headers })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json() as { records: Record<string, unknown>[] }
-  await exportXlsx(data.records, fileId)
+  let blob: Blob
+  try {
+    const res = await apiFetch(`/api/files/${encodeURIComponent(fileId)}/xlsx?${params}`, { signal, headers })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    blob = await res.blob()
+  } catch (err) {
+    if (writable) await (writable.abort ? writable.abort() : writable.close()).catch(() => undefined)
+    throw err
+  }
+
+  // 3) Uložit
+  if (writable) {
+    await writable.write(blob)
+    await writable.close()
+    return
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

@@ -178,7 +178,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   drive_jerk:                  'Drive Jerk [mm/s³]',
   electric_current:            'Electric Current [mA]',
   electric_voltage:            'Electric Voltage [V]',
-  measuring_baseperiod:        'Measuring Base Period [ms]',
+  measuring_baseperiod:        'Measuring Base Period [µs]',
   measuring_oversampling:      'Measuring Oversampling [−]',
   measuring_samplesreserve:    'Measuring Samples Reserve [−]',
   limits_distancemax:          'Distance Limit Max [mm]',
@@ -215,7 +215,7 @@ const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   drive_jerk:               { unit: 'mm/s³', decimals: 1 },
   electric_current:         { unit: 'mA',    decimals: 1 },   // hodnota v mA (starší CSV mají v hlavičce chybně [A])
   electric_voltage:         { unit: 'V',     decimals: 1 },
-  measuring_baseperiod:     { unit: 'ms',    decimals: 3 },
+  measuring_baseperiod:     { unit: 'µs',    decimals: 0 },   // perioda PLC cyklu v µs (starší CSV mají v hlavičce chybně [ms])
   measuring_oversampling:   { unit: '',      decimals: 0 },
   measuring_samplesreserve: { unit: '',      decimals: 0 },
   limits_distancemax:       { unit: 'mm',    decimals: 3 },
@@ -340,7 +340,7 @@ export const PARAM_DESC: Record<string, string> = {
   electric_voltage:
     'Napětí měřicího obvodu kontaktů [V].',
   measuring_baseperiod:
-    'Základní perioda vzorkování měření [ms].',
+    'Základní perioda vzorkování měření — perioda PLC cyklu [µs].',
   measuring_oversampling:
     'Převzorkování — kolik vzorků se pořizuje na jednu základní periodu.',
   measuring_samplesreserve:
@@ -420,7 +420,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   electric_voltage:
     'Voltage of the contact measuring circuit [V].',
   measuring_baseperiod:
-    'Base sampling period of the measurement [ms].',
+    'Base sampling period of the measurement — PLC cycle period [µs].',
   measuring_oversampling:
     'Oversampling — how many samples are taken per base period.',
   measuring_samplesreserve:

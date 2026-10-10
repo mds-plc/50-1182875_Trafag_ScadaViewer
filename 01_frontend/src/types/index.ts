@@ -18,7 +18,7 @@ export interface OrderFile extends Record<string, unknown> {
   order_id:     string | null   // null pro testovací soubory
   switch_name:  string
   created_at:   string          // ISO datetime z prvního záznamu
-  record_count: number
+  record_count: number | null   // null = počet kusů se ještě dopočítává (přehled jde z názvů souborů)
   sync_status?: 'wip' | 'done_local' | 'done_remote'  // jen pro lokální soubory; 'wip' = rozpracovaná zakázka
 }
 
@@ -41,6 +41,10 @@ export interface DataFilter {
   to?:       string
   page?:     number   // stránka (od 1); default 1
   perPage?:  number   // počet záznamů; 0 = vše; default 200
+  /** Filtr detailu zakázky — 'ok' (kategorie 1–4) / 'nok' (5–6) */
+  status?:     'ok' | 'nok'
+  /** Filtr kategorií '1'–'6'; prázdné = bez filtru */
+  categories?: string[]
 }
 
 /** Zaplnění lokálního úložiště — GET /api/storage */

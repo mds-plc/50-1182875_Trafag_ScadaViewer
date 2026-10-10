@@ -55,7 +55,7 @@ class OrderFileModel(BaseModel):
     order_id:     str | None                                            # None pro testing
     switch_name:  str
     created_at:   str                                                   # ISO datetime
-    record_count: int
+    record_count: int | None   # None = ještě se dopočítává (přehled jde nejdřív z názvů souborů)
     sync_status:  Literal['wip', 'done_local', 'done_remote'] | None = None   # None pro remote; 'wip' = rozpracovaná
 
 
@@ -68,6 +68,7 @@ class FilesResponse(BaseModel):
     wip:   list[OrderFileModel] = []   # rozpracované zakázky (jen local) — mimo stránkování a filtry
     hidden_by_filter:  int = 0            # filtr skryl vše: počet souborů mimo datumový filtr
     latest_created_at: str | None = None  # … a datum nejnovějšího z nich
+    counts_pending:    bool = False       # počty kusů se dopočítávají — klient obnoví za chvíli
 
 
 # ======================================================================
@@ -103,6 +104,7 @@ class DataResponse(BaseModel):
     group_counts:         dict[str, int] | None = None   # agregace skupin přes celý soubor
     file_expected_count:  int | None            = None   # expected_count z CSV (celá zakázka)
     has_signal:           bool                  = False  # True pokud CSV obsahuje [SignalData]
+    total_all:            int | None            = None   # počet záznamů bez filtru status/category
 
 
 # ======================================================================

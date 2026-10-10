@@ -7,6 +7,7 @@
  * Zodpovědnost:
  *   - Spravuje filtry (location, dataType, dateFrom, dateTo), stránkování a řazení.
  *   - Orchestruje auto-refresh (useFiles + setInterval s refreshMs z useSettings).
+ *   - Dokud server dopočítává počty kusů (counts_pending), ptá se znovu po COUNTS_RETRY_MS.
  *   - Implementuje akce: downloadCsv, downloadXlsx, deleteFile, batchDelete.
  *   - Spravuje výběr souborů (selectedIds, toggleSelect, selectAll, clearSelect)
  *     a potvrzovací dialog pro batch-delete (batchConfirm).
@@ -21,8 +22,8 @@
  * Napojení:
  *   Závisí na: hooks/{useFiles, useRemoteStatus, useKeyShortcuts, useSettings},
  *              context/{ToastContext, LangContext, AuthContext},
- *              utils/{exportCsv, exportXlsx}
- *   Volá: DELETE /api/files/{id}, POST /api/files/batch-delete, GET /api/data (export)
+ *              utils/{downloadOriginal, exportXlsx} (XLSX sestavuje server)
+ *   Volá: DELETE /api/files/{id}, POST /api/files/batch-delete, GET /api/files/{id}/xlsx (export)
  *   Používáno: pages/Database.tsx
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -81,6 +82,9 @@ const isLocation = (v: unknown): v is Location => v === 'local' || v === 'remote
 const isDataType = (v: unknown): v is DataType => v === 'production' || v === 'testing'
 const isSortDir  = (v: unknown): v is 'asc' | 'desc' => v === 'asc' || v === 'desc'
 const isString   = (v: unknown): v is string => typeof v === 'string'
+
+/** Jak často se ptát znovu, dokud server dopočítává počty kusů [ms] */
+const COUNTS_RETRY_MS = 1500
 
 /**
  * Kompletní state management pro stránku Database.
@@ -145,7 +149,7 @@ export function useDatabaseState() {
   }, [sortBy, sortDir, setSortBy, setSortDir])
 
   const remoteAvailable = useRemoteStatus()
-  const { files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles } = useFiles({
+  const { files, wip, hiddenByFilter, latestCreatedAt, countsPending, total, pages, loading, error, fetchFiles } = useFiles({
     location, type: dataType, page, perPage, dateFrom, dateTo, sortBy, sortDir,
   })
 
@@ -156,6 +160,13 @@ export function useDatabaseState() {
     const id = setInterval(fetchFiles, refreshMs)
     return () => clearInterval(id)
   }, [fetchFiles, location, remoteAvailable, refreshMs])
+
+  // Počty kusů se na serveru dopočítávají — za chvíli se zeptat znovu, dokud nejsou všechny
+  useEffect(() => {
+    if (!countsPending) return
+    const id = setTimeout(() => { void fetchFiles() }, COUNTS_RETRY_MS)
+    return () => clearTimeout(id)
+  }, [countsPending, files, fetchFiles])
 
   // Okamžitá aktualizace — backend (FilesWatcher) hlásí přes WS změnu lokálních složek:
   // nová / uzavřená zakázka, nový záznam v rozpracované zakázce, sync na NAS.
@@ -264,7 +275,10 @@ export function useDatabaseState() {
   }, [selectedIds, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, clearSelect])
 
   const showSync     = location === 'local'
-  const totalRecords = files.reduce((sum, f) => sum + f.record_count, 0)
+  // null = některé počty se ještě dopočítávají (patička ukáže „…")
+  const totalRecords = files.some(f => f.record_count == null)
+    ? null
+    : files.reduce((sum, f) => sum + (f.record_count ?? 0), 0)
 
   return {
     location,     setLocation,

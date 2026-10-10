@@ -7,7 +7,7 @@
  *   (OrderTimelineChart — načte /api/timeline až po prvním přepnutí; volba se pamatuje v localStorage).
  *   Obě zobrazení leží v jedné buňce gridu (neaktivní visibility:hidden) — přepnutí nemění výšku.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Download, ArrowLeft, Printer } from 'lucide-react'
 import {
@@ -31,10 +31,16 @@ import ParamTable from '../components/ParamTable'
 import RecordDiagram  from '../components/RecordDiagram'
 import SignalCharts   from '../components/SignalCharts'
 import OrderTimelineChart from '../components/OrderTimelineChart'
+import { usePrintMode } from '../hooks/usePrintMode'
+import RecordFilterBar from '../components/RecordFilterBar'
+import type { StatusFilter } from '../components/RecordFilterBar'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
  *  NOK sloupce jsou pevné — pokud CSV je neobsahuje, existingKeys.has() je automaticky skryje. */
+/** Tisková tabulka delší než tento počet řádků se smí zalomit hned (jinak by začala až na nové stránce) */
+const PRINT_LONG_ROWS = 30
+
 const FIXED_COLS = ['timestamp', 'sortingcategory', 'status',
   'nokcategory_force', 'nokcategory_position', 'nokcategory_electric',
   'nokcategory_times', 'nokcategory_process']
@@ -139,6 +145,13 @@ function CategoryChart({ groupCounts, total }: { groupCounts: Record<string, num
     </div>
   )
 }
+
+/** Graf kategorií se překreslí jen při změně počtů (ne při každé stránce / filtru tabulky). */
+const sameCounts = (a: Record<string, number>, b: Record<string, number>) => {
+  const ka = Object.keys(a)
+  return ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k])
+}
+const CategoryChartMemo = memo(CategoryChart, (p, n) => p.total === n.total && sameCounts(p.groupCounts, n.groupCounts))
 
 // ── Metrické komponenty ───────────────────────────────────────────────────────
 
@@ -349,8 +362,9 @@ export default function ChartView() {
   const recordParam = searchParams.get('record')
   const recordIdx   = recordParam !== null ? Number(recordParam) : null
 
-  const { records, total, pages, groupCounts, loading, error, fetchData } = useData()
-  const { t } = useLang()
+  const { records, total, pages, groupCounts, totalAll, loading, error, fetchData } = useData()
+  const { t, lang } = useLang()
+  const { printing, printNow } = usePrintMode()   // tiskové tabulky zakázky jen při tisku
   const { token } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
@@ -376,6 +390,20 @@ export default function ChartView() {
 
   const [tablePage, setTablePage] = useState(pageForRecord)
 
+  // Filtr kusů v detailu zakázky (production) — filtruje server, viz RecordFilterBar
+  const [statusFilter, setStatusFilterRaw] = useState<StatusFilter>('all')
+  const [catFilter,    setCatFilterRaw]    = useState<string[]>([])
+  const catKey       = catFilter.join(',')
+  const filterActive = statusFilter !== 'all' || catFilter.length > 0
+  const setStatusFilter = (v: StatusFilter) => { setStatusFilterRaw(v); setTablePage(1) }
+  const setCatFilter    = (v: string[])     => { setCatFilterRaw(v);    setTablePage(1) }
+  // Hlavička zakázky (číslo, očekávaný počet) z posledních neprázdných dat — i když filtr nic nenajde
+  const [heroRecords, setHeroRecords] = useState<typeof records>([])
+  useEffect(() => { if (records.length > 0) setHeroRecords(records) }, [records])
+  useEffect(() => {
+    setStatusFilterRaw('all'); setCatFilterRaw([]); setHeroRecords([])
+  }, [fileId, location, fileType])
+
   // Resetovat stránku při změně souboru nebo cíle záznamu
   useEffect(() => {
     setTablePage(recordIdx != null ? Math.floor(recordIdx / RECORDS_PER_PAGE) + 1 : 1)
@@ -398,10 +426,19 @@ export default function ChartView() {
     return () => clearTimeout(printTimeoutRef.current)
   }, [printPending, signalPrintReady])
 
-  // Načíst data při změně souboru nebo stránky tabulky
+  // Načíst data při změně souboru, stránky tabulky nebo filtru.
+  // Detail záznamu (?record=N) čte vždy nefiltrovaný soubor — N je pořadí v celé zakázce.
+  const isRecordView = recordIdx !== null
   useEffect(() => {
-    if (fileId) fetchData({ file: fileId, location, type: fileType, page: tablePage, perPage: RECORDS_PER_PAGE })
-  }, [fileId, location, fileType, tablePage, fetchData])
+    if (!fileId) return
+    const filter = !isRecordView && fileType === 'production'
+      ? {
+          status:     statusFilter === 'all' ? undefined : statusFilter,
+          categories: catKey ? catKey.split(',') : undefined,
+        }
+      : {}
+    fetchData({ file: fileId, location, type: fileType, page: tablePage, perPage: RECORDS_PER_PAGE, ...filter })
+  }, [fileId, location, fileType, tablePage, fetchData, isRecordView, statusFilter, catKey])
 
   const tableColumns = useMemo(() => {
     if (records.length === 0) return FIXED_COLS
@@ -418,6 +455,15 @@ export default function ChartView() {
   }, [records, activeTab])
 
   const cellRenderer = useMemo(() => makeChartCellRenderer(t.chart.openContact), [t])
+
+  // Klik na kus → detail záznamu (useCallback: DataTable je memo — inline funkce by ji překreslovala)
+  const openRecord = useCallback((row: Record<string, unknown>) => {
+    const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
+    if (withinPage < 0) return
+    // Při filtru nese záznam `_idx` = pořadí v celé zakázce (ze serveru)
+    const absIdx = row._idx != null ? Number(row._idx) : (tablePage - 1) * RECORDS_PER_PAGE + withinPage
+    navigate(`/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${absIdx}`)
+  }, [records, tablePage, fileId, location, fileType, navigate])
   // Obecné sloupce podle jazyka (PARAM_LABELS jsou odborné zkratky — jazykově neutrální)
   const colLabels = useMemo(() => ({
     ...PARAM_LABELS,
@@ -511,12 +557,14 @@ export default function ChartView() {
           <PrintMeta />
         </div>
 
-        {loading && <LoadingSpinner />}
+        {/* Spinner jen při prvním načtení zakázky — při změně stránky / filtru zůstane obsah
+            (grafy se znovu nevykreslují, tabulka jen zešedne, než přijdou nová data) */}
+        {loading && heroRecords.length === 0 && <LoadingSpinner />}
         {error   && <p className="error-text">{error}</p>}
 
-        {!loading && !error && (
+        {!error && (!loading || heroRecords.length > 0) && (
           <>
-            {records.length > 0 && <OrderHero records={records} total={total} t={t} />}
+            {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} t={t} />}
 
             <div className="tile tile--12 mb-4">
               <div className="tile__header">
@@ -545,7 +593,7 @@ export default function ChartView() {
               <div className="cv-order-chart">
                 <div className={`cv-order-chart__view${orderChart === 'categories' ? '' : ' cv-order-chart__view--hidden'}`}
                      aria-hidden={orderChart !== 'categories'}>
-                  <CategoryChart groupCounts={groupCounts} total={total} />
+                  <CategoryChartMemo groupCounts={groupCounts} total={totalAll ?? total} />
                 </div>
                 {timelineUsed && (
                   <div className={`cv-order-chart__view${orderChart === 'timeline' ? '' : ' cv-order-chart__view--hidden'}`}
@@ -557,7 +605,7 @@ export default function ChartView() {
             </div>
 
             {/* Obrazovka — záložková tabulka */}
-            <div className="tile tile--12 cv-screen-only">
+            <div className={`tile tile--12 cv-screen-only${loading ? ' cv-table--loading' : ''}`} aria-busy={loading}>
               <div className="tile__header">
                 <div className="cv-param-tabs">
                   {TABLE_TABS.map(tab => (
@@ -572,7 +620,7 @@ export default function ChartView() {
                 </div>
                 <div className="tile__header-actions">
                   <span className="badge badge--neutral">{total}</span>
-                  {records.length > 0 && (
+                  {heroRecords.length > 0 && (
                     <>
                       <button
                         className="btn btn--secondary btn--sm"
@@ -592,7 +640,7 @@ export default function ChartView() {
                       </button>
                       <button
                         className="btn btn--secondary btn--sm cv-print-btn"
-                        onClick={() => window.print()}
+                        onClick={printNow}
                         title={t.chart.print}
                       >
                         <Printer size={13} />
@@ -602,6 +650,19 @@ export default function ChartView() {
                   )}
                 </div>
               </div>
+              {heroRecords.length > 0 && (
+                <RecordFilterBar
+                  status={statusFilter}
+                  categories={catFilter}
+                  onStatus={setStatusFilter}
+                  onCategories={setCatFilter}
+                  shown={total}
+                  totalAll={totalAll}
+                />
+              )}
+              {filterActive && records.length === 0 && (
+                <p className="cv-rec-filter__empty">{t.chart.filterEmpty}</p>
+              )}
               <DataTable
                 columns={tableColumns}
                 rows={records}
@@ -610,28 +671,42 @@ export default function ChartView() {
                 columnUnits={paramUnit}
                 cellRenderer={cellRenderer}
                 fixedColumns={FIXED_COLS}
-                onRowClick={row => {
-                  const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
-                  if (withinPage >= 0) {
-                    const absIdx = (tablePage - 1) * RECORDS_PER_PAGE + withinPage
-                    navigate(
-                      `/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${absIdx}`
-                    )
-                  }
-                }}
+                onRowClick={openRecord}
               />
               <Pagination page={tablePage} pages={pages} onPage={setTablePage} />
             </div>
 
-            {/* Tisk — jedna tabulka pro každou skupinu parametrů */}
-            <div className="cv-print-only">
+            {/* Tisk — jedna tabulka pro každou skupinu parametrů (aktuální stránka tabulky).
+                # = pořadí kusu v celé zakázce; u více stránek / filtru poznámka, co protokol obsahuje. */}
+            {printing && <div className="cv-print-only">
+              {(pages > 1 || filterActive) && records.length > 0 && (() => {
+                const fmt = (n: number) => n.toLocaleString(lang === 'cs' ? 'cs-CZ' : 'en-GB')
+                const first = (tablePage - 1) * RECORDS_PER_PAGE + 1
+                const filterDesc = [
+                  statusFilter !== 'all' ? `${t.chart.filterStatus}: ${statusFilter.toUpperCase()}` : '',
+                  catFilter.length ? `${t.chart.filterCategory}: ${catFilter.join(', ')}` : '',
+                ].filter(Boolean).join(' · ')
+                return (
+                  <p className="cv-print-note">
+                    {filterActive && totalAll != null && (
+                      <>{t.chart.printFilter.replace('{filter}', filterDesc).replace('{count}', fmt(total)).replace('{all}', fmt(totalAll))}<br /></>
+                    )}
+                    {t.chart.printRange
+                      .replace('{from}', fmt(first)).replace('{to}', fmt(first + records.length - 1))
+                      .replace('{total}', fmt(total)).replace('{page}', fmt(tablePage)).replace('{pages}', fmt(pages))}
+                  </p>
+                )
+              })()}
               {TABLE_TABS.map(tab => {
                 const existingKeys = records.length > 0 ? new Set(Object.keys(records[0])) : new Set<string>()
                 const tabCols = ['_row_num', 'timestamp', 'sortingcategory', 'status', ...tab.keys].filter(k => k === '_row_num' || existingKeys.has(k))
                 if (tabCols.length <= 4) return null
-                const numberedRows = records.map((r, i) => ({ ...r, _row_num: String(i + 1) }))
+                const numberedRows = records.map((r, i) => ({
+                  ...r,
+                  _row_num: String(r._idx != null ? Number(r._idx) + 1 : (tablePage - 1) * RECORDS_PER_PAGE + i + 1),
+                }))
                 return (
-                  <div key={tab.id} className="cv-print-group">
+                  <div key={tab.id} className={`cv-print-group${records.length > PRINT_LONG_ROWS ? ' cv-print-group--long' : ''}`}>
                     <h3 className="cv-print-group__title" style={{ borderColor: tab.color }}>{tab.label}</h3>
                     <DataTable
                       columns={tabCols}
@@ -644,7 +719,7 @@ export default function ChartView() {
                   </div>
                 )
               })}
-            </div>
+            </div>}
           </>
         )}
       </div>

@@ -82,6 +82,7 @@ describe('testing input parameters', () => {
     }
     expect(paramUnit('drive_distance')).toBe('mm')
     expect(paramUnit('electric_current')).toBe('mA')
+    expect(paramUnit('measuring_baseperiod')).toBe('µs')
     expect(formatParam('drive_distance', '1.8').text).toBe('1.800')
     expect(formatParam('limits_forcemax', '4').text).toBe('4.00')
     expect(formatParam('measuretime', '18.4').text).toBe('18.4')

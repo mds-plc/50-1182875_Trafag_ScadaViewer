@@ -12,15 +12,32 @@ Lokální úložiště:
 
 Vzdálené úložiště (NAS — přímá UNC cesta):
   {remote_path}/{file_type}/   ← flat složka
+
+Výkon a škálování (architecture.md → „Výkon, paměť a škálovatelnost"):
+  - Přehled souborů z NÁZVŮ (FileMeta, _quick_meta) — soubor se neotevírá. Počet kusů se dopočítá
+    na pozadí (request_counts → fronta → _count_job): lokálně vše, z NAS jen zobrazená stránka.
+  - FileMeta — neměnná kompaktní metadata (Mapping); cache je vrací bez kopie (~1 kB / soubor).
+  - _MetaStore — SQLite cache metadat (03_output/cache/file_meta.sqlite), zapisují se jen změny;
+    tabulka known = počty kusů podle názvu + velikosti, přežije smazání lokální kopie.
+  - Výpis NAS složky se drží _REMOTE_LISTING_TTL s; během skenování se vrací poslední známý stav.
+  - _OrderIndex — zakázka v paměti (surové řádky + čas / kategorie / stav), LRU 3 soubory / 256 MB;
+    stránky, filtry, detail kusu, časový průběh a XLSX bez opětovného čtení souboru.
 """
 from __future__ import annotations
 
 import csv
-import json
 import logging
 import os
+import queue
+import re
+import sqlite3
+import sys
 import threading
+import time
+from collections import OrderedDict
+from collections.abc import Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
@@ -29,9 +46,85 @@ from scada.config import DataConfig
 
 log = logging.getLogger(__name__)
 
-_CACHE_VERSION        = 1    # zvýšit při změně struktury meta dictu → stará cache se zahodí
 _READ_WORKERS_REMOTE  = 32   # paralelní čtení metadat z NAS (latence, ne CPU)
 _READ_WORKERS_LOCAL   = 4
+# Index zakázky v paměti — nejvýše tolik naposledy otevřených souborů a tolik paměti celkem
+# (50 000 kusů ≈ 20 MB; větší soubor než limit se obslouží, jen se nedrží v paměti)
+_INDEX_CACHE_FILES    = 3
+_INDEX_CACHE_BYTES    = 256 * 1024 * 1024
+# Dopočet počtu kusů na pozadí (přehled se zobrazí hned z názvů souborů) — vláken na lokalitu.
+# NAS záměrně málo: dopočet stahuje celé soubory a nesmí vytížit linku (upload DatabaseGateway,
+# kancelář). Z NAS se navíc dopočítávají jen právě zobrazené soubory (request_counts).
+_COUNT_WORKERS        = 2
+# Výpis NAS složky držený v paměti [s] — 100 000 souborů se po síti vypisuje sekundy
+_REMOTE_LISTING_TTL   = 15.0
+
+# Název souboru od DatabaseGateway: PROD_{zakázka}_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv,
+# TEST_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv; starší soubory bez prefixu PROD_.
+# Typ spínače bez podtržítka; kdyby ho zakázka / typ měly, přesné hodnoty doplní dopočet z metadat.
+_NAME_PROD = re.compile(r'^(?:PROD_)?(?P<order>.+)_(?P<switch>[^_]+)_(?P<d>\d{8})_(?P<t>\d{6})_(?:DONE|WIP)\.csv$')
+_NAME_TEST = re.compile(r'^(?:TEST_)?(?P<switch>.+)_(?P<d>\d{8})_(?P<t>\d{6})_DONE\.csv$')
+
+
+def _name_ts(d: str, t: str) -> str | None:
+    """'20261007', '123100' → '2026-10-07T12:31:00' (None = nesmyslné datum / čas).
+
+    Ručně, ne strptime — u 100 000 souborů ~1,6 s → ~0,1 s.
+    """
+    mo, dd, hh, mi, ss = int(d[4:6]), int(d[6:8]), int(t[0:2]), int(t[2:4]), int(t[4:6])
+    if not (1 <= mo <= 12 and 1 <= dd <= 31 and hh < 24 and mi < 60 and ss < 60):
+        return None
+    return f"{d[0:4]}-{d[4:6]}-{d[6:8]}T{t[0:2]}:{t[2:4]}:{t[4:6]}"
+
+
+@dataclass(slots=True)
+class _OrderIndex:
+    """Production soubor připravený pro opakované dotazy (stránky, filtry, detail kusu).
+
+    Datové řádky zůstávají jako surový text — dict se staví jen pro řádky vrácené klientovi.
+    Pro filtrování stačí předpočítané sloupce (čas, den, kategorie, stav). Jedno přečtení
+    souboru tak obslouží všechny další požadavky, dokud se soubor nezmění (mtime / size).
+    """
+    meta_header: list[str]          # originální názvy metadat (řádek 1); [] = starý formát
+    meta_vals:   list[str]
+    meta_inject: dict[str, str]     # metadata doplňovaná do záznamů (klíče lowercase)
+    fieldnames:  list[str]          # originální hlavička datové části (s jednotkami)
+    lines:       list[str]          # surové datové řádky (bez prázdných)
+    ts:          list[str]
+    days:        list[int]          # date.toordinal(); -1 = neparsovatelný čas (projde filtrem)
+    grp:         list[str]          # kategorie 1–6 ('' = chybí)
+    status:      list[str]
+    ec:          list[str] | None   # expected_count po řádcích (None = sloupec v datech není)
+    nbytes:      int = 0            # odhad paměti indexu (limit _INDEX_CACHE_BYTES)
+
+
+def _record_matches(
+    rec: dict[str, str], grp: str, categories: frozenset[str] | None, status: str | None,
+) -> bool:
+    """Filtr detailu zakázky: kategorie 1–6 a stav OK (1–4) / NOK (5–6).
+
+    Bez kategorie se stav bere ze sloupce Status (2 = OK, 5 / 6 = NOK) — stejně jako frontend.
+    """
+    if categories and grp not in categories:
+        return False
+    if status in ('ok', 'nok'):
+        try:
+            cat = int(grp)
+        except ValueError:
+            cat = 0
+        if 1 <= cat <= 6:
+            is_ok = cat <= 4
+        else:
+            st = str(rec.get('status', '') or '').strip()
+            if st == '2':
+                is_ok = True
+            elif st in ('5', '6'):
+                is_ok = False
+            else:
+                return False
+        if is_ok != (status == 'ok'):
+            return False
+    return True
 
 
 def _normalize_key(k: str) -> str:
@@ -94,78 +187,286 @@ def _parse_sectioned(
     return sections
 
 
+class FileMeta(Mapping):
+    """Metadata jednoho souboru v přehledu — neměnná, kompaktní (__slots__), čte se jako dict.
+
+    Cache drží přímo tyto objekty a výpis je vrací bez kopírování (neměnné → bezpečné).
+    100 000 souborů ≈ desítky MB místo ~160 MB pro dict na soubor. Změna = nový objekt (replace).
+    Klíče jako dřívější dict: file_id, name, type, location, order_id, switch_name, created_at,
+    record_count (None = dopočítává se) a sync_status (jen lokální soubory).
+    """
+    __slots__ = ('file_id', 'type', 'location', 'order_id', 'switch_name', 'created_at',
+                 'record_count', 'sync_status', 'ts_final', 'path')
+    _KEYS = ('file_id', 'name', 'type', 'location', 'order_id', 'switch_name', 'created_at', 'record_count')
+
+    def __init__(self, file_id: str, type: str, location: str, order_id: str | None, switch_name: str,
+                 created_at: str, record_count: int | None, sync_status: str | None = None,
+                 ts_final: bool = True, path: str = '') -> None:
+        self.file_id      = file_id
+        self.type         = sys.intern(type)
+        self.location     = sys.intern(location)
+        self.order_id     = order_id
+        self.switch_name  = sys.intern(switch_name or '')
+        self.created_at   = created_at
+        self.record_count = record_count
+        self.sync_status  = sys.intern(sync_status) if sync_status else None
+        self.ts_final     = ts_final          # created_at je konečný (z názvu / ze souboru)
+        self.path         = path              # plná cesta (klíč cache)
+
+    def __getitem__(self, key: str):
+        if key == 'name':
+            return self.file_id.rsplit('.', 1)[0]           # = Path.stem
+        if key in self._KEYS or (key == 'sync_status' and self.sync_status is not None):
+            return getattr(self, key)
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._KEYS
+        if self.sync_status is not None:
+            yield 'sync_status'
+
+    def __len__(self) -> int:
+        return len(self._KEYS) + (self.sync_status is not None)
+
+    def __repr__(self) -> str:
+        return f"FileMeta({dict(self)!r})"
+
+    def replace(self, **changes) -> FileMeta:
+        vals = {s: getattr(self, s) for s in self.__slots__}
+        vals.update(changes)
+        return FileMeta(**vals)
+
+    @classmethod
+    def from_dict(cls, d: dict, path: str, ts_final: bool = True) -> FileMeta:
+        return cls(d['file_id'], d['type'], d['location'], d.get('order_id'), d.get('switch_name', ''),
+                   d.get('created_at', ''), d.get('record_count'), d.get('sync_status'), ts_final, path)
+
+
+class _MetaStore:
+    """Cache metadat na disku (SQLite) — zapisují se jen změny, ne celý soubor.
+
+    Tabulka known: trvalá znalost zakázek (název + velikost → počet kusů, zakázka, typ). Přežije
+    smazání lokální kopie — archiv na NAS pak počty zná bez stahování celých souborů.
+
+    Dřív JSON: 100 000 souborů = 42 MB přepisovaných při každé změně (~4 s s drženým GIL — server
+    mezitím stál) a ~2,5 s načítání po startu. Poškozený / cizí soubor se zahodí a založí znovu.
+    """
+    _SCHEMA = '3'
+    _COLS = ('path', 'mtime_ns', 'size', 'hidden', 'file_id', 'type', 'location', 'order_id',
+             'switch_name', 'created_at', 'record_count', 'sync_status', 'ts_final')
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+        self._conn: sqlite3.Connection | None = self._open()
+
+    def _open(self) -> sqlite3.Connection | None:
+        for _ in range(2):
+            conn = None
+            try:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                conn = sqlite3.connect(str(self._path), check_same_thread=False, isolation_level=None, timeout=5)
+                conn.execute('PRAGMA journal_mode=WAL')
+                conn.execute('PRAGMA synchronous=NORMAL')
+                conn.execute('CREATE TABLE IF NOT EXISTS info (k TEXT PRIMARY KEY, v TEXT)')
+                row = conn.execute("SELECT v FROM info WHERE k='schema'").fetchone()
+                if row is None or row[0] != self._SCHEMA:
+                    conn.execute('DROP TABLE IF EXISTS meta')
+                    conn.execute('DROP TABLE IF EXISTS known')
+                    conn.execute('CREATE TABLE known (name TEXT PRIMARY KEY, size INTEGER, '
+                                 'record_count INTEGER, order_id TEXT, switch_name TEXT)')
+                    conn.execute('CREATE TABLE meta (path TEXT PRIMARY KEY, mtime_ns INTEGER, size INTEGER, '
+                                 'hidden INTEGER, file_id TEXT, type TEXT, location TEXT, order_id TEXT, '
+                                 'switch_name TEXT, created_at TEXT, record_count INTEGER, sync_status TEXT, '
+                                 'ts_final INTEGER)')
+                    conn.execute("INSERT OR REPLACE INTO info VALUES ('schema', ?)", (self._SCHEMA,))
+                return conn
+            except (sqlite3.Error, OSError) as exc:
+                log.warning("[CSV]   cache metadat nečitelná (%s) — zakládám novou", exc)
+                if conn is not None:
+                    conn.close()
+                for suffix in ('', '-wal', '-shm'):
+                    try:
+                        Path(str(self._path) + suffix).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        return None
+
+    def load(self) -> list[tuple]:
+        if self._conn is None:
+            return []
+        with self._lock:
+            try:
+                return self._conn.execute(f"SELECT {', '.join(self._COLS)} FROM meta").fetchall()
+            except sqlite3.Error as exc:
+                log.warning("[CSV]   cache metadat nelze načíst: %s", exc)
+                return []
+
+    def load_known(self) -> list[tuple]:
+        if self._conn is None:
+            return []
+        with self._lock:
+            try:
+                return self._conn.execute("SELECT name, size, record_count, order_id, switch_name FROM known").fetchall()
+            except sqlite3.Error as exc:
+                log.warning("[CSV]   tabulku známých zakázek nelze načíst: %s", exc)
+                return []
+
+    def write(self, upserts: list[tuple], deletes: list[str], known: list[tuple] | None = None) -> None:
+        if not (upserts or deletes or known):
+            return
+        with self._lock:
+            if self._conn is None:                       # cache zavřená (ukončení aplikace)
+                return
+            try:
+                self._conn.execute('BEGIN')
+                if upserts:
+                    self._conn.executemany(
+                        f"INSERT OR REPLACE INTO meta VALUES ({', '.join('?' * len(self._COLS))})", upserts)
+                if deletes:
+                    self._conn.executemany("DELETE FROM meta WHERE path = ?", [(p,) for p in deletes])
+                if known:
+                    self._conn.executemany("INSERT OR REPLACE INTO known VALUES (?, ?, ?, ?, ?)", known)
+                self._conn.execute('COMMIT')
+            except sqlite3.Error as exc:
+                log.warning("[CSV]   cache metadat nelze uložit: %s", exc)
+                try:
+                    self._conn.execute('ROLLBACK')
+                except sqlite3.Error:
+                    pass
+
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+
+
 class CsvRepository:
     """Data Access Layer pro CSV soubory — otevírá soubory, vrací surová data."""
 
-    def __init__(self, cfg: DataConfig, cache_file: Path | None = None) -> None:
+    def __init__(self, cfg: DataConfig, cache_file: Path | None = None,
+                 background_counts: bool = False) -> None:
+        """
+        cache_file:        SQLite cache metadat na disku (None = jen v paměti — testy).
+        background_counts: True = přehled souborů jen z názvů, počet kusů se dopočítá na pozadí
+                           (aplikace); False = metadata se přečtou hned celá (testy, nástroje).
+        """
         self._cfg = cfg
-        # Cache metadat: cesta → ((mtime_ns, size), meta). Bez ní /api/files při každém
-        # volání (auto-refresh 30 s) četl všechny CSV celé kvůli record_count — na NAS drahé.
-        # Soubory DONE se po uzavření nemění; změna mtime/size cache invaliduje.
-        self._meta_cache: dict[Path, tuple[tuple[int, int], dict | None]] = {}
-        # Perzistence cache na disk — po restartu serveru není první výpis NAS „studený"
-        # (310 souborů po síti ≈ desítky sekund). None = jen v paměti (testy).
-        self._cache_file = cache_file
-        self._save_lock  = threading.Lock()
-        self._load_disk_cache()
+        # Cache metadat: cesta (str) → (mtime_ns, size, FileMeta | None). None = soubor bez
+        # datových řádků (skrytý). Soubory DONE se po uzavření nemění; změna mtime/size cache zneplatní.
+        self._meta: dict[str, tuple[int, int, FileMeta | None]] = {}
+        self._folder_keys: dict[str, list[str]] = {}      # složka → klíče z posledního výpisu
+        self._dirty: dict[str, tuple | None] = {}         # změny čekající na zápis do SQLite
+        # Trvalá znalost zakázek: název → (size, record_count, order_id, switch_name)
+        self._known: dict[str, tuple[int, int, str | None, str]] = {}
+        self._dirty_known: dict[str, tuple] = {}
+        self._dirty_lock = threading.Lock()
+        self._store = _MetaStore(cache_file) if cache_file is not None else None
+        self._load_store()
+        # Index otevřených zakázek: cesta → ((mtime_ns, size), _OrderIndex) — LRU s limitem paměti
+        self._index_cache: OrderedDict[Path, tuple[tuple[int, int], _OrderIndex]] = OrderedDict()
+        self._index_lock = threading.Lock()
+        # Jedno skenování složky naráz — souběžné požadavky (auto-refresh, files_changed, druhé okno)
+        # počkají na výsledek / dostanou poslední známý stav místo dalšího čtení
+        self._scan_locks: dict[str, threading.Lock] = {}
+        self._scan_locks_guard = threading.Lock()
+        # Výpis NAS složky držený v paměti: složka → (čas, klíče) — 100 000 souborů = sekundy po síti
+        self._listing: dict[str, tuple[float, list[str]]] = {}
+        # Soubory, které zmizely ze složky (přesun done_local → done_remote po synchronizaci):
+        # název → (mtime_ns, size, FileMeta) — v nové složce se metadata převezmou bez čtení souboru
+        self._moved: OrderedDict[str, tuple[int, int, FileMeta]] = OrderedDict()
+        # Dopočet počtu kusů na pozadí — fronta po lokalitách, bez duplicit
+        self._bg_counts = background_counts
+        self._count_pending: set[str] = set()
+        self._count_lock = threading.Lock()
+        self._count_queues: dict[str, queue.Queue] = {'local': queue.Queue(), 'remote': queue.Queue()}
+        self._count_threads: list[threading.Thread] = []
+        self._closed = False
+
+    def close(self) -> None:
+        """Ukončení aplikace — dopočet zastavit (nedokončený se při dalším startu naváže), cache uložit."""
+        self._closed = True
+        for q in self._count_queues.values():
+            for _ in range(_COUNT_WORKERS):
+                q.put(None)
+        self._flush()
+        if self._store is not None:
+            self._store.close()
 
     # ------------------------------------------------------------------
-    # Perzistentní cache metadat
+    # Perzistentní cache metadat (SQLite)
     # ------------------------------------------------------------------
 
-    def _load_disk_cache(self) -> None:
-        if self._cache_file is None or not self._cache_file.exists():
+    def _load_store(self) -> None:
+        if self._store is None:
             return
-        try:
-            raw = json.loads(self._cache_file.read_text(encoding="utf-8"))
-            if raw.get("version") != _CACHE_VERSION:
+        for name, size, count, order_id, switch_name in self._store.load_known():
+            self._known[name] = (size, count, order_id, switch_name or '')
+        for (path, mtime_ns, size, hidden, file_id, ftype, location, order_id, switch_name,
+             created_at, record_count, sync_status, ts_final) in self._store.load():
+            meta = None if hidden else FileMeta(file_id, ftype, location, order_id, switch_name or '',
+                                                created_at or '', record_count, sync_status,
+                                                bool(ts_final), path)
+            self._meta[path] = (mtime_ns, size, meta)
+            self._folder_keys.setdefault(os.path.dirname(path), []).append(path)
+        if self._meta:
+            log.info("[CSV]   cache metadat načtena: %d souborů", len(self._meta))
+
+    def _put(self, key: str, mtime_ns: int, size: int, meta: FileMeta | None, persist: bool = True) -> None:
+        self._meta[key] = (mtime_ns, size, meta)
+        if (meta is not None and persist and meta.type == 'production' and meta.record_count is not None):
+            entry = (size, meta.record_count, meta.order_id, meta.switch_name)
+            if self._known.get(meta.file_id) != entry:
+                self._known[meta.file_id] = entry
+                with self._dirty_lock:
+                    self._dirty_known[meta.file_id] = (meta.file_id, *entry)
+        if persist and self._store is not None:
+            row = (key, mtime_ns, size, 1, '', '', '', None, '', '', None, None, 1) if meta is None else (
+                key, mtime_ns, size, 0, meta.file_id, meta.type, meta.location, meta.order_id,
+                meta.switch_name, meta.created_at, meta.record_count, meta.sync_status, int(meta.ts_final))
+            with self._dirty_lock:
+                self._dirty[key] = row
+
+    def _drop(self, key: str) -> None:
+        self._meta.pop(key, None)
+        if self._store is not None:
+            with self._dirty_lock:
+                self._dirty[key] = None
+
+    def _flush(self) -> None:
+        if self._store is None:
+            return
+        with self._dirty_lock:
+            if not (self._dirty or self._dirty_known):
                 return
-            for key, (mtime_ns, size, meta) in raw.get("entries", {}).items():
-                self._meta_cache[Path(key)] = ((mtime_ns, size), meta)
-            log.info("[CSV]   cache metadat načtena: %d souborů", len(self._meta_cache))
-        except Exception as exc:                      # poškozená cache = jen pomalejší start
-            log.warning("[CSV]   cache metadat nečitelná (%s) — ignoruji", exc)
-
-    def _save_disk_cache(self) -> None:
-        if self._cache_file is None:
-            return
-        entries = {
-            str(path): [sig[0], sig[1], meta]
-            for path, (sig, meta) in list(self._meta_cache.items())
-            if not (meta and meta.get("sync_status") == "wip")     # WIP se mění pořád — neukládat
-        }
-        with self._save_lock:
-            try:
-                self._cache_file.parent.mkdir(parents=True, exist_ok=True)
-                tmp = self._cache_file.with_suffix(".tmp")
-                tmp.write_text(json.dumps({"version": _CACHE_VERSION, "entries": entries}), encoding="utf-8")
-                os.replace(tmp, self._cache_file)
-            except OSError as exc:
-                log.warning("[CSV]   cache metadat nelze uložit: %s", exc)
+            dirty, self._dirty = self._dirty, {}
+            known, self._dirty_known = self._dirty_known, {}
+        self._store.write([r for r in dirty.values() if r is not None],
+                          [k for k, r in dirty.items() if r is None], list(known.values()))
 
     # ------------------------------------------------------------------
     # Skenování složek
     # ------------------------------------------------------------------
 
-    def list_local(self, file_type: str) -> list[dict]:
-        """Skenuje done_local/ + done_remote/ — vrátí surová metadata bez datumového filtru."""
+    def list_local(self, file_type: str) -> list[FileMeta]:
+        """Skenuje done_local/ + done_remote/ — vrátí metadata bez datumového filtru."""
         base = Path(self._cfg.local_path)
-        results: list[dict] = []
+        results: list[FileMeta] = []
         for sync_status in ('done_local', 'done_remote'):
             results.extend(self._scan_folder(base / file_type / sync_status, file_type, 'local', sync_status))
-
         results.sort(key=lambda x: x['created_at'], reverse=True)
         log.debug("[CSV]   list_local %s → %d souborů", file_type, len(results))
         return results
 
-    def list_wip(self, file_type: str) -> list[dict]:
+    def list_wip(self, file_type: str) -> list[FileMeta]:
         """Rozpracované zakázky ve wip/ — soubor může být i bez datových řádků (právě založený)."""
         folder  = Path(self._cfg.local_path) / file_type / 'wip'
         results = self._scan_folder(folder, file_type, 'local', 'wip', suffix='_WIP.csv')
         results.sort(key=lambda x: x['created_at'], reverse=True)
         return results
 
-    def list_remote(self, file_type: str) -> list[dict]:
+    def list_remote(self, file_type: str) -> list[FileMeta]:
         """Čte přímo z NAS — flat složka (žádné done_local/done_remote podadresáře)."""
         folder = Path(self._cfg.remote_path) / file_type
         if not folder.exists():
@@ -187,6 +488,22 @@ class CsvRepository:
                 continue
         return None
 
+    def prefer_local(self, path: Path, file_type: str) -> Path:
+        """NAS soubor, který leží i na PC u stroje (stejný název a velikost) → číst lokální kopii."""
+        try:
+            twin = self._local_twin(path.name, file_type, path.stat().st_size)
+        except OSError:
+            return path
+        return twin or path
+
+    def _collect(self, keys: list[str]) -> list[FileMeta]:
+        out: list[FileMeta] = []
+        for k in keys:
+            e = self._meta.get(k)
+            if e is not None and e[2] is not None:
+                out.append(e[2])
+        return out
+
     def _scan_folder(
         self,
         folder:      Path,
@@ -194,72 +511,243 @@ class CsvRepository:
         location:    str,
         sync_status: str | None,
         suffix:      str = '_DONE.csv',
-    ) -> list[dict]:
+    ) -> list[FileMeta]:
+        """Výpis složky pod zámkem — jedno skenování naráz.
+
+        NAS: výpis se drží _REMOTE_LISTING_TTL s; když skenování právě běží, dostane požadavek
+        poslední známý stav (nečeká). Lokálně se čeká na výsledek (rychlé).
+        """
+        fkey = str(folder)
+        with self._scan_locks_guard:
+            lock = self._scan_locks.setdefault(fkey, threading.Lock())
+        if location != 'remote':
+            with lock:
+                return self._scan_folder_locked(folder, file_type, location, sync_status, suffix)
+
+        cached = self._listing.get(fkey)
+        if cached is not None and time.monotonic() - cached[0] < _REMOTE_LISTING_TTL:
+            return self._collect(cached[1])
+        if not lock.acquire(blocking=False):
+            if cached is not None:
+                return self._collect(cached[1])            # skenování běží — poslední známý stav
+            lock.acquire()
+            cached = self._listing.get(fkey)               # mezitím naskenoval jiný požadavek
+            if cached is not None and time.monotonic() - cached[0] < _REMOTE_LISTING_TTL:
+                lock.release()
+                return self._collect(cached[1])
+        try:
+            return self._scan_folder_locked(folder, file_type, location, sync_status, suffix)
+        finally:
+            lock.release()
+
+    def _scan_folder_locked(
+        self,
+        folder:      Path,
+        file_type:   str,
+        location:    str,
+        sync_status: str | None,
+        suffix:      str = '_DONE.csv',
+    ) -> list[FileMeta]:
         """Metadata všech souborů *suffix ve složce — z cache, soubor čte jen při změně mtime/size.
 
         Výkon (hlavně NAS):
           - os.scandir: velikost a mtime přijdou s výpisem složky (Windows FindFirstFile) —
             žádný samostatný stat() dotaz po síti pro každý soubor
-          - soubory mimo cache se čtou paralelně (latence SMB ~200 ms / soubor)
-        WIP soubory (sync_status='wip') se vrací i bez datových řádků: record_count 0,
-        created_at = čas poslední změny souboru.
+          - background_counts: nové soubory jen z názvu (bez otevření); jinak se čtou paralelně
+        WIP soubory (sync_status='wip') se čtou vždy celé (živý počet kusů) a neukládají se na disk.
         """
+        fkey = str(folder)
         is_wip = sync_status == 'wip'
-        entries: list[tuple[Path, tuple[int, int], float]] = []
+        entries: list[tuple[str, str, int, int, float]] = []     # (klíč, název, mtime_ns, size, mtime)
         try:
             with os.scandir(folder) as it:
                 for e in it:
                     if e.name.endswith(suffix) and e.is_file():
                         st = e.stat()
-                        entries.append((Path(e.path), (st.st_mtime_ns, st.st_size), st.st_mtime))
+                        entries.append((e.path, e.name, st.st_mtime_ns, st.st_size, st.st_mtime))
         except (FileNotFoundError, NotADirectoryError):
-            return []
-        entries.sort(key=lambda x: x[0].name, reverse=True)
+            entries = []
+        entries.sort(key=lambda x: x[1], reverse=True)
 
-        misses = [(path, sig, mtime) for path, sig, mtime in entries
-                  if (hit := self._meta_cache.get(path)) is None or hit[0] != sig]
-
-        def load(item: tuple[Path, tuple[int, int], float]) -> tuple[Path, tuple[int, int], dict | None, bool]:
-            path, sig, mtime = item
-            try:
-                # NAS soubor je kopie lokálního done_remote/ (DatabaseGateway ho tam nahrál) —
-                # shodný název + velikost → metadata z lokálního disku (~0,2 ms místo ~80 ms po síti)
-                source = self._local_twin(path.name, file_type, sig[1]) if location == 'remote' else None
-                meta = self.read_file_meta(source or path, file_type, location, sync_status, allow_empty=is_wip)
-                if meta is not None and not meta.get('created_at'):
-                    meta['created_at'] = datetime.fromtimestamp(mtime).isoformat(timespec='seconds')
-                return path, sig, meta, True
-            except Exception as exc:
-                log.warning("[CSV]   přeskočen %s: %s", path.name, exc)
-                return path, sig, None, False          # necachovat — zkusit znovu příště
+        changed = False
+        misses: list[tuple[str, str, int, int, float]] = []
+        for item in entries:
+            key, name, mtime_ns, size, _ = item
+            hit = self._meta.get(key)
+            if hit is not None and hit[0] == mtime_ns and hit[1] == size:
+                continue
+            # Přesun done_local → done_remote (rename zachová mtime i velikost) — metadata převzít
+            moved = self._moved.get(name) if (location == 'local' and not is_wip) else None
+            if moved is not None and moved[0] == mtime_ns and moved[1] == size:
+                self._put(key, mtime_ns, size, moved[2].replace(sync_status=sync_status, path=key))
+                self._moved.pop(name, None)
+                changed = True
+                continue
+            misses.append(item)
 
         if misses:
-            workers = min(len(misses), _READ_WORKERS_REMOTE if location == 'remote' else _READ_WORKERS_LOCAL)
-            if workers > 1:
-                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="csv-meta") as ex:
-                    loaded = list(ex.map(load, misses))
-            else:
-                loaded = [load(m) for m in misses]
-            for path, sig, meta, ok in loaded:
-                if ok:
-                    self._meta_cache[path] = (sig, meta)
-            log.debug("[CSV]   %s: načteno %d/%d souborů (zbytek z cache)", folder.name, len(misses), len(entries))
+            quick = self._bg_counts and not is_wip
+            to_read: list[tuple[str, str, int, int, float]] = []
+            for item in misses:
+                meta = self._quick_meta(item, file_type, location, sync_status) if quick else None
+                if meta is not None:
+                    self._put(item[0], item[2], item[3], meta)
+                else:
+                    to_read.append(item)                       # název bez času / bez background_counts
 
-        results: list[dict] = []
-        for path, sig, _ in entries:
-            hit = self._meta_cache.get(path)
-            if hit is not None and hit[0] == sig and hit[1]:
-                results.append(dict(hit[1]))           # kopie — volající nesmí měnit cache
+            def load(item: tuple[str, str, int, int, float]) -> tuple[tuple, FileMeta | None, bool]:
+                key, name, mtime_ns, size, mtime = item
+                try:
+                    if quick:                                   # jen hlavička + první záznam
+                        meta = self.read_file_meta(Path(key), file_type, location, sync_status, count=False)
+                    else:
+                        # NAS soubor je kopie lokálního done_remote/ — shodný název + velikost → lokálně
+                        source = self._local_twin(name, file_type, size) if location == 'remote' else None
+                        meta = self.read_file_meta(source or Path(key), file_type, location, sync_status,
+                                                   allow_empty=is_wip)
+                    if meta is not None and not meta.get('created_at'):
+                        meta['created_at'] = datetime.fromtimestamp(mtime).isoformat(timespec='seconds')
+                    return item, (FileMeta.from_dict(meta, key) if meta is not None else None), True
+                except Exception as exc:
+                    log.warning("[CSV]   přeskočen %s: %s", name, exc)
+                    return item, None, False                    # necachovat — zkusit znovu příště
+
+            if to_read:
+                workers = min(len(to_read), _READ_WORKERS_REMOTE if location == 'remote' else _READ_WORKERS_LOCAL)
+                if workers > 1:
+                    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="csv-meta") as ex:
+                        loaded = list(ex.map(load, to_read))
+                else:
+                    loaded = [load(m) for m in to_read]
+                for item, meta, ok in loaded:
+                    if ok:
+                        self._put(item[0], item[2], item[3], meta, persist=not is_wip)
+            changed = True
+            log.debug("[CSV]   %s: nových / změněných %d z %d souborů", folder.name, len(misses), len(entries))
+
+        keys = [item[0] for item in entries]
+        results = self._collect(keys)
 
         # Úklid: smazané / přesunuté soubory (done_local → done_remote) z cache odstranit
-        # list(dict) je pod GIL atomický — souběžné požadavky (to_thread) mohou cache měnit
-        seen   = {path for path, _, _ in entries}
-        stale  = [p for p in list(self._meta_cache) if p.parent == folder and p not in seen]
-        for p in stale:
-            self._meta_cache.pop(p, None)
-        if (misses or stale) and not is_wip:
-            self._save_disk_cache()
+        prev = self._folder_keys.get(fkey)
+        if prev:
+            current = set(keys)
+            for k in prev:
+                if k in current:
+                    continue
+                gone = self._meta.get(k)
+                self._drop(k)
+                changed = True
+                if gone is not None and gone[2] is not None and not is_wip:
+                    self._moved[os.path.basename(k)] = gone
+                    while len(self._moved) > 2000:
+                        self._moved.popitem(last=False)
+        self._folder_keys[fkey] = keys
+        if location == 'remote':
+            self._listing[fkey] = (time.monotonic(), keys)
+
+        # Lokálně dopočítat všechno (složku omezuje limit úložiště); NAS jen zobrazené (request_counts)
+        if self._bg_counts and location == 'local' and not is_wip:
+            self.request_counts([m for m in results if m.record_count is None])
+        if changed and not is_wip:
+            self._flush()
         return results
+
+    # ------------------------------------------------------------------
+    # Přehled z názvů souborů + dopočet na pozadí
+    # ------------------------------------------------------------------
+
+    def _quick_meta(self, item: tuple[str, str, int, int, float], file_type: str, location: str,
+                    sync_status: str | None) -> FileMeta | None:
+        """Metadata bez otevření souboru — z názvu (zakázka, typ, čas založení) a složky (sync).
+
+        Testing = vždy 1 záznam (hotovo). Production: record_count None → dopočet na pozadí.
+        None = název nenese čas (starší / ručně pojmenovaný soubor) → přečte se jen hlavička.
+        """
+        key, name, _, size, _ = item
+        m = (_NAME_TEST if file_type == 'testing' else _NAME_PROD).match(name)
+        created = _name_ts(m['d'], m['t']) if m else None
+        if created is None:
+            return None
+        order_id = m['order'] if file_type == 'production' else None
+        switch   = m['switch']
+        count    = 1 if file_type == 'testing' else None
+        known = self._known.get(name) if file_type == 'production' else None
+        if known is not None and known[0] == size:          # zakázka už jednou spočítaná (i když
+            count, order_id, switch = known[1], known[2], known[3]   # lokální kopie mezitím zmizela)
+        return FileMeta(
+            file_id=name, type=file_type, location=location, order_id=order_id,
+            switch_name=switch, created_at=created, record_count=count,
+            sync_status=sync_status, ts_final=True, path=key,
+        )
+
+    def request_counts(self, metas: Iterable[Mapping]) -> None:
+        """Zařadit dopočet počtu kusů (jen soubory bez počtu, bez duplicit)."""
+        if not self._bg_counts or self._closed:
+            return
+        for meta in metas:
+            if not isinstance(meta, FileMeta) or meta.record_count is not None or not meta.path:
+                continue
+            with self._count_lock:
+                if meta.path in self._count_pending:
+                    continue
+                self._count_pending.add(meta.path)
+                self._ensure_count_threads()
+            self._count_queues[meta.location].put(meta.path)
+
+    def _ensure_count_threads(self) -> None:
+        if self._count_threads:
+            return
+        for loc in ('local', 'remote'):
+            for i in range(_COUNT_WORKERS):
+                t = threading.Thread(target=self._count_worker, args=(loc,), daemon=True,
+                                     name=f"csv-count-{loc}-{i}")
+                t.start()
+                self._count_threads.append(t)
+
+    def _count_worker(self, location: str) -> None:
+        q = self._count_queues[location]
+        while True:
+            key = q.get()
+            if key is None or self._closed:
+                return
+            try:
+                self._count_job(key)
+            finally:
+                with self._count_lock:
+                    self._count_pending.discard(key)
+                    drained = not self._count_pending
+                if drained or q.qsize() % 25 == 0:
+                    self._flush()
+
+    def _count_job(self, key: str) -> None:
+        """Přesná metadata (počet kusů, zakázka a typ z metadat souboru) do cache."""
+        e = self._meta.get(key)
+        if e is None or e[2] is None or e[2].record_count is not None:
+            return
+        mtime_ns, size, meta = e
+        path = Path(key)
+        try:
+            source = self._local_twin(path.name, meta.type, size) if meta.location == 'remote' else None
+            full = self.read_file_meta(source or path, meta.type, meta.location, meta.sync_status)
+        except Exception as exc:
+            log.warning("[CSV]   dopočet %s selhal: %s", path.name, exc)
+            full = None
+        now = self._meta.get(key)
+        if now is None or now[0] != mtime_ns or now[1] != size:      # soubor se mezitím změnil / zmizel
+            return
+        if full is None:                                             # bez datových řádků / nečitelný — skrýt
+            self._put(key, mtime_ns, size, None)
+            return
+        changes = dict(order_id=full.get('order_id'), switch_name=full.get('switch_name', ''),
+                       record_count=full.get('record_count'))
+        if not meta.ts_final:                                        # čas z názvu nešel → ze souboru
+            changes.update(created_at=full.get('created_at') or meta.created_at, ts_final=True)
+        self._put(key, mtime_ns, size, meta.replace(**changes))
+
+    def counts_pending(self) -> bool:
+        with self._count_lock:
+            return bool(self._count_pending)
 
     # ------------------------------------------------------------------
     # Čtení jednotlivého souboru
@@ -272,6 +760,7 @@ class CsvRepository:
         location:    str,
         sync_status: str | None,   # 'wip' | 'done_local' | 'done_remote' | None (remote)
         allow_empty: bool = False, # True = vrátit metadata i bez datových řádků (WIP soubor)
+        count:       bool = True,  # False = jen hlavička + první záznam, record_count None (rychlé)
     ) -> dict | None:
         """
         Přečte metadata jednoho CSV souboru — první řádek + počet řádků.
@@ -337,7 +826,10 @@ class CsvRepository:
                 order_id    = first.get('order') if file_type == 'production' else None
                 switch_name = first.get('microswitch_name', '')
 
-            record_count = (1 if raw_first else 0) + sum(1 for _ in reader)   # O(1) paměť
+            # Zbylé řádky jen spočítat — bez stavby dict pro každý řádek (50 000 kusů: ~0,3 s → ~0,02 s).
+            # Prázdný řádek DictReader přeskakuje → nepočítat; vícařádkové hodnoty v CSV nejsou.
+            record_count = ((1 if raw_first else 0) + sum(1 for line in f if line.strip('\r\n'))
+                            if count else None)
 
         meta = {
             'file_id':      path.name,
@@ -366,114 +858,229 @@ class CsvRepository:
         page:     int = 1,
         per_page: int = 0,     # 0 = všechny záznamy
         timeline: list[tuple[str, str]] | None = None,
+        categories: frozenset[str] | None = None,
+        status:     str | None = None,
+        stats:      dict[str, int] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
         Přečte záznamy z CSV souboru.
         Vrátí (records, total_matching, group_counts, file_expected_count).
 
+        categories / status: filtr detailu zakázky (production) — kategorie '1'–'6' a/nebo
+        'ok' / 'nok'. total_matching a stránkování platí pro vyfiltrované záznamy; group_counts,
+        timeline a expected_count dál pro celý soubor. Při aktivním filtru nese každý záznam
+        `_idx` = pořadí v nefiltrovaném souboru (odkaz na detail záznamu `?record=N`).
+        stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií.
+
         timeline: je-li předán seznam, doplní se do něj (timestamp, kategorie) KAŽDÉHO záznamu
         celého souboru (po filtru) — časový průběh zakázky bez přenášení všech parametrů.
 
         per_page=0: vrátí všechny záznamy (zpětná kompatibilita).
-        per_page>0: stránkování — O(1) paměť; prochází celý soubor pro total_matching.
-        group_counts + file_expected_count se agregují přes celý soubor ve stejné smyčce
-        (žádný extra průchod — "zdarma" jako vedlejší produkt countingu pro stránkování).
-        Datumový filtr zde je I/O optimalizace — zabraňuje načítání celého souboru
-        do paměti jen proto, aby bylo v service vrstvě co filtrovat.
+        per_page>0: stránkování; group_counts + file_expected_count se agregují přes celý
+        soubor ve stejné smyčce.
+
+        Výkon: production soubor se čte jen jednou — _OrderIndex (surové řádky + předpočítaný
+        čas / kategorie / stav) zůstává v paměti (LRU _INDEX_CACHE_FILES), dokud se soubor
+        nezmění. Další stránky, filtry, detail kusu a časový průběh jdou z paměti a dict se
+        staví jen pro vrácené řádky (50 000 kusů: ~1,2 s → setiny sekundy).
         """
-        records: list[dict] = []
-        total   = 0
-        group_counts:       dict[str, int] = {}
-        file_expected_count: int | None    = None
         from_day = _date.fromisoformat(from_date) if from_date else None
         to_day   = _date.fromisoformat(to_date)   if to_date   else None
-        offset   = (page - 1) * per_page if per_page > 0 else 0
         try:
-            with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
-                # Detekce formátu (totožná logika jako v read_file_meta)
-                line1     = f.readline().strip()
-                first_col = line1.split(self._cfg.csv_separator)[0].strip()
-
-                # ── Sekční formát (TEST) ──────────────────────────────
-                if line1.startswith('['):
-                    f.seek(0)
-                    sections = _parse_sectioned(f, self._cfg.csv_separator)
-                    # Sloučit sekce do jednoho záznamu
-                    rec: dict[str, str] = {}
-                    for sec_name in ('metadata', 'testingparameters', 'analyzedparameters', 'nokinfo', 'measuredinfo'):
-                        rec.update(sections.get(sec_name, {}))
-                    # Propagovat has_signal flag
-                    if '_has_signal' in sections:
-                        rec['_has_signal'] = 'true'
-                    # Datumový filtr
-                    if from_day or to_day:
-                        try:
-                            ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
-                        except ValueError:
-                            pass
-                        else:
-                            if from_day and ts_day < from_day:
-                                return [], 0, {}, None
-                            if to_day   and ts_day > to_day:
-                                return [], 0, {}, None
-                    return [rec], 1, {}, None
-
-                meta_inject: dict[str, str] = {}
-                if first_col.lower() == 'timestamp':
-                    f.seek(0)   # starý formát — vrátit se na začátek pro DictReader
-                else:
-                    # Nový dvoudílný formát — přečíst metadata sekci
-                    meta_header = [c.strip() for c in line1.split(self._cfg.csv_separator)]
-                    meta_vals   = [v.strip() for v in f.readline().strip().split(self._cfg.csv_separator)]
-                    meta_inject = {
-                        k.lower(): v
-                        for k, v in zip(meta_header, meta_vals)
-                        if v   # přeskočit prázdné hodnoty
-                    }
-                    f.readline()   # přeskočit řádek 3 (prázdný)
-                    # f je nyní na datovém headeru (řádek 4)
-
-                reader = csv.DictReader(f, delimiter=self._cfg.csv_separator)
-                for row in reader:
-                    rec = {_normalize_key(k): v for k, v in row.items()}
-                    # Injektovat metadata pole chybějící v datových řádcích (nový dvoudílný formát)
-                    for mk, mv in meta_inject.items():
-                        if mk not in rec:
-                            rec[mk] = mv
-                    if from_day or to_day:
-                        try:
-                            ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
-                        except ValueError:
-                            pass   # neparsovatelný timestamp projde filtrem — count + collect
-                        else:
-                            if from_day and ts_day < from_day:
-                                continue
-                            if to_day   and ts_day > to_day:
-                                continue
-                    # Záznam prošel filtry — počítáme (1-based) + agregujeme skupiny
-                    total += 1
-                    # Starý formát: 'group'; nový formát: 'sortingcategory' — oba = kategorie 1–6
-                    grp = str(rec.get('group', '') or rec.get('sortingcategory', '') or '').strip()
-                    if grp:
-                        group_counts[grp] = group_counts.get(grp, 0) + 1
-                    if timeline is not None:
-                        timeline.append((rec.get('timestamp', '') or '', grp))
-                    if file_expected_count is None:
-                        ec = rec.get('expected_count', '')
-                        if ec:
-                            try:
-                                file_expected_count = int(ec)
-                            except (ValueError, TypeError):
-                                pass
-                    if per_page == 0:
-                        records.append(rec)
-                    elif offset < total <= offset + per_page:
-                        records.append(rec)
+            ix = self._order_index(path)
+            if ix is None:                                   # sekční formát (TEST)
+                with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+                    return self._read_sectioned(f, from_day, to_day)
         except (OSError, UnicodeDecodeError, csv.Error) as exc:
             # csv.Error: NUL byte, překročený field_size_limit — poškozený soubor ≠ HTTP 500
             log.error("[CSV]   chyba čtení %s: %s", path.name, exc)
             return [], 0, {}, None
+
+        records: list[dict] = []
+        total = total_all = 0
+        group_counts: dict[str, int] = {}
+        file_expected_count: int | None = None
+        ec_const = ix.meta_inject.get('expected_count', '') if ix.ec is None else ''
+        from_o   = from_day.toordinal() if from_day else None
+        to_o     = to_day.toordinal()   if to_day   else None
+        offset   = (page - 1) * per_page if per_page > 0 else 0
+        filtering = bool(categories) or status in ('ok', 'nok')
+        picked: list[tuple[int, int]] = []                   # (řádek v indexu, pořadí v zakázce)
+
+        days, grps = ix.days, ix.grp
+        for i in range(len(ix.lines)):
+            d = days[i]
+            if d >= 0:                                       # neparsovatelný čas projde filtrem
+                if from_o is not None and d < from_o:
+                    continue
+                if to_o is not None and d > to_o:
+                    continue
+            grp = grps[i]
+            idx = total_all
+            total_all += 1
+            if grp:
+                group_counts[grp] = group_counts.get(grp, 0) + 1
+            if timeline is not None:
+                timeline.append((ix.ts[i], grp))
+            if file_expected_count is None:
+                ec = ix.ec[i] if ix.ec is not None else ec_const
+                if ec:
+                    try:
+                        file_expected_count = int(ec)
+                    except (ValueError, TypeError):
+                        pass
+            if filtering and not _record_matches({'status': ix.status[i]}, grp, categories, status):
+                continue
+            total += 1
+            if per_page == 0 or offset < total <= offset + per_page:
+                picked.append((i, idx))
+
+        # dict jen pro vrácené řádky — stejná podoba jako dřív z csv.DictReader nad celým souborem
+        reader = csv.DictReader((ix.lines[i] for i, _ in picked),
+                                fieldnames=ix.fieldnames, delimiter=self._cfg.csv_separator)
+        for row, (_, idx) in zip(reader, picked):
+            rec = {_normalize_key(k): v for k, v in row.items()}
+            for mk, mv in ix.meta_inject.items():
+                if mk not in rec:
+                    rec[mk] = mv
+            if filtering:
+                rec['_idx'] = str(idx)
+            records.append(rec)
+        if stats is not None:
+            stats['total_all'] = total_all
         return records, total, group_counts, file_expected_count
+
+    def _read_sectioned(self, f, from_day: _date | None, to_day: _date | None,
+                        ) -> tuple[list[dict], int, dict[str, int], int | None]:
+        """Sekční formát (TEST) — sekce sloučené do jednoho záznamu, [SignalData] se nečte."""
+        sections = _parse_sectioned(f, self._cfg.csv_separator)
+        rec: dict[str, str] = {}
+        for sec_name in ('metadata', 'testingparameters', 'analyzedparameters', 'nokinfo', 'measuredinfo'):
+            rec.update(sections.get(sec_name, {}))
+        if '_has_signal' in sections:
+            rec['_has_signal'] = 'true'
+        if from_day or to_day:
+            try:
+                ts_day = _date.fromisoformat(rec.get('timestamp', '')[:10])
+            except ValueError:
+                pass
+            else:
+                if (from_day and ts_day < from_day) or (to_day and ts_day > to_day):
+                    return [], 0, {}, None
+        return [rec], 1, {}, None
+
+    # ------------------------------------------------------------------
+    # Index zakázky (production) — cache v paměti
+    # ------------------------------------------------------------------
+
+    def _order_index(self, path: Path) -> _OrderIndex | None:
+        """Index souboru z cache, při změně (mtime / size) nebo poprvé ho postaví.
+
+        None = sekční formát (TEST) — ten se neindexuje (jeden záznam, signál se čte zvlášť).
+        """
+        st  = os.stat(path)
+        sig = (st.st_mtime_ns, st.st_size)
+        with self._index_lock:
+            hit = self._index_cache.get(path)
+            if hit is not None and hit[0] == sig:
+                self._index_cache.move_to_end(path)
+                return hit[1]
+        ix = self._build_index(path)
+        if ix is not None and ix.nbytes <= _INDEX_CACHE_BYTES:
+            with self._index_lock:
+                self._index_cache[path] = (sig, ix)
+                self._index_cache.move_to_end(path)
+                while (len(self._index_cache) > _INDEX_CACHE_FILES
+                       or sum(v[1].nbytes for v in self._index_cache.values()) > _INDEX_CACHE_BYTES):
+                    self._index_cache.popitem(last=False)
+        return ix
+
+    def _build_index(self, path: Path) -> _OrderIndex | None:
+        """Jedno přečtení souboru → _OrderIndex. Formát a pravidla jako csv.DictReader nad souborem."""
+        sep = self._cfg.csv_separator
+        with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+            line1 = f.readline().strip()
+            if line1.startswith('['):
+                return None
+            first_col = line1.split(sep)[0].strip()
+            meta_header: list[str] = []
+            meta_vals:   list[str] = []
+            if first_col.lower() == 'timestamp':
+                f.seek(0)                                    # starý jednodílný formát
+            else:
+                meta_header = [c.strip() for c in line1.split(sep)]
+                meta_vals   = [v.strip() for v in f.readline().strip().split(sep)]
+                f.readline()                                 # prázdný oddělovací řádek
+            meta_inject = {k.lower(): v for k, v in zip(meta_header, meta_vals) if v}
+
+            buf: list[str] = []                              # surové řádky aktuálního záznamu
+
+            def source() -> Iterator[str]:
+                for line in f:
+                    buf.append(line)
+                    yield line
+
+            rd = csv.reader(source(), delimiter=sep)
+            fieldnames: list[str] = []
+            for row in rd:                                   # hlavička = první neprázdný řádek
+                buf.clear()
+                if row:
+                    fieldnames = row
+                    break
+            # poslední sloupec se stejným klíčem vyhrává — stejně jako při stavbě dict
+            pos = {_normalize_key(k): i for i, k in enumerate(fieldnames)}
+
+            def cell(row: list[str], key: str, meta_default: str = '') -> str | None:
+                i = pos.get(key)
+                if i is None:
+                    return meta_inject.get(key, meta_default)
+                return row[i] if i < len(row) else None
+
+            has_ec = 'expected_count' in pos
+            intern = sys.intern
+            lines: list[str] = []
+            ts_l: list[str] = []
+            days: list[int] = []
+            grp_l: list[str] = []
+            st_l: list[str] = []
+            ec_l: list[str] | None = [] if has_ec else None
+            for row in rd:
+                raw = ''.join(buf)
+                buf.clear()
+                if not row:                                  # prázdný řádek (DictReader ho přeskočí)
+                    continue
+                lines.append(raw)
+                ts = cell(row, 'timestamp') or ''
+                ts_l.append(ts)
+                try:
+                    days.append(_date.fromisoformat(ts[:10]).toordinal())
+                except ValueError:
+                    days.append(-1)
+                grp_l.append(intern(str(cell(row, 'group') or cell(row, 'sortingcategory') or '').strip()))
+                st_l.append(intern(cell(row, 'status') or ''))
+                if ec_l is not None:
+                    ec_l.append(cell(row, 'expected_count') or '')
+        nbytes = sum(len(x) for x in lines) + len(lines) * 260      # text + seznamy, časy, objekty
+        return _OrderIndex(meta_header, meta_vals, meta_inject, fieldnames,
+                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes)
+
+    def read_table(self, path: Path) -> tuple[list[str], Iterator[list[str]]]:
+        """Celý soubor jako tabulka pro export (XLSX): originální názvy sloupců i hodnoty.
+
+        Production: metadata (Order, Microswitch_ID, …) jako první sloupce + datová část.
+        Testing (sekční): jeden řádek se sloučenými sekcemi (klíče jako v /api/data).
+        """
+        ix = self._order_index(path)
+        if ix is None:
+            with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+                recs, _, _, _ = self._read_sectioned(f, None, None)
+            rec = {k: v for k, v in recs[0].items() if not k.startswith('_')} if recs else {}
+            return list(rec), iter([list(rec.values())])
+        n_meta = len(ix.meta_header)
+        meta   = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
+        rows   = (meta + row
+                  for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
+        return list(ix.meta_header) + list(ix.fieldnames), rows
 
     # ------------------------------------------------------------------
     # Vyhledání cesty + validace vstupů

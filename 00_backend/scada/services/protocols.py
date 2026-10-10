@@ -28,6 +28,8 @@ class PagedResult:
     # (UI pak místo „žádné soubory" nabídne „Zobrazit vše")
     hidden_by_filter: int = 0
     latest_created_at: str | None = None
+    # Některým souborům se ještě dopočítává počet kusů (record_count None) — klient se brzy zeptá znovu
+    counts_pending: bool = False
 
 
 class DataReader(Protocol):
@@ -83,7 +85,17 @@ class DataReader(Protocol):
         to_date:   str | None = None,
         page:     int = 1,
         per_page: int = 0,
+        categories: frozenset[str] | None = None,
+        status:     str | None = None,
+        stats:      dict[str, int] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]: ...
+
+    def export_xlsx(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> bytes | None: ...
 
     def read_timeline(
         self,

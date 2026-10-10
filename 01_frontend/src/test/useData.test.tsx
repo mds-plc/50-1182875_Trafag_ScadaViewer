@@ -137,6 +137,25 @@ describe('useData', () => {
     expect(url).toContain('type=testing')
     expect(url).toContain('from=2026-01-01')
     expect(url).toContain('to=2026-12-31')
+    expect(url).not.toContain('status=')
+    expect(url).not.toContain('category=')
+  })
+
+  it('sends record filter (status, category) and reads total_all', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok:   true,
+      json: async () => ({ ...SUCCESS_RESPONSE, total_all: 12 }),
+    } as Response)
+
+    const { result } = renderHook(() => useData(), { wrapper: Wrapper })
+    await act(async () => {
+      await result.current.fetchData({ ...BASE_FILTER, status: 'nok', categories: ['5', '6'] })
+    })
+
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('status=nok')
+    expect(url).toContain('category=5%2C6')
+    expect(result.current.totalAll).toBe(12)
   })
 
   it('ignores aborted request — does not set error state', async () => {

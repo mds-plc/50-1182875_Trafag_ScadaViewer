@@ -8,7 +8,7 @@
  *   skládá do jedné buňky, přepnutí tak dlaždici nezvětší ani nezmenší.
  *   Data: useOrderTimeline (GET /api/timeline, jen když `enabled`), výpočty utils/orderTimeline.ts.
  */
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -54,7 +54,7 @@ function fullDateTime(ms: number): string {
   })
 }
 
-export default function OrderTimelineChart({ fileId, location, fileType, enabled }: Props) {
+function OrderTimelineChart({ fileId, location, fileType, enabled }: Props) {
   const { t } = useLang()
   const c = t.chart
   const { timeline, loading, error } = useOrderTimeline(fileId, location, fileType, enabled)
@@ -122,3 +122,6 @@ export default function OrderTimelineChart({ fileId, location, fileType, enabled
 
   return <div className="cv-cat-chart cv-timeline">{body}</div>
 }
+
+/** memo: změna stránky / filtru tabulky v detailu zakázky graf nepřekresluje. */
+export default memo(OrderTimelineChart)

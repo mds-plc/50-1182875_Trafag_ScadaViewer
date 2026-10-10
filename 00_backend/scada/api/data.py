@@ -2,8 +2,9 @@
 REST endpoint pro čtení záznamů z CSV souboru (/api/data).
 
 Účel: Poskytuje filtrovaná a stránkovaná data z jednoho CSV souboru zakázky.
-      Slouží pro zobrazení záznamů v Database (rozbalený řádek), ChartView (graf)
-      a pro CSV/XLSX export (per_page=0 = všechny záznamy najednou).
+      Slouží pro zobrazení záznamů v Database (rozbalený řádek) a ChartView (detail zakázky,
+      filtr kusů, detail záznamu). per_page=0 = všechny záznamy najednou se stropem
+      _ALL_RECORDS_CAP (20 000) — celé velké zakázky jdou přes /api/files/{id}/xlsx nebo CSV.
 
 Zodpovědnost:
   - Validuje formát datumových parametrů (from/to) explicitně před voláním service.
@@ -13,16 +14,17 @@ Zodpovědnost:
   - Počítá počet stránek ze serveru — klient nezná total a per_page zároveň.
 
 Rozhraní:
-  GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count)
+  GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count,
+                                has_signal, total_all — počet bez filtru status/category)
   GET /api/timeline → TimelineResponse (timestamps[], categories[]) — časový průběh zakázky
-  Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše)
+  Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše),
+             status (ok | nok), category (např. "1,3") — filtr detailu zakázky
   Vyžaduje autentizaci: Depends(require_auth)
 
 Napojení:
   Závisí na: services (DataReader protokol), models.DataResponse, api/dependencies.require_auth
   Datový zdroj: CSV soubory zapsané DatabaseGateway (lokální disk nebo NAS)
-  Používáno: frontend hooks/useData.ts {useFileRecords, useData},
-             hooks/useDatabaseState.ts {downloadCsv, downloadXlsx}
+  Používáno: frontend hooks/useData.ts {useFileRecords, useData} (Database, ChartView)
 """
 from __future__ import annotations
 
@@ -40,6 +42,8 @@ from scada.services.signal_reader import prepare_signal_response
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+
+_ALL_RECORDS_CAP = 20_000      # strop pro per_page=0
 
 # Běžící prefetch úlohy — silná reference, jinak by je GC mohl zrušit před dokončením
 _prefetch_tasks: set[asyncio.Task] = set()
@@ -77,6 +81,8 @@ async def get_data(
     to_date:   str | None = Query(None,          alias="to",   description="ISO datum do (YYYY-MM-DD)"),
     page:      int        = Query(1,   ge=1,           description="Stránka (od 1)"),
     per_page:  int        = Query(200, ge=0, le=5000,  description="Počet záznamů na stránku; 0 = vše"),
+    status:    str | None = Query(None, pattern="^(ok|nok)$", description="Filtr stavu: ok (kategorie 1–4) | nok (5–6)"),
+    category:  str | None = Query(None, max_length=20,       description="Filtr kategorií, čárkami: např. 1,3,5"),
 ) -> DataResponse:
     """
     Vrátí záznamy z CSV souboru s volitelným filtrováním a stránkováním.
@@ -93,6 +99,8 @@ async def get_data(
         to_date: Filtr do data (YYYY-MM-DD, inclusive). Volitelný.
         page: Číslo stránky (od 1).
         per_page: Počet záznamů na stránku; 0 = vrátit vše najednou.
+        status: Filtr stavu 'ok' / 'nok'. total a stránkování pak platí pro vyfiltrované záznamy.
+        category: Filtr kategorií 1–6 (čárkami). group_counts zůstávají za celý soubor.
 
     Returns:
         DataResponse — záznamy, total, stránkování a volitelné skupinové statistiky.
@@ -112,9 +120,17 @@ async def get_data(
                     status_code=422,
                     detail=f"Neplatný formát parametru '{_pname}', očekáváno YYYY-MM-DD: {_pval!r}",
                 ) from None
-    # per_page=0 = všechny záznamy (export). Limit na 100 000 řádků
-    # zabraňuje neomezenému růstu paměti při obrovském CSV (DoS prevence).
-    effective_per_page = per_page if per_page > 0 else 100_000
+    categories: frozenset[str] | None = None
+    if category:
+        parts = frozenset(c.strip() for c in category.split(',') if c.strip())
+        if not parts or not parts <= {'1', '2', '3', '4', '5', '6'}:
+            raise HTTPException(status_code=422, detail=f"Neplatný parametr 'category' (1–6): {category!r}")
+        categories = parts
+    filtering = categories is not None or status is not None
+    stats: dict[str, int] = {}
+    # per_page=0 = všechny záznamy najednou. Strop 20 000 řádků (~100 MB dočasně v paměti) chrání
+    # server před vyčerpáním paměti — celé velké zakázky jdou přes XLSX / CSV (bez dictů po řádcích).
+    effective_per_page = per_page if per_page > 0 else _ALL_RECORDS_CAP
 
     reader: DataReader = request.app.state.csv_reader
     # Timeout: remote (NAS/UNC) může blokovat desítky sekund při nedostupném disku;
@@ -128,6 +144,7 @@ async def get_data(
                 file_id=file, location=location, file_type=file_type,
                 from_date=from_date, to_date=to_date,
                 page=page, per_page=effective_per_page,
+                categories=categories, status=status, stats=stats,
             ),
             timeout=timeout,
         )
@@ -159,6 +176,7 @@ async def get_data(
         group_counts=group_counts or None,
         file_expected_count=file_expected_count,
         has_signal=has_signal,
+        total_all=stats.get('total_all') if filtering else None,
     )
 
 

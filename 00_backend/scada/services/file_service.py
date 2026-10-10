@@ -6,6 +6,9 @@ Odpovědnost:
   - stránkování (business pravidlo: kolik najednou)
   - určení sync_status ze složkové struktury (business pravidlo)
   - koordinace volání CsvRepository
+  - dopočet počtu kusů pro zobrazenou stránku (request_counts — NAS jen to, co uživatel vidí)
+  - čtení souboru z NAS přes lokální kopii, je-li (_read_path → CsvRepository.prefer_local)
+  - XLSX celé zakázky (export_xlsx → services/xlsx_export)
 
 Co zde NENÍ:
   - I/O operace (soubory, disk) → CsvRepository
@@ -20,6 +23,7 @@ from datetime import datetime as _dt
 from pathlib import Path
 
 from scada.services.protocols import PagedResult
+from scada.services.xlsx_export import build_xlsx
 from scada.services.repositories.csv_repository import CsvRepository
 
 log = logging.getLogger(__name__)
@@ -80,11 +84,10 @@ class FileService:
         _SORT_KEYS = {'created_at', 'switch_name', 'record_count', 'order_id'}
         if sort_by in _SORT_KEYS:
             reverse = (sort_dir == 'desc')
-            def _sort_key(f: dict) -> tuple:
-                v = f.get(sort_by)
-                # None vždy na konec (False < True, proto None → True = "vyšší" při asc)
-                return (v is None, v if v is not None else '')
-            files = sorted(files, key=_sort_key, reverse=reverse)
+            # Neznámá hodnota (None — např. počet kusů se ještě dopočítává) vždy na konec
+            known   = [f for f in files if f.get(sort_by) is not None]
+            unknown = [f for f in files if f.get(sort_by) is None]
+            files = sorted(known, key=lambda f: f[sort_by], reverse=reverse) + unknown
 
         return files
 
@@ -110,12 +113,16 @@ class FileService:
         pages = max(1, math.ceil(total / per_page))
         page  = min(page, pages)          # clamp — stránka mimo rozsah → poslední
         start = (page - 1) * per_page
+        page_files = all_files[start : start + per_page]
+        # Počty kusů dopočítat pro zobrazenou stránku (NAS jen ty — dopočet stahuje celé soubory)
+        self._repo.request_counts(page_files)
         return PagedResult(
-            files=all_files[start : start + per_page],
+            files=[dict(f) for f in page_files],
             total=total,
             page=page,
             pages=pages,
-            wip=self.list_wip(location, file_type),
+            wip=[dict(f) for f in self.list_wip(location, file_type)],
+            counts_pending=any(f.get('record_count') is None for f in page_files),
             **self._hidden_by_filter(location, file_type, total, from_date, to_date),
         )
 
@@ -186,8 +193,35 @@ class FileService:
         file_type: str = 'production',
     ) -> Path | None:
         """Vrátí fyzickou cestu k souboru (delegace na repository)."""
-        p = self._repo.resolve_path(file_id, location, file_type)
+        p = self._read_path(file_id, location, file_type)
         return p if p and p.exists() else None
+
+    def _read_path(self, file_id: str, location: str, file_type: str) -> Path | None:
+        """Cesta pro ČTENÍ: soubor z NAS, který leží i na PC u stroje (stejný název a velikost),
+        se čte z lokálního disku — rychleji a bez zátěže sítě."""
+        p = self._repo.resolve_path(file_id, location, file_type)
+        if p is not None and location == 'remote':
+            p = self._repo.prefer_local(p, file_type)
+        return p
+
+    def close(self) -> None:
+        """Ukončení aplikace — zastaví dopočet na pozadí."""
+        self._repo.close()
+
+    def export_xlsx(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> bytes | None:
+        """Celý soubor jako XLSX (originální sloupce, čísla jako čísla). None = soubor neexistuje."""
+        path = self._read_path(file_id, location, file_type)
+        if path is None or not path.exists():
+            return None
+        header, rows = self._repo.read_table(path)
+        data = build_xlsx(header, rows, sheet_name='Data')
+        log.info("[SVC]   export_xlsx %s → %.1f MB", file_id, len(data) / 1e6)
+        return data
 
     # ------------------------------------------------------------------
     # Smazání souboru
@@ -238,7 +272,7 @@ class FileService:
         Returns:
             (timestamps ISO, kategorie 1–6 | None) nebo None, pokud soubor neexistuje.
         """
-        path = self._repo.resolve_path(file_id, location, file_type)
+        path = self._read_path(file_id, location, file_type)
         if path is None or not path.exists():
             return None
         points: list[tuple[str, str]] = []
@@ -270,15 +304,20 @@ class FileService:
         to_date:   str | None = None,
         page:     int = 1,
         per_page: int = 0,     # 0 = všechny záznamy
+        categories: frozenset[str] | None = None,
+        status:     str | None = None,
+        stats:      dict[str, int] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """Načte záznamy z daného souboru — deleguje na repozitář.
-        Vrátí (records, total, group_counts, file_expected_count)."""
-        path = self._repo.resolve_path(file_id, location, file_type)
+        Vrátí (records, total, group_counts, file_expected_count).
+        categories / status / stats — filtr detailu zakázky, viz CsvRepository.read_records."""
+        path = self._read_path(file_id, location, file_type)
         if path is None or not path.exists():
             log.warning("[SVC]   soubor nenalezen: %s (%s/%s)", file_id, location, file_type)
             return [], 0, {}, None
         records, total, group_counts, file_expected_count = self._repo.read_records(
             path, from_date, to_date, page=page, per_page=per_page,
+            categories=categories, status=status, stats=stats,
         )
         log.debug("[SVC]   read_records %s → %d/%d záznamů (str. %d)", file_id, len(records), total, page)
         return records, total, group_counts, file_expected_count

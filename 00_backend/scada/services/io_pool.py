@@ -28,7 +28,7 @@ from typing import TypeVar
 
 T = TypeVar("T")
 
-_NAS_WORKERS = 4
+_NAS_WORKERS = 6
 _nas_executor = ThreadPoolExecutor(max_workers=_NAS_WORKERS, thread_name_prefix="nas-io")
 _nas_active   = 0                    # počet právě běžících NAS operací (vč. zaseknutých)
 _nas_lock     = threading.Lock()

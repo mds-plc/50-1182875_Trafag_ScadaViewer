@@ -46,3 +46,12 @@ users.toml
 # OS
 .DS_Store
 Thumbs.db
+
+# Generátor manuálu — pracovní soubory (06_build/manual/README.md)
+06_build/manual/node_modules/
+06_build/manual/package*.json
+06_build/manual/img/
+06_build/manual/demo/
+06_build/manual/srv/
+06_build/manual/out_*
+06_build/manual/params.json

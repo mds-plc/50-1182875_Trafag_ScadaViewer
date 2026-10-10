@@ -213,6 +213,11 @@ class TestFiles:
             ],
         )
         body = c.get("/api/files").json()
+        for _ in range(50):                    # počet kusů se dopočítává na pozadí
+            if not body.get("counts_pending"):
+                break
+            time.sleep(0.05)
+            body = c.get("/api/files").json()
         assert body["total"] == 1
         f = body["files"][0]
         assert f["file_id"]      == "MARQ_2026-07-01_DONE.csv"
@@ -1281,7 +1286,7 @@ class TestAuditFollowup20260924:
         repo.list_local("production")
         f.unlink()
         assert repo.list_local("production") == []
-        assert f not in repo._meta_cache
+        assert str(f) not in repo._meta
 
     # ── M16 — cache signálových dat ────────────────────────────────────
 

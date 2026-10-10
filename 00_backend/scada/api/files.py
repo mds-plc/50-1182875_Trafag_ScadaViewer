@@ -13,9 +13,11 @@ Zodpovědnost:
   - UNC cesty (NAS) mají timeout 30 s; lokální disk 10 s (pojistka).
 
 Rozhraní:
-  GET    /api/files                    → FilesResponse (files[], total, page, pages)
+  GET    /api/files                    → FilesResponse (files[], total, page, pages, wip[], counts_pending)
+                                          record_count null = dopočítává se (přehled z názvů souborů)
   GET    /api/files/{file_id}          → OrderFileModel
   GET    /api/files/{file_id}/download → FileResponse (originální CSV)
+  GET    /api/files/{file_id}/xlsx     → XLSX celé zakázky (sestavený na serveru)
   DELETE /api/files/{file_id}          → 204 / 403 (NAS nebo vzdálený přístup) / 404 / 503
   POST   /api/files/batch-delete       → BatchDeleteResult (deleted, failed, errors[])
 
@@ -29,11 +31,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
-from scada.services.io_pool import run_io
+from scada.services.io_pool import NasBusyError, run_io
 from scada.api.dependencies import require_auth, require_local, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
@@ -70,8 +73,9 @@ async def list_files(
     """
     reader: DataReader = request.app.state.csv_reader
     # Remote (NAS/UNC) — Windows může blokovat desítky sekund při nedostupném NAS.
-    # Timeout 30 s pro remote, 10 s pro local (měl by být okamžitý, ale obezřetnost).
-    timeout = 30.0 if location == "remote" else 10.0
+    # Výpis jde z názvů souborů (počty kusů se dopočítají na pozadí) — rychlý i u tisíců souborů.
+    # Timeout 30 s je pojistka pro NAS, který neodpovídá.
+    timeout = 30.0
     try:
         result = await asyncio.wait_for(
             run_io(
@@ -103,6 +107,7 @@ async def list_files(
         wip=result.wip,
         hidden_by_filter=result.hidden_by_filter,
         latest_created_at=result.latest_created_at,
+        counts_pending=result.counts_pending,
     )
 
 
@@ -221,4 +226,45 @@ async def download_file(
         path=path,
         filename=file_id,
         media_type="text/csv; charset=utf-8",   # BOM je součástí souboru
+    )
+
+
+@router.get("/files/{file_id}/xlsx", dependencies=[Depends(require_auth)])
+async def download_xlsx(
+    file_id:   str,
+    request:   Request,
+    location:  str = Query('local',      alias="location"),
+    file_type: str = Query('production', alias="type"),
+) -> Response:
+    """Stáhne celý soubor jako XLSX — sestavený na serveru (čísla jako čísla, čas jako datum).
+
+    Prohlížeč jen uloží hotový soubor; dřív ho skládal sám (50 000 kusů ≈ 15 s a > 1 GB paměti).
+    """
+    reader: DataReader = request.app.state.csv_reader
+    timeout = 120.0 if location == "remote" else 60.0
+    try:
+        data = await asyncio.wait_for(
+            run_io(location, reader.export_xlsx, file_id, location, file_type),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        log.error("[API]   xlsx %s timeout (%ss) location=%s", file_id, timeout, location)
+        raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
+    except NasBusyError:
+        raise
+    except (OSError, PermissionError) as exc:
+        log.error("[API]   xlsx %s I/O chyba: %s", file_id, exc)
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+    if data is None:
+        raise HTTPException(status_code=404, detail="Soubor nenalezen")
+    name = (file_id[:-4] if file_id.lower().endswith('.csv') else file_id) + '.xlsx'
+    ascii_name = name.encode('ascii', 'replace').decode().replace('?', '_').replace('"', '_')
+    log.info("[API]   xlsx %s location=%s type=%s (%.1f MB)", file_id, location, file_type, len(data) / 1e6)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}',
+            "Content-Encoding": "identity",     # XLSX je ZIP — GZipMiddleware ho znovu nekomprimuje
+        },
     )

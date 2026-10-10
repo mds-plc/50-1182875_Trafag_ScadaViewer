@@ -336,7 +336,7 @@ interface Props {
   page:            number
   pages:           number
   total:           number
-  totalRecords:    number
+  totalRecords:    number | null   // null = počty se dopočítávají
   expandedId:      string | null
   onExpandToggle:   (fileId: string) => void
   onDeleteRequest:  (file: OrderFile) => void
@@ -415,7 +415,9 @@ export default function FileTable({
           <td className="db-td">{file.switch_name}</td>
           {showRecords && (
             <td className="db-td db-td--center">
-              <span className="db-badge">{file.record_count}</span>
+              {file.record_count != null
+                ? <span className="db-badge">{file.record_count}</span>
+                : <span className="db-badge db-badge--pending" title={t.db.countPending}>…</span>}
             </td>
           )}
           {showSync && (
@@ -567,7 +569,7 @@ export default function FileTable({
           {files.length > 0 && (
             <div className="db-footer">
               <span>{t.db.footerFiles}: <strong>{total}</strong></span>
-              <span>{t.db.footerTotalRecords}: <strong>{totalRecords}</strong></span>
+              <span>{t.db.footerTotalRecords}: <strong>{totalRecords ?? '…'}</strong></span>
             </div>
           )}
         </>

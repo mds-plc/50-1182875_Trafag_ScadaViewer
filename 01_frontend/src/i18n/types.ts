@@ -64,6 +64,7 @@ export interface Translations {
     noFilesRemote: string
     footerFiles: string
     footerTotalRecords: string
+    countPending: string
     deleteTitle: string
     deleteBody: string
     deleteBtn: string
@@ -99,6 +100,14 @@ export interface Translations {
     categoryDistribution: string
     categoryNote: string
     timelineView: string
+    filterStatus: string
+    filterAll: string
+    filterCategory: string
+    filterShown: string
+    filterClear: string
+    filterEmpty: string
+    printRange: string
+    printFilter: string
     tlStart: string
     tlEnd: string
     tlTotal: string
