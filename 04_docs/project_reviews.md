@@ -6,6 +6,33 @@
 
 ---
 
+## [2026-10-10] Hodnocení výkonu a škálovatelnosti — po zátěžových testech
+
+**Rozsah:** chování při reálných objemech — zakázka s 50 000 kusy, 100 takových zakázek (1,3 GB),
+100 000 souborů ve složce archivu; paměť serveru; závislosti. Podklad: `audit_log.md` 2026-10-10,
+`architecture.md` fáze 35–39 a „Výkon, paměť a škálovatelnost".
+
+**Verdikt:** před testy by aplikace na plném provozu **selhala** — Databáze s velkými zakázkami končila
+503, detail velké zakázky reagoval ~1,8 s na každou stránku, XLSX v kiosku hrozil pádem prohlížeče
+(> 1 GB) a archiv na NAS by se časem celý stahoval. Po úpravách je ScadaViewer připravený na roky
+provozu: přehled okamžitý z názvů souborů, velká zakázka plynule, paměť má strop u všech cache,
+cache metadat je v SQLite (nezamrzá server). Zbývající limity jsou mimo ScadaViewer (struktura
+archivu na NAS, retence) — vyžadují dohodu s DatabaseGateway / Trafag.
+
+| Oblast | Před | Po |
+|--------|------|----|
+| Databáze, 100 × 50 000 kusů | 503 po 10 s, opakovaně | seznam 0,08 s, počty na pozadí ~6–8 s |
+| Detail zakázky 50 000 kusů (prohlížeč) | ~1,8 s / stránka | ~0,35 s |
+| XLSX 50 000 kusů | ~16 s, > 1 GB v prohlížeči | ~3 s na serveru |
+| 100 000 souborů v archivu | cache JSON 4 s zamrznutí serveru při změně, dopočet by stáhl celý archiv | výpis 0,16 s, zápis změny 2,4 ms, z NAS jen zobrazená stránka |
+| Závislosti | 14 zranitelností (6 high) | 0 |
+
+**Doporučení:** S1–S5 v `audit_log.md` (hlavně podsložky `RRRR/MM` na NAS a počet kusů v souboru —
+obojí změna v DatabaseGateway), změřit síť k NAS na PC u stroje, release 2.1.1. Údržba: A12 (rozdělit
+`csv_repository.py`).
+
+---
+
 ## [2026-09-26] Hodnocení ekosystému v2.1.0 — PLC × Analyzing × DatabaseGateway × NAS × ScadaViewer
 
 **Rozsah:** celé propojení, ne jen ScadaViewer — datová smlouva mezi aplikacemi, integrace přes

@@ -479,9 +479,9 @@ odhlásí (lokální login: hláška „Relace vypršela") nebo tiše obnoví PL
 | `/api/signal` — parsování | numpy `loadtxt` (fallback: Python po blocích `zip` + `map(float)`), jen 9 zobrazovaných sloupců, `array('d')` | 42 MB soubor ~940 → ~430 ms |
 | `/api/signal` — cache | `load_signal()` LRU 2 souborů + per-path zámek; klíčové body počítány jednou; cache hotových odpovědí (12) | další režimy / záložky < 1 ms |
 | `/api/signal` — prefetch | `/api/data` u souboru s `[SignalData]` spustí parsování na pozadí | záložka Signal se otevře z cache |
-| NAS I/O | `services/io_pool.run_io()` — NAS ve vlastním poolu (4 vlákna); plný pool → okamžitě 503 | zaseknutý NAS nezpomalí lokální disk ani login |
+| NAS I/O | `services/io_pool.run_io()` — NAS ve vlastním poolu (4 vlákna, od fáze 38 6); plný pool → okamžitě 503 | zaseknutý NAS nezpomalí lokální disk ani login |
 | Přenos | `GZipMiddleware` (JSON + JS/CSS), `Cache-Control: immutable` pro `/assets/*` | 5–10× méně dat, žádné 304 revalidace |
-| Frontend bundle | code-splitting (ChartView/Settings/Info lazy + preload v idle), `xlsx` dynamický import, vendor chunky `react` / `charts` | úvodní JS 1 007 → 641 kB |
+| Frontend bundle | code-splitting (ChartView/Settings/Info lazy + preload v idle), `xlsx` dynamický import (od fáze 36 XLSX ze serveru, SheetJS odstraněn), vendor chunky `react` / `charts` | úvodní JS 1 007 → 641 kB |
 | Login | PBKDF2 v `asyncio.to_thread` | login neblokuje WS broadcast |
 
 ### Fáze 22 — Živá Database: rozpracovaná zakázka + automatická aktualizace (2026-09-24)
@@ -514,7 +514,7 @@ Měření (310 testing + 58 production souborů na NAS, 6,3 GB):
 - `_scan_folder` přes `os.scandir` — velikost + mtime přijdou s výpisem složky (dřív `stat()` po síti pro každý soubor).
 - Metadata NAS souboru se berou z **lokální kopie** v `done_remote/`/`done_local/` (stejný název + velikost) — NAS se čte jen pro soubory, které lokálně nejsou.
 - Zbylé soubory se čtou paralelně (32 vláken NAS, 4 lokálně).
-- Cache metadat se ukládá do `03_output/cache/file_meta.json` (bez WIP) → po restartu okamžitě.
+- Cache metadat se ukládá do `03_output/cache/file_meta.json` (bez WIP) → po restartu okamžitě. (Od fáze 38 SQLite `file_meta.sqlite`.)
 - Frontend: datumový filtr výchozí **posledních 2 dny** (včera + dnes), počítán v místním čase; neukládá se
   do localStorage (staré uložené „do" skrývalo nové zakázky).
 - Testy: `02_tests/conftest.py` nahrazuje AdsMonitor offline atrapou — doba testů nezávisí na stavu
@@ -791,6 +791,124 @@ formát CSV, názvy / jednotky / vzorce parametrů, kategorie, NAS). Shoda ve v�
 **Stav testů po fázi 34 + auditu 2026-09-26:** Backend 247/247, Frontend 107/107 (15 souborů),
 `npm run lint` 0 problémů. **Verze 2.1.0.**
 
+### Fáze 35 — Filtr kusů v detailu zakázky, Base Period v µs, název XLSX (2026-09-28 → 10-01)
+
+- **Filtr kusů** (detail zakázky, production): lišta `components/RecordFilterBar.tsx` nad tabulkou —
+  **Stav** Vše / OK / NOK a **Kategorie** Vše / 1–6 (libovolná kombinace, barvy boxů). Stav a kategorie
+  platí zároveň (AND). Tlačítka 44 px (dotyk). Při aktivním filtru „Zobrazeno: X z Y" + „Zrušit filtr".
+- Filtruje **server** — `GET /api/data?status=ok|nok&category=1,3` (validace: `status` regex,
+  `category` jen 1–6, jinak 422). `total` a stránkování platí pro vyfiltrované kusy; `group_counts`,
+  časový průběh a `expected_count` dál za celý soubor; odpověď nese `total_all` (počet bez filtru).
+- Při filtru nese každý záznam `_idx` = pořadí v nefiltrovaném souboru → klik na kus otevře správný
+  detail (`?record=N`). Detail záznamu čte vždy nefiltrovaný soubor; filtr zůstane po návratu.
+- OK/NOK: kategorie 1–4 = OK, 5–6 = NOK; bez kategorie podle sloupce Status (2 = OK, 5/6 = NOK) —
+  `_record_matches()` v `csv_repository.py`, stejně jako frontend.
+- Graf kategorií a hlavička zakázky při filtru dál za celou zakázku (`totalAll ?? total`);
+  hlavička z posledních neprázdných dat (`heroRecords`) — nezmizí, když filtr nic nenajde.
+- **Measuring_BasePeriod v µs** (perioda PLC cyklu, 500 = 500 µs; Analyzing `base_period_us`).
+  DatabaseGateway psal do hlavičky chybně `[ms]` → nově `[us]` (+ test, `sample_testing.csv`).
+  ScadaViewer zobrazuje `µs` bez desetinných míst (`paramMeta.EXTRA_FORMAT`), staré soubory s `[ms]`
+  se zobrazí správně (jednotka z hlavičky se ignoruje).
+- **Název XLSX** bez přípony CSV (`xlsxBaseName`): dřív `…_DONE.csv.xlsx`, které Windows se skrytými
+  příponami ukázal jako „…_DONE.csv" — vypadalo to, že se stáhl CSV.
+
+### Fáze 36 — Velké zakázky (50 000 kusů): index v paměti, XLSX ze serveru, tisk (2026-10-09)
+
+Měřeno na zakázce s 50 000 kusy (12,9 MB). Dřív každý požadavek četl celý soubor přes `csv.DictReader`.
+
+- **`_OrderIndex`** (`csv_repository.py`): soubor se přečte jednou — surové řádky jako text +
+  předpočítaný čas, den (ordinal), kategorie a stav. Stránky, filtry, detail kusu, časový průběh
+  a XLSX jdou z paměti; dict se staví jen pro vrácené řádky. Invalidace podle `(mtime_ns, size)`
+  (rozpracovaná zakázka po každém kusu). LRU nejvýše `_INDEX_CACHE_FILES` = 3 soubory a zároveň
+  `_INDEX_CACHE_BYTES` = 256 MB (`nbytes` odhad; větší soubor se obslouží, jen se nedrží).
+  Sémantika `read_records` beze změny (`csv.DictReader` nad vybranými řádky, prázdné řádky, metadata).
+  Odpověď serveru: stránka / filtr / detail kusu **1,2 s → 0,02–0,05 s**, první otevření 0,24 s.
+- **XLSX ze serveru** — `GET /api/files/{id}/xlsx` → `services/xlsx_export.build_xlsx()`: vlastní
+  proudový zápis (ZIP + XML, bez závislosti) — čísla jako čísla, čas ISO jako datum Excelu
+  (`yyyy-mm-dd hh:mm:ss`), text s úvodní nulou (číslo zakázky `0003`) zůstane textem, tučná zmrazená
+  hlavička, automatický filtr, escapování a odstranění znaků zakázaných v XML. Production: sloupce
+  metadat (Order, Microswitch_ID, Microswitch_Name) + datová hlavička s jednotkami; Testing: 1 řádek
+  se sloučenými sekcemi. `Content-Encoding: identity` (GZip by ZIP znovu komprimoval).
+  50 000 kusů: dřív ~16 s a > 1 GB paměti v prohlížeči (SheetJS), nyní ~3 s na serveru, 16,9 MB;
+  ověřeno v Excelu (otevření 1,6 s, SUM sloupce funguje). **SheetJS (`xlsx`) odstraněn z frontendu.**
+- Frontend `utils/exportXlsx.ts`: dialog „Uložit jako" (File System Access API) se otevře **hned po
+  kliknutí** (prohlížeč ho dovolí jen krátce po akci uživatele), soubor se stáhne až potom; při chybě
+  `abort()` (žádný prázdný soubor). Bez API → běžné stažení.
+- **Tisk velké zakázky**: protokol obsahuje aktuální stránku tabulky (200 kusů) — nahoře poznámka
+  „Vytištěné kusy: 1–200 z 4 005 (stránka 1 z 21)" a při filtru jaký filtr platí; sloupec `#` = pořadí
+  v celé zakázce; dlouhá tabulka (> `PRINT_LONG_ROWS` = 30 řádků) začne hned (`.cv-print-group--long`),
+  ne až na další straně.
+- **Plynulé vykreslování**: při změně stránky / filtru zůstane obsah (spinner jen při prvním načtení,
+  tabulka zešedne `cv-table--loading`); `DataTable`, `OrderTimelineChart` a graf kategorií jsou `memo`
+  (`openRecord` v `useCallback`); tiskové tabulky (5 × 200 řádků) se vytvoří až při tisku —
+  `hooks/usePrintMode.ts` (`beforeprint` / tlačítko Tisk, `flushSync`). Prohlížeč: další stránka
+  ~1,8 s → ~0,35 s.
+- Oprava chyby z fáze 35: souhrn OK / NOK počítal při filtru procenta z vyfiltrovaného počtu („1148 %").
+
+### Fáze 37 — Přehled Databáze z názvů souborů + dopočet počtů na pozadí (2026-10-10)
+
+Test se 100 zakázkami po 50 000 kusech (1,3 GB): výpis Databáze **končil 503 po 10 s, opakovaně** —
+počet kusů se počítal čtením celého souboru přes `DictReader` a každé automatické obnovení spustilo
+stejné čtení souběžně znovu.
+
+- Okamžité opravy: počet kusů jen počítáním řádků (bez dict), jedno skenování složky naráz (zámek
+  složky — další požadavky čekají na výsledek), převzetí metadat při přesunu `done_local → done_remote`
+  (stejné mtime + velikost) bez nového čtení, timeout `/api/files` 30 s. Studený výpis 4,7 s.
+- **Přehled z názvů souborů** (`CsvRepository(background_counts=True)` v aplikaci): zakázka, typ
+  spínače a čas založení z názvu `PROD_{zakázka}_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv` /
+  `TEST_{typ}_…`, stav sync ze složky — soubor se neotevírá. Název bez času (starší / ruční) → jen
+  hlavička + první záznam (`read_file_meta(count=False)`).
+- **Počet kusů na pozadí** — vlastní vlákna (`_COUNT_WORKERS` = 2 na lokalitu), fronta bez duplicit.
+  Dopočet přepíše i zakázku a typ přesnými hodnotami z metadat (podtržítko v názvu je nejednoznačné);
+  soubor bez kusů se skryje (jako dřív). `record_count: null` = dopočítává se; `/api/files` vrací
+  `counts_pending` a frontend se ptá znovu po 1,5 s (`COUNTS_RETRY_MS`), v buňce pulzující „…"
+  s nápovědou „Počet záznamů se dopočítává…", patička „Záznamů celkem: …". Řazení: neznámé na konec.
+- **Rozpracovaná zakázka** se čte vždy celá (živý počet kusů).
+- `created_at` = čas založení zakázky z názvu (dřív čas prvního kusu — rozdíl sekund).
+- Výsledek: seznam se 100 velkými zakázkami se zobrazí za **0,08 s**, počty do ~6–8 s.
+
+### Fáze 38 — Připravenost na velký archiv (NAS se 100 000+ soubory) (2026-10-10)
+
+- **Dopočet z NAS jen pro zobrazenou stránku** (`FileService.list_files_paginated` →
+  `repo.request_counts(page_files)`) — dopočet z NAS stahuje celé soubory; dřív by časem stáhl
+  celý archiv (100 000 × 13 MB ≈ 1,3 TB). Lokálně se počítá vše (složku omezuje limit úložiště).
+- **Trvalá znalost zakázek** — tabulka `known` v SQLite cache: název + velikost → počet kusů, zakázka,
+  typ. Přežije smazání lokální kopie (úklid po 30 dnech) — archiv na NAS zná počty všech zakázek, které
+  prošly tímto strojem, bez stahování.
+- **Výpis NAS v paměti** `_REMOTE_LISTING_TTL` = 15 s; když nové skenování právě běží, dostane
+  požadavek poslední známý stav (nečeká). Dřív se celá složka vypisovala při každém obnovení
+  (během dopočtu každých 1,5 s).
+- **Cache metadat v SQLite** (`03_output/cache/file_meta.sqlite`, `_MetaStore`, WAL) místo JSON —
+  zapisují se jen změny (2,4 ms), dřív přepis 42 MB / 100 000 souborů ~4 s s drženým GIL (server
+  stál). Načtení po startu 1,25 s. Poškozená / cizí cache se zahodí a založí znovu; změna schématu
+  (`_SCHEMA`) cache vyprázdní. Starý `file_meta.json` se při startu smaže.
+- **`FileMeta`** — neměnná kompaktní metadata (`__slots__`, `Mapping` → čte se jako dict), cache je
+  vrací bez kopírování; klíče cache jsou `str`; `_folder_keys` (klíče podle složek) místo procházení
+  celé cache při úklidu. ~1 kB na soubor (dřív ~1,6 kB). Na API se převádí na dict jen stránka.
+- **Detail souboru z NAS čte lokální kopii**, pokud existuje (stejný název a velikost) —
+  `CsvRepository.prefer_local()` / `FileService._read_path()` (detail, časový průběh, XLSX, signál,
+  stažení).
+- **Limity**: pool NAS (`io_pool._NAS_WORKERS`) 4 → 6; dopočet z NAS 2 vlákna (nevytížit linku —
+  upload DatabaseGateway, kancelář); `per_page=0` (všechny záznamy) strop `_ALL_RECORDS_CAP` = 20 000
+  (dřív 100 000 ≈ 600 MB); index zakázek ≤ 256 MB.
+- Čas z názvu ručně (`_name_ts`) místo `strptime` (100 000 souborů 1,6 s → 0,1 s).
+- Oprava: dopočet mohl zapisovat do už zavřené cache při ukončení (`_MetaStore.write` kontroluje
+  spojení pod zámkem).
+- Měření 100 000 souborů (lokální disk, bez latence SMB): první výpis 2,8 s, další 0,16 s, nový výpis
+  po TTL 0,8 s, restart 1,25 s + 0,85 s, paměť cache ~100 MB.
+
+### Fáze 39 — Závislosti frontendu: npm audit 0 zranitelností (2026-10-10)
+
+- `npm audit fix` (v rámci verzí) + nové hlavní verze: **vite 5 → 8** (Rolldown; `manualChunks`
+  funguje), **@vitejs/plugin-react 4 → 6**, **react-router-dom 6 → 7** (API použité aplikací beze změny).
+  `package.json` `"type": "module"` (vyžaduje Vite 8 pro nativní načtení konfigurace).
+  SheetJS (`xlsx`) odstraněn (fáze 36). Build ~1–4 s. Vyžaduje Node.js ≥ 20.19.
+- Ověřeno: typy, lint, Vitest, build, TypeDoc a průchod všech obrazovek v prohlížeči (36 snímků
+  manuálu, bez chyb stránky).
+
+**Stav testů po fázi 39:** Backend **274/274**, Frontend **117/117** (17 souborů), `npm run lint`
+0 problémů, `npm audit` 0 zranitelností. **Verze 2.1.1** (release 2026-10-10).
+
 ---
 
 ## Tok dat
@@ -825,9 +943,12 @@ formát CSV, názvy / jednotky / vzorce parametrů, kategorie, NAS). Shoda ve v�
     │                        server-side datum filtr  &from= &to=
     ▼
 [CsvRepository]   (services/repositories/csv_repository.py)
-  list_local() / list_remote()
-  read_file_meta()  O(1) paměť
-  read_records()
+  list_local() / list_remote()  — přehled z názvů souborů (FileMeta), NAS výpis 15 s v paměti
+  request_counts()  — dopočet počtu kusů na pozadí (lokálně vše, NAS jen zobrazená stránka)
+  read_file_meta()  — hlavička + počet řádků
+  read_records()    — přes _OrderIndex (zakázka v paměti, LRU 3 soubory / 256 MB)
+  read_table()      — celý soubor pro XLSX (xlsx_export.build_xlsx)
+  _MetaStore        — SQLite cache metadat + tabulka known (03_output/cache/file_meta.sqlite)
   validate_params() — path traversal, null byte, _DONE.csv suffix
 
     [status.py]
@@ -841,7 +962,8 @@ formát CSV, názvy / jednotky / vzorce parametrů, kategorie, NAS). Shoda ve v�
 
 Veškeré blokující I/O: services/io_pool.run_io(location, …)
   local  → asyncio.to_thread (výchozí pool)
-  remote → vlastní NAS pool (4 vlákna); plný → NasBusyError → HTTP 503 okamžitě
+  remote → vlastní NAS pool (6 vláken); plný → NasBusyError → HTTP 503 okamžitě
+  NAS soubor, který leží i lokálně (stejný název a velikost) → čte se lokální kopie
 ```
 
 ### CSV formáty (DatabaseGateway)
@@ -863,12 +985,12 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | Entrypoint | `main.py` | argparse, sys.path setup, load_config, uvicorn.run |
 | App factory | `app.py` | FastAPI, lifespan (try/finally start/stop), router registrace, app.state |
 | API | `api/plc_ws.py`, `api/files.py`, `api/data.py`, `api/signal.py`, `api/status.py`, `api/health.py`, `api/auth.py`, `api/users_api.py`, `api/config_api.py`, `api/dependencies.py` | HTTP/WS — validace requestu, volání service, mapování na HTTP kódy, autentizace (Bearer) |
-| Business service | `services/file_service.py`, `services/signal_reader.py`, `services/ads_monitor.py`, `services/ws_manager.py` | Business logika: filtrování, stránkování, sync_status, signálová data (decimace, klíčové body, cache), ADS→WS bridge |
+| Business service | `services/file_service.py`, `services/signal_reader.py`, `services/xlsx_export.py`, `services/ads_monitor.py`, `services/ws_manager.py` | Business logika: filtrování, stránkování, sync_status, signálová data (decimace, klíčové body, cache), ADS→WS bridge |
 | I/O pool | `services/io_pool.py` | `run_io()` — NAS operace ve vlastním poolu s okamžitým 503 při zaseknutí; lokální I/O v `to_thread` |
-| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení (3 formáty), metadata + cache (mtime/size), validace vstupů (`validate_params`) |
+| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení (3 formáty), přehled z názvů souborů (`FileMeta`) + dopočet na pozadí, SQLite cache metadat (`_MetaStore`), index zakázky v paměti (`_OrderIndex`), validace vstupů (`validate_params`) |
 | Protocol/Interface | `services/protocols.py` | `DataReader` Protocol (PEP 544); API vrstva závisí na abstrakci — lze vyměnit za SqliteReader |
 | Config | `config.py`, `constants.py` | Dataclasses + load_config (tomllib), ADS symboly |
-| Utils | `src/utils/apiFetch.ts`, `formatting.ts`, `exportXlsx.ts`, `downloadOriginal.ts`, `paramMeta.ts`, `groupColors.ts` | Autentizovaný fetch (401 → odhlášení), formátování, exporty (XLSX vždy celý soubor), metadata parametrů (`PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS` — sdíleno ChartView + RecordDiagram), barvy skupin |
+| Utils | `src/utils/apiFetch.ts`, `formatting.ts`, `exportXlsx.ts`, `downloadOriginal.ts`, `paramMeta.ts`, `groupColors.ts` | Autentizovaný fetch (401 → odhlášení), formátování, exporty (XLSX ze serveru, vždy celý soubor), metadata parametrů (`PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS` — sdíleno ChartView + RecordDiagram), barvy skupin |
 
 ---
 
@@ -882,11 +1004,12 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/files` | GET | Seznam zakázek; `?location=local\|remote&type=production\|testing&page=1&per_page=50` |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` |
-| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=` |
+| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=&page=&per_page=` + filtr detailu zakázky `&status=ok\|nok&category=1,3`; `per_page=0` = vše (strop 20 000) |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data `?file=&location=&type=&mode=&buckets=` (overview / results / hysteresis / zoom_op / zoom_rp) |
 | `/api/timeline` | GET | Časový průběh zakázky `?file=&location=&type=` → `{timestamps[], categories[]}` (jen production) |
 | `/api/files/{file_id}/download` | GET | Originální CSV soubor |
+| `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) |
 | `/api/files/batch-delete` | POST | Hromadné mazání (max 200) |
 | `/api/status` | GET | `{remote_available: bool}` |
 | `/api/auth/login` | POST | `{username, password}` → `{token}`; PBKDF2-HMAC-SHA256 |
@@ -929,13 +1052,16 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
       "order_id":     "0003",
       "switch_name":  "Marquardt",
       "created_at":   "2026-07-18T08:00:00",
-      "record_count": 12,
+      "record_count": 12,            ← null = ještě se dopočítává
       "sync_status":  "done_local"   ← pouze pro location=local
     }
   ],
   "total": 5,
   "page":  1,
-  "pages": 1
+  "pages": 1,
+  "wip": [ … ],                      ← rozpracované zakázky (jen local, mimo stránkování)
+  "hidden_by_filter": 0, "latest_created_at": null,
+  "counts_pending": false            ← true = na stránce jsou soubory bez počtu → zeptat se znovu
 }
 ```
 
@@ -956,9 +1082,16 @@ Query parametry stránkování: `?page=1&per_page=50` (výchozí; per_page max 2
       "microswitch_name": "Marquardt"
     }
   ],
-  "total": 12
+  "total": 12,
+  "page": 1, "pages": 1, "per_page": 200,
+  "group_counts": {"1": 3, "2": 9},  ← kategorie za celý soubor (i při filtru)
+  "file_expected_count": null,
+  "has_signal": false,
+  "total_all": null                  ← jen při filtru status/category: počet kusů bez filtru
 }
 ```
+
+Při filtru `status` / `category` nese každý záznam `_idx` (pořadí v nefiltrovaném souboru).
 
 Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` porovnání na `timestamp[:10]` — robustní pro všechny ISO 8601 varianty (timezone, milisekundy).
 
@@ -985,6 +1118,45 @@ Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` po
 
 `POST /api/storage/cleanup[?force=true]` → `{deleted, freed_bytes, skipped, failed}`;
 `skipped` = na NAS chybí / jiná velikost (jen ověřený režim). 503 = NAS nedostupný, 409 = čištění už běží.
+
+---
+
+## Výkon, paměť a škálovatelnost (stav po fázi 39)
+
+### Stropy paměti serveru
+
+| Co | Strop | Kde |
+|----|-------|-----|
+| Metadata souborů (přehled) | ~1 kB / soubor (100 000 ≈ 100 MB) — **jediné, co roste s archivem** | `FileMeta`, `CsvRepository._meta` |
+| Zakázky v paměti (`_OrderIndex`) | 3 soubory a ≤ 256 MB | `_INDEX_CACHE_FILES`, `_INDEX_CACHE_BYTES` |
+| Signálová data testů | 2 naparsované soubory (~60 MB) + 12 hotových odpovědí | `signal_reader` |
+| Export XLSX | velikost jednoho souboru na souběžný export (~17 MB / 50 000 kusů) | `xlsx_export` |
+| `/api/data?per_page=0` | 20 000 řádků | `api/data._ALL_RECORDS_CAP` |
+| Přesunuté soubory / fronta dopočtu | 2 000 / počet souborů | `_moved`, `_count_pending` |
+
+Reálný odhad i při velkém archivu a souběžné práci: ~0,3–0,6 GB.
+
+### Měření (vývojové PC, lokální disk — bez latence SMB)
+
+| Scénář | Výsledek |
+|--------|----------|
+| Zakázka 50 000 kusů: stránka / filtr / detail kusu (server) | 0,02–0,05 s (dřív 1,2 s); první otevření 0,24 s |
+| Totéž v prohlížeči (další stránka) | ~0,35 s (dřív ~1,8 s) |
+| XLSX 50 000 kusů | ~3 s na serveru, 16,9 MB (dřív ~16 s a > 1 GB v prohlížeči) |
+| Databáze se 100 zakázkami po 50 000 kusech | seznam 0,08 s, počty do ~6–8 s (dřív 503) |
+| 100 000 souborů ve složce „NAS" | 1. výpis 2,8 s, další 0,16 s, po TTL 0,8 s, restart 1,25 s + 0,85 s |
+
+### Co zůstává mimo ScadaViewer (doporučení do budoucna)
+
+1. **Plochá složka na NAS se 100 000+ soubory** — výpis přes SMB může trvat desítky sekund (ScadaViewer
+   ho schová — poslední stav v paměti — ale první výpis po startu ho zaplatí). Nejúčinnější:
+   DatabaseGateway ukládá do podsložek `Production/RRRR/MM/`, ScadaViewer čte jen měsíce z filtru data.
+2. **Počet kusů souborů, které tímto strojem neprošly** (jiná linka / před nasazením) — musí se jednou
+   stáhnout celé. Lepší: DatabaseGateway zapíše počet kusů do souboru / názvu při uzavření zakázky.
+3. **Retence na NAS** — archiv roste bez omezení (zakázka 50 000 kusů ≈ 13 MB, test ≈ 40 MB);
+   dohodnout s Trafag. ScadaViewer na NAS nikdy nemaže.
+4. **Nad ~500 000 soubory** přesunout řazení / filtrování přehledu do SQLite (cache už v SQLite je).
+5. **Změřit rychlost sítě k NAS** na PC u stroje (výpis složky, stažení velkého souboru).
 
 ---
 
@@ -1147,7 +1319,7 @@ useEffect([fetchFiles]) → GET /api/files → files[]
 
 Expand (production): useFileRecords → GET /api/data?file=...
 Download CSV:  downloadCsv → GET /api/files/{id}/download → originální soubor (downloadOriginal.ts)
-Download XLSX: downloadXlsx → exportFileXlsx() → GET /api/data?per_page=0 (celý soubor) → SheetJS (dynamický import)
+Download XLSX: downloadXlsx → exportFileXlsx() → „Uložit jako" → GET /api/files/{id}/xlsx (sestaví server, celý soubor)
 Delete: deleteFile → DELETE /api/files/{id}?location=&type= → toast + fetchFiles()
 ```
 

@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.1.0"
+    ├── __init__.py            ← __version__ = "2.1.1"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -64,8 +64,8 @@ CLAUDE.md                  ← tento soubor
     │   ├── __init__.py
     │   ├── plc_ws.py          ← WebSocket /ws/plc
     │   ├── orders_ws.py       ← WebSocket /ws/orders (OrderWatcher live záznamy) — ⏸ odpojeno (2026-09-23)
-    │   ├── files.py           ← GET /api/files + GET /api/files/{id} + DELETE + POST batch-delete
-    │   ├── data.py            ← GET /api/data s filtry from/to
+    │   ├── files.py           ← GET /api/files (+ counts_pending) + GET /api/files/{id} + /download + /xlsx + DELETE + POST batch-delete
+    │   ├── data.py            ← GET /api/data (from/to, status ok|nok, category 1–6, per_page=0 strop 20 000) + GET /api/timeline
     │   ├── status.py          ← GET /api/status → remote_available
     │   ├── health.py          ← GET /api/health → {status, version, checks}
     │   ├── auth.py            ← POST /api/auth/login + logout + change-password + plc-login
@@ -80,17 +80,20 @@ CLAUDE.md                  ← tento soubor
         ├── ads_monitor.py     ← AdsMonitor: asyncio bridge ADS→WS; reconnect + heartbeat
         ├── file_service.py    ← list_files(), list_files_paginated() (+ wip), sort + stránkování
         ├── files_watcher.py   ← každé 2 s otisk lokálních složek → WS {"type":"files_changed"} (auto-refresh Database)
-        ├── io_pool.py         ← run_io(): NAS I/O ve vlastním poolu (4 vlákna), plný → NasBusyError → 503
-        ├── repositories/csv_repository.py ← CSV I/O, validace file_id, cache metadat (mtime/size)
+        ├── io_pool.py         ← run_io(): NAS I/O ve vlastním poolu (6 vláken), plný → NasBusyError → 503
+        ├── repositories/csv_repository.py ← CSV I/O, validace file_id; přehled z názvů souborů (FileMeta) + dopočet počtů na pozadí;
+        │                                     SQLite cache metadat (_MetaStore, tabulka known); NAS výpis 15 s v paměti;
+        │                                     zakázka v paměti (_OrderIndex, LRU 3 soubory / 256 MB); prefer_local()
         ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast — ⏸ odpojeno
         ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP; cache 2 souborů
+        ├── xlsx_export.py     ← build_xlsx(): XLSX bez závislosti (proudově, čísla jako čísla, čas jako datum, zmrazená hlavička, filtr)
         ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
         └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast(); clear_symbols() po výpadku ADS
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
-├── package.json           ← závislosti (viz sekce Závislosti); skripty dev / build / test / lint
+├── package.json           ← závislosti (viz sekce Závislosti); "type": "module"; skripty dev / build / test / lint
 ├── eslint.config.mjs      ← `npm run lint`: rules-of-hooks, exhaustive-deps, no-explicit-any, no-console
-├── vite.config.ts         ← proxy /api → :8080, /ws → ws://:8080
+├── vite.config.ts         ← Vite 8; proxy /api → :8080, /ws → ws://:8080; chunky react / charts
 ├── tsconfig.json          ← strict mode, noEmit (tsc nesmí generovat .js do src/ — Vite by je bral před .tsx)
 ├── index.html
 └── src/
@@ -107,7 +110,8 @@ CLAUDE.md                  ← tento soubor
     ├── components/
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
     │   ├── AppLogo.tsx        ← SVG logo 4 čtverce
-    │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[] (ChartView)
+    │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[] (ChartView); memo — stabilní props
+    │   ├── RecordFilterBar.tsx ← filtr kusů v detailu zakázky: Stav Vše/OK/NOK + Kategorie Vše/1–6 (filtruje server)
     │   ├── DeleteModal.tsx    ← potvrzovací dialog mazání
     │   ├── ErrorBoundary.tsx  ← class component, getDerivedStateFromError
     │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (skupiny, count tile, akce)
@@ -145,14 +149,15 @@ CLAUDE.md                  ← tento soubor
     │   ├── useSignalData.ts    ← GET /api/signal; AbortController; lazy loading zoom dat
     │   ├── useOrderTimeline.ts ← GET /api/timeline líně (až po přepnutí grafu); modulová cache 5 zakázek
     │   ├── useContentScroll.ts ← skrolování <main.content>: nová stránka nahoru, Zpět = obnova pozice (volán v AppShell)
-    │   └── useClientLocal.ts   ← GET /api/auth/client — u stroje / vzdáleně; opakuje, dokud server neodpoví (kiosk po startu PC)
+    │   ├── useClientLocal.ts   ← GET /api/auth/client — u stroje / vzdáleně; opakuje, dokud server neodpoví (kiosk po startu PC)
+    │   └── usePrintMode.ts     ← tiskové tabulky vykreslit až při tisku (printNow / beforeprint, flushSync)
     ├── utils/
     │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
     │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
-    │   ├── exportXlsx.ts       ← XLSX export (SheetJS); exportFileXlsx() = vždy celý soubor (per_page=0)
+    │   ├── exportXlsx.ts       ← exportFileXlsx(): „Uložit jako" hned po kliknutí → GET /api/files/{id}/xlsx (sestaví server); xlsxBaseName()
     │   ├── formatting.ts       ← formatDateTime(iso, withSeconds) + formatDate + formatBytes — sdíleno napříč stránkami
     │   └── overviewHelpers.ts  ← ⏸ jen pro odpojený Overview
     ├── styles/
@@ -187,11 +192,14 @@ CLAUDE.md                  ← tento soubor
 ├── test_timeline.py           ← GET /api/timeline (všechny záznamy, řazení, kategorie, 404)
 ├── test_remote_access.py      ← vzdálený přístup: PLC login jen u stroje, zápisy 403, čtení OK, local_clients
 ├── test_signal_threshold.py   ← práh přepnutí U_NC jako Analyzing (klidové + (max − klidové) × 0,5)
+├── test_data_filter.py        ← filtr kusů /api/data?status=&category= (total_all, _idx, stránkování, 422)
+├── test_big_order.py          ← velké zakázky a archiv: index v paměti, XLSX, přehled z názvů, dopočet, SQLite cache,
+│                                 NAS výpis v paměti, dopočet jen pro stránku, lokální kopie, limity paměti, tabulka known
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
 ├── logs/                      ← logy serveru (gitignore) — generuje uvicorn
-└── cache/file_meta.json       ← cache metadat CSV souborů (gitignore) — přežije restart, lze kdykoli smazat
+└── cache/file_meta.sqlite     ← cache metadat CSV souborů (SQLite + -wal/-shm, gitignore) — přežije restart, lze kdykoli smazat
 
 04_docs/
 ├── architecture.md            ← tok dat, vrstvy, CSV formáty, výkon, API, provider strom, časová osa fází
@@ -200,7 +208,8 @@ CLAUDE.md                  ← tento soubor
 ├── how_to_extend.md           ← návody: ADS symbol, endpoint, stránka, CSV sloupec, i18n…
 ├── roadmap.md                 ← stav, otázky pro Trafag, definice „hotovo"
 ├── project_reviews.md         ← průběžná hodnocení profesionality projektu
-├── acceptance_test.md         ← závěrečný test před odevzdáním: automatické testy, výpadky, zátěž, soak, bezpečnost
+├── acceptance_test.md         ← závěrečný test před odevzdáním: automatické testy, výpadky, zátěž (+ naměřené hodnoty), soak, bezpečnost
+├── manual/                    ← uživatelský manuál CS + EN (Word + PDF, screenshoty) — generuje 06_build/manual/
 ├── architecture_critique.md   ← historická analýza (2026-07-20) — neaktualizuje se
 └── professional_improvements.md ← historická roadmapa vylepšení (2026-07-20) — neaktualizuje se
 
@@ -227,6 +236,8 @@ CLAUDE.md                  ← tento soubor
 │   └── nssm_install.bat       ← Windows service instalátor (vzor z DatabaseGateway)
 ├── docs/
 │   └── generate-docs.bat      ← pdoc (backend) + TypeDoc (frontend) → 06_build/docs/backend|frontend/ (gitignore)
+├── manual/                    ← generátor uživatelského manuálu (demo data, Playwright screenshoty, docx, Word → PDF) — README
+├── loadtest/                  ← zátěžové testy: make_big_orders.py (vzorové velké zakázky → done_remote!), measure_api.py
 └── pdf/
     └── pdf_metadata.yaml      ← metadata pro pandoc PDF export (skript build_pdf.bat v repozitáři není)
 ```
@@ -385,12 +396,13 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/users` | GET / POST | Seznam uživatelů / přidání nového (admin+) |
 | `/api/users/{username}` | DELETE | Smazání uživatele (admin+) |
 | `/api/users/{username}/password` | POST | Změna hesla — admin+ jiným s nižší rolí; vlastní heslo vždy s `current_password` |
-| `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) + `wip[]` — rozpracované zakázky (jen local, mimo stránkování/filtry) |
+| `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`) + `wip[]` — rozpracované zakázky (jen local, mimo stránkování/filtry). Přehled z názvů souborů: `record_count: null` = dopočítává se, `counts_pending` = zeptat se znovu (NAS: dopočet jen pro stránku) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
+| `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) — čísla jako čísla, čas jako datum |
 | `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` → 409 |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
-| `/api/data` | GET | CSV záznamy s filtry (`?file=&location=&type=&from=&to=`) |
+| `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3` → `total_all`, záznamy s `_idx`; `per_page=0` = vše, strop 20 000 |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
 | `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno; jen production, jinak 404) |
@@ -421,7 +433,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 ```json
 {
   "status":  "ok",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "checks": {
     "local_storage": true,
     "ads":           false
@@ -507,8 +519,8 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
-| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ plně funkční + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + klikací tabulka; Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ přehled z názvů souborů (okamžitě i u 100 000 souborů), počet kusů „…" → dopočet na pozadí + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + **filtr kusů** (stav OK/NOK + kategorie) + klikací tabulka; velká zakázka (50 000 kusů) plynule (index v paměti, memo); Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -545,6 +557,9 @@ Konfigurace se načítá při startu přes `load_config()` → `AppConfig` datac
 Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart nutný
 (výjimky: cesty `PATCH /api/config/paths` a limit `PATCH /api/config/storage` platí okamžitě).
 
+Cache metadat: `03_output/cache/file_meta.sqlite` (vedle Config.toml) — lze kdykoli smazat (jen se znovu
+dopočítá); starší `file_meta.json` se při startu sám smaže. Paměť služby ~0,3–0,6 GB (stropy: `architecture.md`).
+
 ---
 
 ## 9. Závislosti
@@ -564,14 +579,16 @@ Chybí-li klíč, padne `KeyError` s jasnou chybou. Není hot-reload — restart
 | Balíček | Verze | Účel |
 |---------|-------|------|
 | `react` + `react-dom` | ^18.3 | UI framework |
-| `react-router-dom` | ^6.24 | SPA routing (BrowserRouter, NavLink, useSearchParams) |
+| `react-router-dom` | ^7.18 | SPA routing (BrowserRouter, NavLink, useSearchParams) — v7 od 2026-10-10 (npm audit) |
 | `recharts` | ^2.12 | Declarativní React grafy (LineChart, ResponsiveContainer) |
 | `lucide-react` | ^1.25 | SVG ikony (HardDrive, Server, ChevronDown, …) |
-| `xlsx` | ^0.18 | SheetJS — XLSX export (Database + ChartView) |
 | `@fontsource-variable/dm-sans` | ^5.3 | Self-hosted DM Sans (variabilní, opsz osa) — bez Google Fonts CDN |
 | `@fontsource/dm-mono` | ^5.3 | Self-hosted DM Mono (monospacový font) — bez Google Fonts CDN |
-| `vite` + `@vitejs/plugin-react` | ^5.3 | Build tool + HMR dev server |
+| `vite` + `@vitejs/plugin-react` | ^8.3 / ^6.1 | Build tool (Rolldown) + HMR dev server; Node.js ≥ 20.19, `"type": "module"` |
 | `typescript` | ^5.5 | Statické typy |
+
+> XLSX sestavuje backend (`services/xlsx_export.py`, bez závislosti) — SheetJS odstraněn 2026-10-09.
+> `npm audit`: 0 zranitelností (2026-10-10). SQLite cache používá `sqlite3` ze standardní knihovny Pythonu.
 
 ---
 
@@ -761,13 +778,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.1.0**) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.1.1**) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **247 testů**: config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 15 souborů) — **107 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n; `npm run lint` (ESLint) 0 problémů |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **274 testů**: filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 17 souborů) — **117 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -780,6 +797,12 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
 | Audit kvality + ESLint (2026-09-26) | ✅ | 14 nálezů / 9 opraveno (mj. retry `useClientLocal`, `proxy_headers=False`, atomický zápis Config.toml); otevřené A6, A7, A9–A11 — viz audit_log |
 | Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |
+| Filtr kusů, Base Period µs, název XLSX (Fáze 35) | ✅ | `RecordFilterBar` + `/api/data?status=&category=`; DatabaseGateway hlavička `[us]` — viz architecture.md |
+| Velké zakázky 50 000 kusů (Fáze 36) | ✅ | `_OrderIndex` v paměti (0,02–0,05 s / stránka), XLSX ze serveru (~3 s), tisk s poznámkou o rozsahu, memo / `usePrintMode` |
+| Přehled z názvů souborů (Fáze 37) | ✅ | okamžitý seznam, počet kusů na pozadí („…", `counts_pending`), jedno skenování složky naráz |
+| Připravenost na velký archiv (Fáze 38) | ✅ | SQLite cache + tabulka known, `FileMeta`, NAS výpis 15 s, dopočet z NAS jen pro stránku, lokální kopie, stropy paměti; 100 000 souborů: výpis 0,16 s |
+| Závislosti bez zranitelností (Fáze 39) | ✅ | vite 8, plugin-react 6, react-router-dom 7, SheetJS pryč — `npm audit` 0 |
+| Uživatelský manuál CS + EN | ✅ | `04_docs/manual/` (Word + PDF, 24 screenshotů), generátor `06_build/manual/` |
 | Limit lokálního úložiště + čištění (Fáze 29) | ✅ | `local_max_gb` (Config.toml / Nastavení admin+); topbar chip + `StorageBar` + toast; čištění `done_remote/` ověřené na NAS (každý přihlášený), `force` bez ověření jen po potvrzení rizika — viz audit_log 2026-09-25 |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
@@ -803,6 +826,12 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 9. Zpevnění ekosystému (hodnocení 2026-09-26, `project_reviews.md`): společná specifikace formátu CSV
    + verze v souboru + test napříč aplikacemi, časové značky s časovou zónou, stav DatabaseGateway
    ve ScadaViewer, heslo k NAS mimo git
+10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39)
+11. Škálování (audit 2026-10-10 S1–S5, `roadmap.md` → 6.): podsložky `Production/RRRR/MM/` na NAS
+    (s DatabaseGateway), počet kusů v souboru při uzavření zakázky, retence archivu (Trafag),
+    nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje
+12. A12 — rozdělit `csv_repository.py` (1 121 ř.) na přehled / cache / index zakázky
+13. Smazat vzorové zakázky `VZOR-50K-*` (100 × 13 MB) z `12.Database/production/done_remote/` po testech
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.
@@ -830,7 +859,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | `04_docs/architecture.md` | Detailní popis architektury, datového toku, API formátů |
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
 | `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |
-| `04_docs/acceptance_test.md` | **Závěrečný test před odevzdáním** — checklist: automatické testy, role, výpadky, zátěž dat a souběhu, dlouhodobý běh, bezpečnost, protokol |
+| `04_docs/acceptance_test.md` | **Závěrečný test před odevzdáním** — checklist: automatické testy, role, výpadky, zátěž dat a souběhu (+ naměřené hodnoty, `06_build/loadtest/`), dlouhodobý běh, bezpečnost, protokol |
+| `04_docs/manual/` | **Uživatelský manuál** CS + EN (Word + PDF) — přegenerování `06_build/manual/README.md` |
 | `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč |
 | `04_docs/architecture_critique.md` | *Historická* analýza architektury (2026-07-20) — jen pro kontext |
 | `04_docs/professional_improvements.md` | *Historická* roadmapa vylepšení (2026-07-20) — jen pro kontext |

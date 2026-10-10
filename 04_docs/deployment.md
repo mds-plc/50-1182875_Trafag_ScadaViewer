@@ -42,7 +42,7 @@ Toto je stroj, na kterém **sestavuješ balíček** (ne nutně cílový PC):
 
 ```
 ✅ Python 3.11+       python --version
-✅ Node.js 20+        node --version
+✅ Node.js 20.19+    node --version        (Vite 8 — starší Node build nespustí)
 ✅ pip dependencies   pip install -r 00_backend/requirements.txt   (vč. numpy, pyinstaller)
 ✅ npm dependencies   cd 01_frontend && npm install
 ```
@@ -375,6 +375,35 @@ runas /user:.\svc_trafag "cmd /k dir \\10.45.124.20\trafag_test\Production && di
 - Při výpadku NAS běží obě aplikace dál: DatabaseGateway nahraje soubory po obnovení spojení,
   ScadaViewer hlásí nedostupnost v záložce Vzdálená
 
+### Výkon a velký archiv na NAS
+
+Jak ScadaViewer s NAS pracuje (podrobně `architecture.md` → „Výkon, paměť a škálovatelnost"):
+
+| Akce | Chování |
+|------|---------|
+| Záložka Vzdálená (seznam) | Výpis složky na NAS; zakázka, typ a datum **z názvu souboru** (soubor se neotevírá). Výpis se drží **15 s** v paměti, během nového výpisu se zobrazí poslední známý stav |
+| Počet kusů | Dopočítá se na pozadí **jen pro zobrazenou stránku** (2 vlákna — nevytížit linku). Zakázky, které prošly tímto strojem, mají počet hned (trvalá tabulka v cache, i po smazání lokální kopie). Do té doby „…" |
+| Detail, XLSX, signál, stažení | Soubor, který leží i na PC u stroje (stejný název a velikost), se čte **lokálně**; jinak z NAS (zakázka 50 000 kusů ≈ 13 MB, test ≈ 40 MB). Otevřená zakázka zůstane v paměti serveru — další stránky / filtry bez sítě |
+| NAS nedostupný / pomalý | Max. 6 souběžných operací s NAS; plno → okamžitě „NAS zaneprázdněn" (503), visící NAS → chyba po 30 s. Lokální data, PLC a zbytek aplikace běží dál |
+
+**Změřit po instalaci** (pod servisním účtem, z PC u stroje) — rychlost sítě k NAS rozhoduje o všem,
+co se z NAS čte; výsledek zapsat sem:
+
+```bat
+:: výpis složky (počet souborů a čas)
+powershell -Command "Measure-Command { (Get-ChildItem \\10.45.124.20\trafag_test\Production -File).Count } | Select TotalSeconds"
+:: stažení jednoho velkého souboru (např. testu ~40 MB) do TEMP
+powershell -Command "Measure-Command { Copy-Item \\10.45.124.20\trafag_test\Testing\<soubor>.csv $env:TEMP } | Select TotalSeconds"
+```
+
+| Datum | Souborů v Production | Výpis [s] | Soubor [MB] | Stažení [s] |
+|-------|----------------------|-----------|-------------|-------------|
+| | | | | |
+
+**Dlouhodobě (dohoda s Trafag / DatabaseGateway):** plochá složka se 100 000+ soubory se přes SMB
+vypisuje desítky sekund — doporučené podsložky `Production/RRRR/MM/` a retence archivu
+(`roadmap.md` → 6. Škálování).
+
 ---
 
 ## Vzdálený přístup z kanceláře
@@ -524,6 +553,7 @@ nssm start   Caddy
 ### Provozní test
 
 - [ ] Restart PC → obě služby naběhnou samy, kiosk se otevře, NAS dostupný
+- [ ] Změřena rychlost sítě k NAS ([Výkon a velký archiv na NAS](#výkon-a-velký-archiv-na-nas)) a zapsána do tabulky
 - [ ] Ověřit logy v `03_output\logs\nssm_stdout.log`
 
 ---
@@ -587,6 +617,19 @@ GET http://localhost:8080/api/health
 Endpoint vrací vždy HTTP 200 a je určen pro externí monitoring. NSSM restartuje službu, pokud
 proces skončí; stav `/api/health` sám nekontroluje.
 
+### Cache a paměť
+
+```
+03_output\cache\file_meta.sqlite (+ -wal, -shm)   ← cache metadat souborů (SQLite)
+```
+
+- Obsahuje metadata souborů (zakázka, typ, datum, počet kusů) a trvalou tabulku „známých" zakázek
+  (počet kusů podle názvu a velikosti — platí i po smazání lokální kopie). **Lze kdykoli smazat**
+  (zastavit službu → smazat → spustit); jen se znovu vytvoří a počty kusů se znovu dopočítají.
+- Starší verze (do 2.1.0) používaly `file_meta.json` — při prvním startu nové verze se sám smaže.
+- **Paměť serveru:** ~1 kB na soubor v přehledu (100 000 souborů ≈ 100 MB) + otevřené zakázky
+  (max. 256 MB) + signálová data (~60 MB) → počítat s ~0,3–0,6 GB pro službu ScadaViewer.
+
 ---
 
 ## Řešení problémů
@@ -637,6 +680,13 @@ Typické příčiny:
   `production_path` / `testing_path` DatabaseGateway (viz mapování v kapitole NAS)
 
 Aplikace při výpadku NAS dál funguje (lokální záložka není ovlivněna).
+
+### V Databázi je místo počtu záznamů „…"
+
+Počet kusů se dopočítává na pozadí (přehled se zobrazí hned z názvů souborů) — doplní se sám.
+Lokálně se počítá všechno, z NAS jen zobrazená stránka (u velkých souborů na NAS může trvat
+desítky sekund podle rychlosti sítě). Trvá-li „…" dlouho: zkontrolovat dostupnost NAS (záložka
+Vzdálená) a log (`[CSV]   dopočet … selhal`). Soubor bez jediného kusu se po dopočtu z přehledu skryje.
 
 ### Vzdálený přístup nefunguje
 

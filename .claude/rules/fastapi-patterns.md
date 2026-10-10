@@ -136,7 +136,18 @@ result = await asyncio.wait_for(
 
 ## Výkon — zavedené mechanismy (nerozbíjet)
 
-- `CsvRepository._meta_cache` — metadata souborů dle `(mtime_ns, size)`
+- **Přehled souborů z názvů** — `FileMeta` (neměnný, `Mapping`, bez kopie; změna = `replace()` + `_put()`),
+  `_quick_meta()` z názvu `PROD_{zakázka}_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv`; počet kusů na pozadí
+  (`request_counts` → fronta → `_count_job`), **z NAS jen zobrazená stránka** (dopočet stahuje celé soubory).
+  `record_count: None` = dopočítává se, `/api/files` vrací `counts_pending`.
+- `_MetaStore` — SQLite cache metadat (`03_output/cache/file_meta.sqlite`), zapisovat jen změny přes
+  `_put()` / `_drop()` / `_flush()`; tabulka `known` (počty podle názvu + velikosti). Změna schématu → `_SCHEMA`.
+- Výpis NAS složky `_REMOTE_LISTING_TTL` (15 s), během skenování poslední známý stav.
+- `_OrderIndex` — zakázka v paměti (LRU 3 soubory / 256 MB); záznamy číst přes `read_records()` /
+  `read_table()`, nový filtr = předpočítaný sloupec v `_build_index()`.
+- XLSX celé zakázky jen na serveru (`services/xlsx_export.build_xlsx`); `per_page=0` má strop 20 000.
+- Soubor z NAS číst přes `FileService._read_path()` (lokální kopie, je-li).
+- **Každá nová cache s limitem** (počet + paměť) — stropy v `architecture.md` → „Výkon, paměť a škálovatelnost".
 - `signal_reader` — LRU cache naparsovaných souborů + cache hotových odpovědí; numpy parser
 - `/api/data` spouští prefetch signálu na pozadí (`_prefetch_tasks`)
 - `/api/signal?mode=range&t0=&t1=` (přiblížený graf) — odpověď se NEcachuje (rozsahy se mění plynule),

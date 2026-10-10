@@ -28,11 +28,12 @@
 
 | # | Příkaz | Očekávání |
 |---|--------|-----------|
-| 1.1 | `pytest 02_tests/ -v` | všechny testy prošly (v2.1.0: 247) |
-| 1.2 | `cd 01_frontend && npm run test` | všechny testy prošly (v2.1.0: 107) |
+| 1.1 | `pytest 02_tests/ -v` | všechny testy prošly (2026-10-10: 274) |
+| 1.2 | `cd 01_frontend && npm run test` | všechny testy prošly (2026-10-10: 117) |
 | 1.3 | `npm run lint` | 0 chyb, 0 varování |
 | 1.4 | `npx tsc --noEmit` | bez chyb |
 | 1.5 | `npm run build` | build bez chyb a varování o velikosti chunků |
+| 1.5a | `npm audit` | 0 zranitelností (2026-10-10) |
 | 1.6 | Sesterské projekty: `pytest` v DatabaseGateway a Analyzing | všechny prošly (formát CSV musí sedět napříč) |
 
 ---
@@ -58,8 +59,11 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 ### 2.2 Obrazovky a ovládání
 
 - [ ] Database: přepínání Local/Remote × Production/Testing, řazení všech sloupců, filtr data, stránkování
+- [ ] Database: nové soubory mají chvíli místo počtu záznamů „…" a doplní se samy (počet se dopočítává na pozadí)
 - [ ] Rozpracovaná zakázka (WIP) je nahoře a během výroby přibývají kusy bez ručního obnovení
 - [ ] Detail zakázky: Rozložení kategorií ↔ Časový průběh bez posunu obsahu; klik na záznam → detail → Zpět vrátí pozici
+- [ ] Detail zakázky: filtr Stav (Vše / OK / NOK) a Kategorie (Vše / 1–6), „Zobrazeno: X z Y", klik na vyfiltrovaný kus otevře správný detail
+- [ ] XLSX: dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum
 - [ ] Testing detail: všech 5 záložek Signal Data, zoom kolečkem i dvěma prsty, dvojklik = reset, celá obrazovka
 - [ ] Tisk production i testing: zkontrolovat PDF (záhlaví, čísla stran, žádné prázdné stránky, všechny grafy)
 - [ ] CS/EN přepnout na každé obrazovce, nesmí zůstat nepřeložený text
@@ -90,29 +94,43 @@ U každého scénáře sleduj: aplikace nespadne, obsluha pozná, co se děje, a
 
 ## 4. Zátěž objemem dat
 
-Cíl: ověřit, že aplikace zůstane rychlá, až se za měsíce provozu nahromadí data.
-Na **kopii dat** (vlastní testovací `local_path`), ne v produkční složce.
+Cíl: ověřit, že aplikace zůstane rychlá, až se za měsíce a roky provozu nahromadí data.
+
+**Nástroje** (`06_build/loadtest/`):
+- `make_big_orders.py` — vytvoří vzorové zakázky z reálné šablony (stejné sloupce, rozptyl hodnot,
+  OK / NOK). **Cíl vždy `{local_path}\production\done_remote\`** — z `done_local\` by je DatabaseGateway
+  nahrál na skutečný NAS (skript `done_local` odmítne). Po testu smazat (`VZOR-` v názvu).
+- `measure_api.py` — jen čtení, změří výpis, dopočet počtů, detail, stránku, filtr, časový průběh, XLSX.
+
+```bat
+python 06_build\loadtest\make_big_orders.py --template <reálná zakázka>_DONE.csv --out D:\Data\db_gateway\03_output\production\done_remote --count 100 --rows 50000
+python 06_build\loadtest\measure_api.py --url http://localhost:8080 --user <jméno> --password <heslo> --location local
+python 06_build\loadtest\measure_api.py --url http://localhost:8080 --user <jméno> --password <heslo> --location remote
+```
 
 | # | Test | Příprava | Sledovat |
 |---|------|----------|----------|
-| 4.1 | Mnoho zakázek | 2 000+ souborů v `production/done_local` a `done_remote` (kopie s jinými názvy) | první načtení Database a každé další (cache metadat) |
-| 4.2 | Velká zakázka | jeden soubor s 5 000+ kusy | rozbalení v Database, detail zakázky, časový průběh, export XLSX |
+| 4.1 | Mnoho velkých zakázek | `make_big_orders.py --count 100 --rows 50000` (1,3 GB) | výpis Database hned, „…" se doplní; po restartu služby výpis hned i s počty |
+| 4.2 | Velká zakázka | zakázka s 50 000 kusy | detail, další stránky, filtr NOK, detail kusu, časový průběh, XLSX, tisk |
 | 4.3 | Velký test | testing soubor s plným `[SignalData]` (~400 000 řádků) | první otevření Signal Data a opakované (cache), zoom v plném rozlišení |
-| 4.4 | Hodně souborů na NAS | 2 000+ souborů v `\\NAS\…\Production` | načtení záložky Vzdálená, první i opakované |
+| 4.4 | Hodně souborů na NAS | archiv na NAS (nebo kopie s tisíci soubory) | záložka Vzdálená první i opakované načtení; „…" jen pro zobrazenou stránku |
 | 4.5 | Hromadné mazání | 200 souborů najednou (limit) na kopii dat | doba, výsledek, obnovení seznamu |
 | 4.6 | Čištění úložiště | stovky souborů v `done_remote` | doba ověření na NAS a mazání |
+| 4.7 | Paměť služby | po 4.1–4.4 | RAM `scada_viewer.exe` (odhad ~0,3–0,6 GB, viz `deployment.md` → Cache a paměť) |
 
-**Návrh cílových časů** (upřesnit podle prvního měření, pak je zapsat jako limit):
+**Naměřeno na vývojovém PC (2026-10-10, lokální disk — bez latence sítě; na PC u stroje změřit znovu):**
 
-| Operace | Cíl |
-|---------|-----|
-| Seznam Database, lokální (opakované načtení) | < 1 s |
-| Seznam Database, NAS (opakované) | < 3 s |
-| Detail zakázky 5 000 kusů | < 2 s |
-| Signal Data, první otevření | < 3 s |
-| Signal Data, opakované / přepnutí záložky | < 0,5 s |
+| Operace | Naměřeno | Cíl na PC u stroje |
+|---------|----------|--------------------|
+| Seznam Database, 100 zakázek × 50 000 kusů, prázdná cache | 0,08 s, počty do ~6–8 s | < 1 s, počty < 30 s |
+| Seznam Database, opakované načtení | 0,01–0,02 s | < 1 s |
+| 100 000 souborů ve složce „NAS": první / opakované / po 15 s | 2,8 s / 0,16 s / 0,8 s | podle sítě — zapsat |
+| Detail zakázky 50 000 kusů: první otevření / další stránka / filtr (server) | 0,24 s / 0,02 s / 0,03 s | < 2 s / < 0,5 s |
+| Totéž v prohlížeči (další stránka) | ~0,35 s | < 1 s |
+| XLSX 50 000 kusů | ~3 s, 16,9 MB | < 10 s |
+| Signal Data, první otevření / opakované | ~0,4 s parsování + přenos / < 0,1 s | < 3 s / < 0,5 s |
 
-Doba se dá změřit v Chrome DevTools → Network (sloupec Time) nebo přes `curl -w "%{time_total}"`.
+Doba se dá změřit i v Chrome DevTools → Network (sloupec Time).
 
 ---
 
@@ -139,7 +157,7 @@ Nechat běžet **24–72 h** při běžné výrobě s otevřeným kioskem a jedn
 - [ ] RAM `scada_viewer.exe` na začátku / po 24 h / po 72 h: nesmí trvale růst
 - [ ] RAM Chrome kiosku: totéž (WebSocket, grafy, toasty)
 - [ ] Log `03_output\logs\nssm_stdout.log`: žádné opakující se chyby, rotace po 10 MB funguje
-- [ ] Velikost `03_output\cache\file_meta.json` zůstává rozumná
+- [ ] Velikost `03_output\cache\file_meta.sqlite` zůstává rozumná (řádově desítky MB i při velkém archivu)
 - [ ] Heartbeat k PLC celou dobu běží (žádné nečekané odpojení v logu)
 - [ ] Během běhu aspoň jednou proběhne 3.1 a 3.3 (výpadek a obnova po dlouhém provozu)
 

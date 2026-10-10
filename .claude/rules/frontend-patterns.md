@@ -64,8 +64,20 @@ Holý `fetch` jen pro veřejné endpointy (`/api/health`, `/api/auth/login`).
 ## Code-splitting
 
 Nová stránka (kromě hlavní Database) → `lazy(() => import('./pages/X'))` v `App.tsx`
-+ přidat do `preloadPages()`. Těžké knihovny použité jen v akci (např. `xlsx`) → dynamický
-`await import('…')` uvnitř funkce.
++ přidat do `preloadPages()`. Těžké knihovny použité jen v akci → dynamický `await import('…')`
+uvnitř funkce.
+
+## Velká data — nerozbíjet
+
+- **XLSX sestavuje server** (`GET /api/files/{id}/xlsx`, `utils/exportXlsx.ts`) — dialog „Uložit jako"
+  otevřít hned po kliknutí, pak stahovat. Žádné skládání velkých souborů v prohlížeči (kiosk).
+- Celé velké zakázky nikdy jako JSON (`per_page=0` má strop) — export / originální CSV.
+- `DataTable`, `OrderTimelineChart`, graf kategorií jsou `memo` → předávat stabilní props (`useMemo`,
+  `useCallback`); při změně stránky / filtru obsah nechat (spinner jen při prvním načtení).
+- Skryté tiskové tabulky vykreslovat až při tisku — `hooks/usePrintMode.ts` (`printNow` / `beforeprint`).
+- Přehled Databáze: `record_count` může být `null` (dopočítává se) — zobrazit „…", ptát se znovu, dokud
+  `counts_pending` (`useDatabaseState`, `COUNTS_RETRY_MS`).
+- Filtr kusů zakázky jde přes server (`DataFilter.status` / `categories`) — stránkování a počty sedí.
 
 ## WebSocket — pattern s reconnect (PlcContext vzor)
 
@@ -208,6 +220,7 @@ a `npm run test`; výsledek musí být 0 chyb a 0 varování. Build (`npm run bu
 
 ## Vite proxy — dev mode
 
+Vite 8 (Rolldown), `package.json` `"type": "module"`, Node.js ≥ 20.19; `npm audit` udržovat na 0.
 V `vite.config.ts` jsou nastaveny proxy pravidla:
 ```
 /api  → http://localhost:8080

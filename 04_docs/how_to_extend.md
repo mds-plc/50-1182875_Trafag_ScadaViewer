@@ -16,6 +16,9 @@
 7. [Přidat toast notifikaci](#7-přidat-toast-notifikaci)
 8. [Změnit interval auto-refresh](#8-změnit-interval-auto-refresh)
 9. [Přidat nový typ dat z NAS](#9-přidat-nový-typ-dat-z-nas)
+10. [Přidat údaj do přehledu Databáze (FileMeta)](#10-přidat-údaj-do-přehledu-databáze-filemeta)
+11. [Pracovat s velkými soubory (index, export, paměť)](#11-pracovat-s-velkými-soubory-index-export-paměť)
+12. [Změnit formát názvu souboru nebo složky na NAS](#12-změnit-formát-názvu-souboru-nebo-složky-na-nas)
 
 ---
 
@@ -572,6 +575,68 @@ Přidat překlady `tabCalibration` do `i18n/types.ts`, `cs.ts`, `en.ts`.
 - [ ] Frontend `useDatabaseState.ts` (DataType, isDataType) + `Database.tsx` (tab)
 - [ ] i18n — přeložený název tabu
 - [ ] `CLAUDE.md` — aktualizovat popis datových typů
+- [ ] Název souboru — přidat vzor do `_NAME_PROD` / `_NAME_TEST` (jinak se čte hlavička, viz sekce 12)
+
+---
+
+## 10. Přidat údaj do přehledu Databáze (FileMeta)
+
+**Kdy:** V seznamu zakázek má být nový sloupec (např. očekávaný počet kusů, operátor).
+
+Přehled se staví **z názvů souborů** a počet kusů se dopočítává na pozadí — soubor se kvůli
+přehledu neotevírá. Nový údaj proto patří buď do názvu souboru (okamžitě), nebo do dopočtu.
+
+1. `csv_repository.py` → `FileMeta`: přidat slot, `__init__`, `_KEYS` (klíč do API), `from_dict`.
+2. Zdroj hodnoty:
+   - **z názvu** → `_quick_meta()` (regex `_NAME_PROD` / `_NAME_TEST`);
+   - **ze souboru** → `read_file_meta()` + `_count_job()` (dopočet na pozadí; do té doby `None`).
+3. `_MetaStore`: sloupec v `CREATE TABLE meta`, `_COLS`, řádek v `_put()` a `_load_store()`;
+   **zvýšit `_SCHEMA`** (cache se při startu založí znovu — jen se znovu dopočítá).
+4. `models.py` `OrderFileModel` + `01_frontend/src/types/index.ts` `OrderFile` (hodnota může být `null`).
+5. Řazení: `api/files.py` `sort_by` pattern + `file_service._SORT_KEYS` (neznámé hodnoty jdou na konec).
+6. Frontend `FileTable.tsx` (sloupec + `SortTh`), i18n.
+
+> **Pozor:** `FileMeta` je neměnný a cache ho vrací bez kopie — nikdy ho neupravovat na místě,
+> změna = `meta.replace(...)` + `_put()`. Na API se převádí na dict až stránka (`dict(meta)`).
+
+### Checklist
+- [ ] `FileMeta` + `_quick_meta` / `_count_job`
+- [ ] `_MetaStore` (sloupec + `_SCHEMA`)
+- [ ] `OrderFileModel` + `OrderFile` + `FileTable` + i18n
+- [ ] Test v `02_tests/test_big_order.py` (výpis z názvu / dopočet)
+
+---
+
+## 11. Pracovat s velkými soubory (index, export, paměť)
+
+**Kdy:** Nový endpoint nebo funkce čte záznamy zakázky.
+
+| Pravidlo | Proč |
+|----------|------|
+| Záznamy zakázky číst přes `CsvRepository.read_records()` / `read_table()` | Jdou přes `_OrderIndex` v paměti — soubor se čte jednou, ne při každém požadavku |
+| Nový filtr → předpočítat sloupec v `_build_index()` (jako `grp`, `status`, `days`) a filtrovat v `read_records` | Dict se staví jen pro vrácené řádky; filtr přes celý soubor pak trvá setiny sekundy |
+| Nevracet celé velké zakázky jako JSON (`per_page=0` má strop 20 000) | 50 000 dictů ≈ stovky MB; celé zakázky přes `GET /api/files/{id}/xlsx` nebo originální CSV |
+| Export → server (`services/xlsx_export.build_xlsx(header, rows)`, rows generátor) | Prohlížeč (kiosk) by pro 50 000 kusů potřeboval > 1 GB paměti |
+| Soubor z NAS → `FileService._read_path()` (lokální kopie, je-li) a I/O přes `run_io(location, …)` | Rychlost, nezatížit síť, NAS pool s okamžitým 503 |
+| Dopočet / čtení na pozadí z NAS jen pro to, co uživatel vidí | Archiv na NAS může mít 100 000+ souborů |
+| Nové cache vždy s limitem (počet + paměť) | Paměť serveru — přehled stropů v `architecture.md` |
+
+Frontend: velké tabulky (`DataTable` je `memo`) — předávat stabilní props (`useMemo` / `useCallback`),
+skryté tiskové tabulky vykreslovat až při tisku (`hooks/usePrintMode.ts`).
+
+---
+
+## 12. Změnit formát názvu souboru nebo složky na NAS
+
+**Kdy:** DatabaseGateway změní pojmenování souborů nebo začne ukládat do podsložek (např. doporučené
+`Production/RRRR/MM/` — `roadmap.md` → Škálování).
+
+- Název: `csv_repository.py` `_NAME_PROD` / `_NAME_TEST` (+ `_name_ts`). Soubor, jehož název vzoru
+  neodpovídá, funguje dál — jen se pro přehled přečte hlavička (pomalejší na NAS).
+- Podsložky: `list_remote()` / `list_local()` + `resolve_path()` (hledá soubor podle `file_id`)
+  + `prefer_local()` / `_local_twin()`; podle filtru data číst jen potřebné měsíce (`FileService.list_files`).
+- Vždy současně s DatabaseGateway (`file_manager.py`, `server_sync.py`) a jejich testy; ověřit
+  `02_tests/test_big_order.py` a `test_api.py`.
 
 ---
 
@@ -582,7 +647,8 @@ Přidat překlady `tabCalibration` do `i18n/types.ts`, `cs.ts`, `en.ts`.
 2. Error handling: `try/except (OSError, PermissionError)` → `HTTPException(503/404/500)`
 3. Logging: `log.debug("[MOD]   ...")` s 7-znakovým prefixem (`[API]`, `[ADS]`, `[CSV]`, `[SVC]`, `[WS]`)
 4. Vstupní validace v `CsvRepository.validate_params()` nebo na začátku endpointu
-5. Výkon: neobcházet cache (`_meta_cache`, `signal_reader` cache) — viz `fastapi-patterns.md`
+5. Výkon: neobcházet cache (`FileMeta` / `_MetaStore`, `_OrderIndex`, `signal_reader` cache) — viz
+   `fastapi-patterns.md` a sekce 10–11 tohoto dokumentu
 
 ### Frontend
 1. Každý nový fetch — `apiFetch` + AbortController vzor (viz `useData.ts`)

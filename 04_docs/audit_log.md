@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-09-26 (hloubkový audit kvality kódu a architektury)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (výkon a škálovatelnost — velké zakázky, velký archiv NAS)**.
 
 ### 🔴 HIGH
 
@@ -19,7 +19,7 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | A6 | Rate limit (120/min) i blokace přihlášení (5 pokusů / 10 min) jsou na IP — kancelářská PC za NAT / proxy sdílí jednu IP → sdílí limit i blokaci | `app.py`, `api/auth.py` | [2026-09-26 audit] |
-| A7 | `ChartView.tsx` (868 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena) | `pages/` | [2026-09-26 audit] |
+| A7 | `ChartView.tsx` (~930 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena; filtr kusů vyčleněn do `RecordFilterBar`, tisk do `usePrintMode`) | `pages/` | [2026-09-26 audit] |
 
 (M14 — `/ws/plc` bez autentizace — přijaté riziko, viz záznam 2026-09-24; platí i pro vzdálený přístup z firemní sítě)
 
@@ -39,6 +39,17 @@
 | A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
+| A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
+
+### 📈 ŠKÁLOVÁNÍ (doporučení do budoucna — mimo ScadaViewer / dohoda s Trafag)
+
+| # | Popis | Řešení | Zdroj |
+|---|-------|--------|-------|
+| S1 | Plochá složka NAS se 100 000+ soubory — výpis přes SMB může trvat desítky s (ScadaViewer drží poslední stav v paměti, první výpis po startu ho zaplatí) | DatabaseGateway ukládá do `Production/RRRR/MM/`; ScadaViewer čte jen měsíce z filtru data | [2026-10-10] |
+| S2 | Počet kusů souborů, které tímto strojem neprošly, vyžaduje jednou stáhnout celý soubor z NAS | DatabaseGateway zapíše počet kusů do souboru / názvu při uzavření zakázky | [2026-10-10] |
+| S3 | Archiv na NAS roste bez omezení (zakázka 50 000 kusů ≈ 13 MB, test ≈ 40 MB) | Retence / archivace dohodnout s Trafag | [2026-10-10] |
+| S4 | Nad ~500 000 soubory by metadata v paměti (~0,5 GB) přestala dávat smysl | Řazení / filtr přehledu do SQLite (cache už v SQLite je) | [2026-10-10] |
+| S5 | Rychlost sítě k NAS neznámá — rozhoduje o všem, co se z NAS čte | Změřit na PC u stroje (výpis složky, stažení velkého souboru), zapsat do `deployment.md` | [2026-10-10] |
 
 ### 📄 DOCS
 
@@ -49,6 +60,52 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-10-10] Výkon a škálovatelnost — velké zakázky, velký archiv NAS, závislosti
+
+### Scope
+Zátěžové testy na reálném formátu dat: zakázka s 50 000 kusy (12,9 MB), 100 takových zakázek
+(1,3 GB) ve sdílené složce `12.Database`, 100 000 souborů ve složce „NAS" (lokální disk, bez latence
+SMB) + `npm audit`. Podrobnosti a měření: `architecture.md` fáze 35–39 a kapitola „Výkon, paměť
+a škálovatelnost".
+
+### Nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| P1 | 🔴 HIGH | Databáze se 100 velkými zakázkami: `/api/files` končil 503 po 10 s, opakovaně — počet kusů čtením celého souboru přes `DictReader`, každé obnovení spustilo stejné čtení souběžně znovu | `csv_repository.py`, `api/files.py` | ✅ Opraveno — přehled z názvů souborů, dopočet na pozadí, jedno skenování složky naráz, rychlé počítání řádků |
+| P2 | 🔴 HIGH | Dopočet počtů pro soubory jen na NAS by časem stáhl celý archiv (100 000 × 13 MB ≈ 1,3 TB) | `csv_repository.py`, `file_service.py` | ✅ Opraveno — z NAS jen zobrazená stránka + trvalá tabulka `known` (počty přežijí smazání lokální kopie) |
+| P3 | ⚠️ MEDIUM | Cache metadat v JSON: přepis 42 MB / 100 000 souborů ~4 s s drženým GIL (server stál), načtení 2,5 s | `csv_repository.py` | ✅ Opraveno — SQLite (`file_meta.sqlite`), zápis jen změn (2,4 ms) |
+| P4 | ⚠️ MEDIUM | Metadata ~1,6 kB / soubor a kopie dictu při každém výpisu | `csv_repository.py` | ✅ Opraveno — `FileMeta` (`__slots__`, neměnné, bez kopie) ~1 kB / soubor |
+| P5 | ⚠️ MEDIUM | Výpis NAS složky při každém obnovení (během dopočtu každých 1,5 s) | `csv_repository.py` | ✅ Opraveno — výpis 15 s v paměti, během skenování poslední známý stav |
+| P6 | ⚠️ MEDIUM | Detail zakázky 50 000 kusů: každá stránka / filtr / detail kusu četl celý soubor (1,2 s) | `csv_repository.py` | ✅ Opraveno — `_OrderIndex` v paměti (0,02–0,05 s), LRU 3 soubory / 256 MB |
+| P7 | ⚠️ MEDIUM | XLSX v prohlížeči (SheetJS): 50 000 kusů ~16 s a > 1 GB paměti záložky (riziko pádu kiosku); čísla jako text | `utils/exportXlsx.ts` | ✅ Opraveno — `GET /api/files/{id}/xlsx` (`services/xlsx_export.py`), čísla jako čísla, SheetJS odstraněn |
+| P8 | ⚠️ MEDIUM | `/api/data?per_page=0` až 100 000 řádků (~600 MB dočasně) | `api/data.py` | ✅ Opraveno — strop 20 000 (`_ALL_RECORDS_CAP`), celé zakázky přes XLSX / CSV |
+| P9 | ⚠️ MEDIUM | Detail zakázky v prohlížeči: při každé stránce se odmontoval celý obsah (grafy) a vykreslovalo 1 200 řádků (vč. skrytých tiskových) | `ChartView.tsx`, `DataTable.tsx` | ✅ Opraveno — obsah zůstává, `memo`, tiskové tabulky až při tisku (`usePrintMode`) |
+| P10 | 🔵 LOW | Tisk velké zakázky: jen aktuální stránka bez informace, číslování od 1, tabulka až na 2. straně | `ChartView.tsx`, `chart.css` | ✅ Opraveno — poznámka „Vytištěné kusy: X–Y z Z", # = pořadí v zakázce, `cv-print-group--long` |
+| P11 | 🔵 LOW | Souhrn OK / NOK při filtru počítal procenta z vyfiltrovaného počtu („1148 %") | `ChartView.tsx` | ✅ Opraveno — `totalAll ?? total` |
+| P12 | 🔵 LOW | Detail souboru z NAS se stahoval i když leží lokálně | `file_service.py` | ✅ Opraveno — `prefer_local()` (stejný název + velikost) |
+| P13 | 🔵 LOW | Dopočet mohl zapisovat do už zavřené cache při ukončení aplikace | `csv_repository.py` | ✅ Opraveno — kontrola spojení pod zámkem |
+| P14 | 🔵 LOW | Převod času z názvu přes `strptime` (100 000 souborů 1,6 s) | `csv_repository.py` | ✅ Opraveno — ruční převod (~0,1 s) |
+| P15 | ⚠️ MEDIUM | `npm audit`: 14 zranitelností (6 high) — vite / esbuild (dev server), react-router (open redirect), nástroje | `01_frontend/package.json` | ✅ Opraveno — `npm audit fix` + vite 8, plugin-react 6, react-router-dom 7, `"type": "module"` → 0 zranitelností |
+| P16 | 🔵 LOW | `Measuring_BasePeriod` zobrazen v ms, je v µs (DatabaseGateway psal do hlavičky `[ms]`) | `paramMeta.ts`, DatabaseGateway `file_manager.py` | ✅ Opraveno v obou projektech |
+| P17 | 🔵 LOW | XLSX se ukládal jako `…_DONE.csv.xlsx` → ve Windows vypadal jako CSV | `exportXlsx.ts` | ✅ Opraveno — `xlsxBaseName()` |
+| S1–S5 | 📈 | Doporučení do budoucna (podsložky na NAS, počet kusů v souboru, retence, > 500 000 souborů, rychlost sítě) | — | ⬜ Otevřeno — viz přehled výše |
+
+### Vědomá rozhodnutí
+- Počet kusů v přehledu se smí chvíli dopočítávat („…") — přehled musí být okamžitý (rozhodnutí
+  uživatele 2026-10-10: „co nejlepší a nejefektivnější používání").
+- `created_at` v přehledu = čas založení zakázky z názvu souboru (dřív čas prvního kusu, rozdíl sekund).
+- Tisk velké zakázky zůstává na aktuální stránce tabulky (tisk 50 000 řádků nedává smysl) —
+  celá zakázka přes CSV / XLSX.
+
+### Ověření
+Backend 274/274, frontend 117/117 (17 souborů), lint 0, `npm audit` 0; průchod všech obrazovek
+v prohlížeči (36 snímků manuálu, bez chyb stránky); XLSX ověřen v Excelu.
+
+**Celkem:** 17 nálezů | 17 opraveno | 5 doporučení otevřeno (S1–S5)
 
 ---
 
