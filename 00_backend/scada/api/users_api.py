@@ -12,6 +12,7 @@ Změny se projeví okamžitě v paměti i na disku.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,14 +26,26 @@ router = APIRouter()
 log    = logging.getLogger(__name__)
 
 
-def _persist(request: Request) -> None:
-    """Uloží aktuální app.state.users do users.toml (best-effort)."""
+def _snapshot(request: Request) -> list[UserEntry]:
+    """Kopie uživatelů před změnou — při chybě zápisu se stav v paměti vrátí."""
+    return [dataclasses.replace(u) for u in request.app.state.users]
+
+
+async def _persist(request: Request, previous: list[UserEntry]) -> None:
+    """Uloží app.state.users do users.toml. Zápis selže → stav v paměti zpět + HTTP 500.
+
+    Dřív jen zalogoval chybu a vrátil úspěch: UI hlásilo „heslo změněno / uživatel smazán",
+    ale po restartu služby se vrátil starý stav (např. heslo kompromitovaného účtu).
+    """
     users_path = getattr(request.app.state, 'users_path', None)
-    if users_path is not None:
-        try:
-            save_users(request.app.state.users, users_path)
-        except OSError as exc:
-            log.error("[USERS] nelze zapsat users.toml: %s", exc)
+    if users_path is None:
+        return
+    try:
+        await asyncio.to_thread(save_users, request.app.state.users, users_path)
+    except OSError as exc:
+        request.app.state.users = previous
+        log.error("[USERS] nelze zapsat users.toml, změna vrácena: %s", exc)
+        raise HTTPException(status_code=500, detail="Změnu nelze uložit (users.toml) — zkuste to znovu") from exc
 
 
 @router.get("/users", response_model=list[UserModel])
@@ -70,9 +83,10 @@ async def create_user(
     if any(c < " " for c in body.username + body.display_name):
         raise HTTPException(status_code=400, detail="Jméno obsahuje nepovolené řídicí znaky")
 
-    users = request.app.state.users
-    if any(u.username == body.username for u in users):
-        raise HTTPException(status_code=409, detail=f"Uživatel {body.username!r} již existuje")
+    users    = request.app.state.users
+    username = body.username.strip()
+    if any(u.username == username for u in users):          # po strip — jinak „ technik" = duplicita
+        raise HTTPException(status_code=409, detail=f"Uživatel {username!r} již existuje")
 
     # Ověření: role nového uživatele nesmí být vyšší než role tvůrce
     # (admin nemůže vytvořit manufacturer)
@@ -82,13 +96,14 @@ async def create_user(
         raise HTTPException(status_code=403, detail="Nelze vytvořit uživatele s vyšší rolí než vlastní")
 
     new_user = UserEntry(
-        username=body.username.strip(),
-        display_name=body.display_name.strip() or body.username.strip(),
+        username=username,
+        display_name=body.display_name.strip() or username,
         password_hash=await asyncio.to_thread(hash_password, body.password),
         role=body.role,
     )
-    users.append(new_user)
-    _persist(request)
+    previous = _snapshot(request)
+    request.app.state.users.append(new_user)
+    await _persist(request, previous)
 
     log.info("[USERS] přidán uživatel %r role=%r (tvůrce: %r)", new_user.username, new_user.role, session["username"])
     return UserModel(username=new_user.username, display_name=new_user.display_name, role=new_user.role)
@@ -124,10 +139,17 @@ async def delete_user(
     if len(users) <= 1:
         raise HTTPException(status_code=400, detail="Nelze smazat posledního uživatele")
 
+    previous = _snapshot(request)
     request.app.state.users = [u for u in users if u.username != username]
-    _persist(request)
+    await _persist(request, previous)
 
-    log.info("[USERS] smazán uživatel %r (akce: %r)", username, session["username"])
+    # Odhlásit smazaného uživatele — token by jinak platil dál až do TTL (8 h)
+    sessions  = request.app.state.sessions
+    to_remove = [tok for tok, sess in sessions.items() if sess.get("username") == username]
+    for tok in to_remove:
+        del sessions[tok]
+    log.info("[USERS] smazán uživatel %r (akce: %r); %d sessions zneplatněno",
+             username, session["username"], len(to_remove))
 
 
 @router.post("/users/{username}/password", status_code=204)
@@ -188,8 +210,10 @@ async def change_user_password(
             raise HTTPException(status_code=401, detail="Špatné aktuální heslo")
         _clear_failures(client_ip)
 
-    target.password_hash = await asyncio.to_thread(hash_password, body.new_password)
-    _persist(request)
+    new_hash = await asyncio.to_thread(hash_password, body.new_password)
+    previous = _snapshot(request)
+    target.password_hash = new_hash
+    await _persist(request, previous)
 
     # Pokud si admin mění heslo jiného uživatele, nezneplatňovat všechny sessions
     # Pokud si mění vlastní heslo, zneplatní všechny (jako v /auth/change-password)

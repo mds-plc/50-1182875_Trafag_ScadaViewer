@@ -40,7 +40,9 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Request ID — nastavuje _RequestIdMiddleware v app.py; čte JsonFormatter.
 # Mimo HTTP request (ADS callback, OrderWatcher) zůstává None.
@@ -69,6 +71,35 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
         return json.dumps(entry, ensure_ascii=False)
+
+
+_LOG_KEEP_DAYS = 30
+
+
+def prune_old_logs(folder: Path, keep_days: int = _LOG_KEEP_DAYS) -> int:
+    """Smaže rotované logy (NSSM `nssm_stdout-<čas>.log` …) starší než keep_days.
+
+    NSSM rotuje, ale staré soubory nemaže — služba běžící roky by jimi zaplnila disk
+    (03_output leží vedle dat). Aktuální nssm_stdout.log / nssm_stderr.log se nemažou.
+    Vrátí počet smazaných souborů; chyby jen zaloguje (start služby kvůli tomu nesmí padnout).
+    """
+    limit   = time.time() - keep_days * 86400
+    removed = 0
+    try:
+        for p in folder.glob("*.log"):
+            if p.name in ("nssm_stdout.log", "nssm_stderr.log"):
+                continue
+            try:
+                if p.stat().st_mtime < limit:
+                    p.unlink()
+                    removed += 1
+            except OSError as exc:
+                logging.getLogger("scada").warning("[APP]   starý log %s nelze smazat: %s", p.name, exc)
+    except OSError:
+        return removed
+    if removed:
+        logging.getLogger("scada").info("[APP]   smazáno %d logů starších než %d dní", removed, keep_days)
+    return removed
 
 
 def setup_logging(debug: bool = False) -> None:

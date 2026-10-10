@@ -51,11 +51,20 @@ function toIsoDate(d: Date): string {
 /** Výchozí filtr = poslední dva dny (včera + dnes). */
 const DEFAULT_FILTER_DAYS = 2
 
-function defaultDateFrom(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - (DEFAULT_FILTER_DAYS - 1))
-  return toIsoDate(d)
+/** Začátek výchozího filtru končícího daným dnem (YYYY-MM-DD). */
+function filterFromFor(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const from = new Date(y, m - 1, d)
+  from.setDate(from.getDate() - (DEFAULT_FILTER_DAYS - 1))
+  return toIsoDate(from)
 }
+
+function defaultDateFrom(): string {
+  return filterFromFor(toIsoDate(new Date()))
+}
+
+/** Jak často hlídat přechod přes půlnoc [ms] */
+const DAY_CHECK_MS = 60_000
 
 // ── localStorage persistence pro filtry ────────────────────────────────────
 
@@ -112,12 +121,24 @@ export function useDatabaseState() {
 
   /** Posunout filtr na posledních DEFAULT_FILTER_DAYS dní končících daným dnem (YYYY-MM-DD). */
   const showDaysUntil = useCallback((day: string) => {
-    const [y, m, d] = day.split('-').map(Number)
-    const from = new Date(y, m - 1, d)
-    from.setDate(from.getDate() - (DEFAULT_FILTER_DAYS - 1))
-    setDateFrom(toIsoDate(from))
+    setDateFrom(filterFromFor(day))
     setDateTo(day)
   }, [])
+
+  // Půlnoc: kiosk má Databázi otevřenou nepřetržitě — výchozí filtr (posledních N dní do
+  // „dneška") posunout na nový den, jinak by nové zakázky tiše chyběly. Filtr, který obsluha
+  // nastavila ručně (jiné „od" / „do"), se nemění.
+  const todayRef = useRef(toIsoDate(new Date()))
+  useEffect(() => {
+    const id = setInterval(() => {
+      const today = toIsoDate(new Date())
+      const prev  = todayRef.current
+      if (today === prev) return
+      todayRef.current = today
+      if (dateTo === prev && dateFrom === filterFromFor(prev)) showDaysUntil(today)
+    }, DAY_CHECK_MS)
+    return () => clearInterval(id)
+  }, [dateFrom, dateTo, showDaysUntil])
   const [page,         setPage]         = useState(1)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OrderFile | null>(null)

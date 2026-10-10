@@ -37,6 +37,8 @@ nssm set     %SERVICE_NAME% AppStdout     "%INSTALL_DIR%03_output\logs\nssm_stdo
 nssm set     %SERVICE_NAME% AppStderr     "%INSTALL_DIR%03_output\logs\nssm_stderr.log"
 nssm set     %SERVICE_NAME% AppRotateFiles 1
 nssm set     %SERVICE_NAME% AppRotateBytes 10485760
+:: Rotovat i za běhu (bez toho NSSM rotuje jen při startu služby → jeden log roste měsíce)
+nssm set     %SERVICE_NAME% AppRotateOnline 1
 
 :: Spustit
 nssm start %SERVICE_NAME%

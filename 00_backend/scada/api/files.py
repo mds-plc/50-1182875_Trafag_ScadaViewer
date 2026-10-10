@@ -31,10 +31,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import BinaryIO
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from scada.services.io_pool import NasBusyError, run_io
 from scada.api.dependencies import require_auth, require_local, require_role
@@ -222,11 +226,54 @@ async def download_file(
     if path is None:
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
     log.info("[API]   download %s location=%s type=%s", file_id, location, file_type)
+    local_root = Path(request.app.state.config.data.local_path).resolve()
+    if location == "remote" and not path.resolve().is_relative_to(local_root):
+        # Soubor jen na NAS — číst po blocích přes NAS pool s timeoutem. FileResponse by četl
+        # UNC ve výchozím poolu bez timeoutu; zaseknutý NAS by blokoval obecná vlákna.
+        try:
+            f, size = await asyncio.wait_for(run_io("remote", _open_sized, path), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+        return StreamingResponse(
+            _stream_remote(f, timeout),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(file_id)}",
+                     "Content-Length": str(size)},
+        )
     return FileResponse(
         path=path,
         filename=file_id,
         media_type="text/csv; charset=utf-8",   # BOM je součástí souboru
     )
+
+
+_STREAM_CHUNK = 1024 * 1024
+
+
+def _open_sized(path: Path) -> tuple[BinaryIO, int]:
+    f = open(path, "rb")
+    try:
+        return f, os.fstat(f.fileno()).st_size
+    except OSError:
+        f.close()
+        raise
+
+
+async def _stream_remote(f: BinaryIO, timeout: float) -> AsyncIterator[bytes]:
+    """Bloky souboru z NAS — každé čtení přes run_io s timeoutem (výpadek = přerušený přenos)."""
+    try:
+        while True:
+            chunk = await asyncio.wait_for(run_io("remote", f.read, _STREAM_CHUNK), timeout=timeout)
+            if not chunk:
+                return
+            yield chunk
+    finally:
+        try:
+            f.close()
+        except OSError:
+            pass
 
 
 @router.get("/files/{file_id}/xlsx", dependencies=[Depends(require_auth)])

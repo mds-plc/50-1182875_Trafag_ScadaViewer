@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { Loader, Globe } from 'lucide-react'
 import AppLogo   from './AppLogo'
 import AdsStatus from './AdsStatus'
-import { usePlc }  from '../context/PlcContext'
+import { usePlcConnection } from '../context/PlcContext'
 import { useAuth } from '../context/AuthContext'
 import { useLang } from '../context/LangContext'
 
@@ -18,7 +18,7 @@ import { useLang } from '../context/LangContext'
  * Zmizí automaticky při PLC přihlášení nebo po úspěšném lokálním přihlášení.
  */
 export default function LoginOverlay() {
-  const { adsConnected } = usePlc()
+  const { adsConnected } = usePlcConnection()
   const { login, sessionExpired, isRemote } = useAuth()
   const { t }         = useLang()
 

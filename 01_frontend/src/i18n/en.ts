@@ -323,6 +323,7 @@ export const en: Translations = {
     cleanFailed:    'Files that could not be deleted: {count}',
     cleanNas:       'NAS is unavailable — files cannot be verified, nothing was deleted. Deleting without verification is available in the “Clean synced files” dialog.',
     cleanBusy:      'Cleanup is already running',
+    cleanRunning:   'Cleanup is taking longer and continues in the background — the storage indicator will update',
     forceLink:      'Also delete files that cannot be verified on the NAS…',
     forceTitle:     'Delete WITHOUT NAS verification?',
     forceBody:      'All files in the synced folder will be deleted — count: {count} ({size}) — without checking that they are actually on the NAS.',

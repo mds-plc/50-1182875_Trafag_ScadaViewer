@@ -156,7 +156,10 @@ async def get_data(
             status_code=422,
             detail=f"Neplatný formát data, očekáváno YYYY-MM-DD: {exc}",
         ) from exc
-    except (OSError, PermissionError) as exc:
+    except FileNotFoundError:
+        # soubor mezitím přesunut (done_local → done_remote) nebo smazán
+        raise HTTPException(status_code=404, detail="Soubor nenalezen") from None
+    except OSError as exc:
         log.error("[API]   /api/data I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
     pages = max(1, (total + effective_per_page - 1) // effective_per_page) if per_page > 0 else 1
@@ -205,7 +208,10 @@ async def get_timeline(
     except asyncio.TimeoutError:
         log.error("[API]   /api/timeline timeout (%s, %s, %.0f s)", file, location, timeout)
         raise HTTPException(status_code=504, detail="Čtení dat trvá příliš dlouho — úložiště může být nedostupné.") from None
-    except (OSError, PermissionError) as exc:
+    except FileNotFoundError:
+        # soubor mezitím přesunut (done_local → done_remote) nebo smazán
+        raise HTTPException(status_code=404, detail="Soubor nenalezen") from None
+    except OSError as exc:
         log.error("[API]   /api/timeline I/O chyba (%s): %s", file, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
     if result is None:

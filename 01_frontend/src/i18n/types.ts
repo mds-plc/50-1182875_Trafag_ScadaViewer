@@ -332,6 +332,7 @@ export interface Translations {
     cleanFailed:    string
     cleanNas:       string
     cleanBusy:      string
+    cleanRunning:   string
     forceLink:      string
     forceTitle:     string
     forceBody:      string   // „Smaže se všech {count} souborů ({size}) …"

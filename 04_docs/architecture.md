@@ -909,6 +909,41 @@ stejné čtení souběžně znovu.
 **Stav testů po fázi 39:** Backend **274/274**, Frontend **117/117** (17 souborů), `npm run lint`
 0 problémů, `npm audit` 0 zranitelností. **Verze 2.1.1** (release 2026-10-10).
 
+### Fáze 40 — Kompletní audit: chybové stavy, odolnost 24/7, výkon (2026-10-10)
+
+Audit K1–K42 (`audit_log.md`), opraveno 21 nálezů. Architektonicky podstatné změny:
+
+- **WebSocket (`services/ws_manager.py`):** každý klient má vlastní frontu (`_QUEUE_MAX` 500) a odesílací
+  úlohu. `broadcast()` jen zařadí zprávu — pomalý klient nezdržuje ostatní. Nestíhající / chybující klient
+  (timeout 5 s, plná fronta) se **zavře kódem 1011** → prohlížeč dostane `onclose` a připojí se znovu
+  (dřív se jen vyřadil a dál zobrazoval zamrzlé hodnoty). Snapshot cache se zařadí před první novou
+  zprávou (pořadí). Cachují se jen symboly a stavové zprávy `_CACHED_TYPES` (`ads_status`) — událost
+  `files_changed` ne.
+- **ADS (`services/ads_monitor.py`):** všechna pyads volání (connect, heartbeat 500 ms, offline zápis)
+  ve vlastním vlákně monitoru (`ThreadPoolExecutor(1)`, `_run()`), ne ve výchozím poolu s XLSX / indexem
+  zakázky / PBKDF2. STRING symboly se při úvodním čtení čtou jako bajty (`return_ctypes=True`) a dekódují
+  cp1250 jako notifikace (pyads dekóduje striktně UTF-8 → diakritika shodila připojení).
+- **Signál (`services/signal_reader.py`):** `[SignalData]` po blocích 5 000 řádků (`islice` → `loadtxt`),
+  mezi bloky se uvolní GIL. 40 MB test: zastavení event loopu ~350 ms → 6 ms, špička paměti 241 → 33 MB,
+  parsování 0,46 → 0,58 s. Nejvýš 2 parsování současně (`_parse_sem`), cache i podle paměti
+  (`_CACHE_BYTES` 160 MB). NaN / inf → `null`.
+- **Dopočet počtů (`csv_repository.py`):** I/O chyba soubor neskryje — odklad `_COUNT_RETRY_S` (60 s);
+  skrývá se jen poškozený obsah. Dopočet běžící > `_COUNT_STALL_S` (120 s, zaseknutý NAS) se nehlásí
+  v `counts_pending`. `read_records` propouští `OSError` → API 503 / 404.
+- **Frontend kontexty:** `PlcContext` rozdělen na hodnoty symbolů (`usePlc`, jen živý přehled) a stav
+  spojení `usePlcConnection()` → `{connected, adsConnected, plcLoggedIn}` (memo). AppShell, PlcAuth /
+  AuthProvider, Topbar, LoginOverlay se nepřekreslují při každé ADS notifikaci. Backoff WS se po spojení nuluje.
+- **ErrorBoundary:** kolem stránek s `resetKey={pathname}` + druhá nad celou aplikací; chyba načtení
+  chunku (nový build) → reload, `vite:preloadError` v `main.tsx`.
+- **Databáze:** výchozí datumový filtr se o půlnoci posune (kiosk běží nepřetržitě).
+- **Ostatní:** stažení CSV jen z NAS po 1 MB blocích přes `run_io`; čištění úložiště ověřuje `stat`
+  jednotlivých souborů (ne výpis celé NAS složky), > 60 s → 202; smazání uživatele zneplatní relace;
+  chyba zápisu `users.toml` → 500 + návrat stavu; logy: `AppRotateOnline`, access log jen `--debug`,
+  rotované logy > 30 dní se mažou při startu.
+
+**Stav testů po fázi 40:** Backend **291/291** (+17 `test_audit_20261010.py`), Frontend **117/117**,
+lint 0, `tsc` 0.
+
 ---
 
 ## Tok dat
@@ -1121,7 +1156,7 @@ Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` po
 
 ---
 
-## Výkon, paměť a škálovatelnost (stav po fázi 39)
+## Výkon, paměť a škálovatelnost (stav po fázi 40)
 
 ### Stropy paměti serveru
 
@@ -1129,10 +1164,12 @@ Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` po
 |----|-------|-----|
 | Metadata souborů (přehled) | ~1 kB / soubor (100 000 ≈ 100 MB) — **jediné, co roste s archivem** | `FileMeta`, `CsvRepository._meta` |
 | Zakázky v paměti (`_OrderIndex`) | 3 soubory a ≤ 256 MB | `_INDEX_CACHE_FILES`, `_INDEX_CACHE_BYTES` |
-| Signálová data testů | 2 naparsované soubory (~60 MB) + 12 hotových odpovědí | `signal_reader` |
+| Signálová data testů | 2 naparsované soubory a ≤ 160 MB + 12 hotových odpovědí; ≤ 2 parsování současně (~33 MB špička každé) | `signal_reader` |
 | Export XLSX | velikost jednoho souboru na souběžný export (~17 MB / 50 000 kusů) | `xlsx_export` |
 | `/api/data?per_page=0` | 20 000 řádků | `api/data._ALL_RECORDS_CAP` |
 | Přesunuté soubory / fronta dopočtu | 2 000 / počet souborů | `_moved`, `_count_pending` |
+| Neúspěšné dopočty (odklad) | 10 000 | `_count_failed` |
+| WebSocket fronta na klienta | 500 zpráv (plná = klient odpojen) | `ws_manager._QUEUE_MAX` |
 
 Reálný odhad i při velkém archivu a souběžné práci: ~0,3–0,6 GB.
 
@@ -1414,7 +1451,7 @@ Stav v aplikaci je organizován do tří vrstev:
 |---------|-----|---------|------------|
 | `LangContext` | `App.tsx` (outermost) | `lang`, `setLang`, `t` | `localStorage['scada_lang']` |
 | `ToastContext` | pod Lang | `toasts[]`, `addToast()`, auto-dismiss 4500ms | — (ephemeral) |
-| `PlcContext` | pod Toast | `status: Record<symbol, PlcStatus>`, `connected: bool` (WS), `adsConnected: bool` (ADS), WebSocket singleton | — (live) |
+| `PlcContext` | pod Toast | dva kontexty: hodnoty symbolů `status: Record<symbol, PlcStatus>` (`usePlc`) a stav spojení `{connected, adsConnected, plcLoggedIn}` (`usePlcConnection`, memo — mimo živý přehled používat tento); WebSocket singleton | — (live) |
 | `AuthContext` | pod Plc | `isLoggedIn`, `isLocalLogin`, `login()`, `logout()` | `sessionStorage['scada_token']` |
 | `StorageContext` | pod Auth | `storage: StorageStatus \| null`, `cleaning`, `refresh()`, `cleanup(force?)`; polling 60 s + `files_changed` | — (live) |
 
@@ -1560,8 +1597,8 @@ def _ads_callback(self, notification, name):   # voláno z ADS vlákna
 LangProvider               ← i18n CS/EN (outermost — dostupný všem)
 └── BrowserRouter
     └── ToastProvider      ← toast notifikace (addToast)
-        └── PlcProvider    ← WebSocket singleton (status, connected); exponential backoff reconnect
-            └── PlcAuth    ← bridge: PLC přihlášení → AuthProvider
+        └── PlcProvider    ← WebSocket singleton; usePlcConnection() / usePlc(); backoff reconnect (nuluje se po spojení)
+            └── PlcAuth    ← bridge: usePlcConnection().plcLoggedIn → AuthProvider
                 └── AuthProvider  ← isLoggedIn, isLocalLogin, login(), logout()
                   └── StorageProvider  ← zaplnění lokálního úložiště (/api/storage), cleanup()
                     └── AppShell  ← useBackendOnline() → polling /api/health každých 10 s
@@ -1570,7 +1607,7 @@ LangProvider               ← i18n CS/EN (outermost — dostupný všem)
                         ├── LoginOverlay      ← podmíněný (!isLoggedIn)
                         ├── Sidebar
                         ├── Topbar            ← 3 skupiny: [ADS+Úložiště+User] | [Lang+Theme] | [Datetime]
-                        └── <Routes>
+                        └── ErrorBoundary resetKey={pathname} → <Routes>   (+ ErrorBoundary nad celou aplikací)
                             ├── /          → přesměrování na /database (Overview odpojen 2026-09-23)
                             ├── /database  → Database  (F5/Escape klávesové zkratky)
                             ├── /chart     → ChartView (CSV export)

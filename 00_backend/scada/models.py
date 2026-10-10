@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ======================================================================
@@ -86,12 +86,31 @@ class CsvRecordModel(BaseModel):
     """
     model_config = ConfigDict(extra='allow')
 
-    timestamp:        str
+    timestamp:        str = ''            # chybí-li (vadný / cizí soubor) — prázdný, ne HTTP 500
     microswitch_id:   str | None = None   # None v novém dvoudílném formátu (je v metadata sekci)
     microswitch_name: str | None = None   # None v novém dvoudílném formátu (je v metadata sekci)
     order:            str | None = None   # jen production; testing sloupec Order nemá
     group:            int | None = None   # skupina třídění 1–6
     expected_count:   int | None = None   # očekávaný počet mikrospínačů v zakázce
+
+    @field_validator('timestamp', mode='before')
+    @classmethod
+    def _timestamp_or_empty(cls, v: object) -> object:
+        return '' if v is None else v
+
+    @field_validator('group', 'expected_count', mode='before')
+    @classmethod
+    def _int_or_none(cls, v: object) -> int | None:
+        """Prázdná / nečíselná buňka v CSV → None (jeden vadný řádek nesmí shodit celou stránku)."""
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            return v
+        try:
+            f = float(str(v).strip())
+        except ValueError:
+            return None
+        return int(f) if f.is_integer() else None
 
 
 class DataResponse(BaseModel):

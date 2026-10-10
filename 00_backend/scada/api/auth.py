@@ -311,19 +311,25 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
 
     _clear_failures(client_ip)
     new_hash = await asyncio.to_thread(hash_password, body.new_password)
+    old_hash = user.password_hash
     user.password_hash = new_hash
 
-    # Persistuj — users.toml má přednost před Config.toml
+    # Persistuj — users.toml má přednost před Config.toml. Zápis selže → heslo v paměti
+    # vrátit a ohlásit chybu (jinak UI hlásí úspěch a po restartu platí staré heslo).
     users_path  = getattr(request.app.state, 'users_path',  None)
     config_path = getattr(request.app.state, 'config_path', None)
 
     if users_path and users_path.exists():
         try:
-            save_users(users, users_path)
+            await asyncio.to_thread(save_users, users, users_path)
         except OSError as exc:
-            log.error("[AUTH]  nelze zapsat users.toml: %s", exc)
+            user.password_hash = old_hash
+            log.error("[AUTH]  nelze zapsat users.toml, změna vrácena: %s", exc)
+            raise HTTPException(status_code=500, detail="Heslo nelze uložit (users.toml) — zkuste to znovu") from exc
     else:
-        _update_config_file(config_path, new_hash)
+        if config_path is not None and not await asyncio.to_thread(_update_config_file, config_path, new_hash):
+            user.password_hash = old_hash
+            raise HTTPException(status_code=500, detail="Heslo nelze uložit (Config.toml) — zkuste to znovu")
         # Synchronizuj i in-memory AuthConfig (legacy cesta)
         request.app.state.config.auth.password_hash = new_hash
 

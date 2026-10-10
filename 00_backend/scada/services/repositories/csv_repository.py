@@ -56,6 +56,12 @@ _INDEX_CACHE_BYTES    = 256 * 1024 * 1024
 # NAS záměrně málo: dopočet stahuje celé soubory a nesmí vytížit linku (upload DatabaseGateway,
 # kancelář). Z NAS se navíc dopočítávají jen právě zobrazené soubory (request_counts).
 _COUNT_WORKERS        = 2
+# Dopočet selhal I/O chybou (NAS nedostupný, soubor zamčený) → znovu nejdřív za tolik sekund.
+# Soubor se NESKRÝVÁ — přechodná chyba nesmí zakázku vyřadit z přehledu (DONE soubor se už nezmění).
+_COUNT_RETRY_S        = 60.0
+# Dopočet běží déle (zaseknutý NAS — čtení UNC nejde přerušit) → přestat hlásit counts_pending,
+# jinak by se frontend ptal každých 1,5 s donekonečna. Vlákno dopočtu doběhne, až NAS odpoví.
+_COUNT_STALL_S        = 120.0
 # Výpis NAS složky držený v paměti [s] — 100 000 souborů se po síti vypisuje sekundy
 _REMOTE_LISTING_TTL   = 15.0
 
@@ -382,6 +388,8 @@ class CsvRepository:
         self._count_lock = threading.Lock()
         self._count_queues: dict[str, queue.Queue] = {'local': queue.Queue(), 'remote': queue.Queue()}
         self._count_threads: list[threading.Thread] = []
+        self._count_failed: dict[str, float] = {}          # klíč → čas selhání (monotonic) — odklad
+        self._count_started: dict[str, float] = {}         # klíč → začátek běžícího dopočtu
         self._closed = False
 
     def close(self) -> None:
@@ -685,12 +693,18 @@ class CsvRepository:
         """Zařadit dopočet počtu kusů (jen soubory bez počtu, bez duplicit)."""
         if not self._bg_counts or self._closed:
             return
+        now = time.monotonic()
         for meta in metas:
             if not isinstance(meta, FileMeta) or meta.record_count is not None or not meta.path:
                 continue
             with self._count_lock:
                 if meta.path in self._count_pending:
                     continue
+                failed = self._count_failed.get(meta.path)
+                if failed is not None:
+                    if now - failed < _COUNT_RETRY_S:
+                        continue                               # nedávno selhalo — počkat
+                    del self._count_failed[meta.path]
                 self._count_pending.add(meta.path)
                 self._ensure_count_threads()
             self._count_queues[meta.location].put(meta.path)
@@ -711,10 +725,13 @@ class CsvRepository:
             key = q.get()
             if key is None or self._closed:
                 return
+            with self._count_lock:
+                self._count_started[key] = time.monotonic()
             try:
                 self._count_job(key)
             finally:
                 with self._count_lock:
+                    self._count_started.pop(key, None)
                     self._count_pending.discard(key)
                     drained = not self._count_pending
                 if drained or q.qsize() % 25 == 0:
@@ -730,9 +747,18 @@ class CsvRepository:
         try:
             source = self._local_twin(path.name, meta.type, size) if meta.location == 'remote' else None
             full = self.read_file_meta(source or path, meta.type, meta.location, meta.sync_status)
-        except Exception as exc:
-            log.warning("[CSV]   dopočet %s selhal: %s", path.name, exc)
+        except (UnicodeDecodeError, csv.Error) as exc:               # poškozený obsah — trvale
+            log.warning("[CSV]   dopočet %s: nečitelný soubor, skryt: %s", path.name, exc)
             full = None
+        except Exception as exc:                                     # I/O (NAS, zámek) — přechodné
+            log.warning("[CSV]   dopočet %s selhal, zopakuje se za %d s: %s",
+                        path.name, _COUNT_RETRY_S, exc)
+            with self._count_lock:
+                self._count_failed[key] = time.monotonic()
+                if len(self._count_failed) > 10_000:                 # strop — nejstarší pryč
+                    oldest = min(self._count_failed, key=self._count_failed.__getitem__)
+                    del self._count_failed[oldest]
+            return
         now = self._meta.get(key)
         if now is None or now[0] != mtime_ns or now[1] != size:      # soubor se mezitím změnil / zmizel
             return
@@ -746,8 +772,15 @@ class CsvRepository:
         self._put(key, mtime_ns, size, meta.replace(**changes))
 
     def counts_pending(self) -> bool:
+        """Čeká-li nějaký dopočet. Zaseknuté (> _COUNT_STALL_S) se nepočítají — viz výše."""
         with self._count_lock:
-            return bool(self._count_pending)
+            if not self._count_pending:
+                return False
+            limit = time.monotonic() - _COUNT_STALL_S
+            stalled = sum(1 for t in self._count_started.values() if t < limit)
+            if stalled >= _COUNT_WORKERS:          # všechna vlákna visí (NAS) — fronta nepostoupí
+                return False
+            return len(self._count_pending) > stalled
 
     # ------------------------------------------------------------------
     # Čtení jednotlivého souboru
@@ -891,8 +924,9 @@ class CsvRepository:
             if ix is None:                                   # sekční formát (TEST)
                 with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
                     return self._read_sectioned(f, from_day, to_day)
-        except (OSError, UnicodeDecodeError, csv.Error) as exc:
-            # csv.Error: NUL byte, překročený field_size_limit — poškozený soubor ≠ HTTP 500
+        except (UnicodeDecodeError, csv.Error) as exc:
+            # csv.Error: NUL byte, překročený field_size_limit — poškozený soubor ≠ HTTP 500.
+            # OSError (NAS nedostupný, zámek) propadne do API → 503 / 404, ne „prázdná zakázka".
             log.error("[CSV]   chyba čtení %s: %s", path.name, exc)
             return [], 0, {}, None
 

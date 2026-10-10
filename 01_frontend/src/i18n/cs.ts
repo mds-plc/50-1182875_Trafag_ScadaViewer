@@ -323,6 +323,7 @@ export const cs: Translations = {
     cleanFailed:    'Soubory, které se nepodařilo smazat: {count}',
     cleanNas:       'NAS je nedostupný — soubory nelze ověřit, nic nebylo smazáno. Smazat bez ověření lze v dialogu „Vyčistit synchronizované“.',
     cleanBusy:      'Čištění už probíhá',
+    cleanRunning:   'Čištění trvá déle a pokračuje na pozadí — výsledek se projeví v ukazateli úložiště',
     forceLink:      'Smazat i soubory, které nelze na NAS ověřit…',
     forceTitle:     'Smazat BEZ ověření na NAS?',
     forceBody:      'Smažou se všechny soubory ze složky synchronizovaných — počet: {count} ({size}) — bez kontroly, zda jsou skutečně na NAS.',

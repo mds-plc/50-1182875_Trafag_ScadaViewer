@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import AdsStatus from './AdsStatus'
-import { usePlc }   from '../context/PlcContext'
+import { usePlcConnection } from '../context/PlcContext'
 import { useAuth }  from '../context/AuthContext'
 import { useStorage } from '../context/StorageContext'
 import { useLang }  from '../context/LangContext'
@@ -36,7 +36,7 @@ function useClock(lang: Lang) {
 }
 
 export default function Topbar() {
-  const { adsConnected }         = usePlc()
+  const { adsConnected }         = usePlcConnection()
   const { isLocalLogin, logout, isRemote, displayName, username } = useAuth()
   const { lang, setLang, t }     = useLang()
   const { time, dateStr }        = useClock(lang)

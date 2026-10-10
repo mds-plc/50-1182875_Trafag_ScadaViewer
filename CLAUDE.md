@@ -88,7 +88,7 @@ CLAUDE.md                  ← tento soubor
         ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP; cache 2 souborů
         ├── xlsx_export.py     ← build_xlsx(): XLSX bez závislosti (proudově, čísla jako čísla, čas jako datum, zmrazená hlavička, filtr)
         ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
-        └── ws_manager.py      ← ConnectionManager + orders_manager singleton; broadcast(); clear_symbols() po výpadku ADS
+        └── ws_manager.py      ← ConnectionManager (fronta + odesílací úloha na klienta, nestíhající → close 1011) + orders_manager; broadcast(); clear_symbols() po výpadku ADS
 
 01_frontend/               ← React 18 + Vite 5 + TypeScript 5
 ├── package.json           ← závislosti (viz sekce Závislosti); "type": "module"; skripty dev / build / test / lint
@@ -132,7 +132,7 @@ CLAUDE.md                  ← tento soubor
     │   └── en.ts              ← Anglické překlady (~295 klíčů, nested objekt) — kontroluje test/i18n.test.ts
     ├── context/
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
-    │   ├── PlcContext.tsx     ← WebSocket singleton, status: Record<symbol, PlcStatus>, connected: bool
+    │   ├── PlcContext.tsx     ← WebSocket singleton; usePlcConnection() {connected, adsConnected, plcLoggedIn} (mimo živý přehled VŽDY tento) / usePlc() status symbolů
     │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, sessionExpired, login(), logout() + sessionStorage
     │   ├── StorageContext.tsx ← zaplnění úložiště (/api/storage, 60 s + files_changed), toast při zhoršení, cleanup(force?)
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
@@ -195,6 +195,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_data_filter.py        ← filtr kusů /api/data?status=&category= (total_all, _idx, stránkování, 422)
 ├── test_big_order.py          ← velké zakázky a archiv: index v paměti, XLSX, přehled z názvů, dopočet, SQLite cache,
 │                                 NAS výpis v paměti, dopočet jen pro stránku, lokální kopie, limity paměti, tabulka known
+├── test_audit_20261010.py     ← regrese kompletního auditu K1–K42 (dopočet, WS, ADS STRING, signál po blocích, uživatelé, čištění, logy)
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
@@ -783,7 +784,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **274 testů**: filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **291 testů** (regrese auditu 2026-10-10 `test_audit_20261010.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
 | Testy — frontend | ✅ | `npm run test` (Vitest, 17 souborů) — **117 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
@@ -795,6 +796,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Kompletní audit K1–K42 (Fáze 40, 2026-10-10) | ✅ | 42 nálezů / 21 opraveno (dopočet neskrývá soubory, ADS STRING cp1250, filtr o půlnoci, signál po blocích, rozdělený PlcContext, WS fronta na klienta, ErrorBoundary, rotace logů) — otevřené K13, K17, K18 + LOW, viz audit_log |
 | Audit kvality + ESLint (2026-09-26) | ✅ | 14 nálezů / 9 opraveno (mj. retry `useClientLocal`, `proxy_headers=False`, atomický zápis Config.toml); otevřené A6, A7, A9–A11 — viz audit_log |
 | Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |
 | Filtr kusů, Base Period µs, název XLSX (Fáze 35) | ✅ | `RecordFilterBar` + `/api/data?status=&category=`; DatabaseGateway hlavička `[us]` — viz architecture.md |

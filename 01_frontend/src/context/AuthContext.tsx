@@ -28,7 +28,7 @@
  *   Závisí na: API /api/auth/{login,plc-login,logout}, sessionStorage
  *   Konzumováno: všechny hooky a komponenty přidávající Authorization header (useData.ts,
  *                useDatabaseState.ts, Topbar.tsx) a LoginOverlay.tsx
- *   plcLoggedIn prop: App.tsx předává hodnotu z usePlc().status["plc_operator_login"]
+ *   plcLoggedIn prop: App.tsx předává usePlcConnection().plcLoggedIn
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { UNAUTHORIZED_EVENT } from '../utils/apiFetch'

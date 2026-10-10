@@ -27,6 +27,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from scada.api.dependencies import require_auth, require_local
 from scada.models import CleanupResponse, StorageResponse
@@ -80,7 +81,9 @@ async def cleanup_storage(
     except CleanupBusyError:
         raise HTTPException(status_code=409, detail="Čištění už probíhá") from None
     except asyncio.TimeoutError:
-        log.error("[API]   cleanup timeout (%ss)", _CLEANUP_TIMEOUT_S)
-        raise HTTPException(status_code=503, detail="NAS neodpovídá — timeout") from None
+        # Vlákno maže dál (nelze ho přerušit) — nehlásit chybu, ale „běží na pozadí";
+        # výsledek se projeví v ukazateli úložiště (refresh po files_changed / 60 s)
+        log.warning("[API]   cleanup běží déle než %ss — pokračuje na pozadí", _CLEANUP_TIMEOUT_S)
+        return JSONResponse(status_code=202, content={"detail": "Čištění pokračuje na pozadí"})
     log.info("[API]   cleanup (force=%s) spustil %s: %s", force, session.get("username", "?"), result)
     return CleanupResponse(**result)

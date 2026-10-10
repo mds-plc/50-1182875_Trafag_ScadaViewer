@@ -81,6 +81,10 @@ uvnitř funkce.
 
 ## WebSocket — pattern s reconnect (PlcContext vzor)
 
+> **Výkon:** mimo živý přehled číst PLC stav přes `usePlcConnection()` (`connected`, `adsConnected`,
+> `plcLoggedIn`) — `usePlc().status` se mění s každou ADS notifikací a překreslil by vše pod sebou.
+
+
 ```ts
 useEffect(() => {
   let destroyed = false

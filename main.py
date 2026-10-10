@@ -36,10 +36,11 @@ def main() -> None:
     # Import až po parsování — umožňuje error při chybném config
     from scada.config import load_config
     from scada.app import create_app
-    from scada.logging_setup import setup_logging
+    from scada.logging_setup import prune_old_logs, setup_logging
 
     # JSON logování pro scada.* logger — před prvním log voláním v app
     setup_logging(debug=args.debug)
+    prune_old_logs(Path(args.config).resolve().parent / "03_output" / "logs")
 
     try:
         cfg = load_config(args.config)
@@ -62,6 +63,9 @@ def main() -> None:
         host=cfg.server.host,
         port=cfg.server.port,
         log_level="debug" if args.debug else "info",
+        # Access log (řádek za každý požadavek, ~3 MB/den z kiosku) jen v --debug — v provozu
+        # by v nssm_stdout.log vytlačil podstatné záznamy a rostl ~1 GB/rok.
+        access_log=args.debug,
         # Bez reverzní proxy — hlavičkám X-Forwarded-For nevěřit nikdy. Rozlišení „u stroje /
         # vzdáleně" (server.local_clients) stojí na adrese TCP spojení; s proxy_headers by stačila
         # proměnná prostředí FORWARDED_ALLOW_IPS="*" a vzdálený klient by si podvrhl 127.0.0.1.

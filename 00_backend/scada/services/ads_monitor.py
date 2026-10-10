@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import pyads
@@ -91,6 +92,8 @@ def _decode_read(raw: object, plctype: type) -> bool | int | str:
         return raw.strip("\x00").strip()
     if isinstance(raw, (bytes, bytearray)):
         return _decode_raw(bytes(raw), plctype)
+    if hasattr(raw, "raw"):                      # ctypes c_char pole (read_by_name return_ctypes=True)
+        return _decode_raw(bytes(raw.raw), plctype)
     return bool(raw)
 
 
@@ -121,6 +124,9 @@ class AdsMonitor:
         self._handles:          list = []   # notification handles pro del_device_notification
         self._callback_refs:    list = []   # drží Python closures naživu (GC prevence)
         self._reconnect_task:   asyncio.Task | None = None   # reconnect + heartbeat loop
+        # Vlastní vlákno pro ADS volání — heartbeat (500 ms) nesmí čekat ve výchozím poolu za
+        # XLSX exportem, stavbou indexu zakázky nebo PBKDF2 (watchdog v PLC by hlásil výpadek)
+        self._executor:         ThreadPoolExecutor | None = None
         # Cache posledních hodnot symbolů — čtena z endpointů (GIL chrání dict ops)
         self.current_values: dict[str, bool | int | str] = {}
 
@@ -142,6 +148,8 @@ class AdsMonitor:
         na pozadí dokud PLC není dostupné.
         """
         self._loop = asyncio.get_running_loop()
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ads")
         await self._manager.broadcast({"type": "ads_status", "connected": False})
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
@@ -157,9 +165,18 @@ class AdsMonitor:
         # Safety cleanup — CancelledError v _reconnect_loop mohl přerušit disconnect
         if self._plc is not None:
             try:
-                await asyncio.to_thread(self._disconnect)
+                await self._run(self._disconnect)
             except Exception as exc:
                 log.debug("[ADS]   Safety cleanup selhal: %s", exc)
+        if self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
+
+    async def _run(self, fn, *args) -> object:
+        """Synchronní pyads volání ve vlastním vlákně monitoru (mimo výchozí pool)."""
+        if self._executor is None:                    # mimo start() (testy) — výchozí pool
+            return await asyncio.to_thread(fn, *args)
+        return await asyncio.get_running_loop().run_in_executor(self._executor, fn, *args)
 
     # ------------------------------------------------------------------
     # Reconnect smyčka — běží po celou dobu životnosti monitoru
@@ -180,20 +197,20 @@ class AdsMonitor:
             label = "Připojuji" if attempt == 0 else f"Reconnect #{attempt}"
             log.info("[ADS]   %s: %s:%d", label, self._cfg.ads.net_id, self._cfg.ads.port)
             try:
-                await asyncio.to_thread(self._connect)
+                await self._run(self._connect)
                 log.info("[ADS]   Připojeno — sledováno %d symbolů", len(self._handles))
                 await self._manager.broadcast({"type": "ads_status", "connected": True})
                 attempt = 0
                 await self._heartbeat_loop()   # blokuje dokud PLC funguje
             except asyncio.CancelledError:
                 # Shutdown — zapíše offline bity a ukončí čistě
-                await asyncio.to_thread(self._write_offline)
-                await asyncio.to_thread(self._disconnect)
+                await self._run(self._write_offline)
+                await self._run(self._disconnect)
                 raise
             except Exception as exc:
                 log.warning("[ADS]   Spojení selhalo/ztraceno: %s", exc)
 
-            await asyncio.to_thread(self._disconnect)
+            await self._run(self._disconnect)
             self._manager.clear_symbols()   # nový WS klient nesmí dostat staré hodnoty
             await self._manager.broadcast({"type": "ads_status", "connected": False})
             delay = min(2 ** attempt, _RECONNECT_MAX_S)
@@ -222,7 +239,7 @@ class AdsMonitor:
             await asyncio.sleep(0.5)
             toggle = not toggle
             try:
-                await asyncio.to_thread(self._write_hb, toggle)
+                await self._run(self._write_hb, toggle)
                 consecutive_failures = 0
             except asyncio.CancelledError:
                 raise
@@ -254,7 +271,7 @@ class AdsMonitor:
                 log.debug("[ADS]   offline write [%s] selhal: %s", sym_key, exc)
 
     # ------------------------------------------------------------------
-    # Synchronní I/O — spouštěno v thread poolu přes asyncio.to_thread()
+    # Synchronní I/O — spouštěno ve vlákně monitoru přes _run()
     # ------------------------------------------------------------------
 
     def _connect(self) -> None:
@@ -326,7 +343,10 @@ class AdsMonitor:
         for name, symbol in SYM.items():
             pt = _plctype(name)
             try:
-                raw   = self._plc.read_by_name(symbol, pt)
+                # STRING jako surové bajty: pyads dekóduje striktně UTF-8 a diakritika z PLC
+                # (cp1250, např. „ř" v názvu zakázky) by vyhodila UnicodeDecodeError → pád
+                # _connect a nekonečný reconnect. Dekódování stejné jako u notifikací.
+                raw   = self._plc.read_by_name(symbol, pt, return_ctypes=pt == pyads.PLCTYPE_STRING)
                 value = _decode_read(raw, pt)
                 self.current_values[name] = value
                 payload = {"symbol": name, "value": value, "ts": ts}
@@ -337,7 +357,7 @@ class AdsMonitor:
                 except RuntimeError:
                     return   # event loop zavřený (shutdown během připojování) — nic neposílat
                 log.debug("[ADS]   počáteční hodnota: %s = %s", name, value)
-            except pyads.ADSError as exc:
+            except Exception as exc:   # jeden vadný symbol nesmí shodit celé připojení
                 log.warning("[ADS]   počáteční čtení selhalo [%s]: %s", name, exc)
 
     # ------------------------------------------------------------------

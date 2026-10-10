@@ -322,6 +322,15 @@ nssm restart ScadaViewer
 
 Aplikace dostupná na: `http://localhost:8080` (u stroje) a `http://<IP/DNS síťovky 2>:8080` (z kanceláře).
 
+**Logy (od 2026-10-10):** `nssm_install.bat` nastavuje rotaci i za běhu (`AppRotateOnline 1`, po 10 MB);
+rotované logy starší 30 dní aplikace maže při startu; záznam každého HTTP požadavku jen s `--debug`.
+U služby nainstalované **dřívější** verzí `nssm_install.bat` jednou doplnit:
+
+```bat
+nssm set ScadaViewer AppRotateOnline 1
+nssm restart ScadaViewer
+```
+
 ---
 
 ## NAS — připojení přes firemní síť

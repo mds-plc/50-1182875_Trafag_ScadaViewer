@@ -106,6 +106,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
       const res = await apiFetch(url, { method: 'POST', headers: authHeaders() })
       if (res.status === 503) { addToast(s.cleanNas, 'danger'); return }
       if (res.status === 409) { addToast(s.cleanBusy, 'warning'); return }
+      if (res.status === 202) { addToast(s.cleanRunning, 'info'); return }   // běží déle — dokončí se na pozadí
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const r = await res.json() as CleanupResult
       addToast(

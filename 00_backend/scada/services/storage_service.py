@@ -116,20 +116,14 @@ def storage_usage(cfg: DataConfig) -> dict:
     }
 
 
-def _nas_listing(folder: Path) -> dict[str, int]:
-    """Název → velikost souborů ve složce NAS. Chybějící složka = prázdný výpis."""
-    result: dict[str, int] = {}
+def _nas_size(folder: Path, name: str) -> int | None:
+    """Velikost souboru na NAS, None = chybí. Cílený stat jen lokálních done_remote souborů
+    (stovky) místo výpisu celé NAS složky (100 000+ souborů = desítky sekund po SMB).
+    Jiná OSError než „nenalezeno" (NAS odpadl) propadne volajícímu."""
     try:
-        with os.scandir(folder) as it:
-            for e in it:
-                if e.name.endswith(".csv"):
-                    try:
-                        result[e.name.lower()] = e.stat().st_size   # SMB je case-insensitive
-                    except OSError:
-                        continue
+        return (folder / name).stat().st_size
     except FileNotFoundError:
-        return {}
-    return result
+        return None
 
 
 def cleanup_synced(cfg: DataConfig, verify: bool = True) -> dict:
@@ -165,19 +159,22 @@ def cleanup_synced(cfg: DataConfig, verify: bool = True) -> dict:
             local = _csv_entries(base / file_type / "done_remote")
             if not local:
                 continue
-            nas: dict[str, int] | None = None
-            if remote is not None:
-                try:
-                    nas = _nas_listing(remote / file_type)
-                except OSError as exc:
-                    raise NasUnavailableError(str(exc)) from exc
-
             for e in local:
                 try:
                     size = e.stat().st_size
                 except OSError:
                     continue                            # mezitím smazal Gateway
-                if nas is not None and nas.get(e.name.lower()) != size:
+                if remote is not None:
+                    try:
+                        nas_size = _nas_size(remote / file_type, e.name)
+                    except OSError as exc:              # NAS odpadl uprostřed — dál nemazat
+                        if deleted == 0:
+                            raise NasUnavailableError(str(exc)) from exc
+                        log.warning("[SVC]   cleanup přerušen — NAS nedostupný: %s", exc)
+                        return {"deleted": deleted, "freed_bytes": freed, "skipped": skipped, "failed": failed}
+                else:
+                    nas_size = size
+                if nas_size != size:
                     skipped += 1
                     log.info("[SVC]   cleanup: %s/%s přeskočen — na NAS chybí nebo nesedí velikost",
                              file_type, e.name)

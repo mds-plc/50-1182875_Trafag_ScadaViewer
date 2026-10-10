@@ -8,16 +8,22 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (výkon a škálovatelnost — velké zakázky, velký archiv NAS)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (kompletní audit K1–K42, opraveno 21)**.
+> Nálezy K1–K42 jsou zde jen odkazem — plný popis, scénář a oprava v záznamu „[2026-10-10] Kompletní audit".
 
 ### 🔴 HIGH
 
-(žádné otevřené)
+| # | Popis | Soubor | Zdroj |
+|---|-------|--------|-------|
+(žádné otevřené — K1–K4 opraveny 2026-10-10)
 
 ### ⚠️ MEDIUM
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
+| K13 | Fronta dopočtu z NAS bez stropu, priority a rušení (proklikání archivu = hodiny stahování) | `csv_repository.py`, `file_service.py` | [2026-10-10 kompletní] |
+| K17 | DatabaseGateway zapisuje TEST soubor rovnou jako `_DONE.csv` (signál připojen později) — oprava v Gateway (tmp + `os.replace`) | DatabaseGateway `file_manager.py` | [2026-10-10 kompletní] |
+| K18 | Zastaralé `.claude/rules` + části CLAUDE.md / docstringů (NAS pool 4→6, Router v6, čtení `wip/`) | `.claude/rules/`, `CLAUDE.md` | [2026-10-10 kompletní] |
 | A6 | Rate limit (120/min) i blokace přihlášení (5 pokusů / 10 min) jsou na IP — kancelářská PC za NAT / proxy sdílí jednu IP → sdílí limit i blokaci | `app.py`, `api/auth.py` | [2026-09-26 audit] |
 | A7 | `ChartView.tsx` (~930 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena; filtr kusů vyčleněn do `RecordFilterBar`, tisk do `usePrintMode`) | `pages/` | [2026-09-26 audit] |
 
@@ -39,6 +45,7 @@
 | A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
+| K21, K23, K24, K27–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny) | — | [2026-10-10 kompletní] |
 | A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
 
 ### 📈 ŠKÁLOVÁNÍ (doporučení do budoucna — mimo ScadaViewer / dohoda s Trafag)
@@ -60,6 +67,111 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-10-10] Kompletní audit — architektura, kvalita kódu, nestandardní stavy, výkon a škálování
+
+### Scope
+Celý backend (`00_backend/scada`) a frontend (`01_frontend/src`), 4 paralelní větve (architektura /
+kvalita / chybové stavy / výkon). Kontroly: `npx tsc --noEmit` 0 chyb, `npm run lint` 0 problémů,
+počty testů (274 BE / 117 FE) a tabulka endpointů sedí s CLAUDE.md. Výkon měřen syntetickými daty
+mimo projekt (zakázka 50 000 kusů, test 40 MB, 100 000 souborů). HIGH nálezy ověřeny v kódu ručně.
+Neopakuje známé A6–A12, S1–S5, M14.
+
+### Nálezy
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| K1 | 🔴 HIGH | `_count_job`: jakákoli výjimka (OSError z NAS, zámek Defenderu) → `full=None` → `_put(None)` → `hidden=1` v SQLite. DONE soubor se už nemění → zakázka zmizí z přehledu natrvalo i po restartu (skenování má správně „necachovat, zkusit znovu"). Oprava: skrývat jen při skutečném `None` z `read_file_meta`, při výjimce nechat `record_count=None` + opakovat s odkladem | `csv_repository.py:731-741` | ✅ Opraveno |
+| K2 | 🔴 HIGH | pyads 3.5.2 čte STRING jako `utf-8` (`pyads_ex.py:269`); `order_name` s diakritikou (CP1252 z PLC) → `UnicodeDecodeError`, `_read_and_broadcast_initial` chytá jen `ADSError` → pád `_connect` → reconnect dokola, ADS offline, auto-login nefunguje. Oprava: STRING číst jako pole bajtů + `_decode_raw` (cp1252, `errors="replace"`), chytat `Exception` per symbol | `ads_monitor.py:322-341` | ✅ Opraveno |
+| K3 | 🔴 HIGH | `dateFrom`/`dateTo` se nastaví jednou při mountu; kiosk má Database otevřenou nepřetržitě → po půlnoci auto-refresh i `files_changed` posílají `to=včera`, nové zakázky tiše chybí. Oprava: výchozí (nezměněný) filtr přepočítat při refreshi / o půlnoci, případně `to` neposílat | `useDatabaseState.ts:110-111` | ✅ Opraveno |
+| K4 | 🔴 HIGH | `np.loadtxt` nad 40 MB testem: 412 ms, z toho event loop stojí 257 ms (GIL) — zamrzne WS broadcast i ostatní požadavky; špička 241 MB / parsování, souběh různých souborů neomezen, cache omezena jen počtem (2). Oprava: parsování po blocích, semafor 1–2 souběžná, strop cache v bajtech | `signal_reader.py:55,83,154` | ✅ Opraveno |
+| K5 | ⚠️ MEDIUM | `PlcContext` drží všech 23 symbolů v jednom nememoizovaném `value`; `AppShell` (`usePlcWatcher`) a `PlcAuth`→`AuthProvider` se překreslí při každé ADS notifikaci (každý kus) → překreslí se celá aplikace vč. FileTable/ChartView. Oprava: rozdělit kontext (connected / plcLoggedIn), `useMemo` na value providerů | `PlcContext.tsx:125`, `App.tsx`, `AuthContext.tsx:238` | ✅ Opraveno |
+| K6 | ⚠️ MEDIUM | Smazání uživatele nezruší jeho relace — `require_auth` ověřuje jen token; smazaný technik může dál až 8 h mazat soubory | `users_api.py:127-128` | ✅ Opraveno |
+| K7 | ⚠️ MEDIUM | `CsvRecordModel.group/expected_count: int \| None`, `timestamp: str` povinný — prázdná / nečíselná `Group` nebo chybějící Timestamp → `ValidationError` → 500 celého `/api/data` | `models.py:86-95`, `api/data.py:174` | ✅ Opraveno |
+| K8 | ⚠️ MEDIUM | `read_records` polyká `OSError` → výpadek NAS / zamčený soubor = prázdná tabulka s HTTP 200; větev 503 v `data.py` se nikdy nespustí. Polykat jen `csv.Error`/`UnicodeDecodeError` | `csv_repository.py:892-897` | ✅ Opraveno |
+| K9 | ⚠️ MEDIUM | `_persist` při chybě zápisu `users.toml` jen loguje → UI hlásí úspěch, po restartu se vrátí staré heslo / smazaný uživatel; zápis navíc synchronně v event loopu | `users_api.py:28-35`, `auth.py:320` | ✅ Opraveno |
+| K10 | ⚠️ MEDIUM | Pomalý / chybující WS klient se jen vyřadí z `_active`, socket se nezavře → prohlížeč nedostane `onclose`, ukazuje zamrzlé PLC hodnoty (i `plc_operator_login=true`) bez reconnectu | `ws_manager.py:103-112` | ✅ Opraveno |
+| K11 | ⚠️ MEDIUM | `ErrorBoundary` jen kolem `<Routes>`, bez resetu při navigaci; chyba lazy chunku (nový build bez reloadu kiosku) „Zkusit znovu" nevyřeší; chyba v Sidebar/Topbar/providerech = bílá obrazovka. Oprava: `key={pathname}`, druhá boundary nad AppShell, `vite:preloadError` → reload | `ErrorBoundary.tsx`, `App.tsx` | ✅ Opraveno |
+| K12 | ⚠️ MEDIUM | NSSM bez `AppRotateOnline 1` → rotace jen při startu služby; uvicorn access log (`log_level=info`) ~3 MB/den → ~1 GB/rok v jednom souboru, staré se nemažou | `nssm_install.bat:36-39`, `main.py:64` | ✅ Opraveno |
+| K13 | ⚠️ MEDIUM | Fronta dopočtu z NAS bez stropu, priority a rušení — proklikání 100 stránek = 5 000 souborů (~65 GB) ve frontě, aktuální stránka čeká na konci, FE se ptá po 1,5 s | `csv_repository.py:684-696`, `file_service.py:118` | ⬜ Otevřeno |
+| K14 | ⚠️ MEDIUM | Heartbeat do PLC (`_write_hb` po 500 ms) přes `asyncio.to_thread` sdílí výchozí pool s XLSX, stavbou indexu, PBKDF2… → zpoždění může spustit watchdog v PLC. Oprava: vlastní executor (1 vlákno) v AdsMonitor | `ads_monitor.py:225` | ✅ Opraveno |
+| K15 | ⚠️ MEDIUM | Čištění úložiště s ověřením vypisuje celou NAS složku znovu (mimo 15s cache); při 100k+ souborech > 60 s → 503 „NAS neodpovídá", ale vlákno dál maže (další pokus 409); u `force` hláška nesedí. Oprava: ověřovat cíleně `stat` jen lokálních `done_remote` souborů | `storage_service.py:119-132`, `api/storage.py:44,74-84` | ✅ Opraveno |
+| K16 | ⚠️ MEDIUM | NAS I/O mimo `run_io`: `/download?location=remote` (`FileResponse` ve výchozím poolu, bez timeoutu) a vlákna dopočtu `csv-count-remote-*` bez timeoutu — zaseknutý NAS blokuje obecná vlákna | `api/files.py:225`, `csv_repository.py:698-740` | ✅ Opraveno |
+| K17 | ⚠️ MEDIUM | DatabaseGateway zapisuje TEST soubor rovnou jako `_DONE.csv` a `[SignalData]` připojuje dalším `open("a")` → ScadaViewer může soubor otevřít před dopsáním signálu (`has_signal=false`, ChartView už nezkontroluje). Oprava v Gateway: tmp + `os.replace` | DatabaseGateway `file_manager.py:327-445` | ⬜ Otevřeno |
+| K18 | ⚠️ MEDIUM | Zastaralé auto-načítané rules: `sibling-projects.md` (ScadaViewer prý nečte `wip/`), `fastapi-patterns.md` (NAS pool 4 → 6), `frontend-patterns.md` (Router v6, `/` → Overview); CLAUDE.md §5 (`checks.ads` „dokud není implementován"), §2 chybí `services/protocols.py`, §13 „5 stránek v6"; docstringy `app.py`, `ws_manager.py`, `App.tsx` | `.claude/rules/`, `CLAUDE.md` | ⬜ Otevřeno |
+| K19 | 🔵 LOW | `files_changed` (jednorázová událost) se ukládá do WS cache a přehrává každému novému klientovi → zbytečný refetch `/api/files` + `/api/storage` při každém (re)connectu | `ws_manager.py:99-100` | ✅ Opraveno |
+| K20 | 🔵 LOW | `connect()` zařadí klienta do `_active` před odesláním snapshotu → nová hodnota z broadcastu může být přepsána starou ze snapshotu (např. `plc_operator_login`) | `ws_manager.py:56-65` | ✅ Opraveno |
+| K21 | 🔵 LOW | Přerušený PLC auto-login (problik `plcLoggedIn` během požadavku) se nezopakuje — `plcLoginInFlightRef` blokuje nový běh, overlay visí, osiřelá relace na serveru | `AuthContext.tsx:130-150` | ⬜ Otevřeno |
+| K22 | 🔵 LOW | `create_user` kontroluje unikátnost před `strip()` → `" technik"` vytvoří duplicitního `technik` | `users_api.py:72-83` | ✅ Opraveno |
+| K23 | 🔵 LOW | `/api/files` s neplatným `from`/`to` → `ValueError` → 500 (v `/api/data` je 422) | `file_service.py:67-68` | ⬜ Otevřeno |
+| K24 | 🔵 LOW | ChartView hledá záznam podle `timestamp` (přesnost na s) → dva kusy ve stejné sekundě otevřou špatný detail | `ChartView.tsx:461` | ⬜ Otevřeno |
+| K25 | 🔵 LOW | PlcContext: `attempt` se v `onopen` nenuluje → po ~5 výpadcích každé obnovení spojení 30 s; bez watchdogu živosti | `PlcContext.tsx:74-106` | ✅ Opraveno |
+| K26 | 🔵 LOW | NaN/inf v `[SignalData]` (mimo odpory) → `JSONResponse` ValueError → 500 | `signal_reader.py:516-520`, `api/signal.py:114` | ✅ Opraveno |
+| K27 | 🔵 LOW | Souběžné PATCH Config.toml bez zámku, sdílený `Config.toml.tmp` → ztráta změny / 500; `auth._update_config_file` zapisuje neatomicky | `config_api.py:63-142`, `auth.py:135` | ⬜ Otevřeno |
+| K28 | 🔵 LOW | Neplatné `csv_encoding` se nevaliduje → soubory tiše přeskočeny, `/api/data` 500 (`LookupError`). Oprava: `codecs.lookup` v `_validate_config` | `config.py:222-241` | ⬜ Otevřeno |
+| K29 | 🔵 LOW | Mazání během přesunu done_local → done_remote → `FileNotFoundError` → 503 místo opakování `resolve_path` | `file_service.py:249-252`, `files.py:129-133` | ⬜ Otevřeno |
+| K30 | 🔵 LOW | Naivní lokální čas v CSV + konec letního času 25. 10. 2026 → KPI časového průběhu zkreslené o 1 h (navazuje na TODO 9) | `orderTimeline.ts:36`, Gateway | ⬜ Otevřeno |
+| K31 | 🔵 LOW | FE zobrazuje jen `HTTP 503/504` / obecný toast, ne serverový `detail` ani přeložený důvod (404 přesunutý soubor, 409 čištění běží) | `useData.ts:110,178`, `exportXlsx.ts`, `downloadOriginal.ts` | ⬜ Otevřeno |
+| K32 | 🔵 LOW | CSV se špatným oddělovačem se načte jako 1 sloupec bez varování v logu; oříznutý poslední řádek WIP souboru → záznam s `None` | `csv_repository.py:801-814,1005-1031` | ⬜ Otevřeno |
+| K33 | 🔵 LOW | Datumový filtr `/api/files` přes `date.fromisoformat` + `FileMeta.__getitem__` pro každý soubor: 100k souborů 171 ms CPU / dotaz (500k ≈ 0,85 s), opakováno po 1,5 s při `counts_pending` | `file_service.py:66-90` | ⬜ Otevřeno |
+| K34 | 🔵 LOW | Tabulka `known` a osiřelé řádky `meta` (staré cesty po PATCH paths) se nikdy nepromazávají, při startu se celé načítají do RAM | `csv_repository.py:401-423` | ⬜ Otevřeno |
+| K35 | 🔵 LOW | `_OrderIndex` se při souběžných požadavcích na novou zakázku staví vícekrát (bez zámku na cestu), 140 ms + 22 MB každé | `csv_repository.py:976-996` | ⬜ Otevřeno |
+| K36 | 🔵 LOW | `DataResponse` se validuje a serializuje v event loopu: `per_page=0` (20 000) 205 ms / 23 MB; timeline 50k 41 ms | `api/data.py:174` | ⬜ Otevřeno |
+| K37 | 🔵 LOW | Globální stav mimo `app.state` (`_FAILURES`, WS `manager`, NAS executor, `_prefetch_tasks`); NAS executor se při shutdownu nezavírá, prefetch úlohy se neruší; `users_api` importuje privátní funkce z `auth` | `auth.py:60`, `io_pool.py:32`, `data.py:49`, `plc_ws.py:39` | ⬜ Otevřeno |
+| K38 | 🔵 LOW | Rozložení složek (`production\|testing × wip\|done_*`) definováno a skenováno na 3 místech — změna struktury (S1) na 3 místech | `files_watcher.py:33`, `storage_service.py:41`, `csv_repository.py:1092` | ⬜ Otevřeno |
+| K39 | 🔵 LOW | Odpojený Overview/WIP: `overview.css` (20 kB) + `wip.css` v hlavním CSS bundlu; backend moduly bez testů tiše zastarávají (`wip[]` + `files_changed` je už náhradou) | `index.css:15-16`, `api/wip.py`, `orders_ws.py`, `order_watcher.py` | ⬜ Otevřeno |
+| K40 | 🔵 LOW | `CsvRepository` (SQLite + načtení cache) vzniká v `create_app`, ne v lifespanu — asymetrie start/stop | `app.py:301` | ⬜ Otevřeno |
+| K41 | 🔵 LOW | Konvence: natvrdo `'Error loading signal data'` (`useSignalData.ts:86`); `formatParam` pro `meas_ts` vždy `cs-CZ` (`paramMeta.ts:245`) | `01_frontend/src/` | ⬜ Otevřeno |
+| K42 | 🔵 LOW | `_path_locks` se při výjimce parsování nečistí (drobný únik) | `signal_reader.py:410` | ✅ Opraveno |
+
+**Celkem:** 42 nálezů | 21 opraveno | 21 otevřeno
+
+### Opravy (2026-10-10)
+- **K1** dopočet: výjimka I/O → soubor zůstane viditelný (`record_count=None`), opakování nejdřív za 60 s
+  (`_COUNT_RETRY_S`); skrývá se jen poškozený obsah (`UnicodeDecodeError`, `csv.Error`).
+- **K2** STRING symboly se při úvodním čtení čtou jako ctypes bajty (`return_ctypes=True`) a dekódují
+  cp1250 jako notifikace; chyba jednoho symbolu (`Exception`) neshodí připojení.
+- **K3** výchozí datumový filtr Database se o půlnoci posune (kontrola 1× za minutu); ručně nastavený se nemění.
+- **K4** `[SignalData]` po blocích 5 000 řádků (`islice` + `loadtxt`), semafor 2 souběžná parsování,
+  strop cache 160 MB. Reálný test 40 MB: zastavení event loopu ~350 ms → 6 ms, špička paměti 241 → 33 MB,
+  parsování 0,46 → 0,58 s (běží na pozadí / prefetch).
+- **K5** `PlcContext` rozdělen: `usePlcConnection()` (spojení + `plcLoggedIn`, memo) vs. hodnoty symbolů;
+  AppShell / AuthProvider / Topbar / LoginOverlay se už nepřekreslují při každé ADS notifikaci.
+  **K25** backoff WS se po úspěšném spojení nuluje.
+- **K6** smazání uživatele zneplatní jeho relace. **K22** unikátnost jména po `strip()`.
+- **K7** `CsvRecordModel`: prázdná / nečíselná `group`, `expected_count` → `None`; chybějící `timestamp` → `''`.
+- **K8** `read_records` propouští `OSError` → `/api/data`, `/api/timeline` vrací 503 (`FileNotFoundError` → 404).
+- **K9** zápis `users.toml` / `Config.toml` při změně uživatelů a hesla: chyba → stav v paměti zpět + HTTP 500;
+  zápis mimo event loop.
+- **K10** WS: každý klient vlastní fronta + odesílací úloha; nestíhající / chybující klient se zavře (1011).
+  **K19** `files_changed` se necachuje. **K20** snapshot se zařadí před první novou zprávou.
+- **K11** `ErrorBoundary` s `resetKey={pathname}`, druhá boundary nad celou aplikací, chyba načtení
+  chunku → reload (i `vite:preloadError`, pojistka 30 s).
+- **K12** `AppRotateOnline 1` v `nssm_install.bat` (u existující instalace: `nssm set ScadaViewer AppRotateOnline 1`),
+  uvicorn access log jen v `--debug`, rotované logy starší 30 dní se při startu mažou (`prune_old_logs`).
+- **K14** heartbeat a ostatní pyads volání ve vlastním vlákně `AdsMonitor` (`ThreadPoolExecutor(1)`).
+- **K15** čištění ověřuje cíleně `stat` každého lokálního `done_remote` souboru na NAS (ne výpis celé složky);
+  výpadek NAS uprostřed → konec s dílčím výsledkem; běží-li déle než 60 s → HTTP 202 „pokračuje na pozadí".
+- **K16** `/download?location=remote` (soubor jen na NAS) čte po 1 MB blocích přes `run_io` s timeoutem;
+  zaseknutý dopočet (> 120 s) se nehlásí jako `counts_pending` (frontend přestane opakovat dotazy).
+- **K26** NaN / inf v signálu → `null` v JSON. **K42** zámek souboru se po chybě parsování uvolní.
+
+Testy: `02_tests/test_audit_20261010.py` (17 nových) — backend **291** ✅, frontend **117** ✅, `tsc` 0, `lint` 0.
+
+### Ověřeno v pořádku
+apiFetch u všech autentizovaných volání, AbortController ve všech fetch hoocích, cleanup časovačů/listenerů;
+ohraničené cache (sessions TTL + GC, lockout 5 000, `_moved` 2 000, `_resp_cache` 12, `_OrderIndex` 3 / 256 MB,
+timeline 5); SQLite jedno spojení + WAL + zápis jen změn; XLSX 50k 1,7 s / 26 MB; výpis 100k NAS po TTL 0,46 s;
+parser zvládá prázdný soubor, jen hlavičku, chybějící BOM, chybějící sekce; poškozená SQLite cache se obnoví;
+atomický zápis Config.toml (config_api) i users.toml; ADS reconnect s backoffem + `clear_symbols`.
+
+### Projekce růstu
+- **1 rok:** log NSSM ~1 GB (K12); každý výpadek NAS při dopočtu skryje část archivu (K1); proklikání archivu
+  zahltí linku k NAS (K13); čištění s ověřením začne končit falešným 503 (K15).
+- **5 let (~500 000 souborů):** dotaz na Vzdálenou ~0,85 s CPU (K33 + S4), `known`+`meta` stovky MB RAM (K34),
+  souběh otevřených testů může vyčerpat paměť PC u stroje (K4).
 
 ---
 

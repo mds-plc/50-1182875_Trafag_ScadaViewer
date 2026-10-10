@@ -3,7 +3,9 @@
  * @description React Error Boundary — zachycuje runtime chyby v potomcích a zobrazuje
  *   záložní UI místo pádu celé aplikace. Musí být class component (hooks nefungují
  *   v error boundaries). Překlady čteny přes LangContext.Consumer.
- *   Tlačítko "Zkusit znovu" / "Try again" resetuje stav.
+ *   Tlačítko "Zkusit znovu" / "Try again" resetuje stav; u chyby načtení části aplikace
+ *   (nový build bez obnovení kiosku) stránku znovu načte. Změna `resetKey` (cesta) chybu
+ *   zruší — přechod na jinou stránku v menu funguje i po chybě.
  */
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
@@ -11,6 +13,13 @@ import { LangContext } from '../context/LangContext'
 
 interface Props {
   children: ReactNode
+  /** Změna klíče (např. cesta stránky) zruší zobrazenou chybu. */
+  resetKey?: string
+}
+
+/** Chyba načtení lazy chunku — React.lazy si zamítnutí pamatuje, pomůže jen reload stránky. */
+export function isChunkLoadError(error: Error | null): boolean {
+  return !!error && /dynamically imported module|Importing a module script failed|Loading chunk|preload/i.test(error.message)
 }
 
 interface State {
@@ -27,6 +36,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error }
+  }
+
+  componentDidUpdate(prev: Props): void {
+    if (this.state.hasError && prev.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
+  private retry = (): void => {
+    if (isChunkLoadError(this.state.error)) window.location.reload()
+    else this.setState({ hasError: false, error: null })
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -48,7 +68,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </p>
               <button
                 className="btn btn--secondary"
-                onClick={() => this.setState({ hasError: false, error: null })}
+                onClick={this.retry}
               >
                 {t.error.retry}
               </button>

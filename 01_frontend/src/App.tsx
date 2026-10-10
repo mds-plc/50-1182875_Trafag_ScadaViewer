@@ -6,9 +6,9 @@
  *   Neznámé cesty jsou přesměrovány na /.
  */
 import { lazy, Suspense, useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { LangProvider } from './context/LangContext'
-import { PlcProvider, usePlc } from './context/PlcContext'
+import { PlcProvider, usePlcConnection } from './context/PlcContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { StorageProvider } from './context/StorageContext'
@@ -38,21 +38,19 @@ import { useBackendOnline } from './hooks/useBackendOnline'
 import { useLang } from './context/LangContext'
 import { WifiOff } from 'lucide-react'
 
-/** Symbol PLC přihlášení uživatele (Out.Status.UserLoggedIn BOOL). */
-const PLC_LOGIN_SYMBOL = 'plc_operator_login'
-
 /** Čte PLC přihlášení z kontextu — musí být uvnitř PlcProvider. Předá i to, zda je prohlížeč
  *  na PC u stroje (vzdáleně bez PLC auto-loginu, jen prohlížení). */
 function PlcAuth({ children }: { children: React.ReactNode }) {
-  const { status } = usePlc()
+  // usePlcConnection (ne usePlc) — jinak by se při každé ADS notifikaci překreslila celá aplikace
+  const { plcLoggedIn } = usePlcConnection()
   const clientLocal = useClientLocal()
-  const plcLoggedIn = status[PLC_LOGIN_SYMBOL]?.value === true
   return <AuthProvider plcLoggedIn={plcLoggedIn} clientLocal={clientLocal}>{children}</AuthProvider>
 }
 
 function AppShell() {
   const { isLoggedIn } = useAuth()
   const { t } = useLang()
+  const { pathname } = useLocation()
   const online = useBackendOnline()
   usePlcWatcher()
   // Nová stránka začíná nahoře; Zpět vrátí pozici (např. v tabulce záznamů zakázky)
@@ -79,7 +77,7 @@ function AppShell() {
         <Sidebar />
         <Topbar />
         <main className="content" ref={contentRef}>
-          <ErrorBoundary>
+          <ErrorBoundary resetKey={pathname}>
             <Suspense fallback={<LoadingSpinner />}>
             <Routes>
               <Route path="/"         element={<Navigate to="/database" replace />} />
@@ -100,6 +98,8 @@ function AppShell() {
 export default function App() {
   return (
     <LangProvider>
+      {/* Poslední záchrana — chyba v Sidebar / Topbar / providerech by jinak byla bílá obrazovka */}
+      <ErrorBoundary>
       <BrowserRouter>
         <ToastProvider>
           <PlcProvider>
@@ -111,6 +111,7 @@ export default function App() {
           </PlcProvider>
         </ToastProvider>
       </BrowserRouter>
+      </ErrorBoundary>
     </LangProvider>
   )
 }

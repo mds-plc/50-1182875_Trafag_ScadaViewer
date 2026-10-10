@@ -24,7 +24,9 @@ from __future__ import annotations
 import bisect
 import io
 import logging
+import math
 import threading
+from itertools import islice
 from array import array
 import statistics
 from collections import OrderedDict
@@ -70,7 +72,15 @@ _SIGNAL_COLS = [
 ]
 
 
-_PARSE_BLOCK = 20_000   # řádků na blok (Python cesta) — kompromis rychlost / přechodná paměť
+# Parsování po blocích řádků: numpy.loadtxt drží GIL — nad celým souborem (40 MB) zastavil
+# event loop na 0,3–1,3 s (WebSocket PLC hodnot, ostatní požadavky). Mezi bloky se GIL uvolní;
+# blok navíc omezí přechodnou paměť (dřív celý text + matice ≈ 240 MB na jedno parsování).
+_PARSE_BLOCK = 5_000
+# Nejvýš tolik souborů se parsuje současně (různé testy — kiosk, kancelář, prefetch)
+_PARSE_MAX   = 2
+_parse_sem   = threading.BoundedSemaphore(_PARSE_MAX)
+# Strop paměti cache naparsovaných souborů (vedle _CACHE_MAX) — delší testy = víc vzorků
+_CACHE_BYTES = 160 * 1024 * 1024
 
 
 def _parse_numpy(text: str, separator: str, targets: list[tuple[int, array]]) -> bool:
@@ -79,6 +89,8 @@ def _parse_numpy(text: str, separator: str, targets: list[tuple[int, array]]) ->
     Vrátí False při vadných datech (chybějící / nečíselná hodnota) → volající použije
     Python cestu, která vadné hodnoty nahradí 0.0 a zachová zarovnání sloupců.
     """
+    if not text.strip():
+        return True
     try:
         data = _np.loadtxt(
             io.StringIO(text), delimiter=separator, dtype=_np.float64, ndmin=2,
@@ -91,13 +103,11 @@ def _parse_numpy(text: str, separator: str, targets: list[tuple[int, array]]) ->
     return True
 
 
-def _parse_python(text: str, separator: str, targets: list[tuple[int, array]], n_cols: int) -> None:
-    """Záložní cesta bez numpy — po blocích: split → zip(*rows) → map(float) (v C)."""
-    lines = text.splitlines()
-    for b in range(0, len(lines), _PARSE_BLOCK):
-        rows = [ln.split(separator) for ln in lines[b:b + _PARSE_BLOCK] if ln.strip()]
-        if rows:
-            _append_rows(rows, targets, n_cols)
+def _parse_python(lines: list[str], separator: str, targets: list[tuple[int, array]], n_cols: int) -> None:
+    """Záložní cesta bez numpy (nebo pro vadný blok): split → zip(*rows) → map(float) (v C)."""
+    rows = [ln.split(separator) for ln in lines if ln.strip()]
+    if rows:
+        _append_rows(rows, targets, n_cols)
 
 
 def _append_rows(rows: list[list[str]], targets: list[tuple[int, array]], n_cols: int) -> None:
@@ -150,19 +160,22 @@ def read_signal_data(
                     header.append((h[:bracket] if bracket >= 0 else h).strip().lower())
                 break
 
-        # 3) Data — zbytek souboru najednou (~40 MB), oříznout na případnou další sekci
-        rest = f.read()
-    cut = rest.find('\n[')
-    if cut >= 0:
-        rest = rest[:cut]
-    if not rest.strip():
-        return None
+        targets = [(i, columns[name]) for i, name in enumerate(header) if name in columns]
+        if not targets:
+            return None
 
-    targets = [(i, columns[name]) for i, name in enumerate(header) if name in columns]
-    if not targets:
-        return None
-    if not (_np is not None and _parse_numpy(rest, separator, targets)):
-        _parse_python(rest, separator, targets, len(header))
+        # 3) Data po blocích řádků až po případnou další sekci ([…])
+        while True:
+            lines = list(islice(f, _PARSE_BLOCK))
+            if not lines:
+                break
+            end = next((k for k, ln in enumerate(lines) if ln.startswith('[')), None)
+            if end is not None:
+                lines = lines[:end]
+            if lines and not (_np is not None and _parse_numpy(''.join(lines), separator, targets)):
+                _parse_python(lines, separator, targets, len(header))   # vadný blok / bez numpy
+            if end is not None:
+                break
 
     if len(columns['ts']) == 0:
         return None
@@ -415,19 +428,31 @@ def load_signal(
                 _cache.move_to_end(path)
                 return hit[1], hit[2], hit[3]
 
-        with open(path, encoding=encoding, newline='') as f:
-            analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
-        raw        = read_signal_data(path, encoding, separator)
-        key_points = find_key_points(analyzed, raw) if raw is not None else {}
-        params     = _numeric_params(analyzed)
+        try:
+            with _parse_sem:
+                with open(path, encoding=encoding, newline='') as f:
+                    analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
+                raw        = read_signal_data(path, encoding, separator)
+                key_points = find_key_points(analyzed, raw) if raw is not None else {}
+                params     = _numeric_params(analyzed)
+        except BaseException:
+            with _cache_lock:
+                if path not in _cache:
+                    _path_locks.pop(path, None)       # vadný soubor nenechává zámek navždy
+            raise
 
         with _cache_lock:
             _cache[path] = (sig, raw, key_points, params)
             _cache.move_to_end(path)
-            while len(_cache) > _CACHE_MAX:
+            while len(_cache) > _CACHE_MAX or (len(_cache) > 1 and _cache_bytes() > _CACHE_BYTES):
                 evicted, _ = _cache.popitem(last=False)
                 _path_locks.pop(evicted, None)
         return raw, key_points, params
+
+
+def _cache_bytes() -> int:
+    """Paměť naparsovaných sloupců v cache (volat pod _cache_lock)."""
+    return sum(a.itemsize * len(a) for _, raw, _, _ in _cache.values() if raw for a in raw.values())
 
 
 def prepare_signal_response(
@@ -513,14 +538,14 @@ def _convert_units(
     """Konvertuje jednotky pro frontend: ns→ms, A→mA; odpor v Ω (frontend: logaritmická osa)."""
     n = len(data.get('ts', []))
     result: dict = {
-        'ts_ms':     [v / 1_000_000 for v in data.get('ts', [])],
-        # list(): data mohou být array('d') (zoom / malý soubor) — JSON umí jen list
-        'position':  list(data.get('position', [])),
-        'force':     list(data.get('force', [])),
-        'u_nc':      list(data.get('u_nc', [])),
-        'u_no':      list(data.get('u_no', [])),
-        'i_nc_ma':   [v * 1000 for v in data.get('i_nc', [])],
-        'i_no_ma':   [v * 1000 for v in data.get('i_no', [])],
+        # NaN / inf (vadná hodnota v CSV) → None: JSON je neumí, odpověď by skončila HTTP 500
+        'ts_ms':     [v / 1_000_000 if _isfinite(v) else None for v in data.get('ts', [])],
+        'position':  _finite_list(data.get('position', [])),
+        'force':     _finite_list(data.get('force', [])),
+        'u_nc':      _finite_list(data.get('u_nc', [])),
+        'u_no':      _finite_list(data.get('u_no', [])),
+        'i_nc_ma':   [v * 1000 if _isfinite(v) else None for v in data.get('i_nc', [])],
+        'i_no_ma':   [v * 1000 if _isfinite(v) else None for v in data.get('i_no', [])],
         'r_nc_ohm':  [_clip_ohm(v) for v in data.get('r_nc', [])],
         'r_no_ohm':  [_clip_ohm(v) for v in data.get('r_no', [])],
         # threshold_v není klíčový bod — do odpovědi zvlášť (frontend: čára prahu v grafu napětí)
@@ -532,9 +557,20 @@ def _convert_units(
     return result
 
 
+_isfinite = math.isfinite
+
+
+def _finite_list(values) -> list[float | None]:
+    """list() sloupce (array('d') JSON neumí); nekonečna / NaN → None."""
+    out = list(values)
+    if not all(map(_isfinite, out)):
+        out = [v if _isfinite(v) else None for v in out]
+    return out
+
+
 def _clip_ohm(v: float) -> float | None:
-    """Odpor pro logaritmickou osu — ořez na [1e-4, 1e7] Ω, None pro nekladné hodnoty."""
-    if v <= 0:
+    """Odpor pro logaritmickou osu — ořez na [1e-4, 1e7] Ω, None pro nekladné hodnoty / NaN."""
+    if not v > 0:                                  # zachytí i NaN
         return None
     return max(1e-4, min(1e7, v))
 
