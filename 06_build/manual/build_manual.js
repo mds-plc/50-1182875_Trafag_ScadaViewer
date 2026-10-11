@@ -15,6 +15,9 @@ const IMG = path.join(__dirname, 'img', L)
 const params = JSON.parse(fs.readFileSync(path.join(__dirname, 'params.json'), 'utf8'))
 
 // ── Vzhled ──────────────────────────────────────────────────────────────
+// Verze aplikace — jediný zdroj je scada/__init__.py (__version__), ne natvrdo v textu manuálu
+const VERSION = (fs.readFileSync(path.join(__dirname, '..', '..', '00_backend', 'scada', '__init__.py'), 'utf8')
+  .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
 const FONT = 'Segoe UI'
 const NAVY = '161C2D', ACCENT = '2563EB', MUTED = '6B7280', LINE = 'D1D5DB', SOFT = 'F3F4F6'
 const PAGE_W = 11906, MARGIN = 1134                       // A4, okraje 2 cm
@@ -130,7 +133,7 @@ function titlePage() {
   const meta = [
     [t('Zákazník', 'Customer'), 'Trafag AG'],
     [t('Projekt', 'Project'), '50-1182875'],
-    [t('Verze aplikace', 'Application version'), '2.1.0'],
+    [t('Verze aplikace', 'Application version'), VERSION],
     [t('Vydání manuálu', 'Manual issue'), t('1.1 · říjen 2026', '1.1 · October 2026')],
     [t('Dodavatel', 'Supplier'), 'Mechatronic Design & Solutions (MDS)'],
   ]
@@ -553,8 +556,8 @@ function body() {
   // Příloha A ─ parametry
   c.push(H1(t('Příloha A  Přehled parametrů', 'Appendix A  Parameter overview')))
   c.push(P(t(
-    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Hodnoty: síly v N (2 desetinná místa), polohy a zdvihy v µm, časy v µs, odpory kontaktů v mΩ; rozepnutý kontakt (≥ 1 MΩ) se zobrazuje jako ∞.',
-    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Values: forces in N (2 decimal places), positions and travels in µm, times in µs, contact resistances in mΩ; an open contact (≥ 1 MΩ) is shown as ∞.')))
+    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Hodnoty jsou v jednotkách zákazníka: síly v mN, polohy a zdvihy v µm (0,1 µm), časy v µs, odpory kontaktů v mΩ (0,1 mΩ); odpor nad 999,9 mΩ (rozepnutý kontakt) se zobrazuje jako ∞. Polohy FP, OP, RP a TTP udávají výšku hmatníku nad osou upevňovacích otvorů — při stlačení klesají. U starších souborů (před 10/2026) jsou polohy na stupnici enkodéru; aplikace na to upozorní poznámkou.',
+    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Values are in customer units: forces in mN, positions and travels in µm (0.1 µm), times in µs, contact resistances in mΩ (0.1 mΩ); a resistance above 999.9 mΩ (open contact) is shown as ∞. Positions FP, OP, RP and TTP give the height of the actuator above the mounting-hole axis — they decrease when actuated. In older files (before 10/2026) the positions are on the encoder scale; the application shows a note.')))
   const desc = L === 'cs' ? params.desc : params.desc_en
   for (const g of params.groups) {
     const rows = g.keys.map(k => {
@@ -571,7 +574,7 @@ function body() {
 const doc = new Document({
   creator: 'Mechatronic Design & Solutions',
   title: t('ScadaViewer — Uživatelský manuál', 'ScadaViewer — User Manual'),
-  description: 'ScadaViewer 2.1.0',
+  description: `ScadaViewer ${VERSION}`,
   styles: {
     default: { document: { run: { font: FONT, size: 20, color: '1F2937' } } },
     paragraphStyles: [
@@ -610,7 +613,7 @@ const doc = new Document({
       headers: { default: new Header({ children: [new Paragraph({
         border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: LINE, space: 4 } },
         tabStops: [{ type: TabStopType.RIGHT, position: CONTENT }],
-        children: [new TextRun({ text: 'ScadaViewer 2.1.0', size: 16, color: MUTED }),
+        children: [new TextRun({ text: `ScadaViewer ${VERSION}`, size: 16, color: MUTED }),
                    new TextRun({ text: '\t' + t('Uživatelský manuál', 'User Manual'), size: 16, color: MUTED })],
       })] }) },
       footers: { default: new Footer({ children: [new Paragraph({

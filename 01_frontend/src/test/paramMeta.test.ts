@@ -1,25 +1,29 @@
 /**
  * @file paramMeta.test.ts
- * @description Jednotné formátování měřených parametrů (formatParam) — hodnoty z reálného
- *   production CSV (DatabaseGateway). Stejná funkce se používá v Database (rozbalený řádek),
+ * @description Jednotné formátování měřených parametrů (formatParam) — hodnoty v jednotkách
+ *   zákazníka (backend je převádí podle hlavičky CSV z DatabaseGateway). Stejná funkce se používá v Database (rozbalený řádek),
  *   v detailu zakázky i v detailu záznamu.
  */
 import { describe, it, expect } from 'vitest'
 import {
-  formatParam, hasMeasuredValue, paramUnit, ALL_PARAM_KEYS, PARAM_GROUPS,
+  formatParam, hasMeasuredValue, paramUnit, positionScaleOf, ALL_PARAM_KEYS, PARAM_GROUPS,
   PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS,
 } from '../utils/paramMeta'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
 describe('formatParam', () => {
-  it('forces: 2 decimal places [N]', () => {
-    expect(formatParam('of_operatingforce', '1.0600')).toEqual({ text: '1.06', open: false })
-    expect(paramUnit('of_operatingforce')).toBe('N')
+  // Hodnoty už v jednotkách zákazníka (backend převádí podle hlavičky CSV — audit X1, požadavek 9.3)
+  it('forces: whole mN', () => {
+    expect(formatParam('of_operatingforce', '1046')).toEqual({ text: '1046', open: false })
+    expect(formatParam('of_operatingforce', '1060.4')).toEqual({ text: '1060', open: false })
+    expect(paramUnit('of_operatingforce')).toBe('mN')
   })
 
-  it('positions and travel: whole µm', () => {
-    expect(formatParam('op_operatingposition', '926.0000').text).toBe('926')
-    expect(formatParam('md_movementdifferential', '-13.0000').text).toBe('-13')
+  it('positions and travel: µm with 0.1 resolution, customer positions above 999.9 are not ∞', () => {
+    expect(formatParam('op_operatingposition', '8640.5').text).toBe('8640.5')
+    expect(formatParam('fp_freeposition', '9271').text).toBe('9271.0')
+    expect(formatParam('md_movementdifferential', '-13.0000').text).toBe('-13.0')
+    expect(formatParam('md_movementdifferential', '-0.03').text).toBe('0.0')       // bez „−0"
     expect(paramUnit('pt_pretravel')).toBe('µm')
   })
 
@@ -28,14 +32,16 @@ describe('formatParam', () => {
     expect(paramUnit('ut_unstabletime')).toBe('µs')
   })
 
-  it('resistance: CSV Ω → displayed mΩ with 1 decimal place', () => {
-    expect(formatParam('r_nc_operatingposition_neg', '0.0090').text).toBe('9.0')
-    expect(formatParam('r_no_operatingposition_pos', '0.9381').text).toBe('938.1')
+  it('resistance: mΩ with 1 decimal place', () => {
+    expect(formatParam('r_nc_operatingposition_neg', '9').text).toBe('9.0')
+    expect(formatParam('r_no_operatingposition_pos', '938.1').text).toBe('938.1')
+    expect(formatParam('r_no_operatingposition_pos', '999.9').text).toBe('999.9')
     expect(paramUnit('r_nc_operatingposition_neg')).toBe('mΩ')
   })
 
-  it('open contact (1 000 000 Ω) → ∞', () => {
-    expect(formatParam('r_no_operatingposition_neg', '1000000.0000')).toEqual({ text: '∞', open: true })
+  it('open contact (> 999.9 mΩ: 9999.9 from Analyzing, 10⁹ from older files) → ∞', () => {
+    expect(formatParam('r_no_operatingposition_neg', '9999.9')).toEqual({ text: '∞', open: true })
+    expect(formatParam('r_no_operatingposition_neg', '1000000000')).toEqual({ text: '∞', open: true })
   })
 
   it('missing value → —, non-parameter unchanged', () => {
@@ -46,14 +52,25 @@ describe('formatParam', () => {
   })
 })
 
-describe('hasMeasuredValue', () => {
-  it('column always open (∞) or empty → hidden', () => {
-    const rows = [{ r: '1000000.0000' }, { r: '1000000.0000' }]
-    expect(hasMeasuredValue('r', rows)).toBe(false)
-    expect(hasMeasuredValue('r', [{ r: '' }, {}])).toBe(false)
+describe('positionScaleOf', () => {
+  it('customer (FP > TTP), encoder (FP < TTP), unknown', () => {
+    expect(positionScaleOf([{ fp_freeposition: '9271', ttp_totaltravelposition: '7849.2' }])).toBe('customer')
+    expect(positionScaleOf([{ fp_freeposition: '242', ttp_totaltravelposition: '1799' }])).toBe('encoder')
+    expect(positionScaleOf([{}, { fp_freeposition: '242' }])).toBeNull()
+    expect(positionScaleOf([{ fp_freeposition: '', ttp_totaltravelposition: '7849.2' },
+                            { fp_freeposition: '9271', ttp_totaltravelposition: '7849.2' }])).toBe('customer')
   })
-  it('at least one measured value → shown', () => {
-    expect(hasMeasuredValue('r', [{ r: '1000000.0000' }, { r: '0.0050' }])).toBe(true)
+})
+
+describe('hasMeasuredValue', () => {
+  const R = 'r_no_operatingposition_neg'
+  it('column always open (∞) or empty → hidden', () => {
+    expect(hasMeasuredValue(R, [{ [R]: '9999.9' }, { [R]: '1000000000' }])).toBe(false)
+    expect(hasMeasuredValue(R, [{ [R]: '' }, {}])).toBe(false)
+  })
+  it('at least one measured value → shown; large positions are measured values', () => {
+    expect(hasMeasuredValue(R, [{ [R]: '9999.9' }, { [R]: '5' }])).toBe(true)
+    expect(hasMeasuredValue('fp_freeposition', [{ fp_freeposition: '9271' }])).toBe(true)
   })
 })
 
@@ -84,7 +101,8 @@ describe('testing input parameters', () => {
     expect(paramUnit('electric_current')).toBe('mA')
     expect(paramUnit('measuring_baseperiod')).toBe('µs')
     expect(formatParam('drive_distance', '1.8').text).toBe('1.800')
-    expect(formatParam('limits_forcemax', '4').text).toBe('4.00')
+    expect(formatParam('limits_forcemax', '4000').text).toBe('4000')            // backend [N] → mN
+    expect(paramUnit('limits_forcemax')).toBe('mN')
     expect(formatParam('measuretime', '18.4').text).toBe('18.4')
     expect(formatParam('meas_ts', '1789912600').text).toMatch(/2026/)
   })

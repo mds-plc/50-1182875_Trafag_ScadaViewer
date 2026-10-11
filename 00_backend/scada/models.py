@@ -124,6 +124,10 @@ class DataResponse(BaseModel):
     file_expected_count:  int | None            = None   # expected_count z CSV (celá zakázka)
     has_signal:           bool                  = False  # True pokud CSV obsahuje [SignalData]
     total_all:            int | None            = None   # počet záznamů bez filtru status/category
+    # Souřadnice poloh (FP/OP/RP/TTP): 'customer' = zákazník P = C − x (od 10/2026),
+    # 'encoder' = stupnice enkodéru (starší soubory), None = nelze určit. Hodnoty jsou
+    # v jednotkách zákazníka (mN, µm, mΩ, µs) — převedené podle hlavičky CSV.
+    position_scale:       str | None            = None
 
 
 # ======================================================================

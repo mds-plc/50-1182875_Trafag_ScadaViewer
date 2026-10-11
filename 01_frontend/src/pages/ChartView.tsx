@@ -29,6 +29,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import Pagination     from '../components/Pagination'
 import ParamTable from '../components/ParamTable'
 import RecordDiagram  from '../components/RecordDiagram'
+import PositionScaleNote from '../components/PositionScaleNote'
 import SignalCharts   from '../components/SignalCharts'
 import OrderTimelineChart from '../components/OrderTimelineChart'
 import { usePrintMode } from '../hooks/usePrintMode'
@@ -536,6 +537,7 @@ export default function ChartView() {
               </span>
             </OrderSummary>
 
+            <PositionScaleNote records={[record]} />
             <RecordDiagram record={record} />
           </>
         )}
@@ -565,6 +567,7 @@ export default function ChartView() {
         {!error && (!loading || heroRecords.length > 0) && (
           <>
             {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} t={t} />}
+            <PositionScaleNote records={heroRecords} />
 
             <div className="tile tile--12 mb-4">
               <div className="tile__header">
@@ -837,6 +840,7 @@ export default function ChartView() {
               return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'} testing-hero__status`}>{isNok ? 'NOK' : 'OK'}</span>
             })()}
           </div>
+          <PositionScaleNote records={[record]} />
 
           {/* Hlavní sekční záložky (v tisku nahrazeny .cv-print-only — jinak by se aktivní záložka tiskla 2×) */}
           <div className="tile tile--12 cv-screen-only">

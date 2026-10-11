@@ -85,10 +85,13 @@ const WIN_TIMING_RP = { before: 5, after: 10 }
 const fmtMs  = (v: number) => (Math.abs(v) >= 1000 ? Math.round(v).toString() : v.toFixed(1))
 const fmtNum = (v: unknown, d = 3) => (typeof v === 'number' ? v.toFixed(d) : '—')
 const um = (v: number | null | undefined) => (v == null ? '—' : `${formatParam('op_operatingposition', v).text} µm`)
-const newton = (v: number | null | undefined) => (v == null ? '—' : `${formatParam('of_operatingforce', v).text} N`)
+const milliNewton = (v: number | null | undefined) => (v == null ? '—' : `${formatParam('of_operatingforce', v).text} mN`)
 const SUPERSCRIPT: Record<string, string> = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' }
 const fmtPow10 = (v: number) => `10${String(Math.round(Math.log10(v))).split('').map(c => SUPERSCRIPT[c] ?? c).join('')}`
-const LOG_TICKS = [1e-2, 1, 1e2, 1e4, 1e6]
+/** Dílky logaritmické osy odporu [mΩ] — kontakt 5–950 mΩ, rozepnuto nad 999,9 mΩ */
+const LOG_TICKS = [1, 1e2, 1e4, 1e6, 1e8, 1e10]
+/** Odpor nad touto hodnotou [mΩ] = rozepnutý kontakt (zákazník 9.3, shodně s formatParam) */
+const OPEN_MOHM = 999.9
 
 /** Kulatý krok osy (1 / 2 / 2,5 / 5 × 10^n) pro zadaný rozsah a přibližný počet dílků. */
 function niceStep(range: number, target: number): number {
@@ -141,7 +144,7 @@ function minMax(arr: (number | null)[]): [number, number] {
 }
 
 /** Sloupce signálu použité v grafech */
-const SERIES = ['ts_ms', 'position', 'force', 'u_nc', 'u_no', 'i_nc_ma', 'i_no_ma', 'r_nc_ohm', 'r_no_ohm']
+const SERIES = ['ts_ms', 'position', 'force_mn', 'u_nc', 'u_no', 'i_nc_ma', 'i_no_ma', 'r_nc_mohm', 'r_no_mohm']
 
 /** Sloupcová data → řádky pro Recharts. */
 function toRows(data: SignalData, keys: string[]): Row[] {
@@ -218,18 +221,19 @@ function currentChart(rows: Row[], extra: ReactNode, xDomain: Domain) {
   )
 }
 
-/** Odpor NC / NO [Ω] na logaritmické ose (1 MΩ = rozepnuto). */
+/** Odpor NC / NO [mΩ] na logaritmické ose (nad 999,9 mΩ = rozepnuto). */
 function resistanceChart(rows: Row[], extra: ReactNode, xDomain: Domain, xLabel?: string) {
   return (
     <LineChart data={rows} margin={{ top: 14, right: 12, bottom: 12, left: 0 }}>
       <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
       {timeAxis(xDomain, xLabel)}
-      <YAxis scale="log" domain={[1e-3, 1e7]} ticks={LOG_TICKS} tickFormatter={fmtPow10} allowDataOverflow tick={{ fontSize: 10 }} width={36} />
+      <YAxis scale="log" domain={[0.1, 1e10]} ticks={LOG_TICKS} tickFormatter={fmtPow10} allowDataOverflow tick={{ fontSize: 10 }} width={36} />
       <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`}
-        formatter={(v: number) => (v >= 999_999 ? '∞' : `${(v * 1000).toFixed(1)} mΩ`)} />
+        formatter={(v: number) => (v > OPEN_MOHM ? '∞' : `${v.toFixed(1)} mΩ`)} />
       <Legend wrapperStyle={{ fontSize: 10 }} />
-      <Line dataKey="r_nc_ohm" name="R_NC" stroke={C.nc} dot={false} strokeWidth={1.2} isAnimationActive={false} connectNulls />
-      <Line dataKey="r_no_ohm" name="R_NO" stroke={C.no} dot={false} strokeWidth={1.2} isAnimationActive={false} connectNulls />
+      <ReferenceLine y={OPEN_MOHM} stroke={C.muted} strokeDasharray="2 3" />
+      <Line dataKey="r_nc_mohm" name="R_NC" stroke={C.nc} dot={false} strokeWidth={1.2} isAnimationActive={false} connectNulls />
+      <Line dataKey="r_no_mohm" name="R_NO" stroke={C.no} dot={false} strokeWidth={1.2} isAnimationActive={false} connectNulls />
       {extra}
     </LineChart>
   )
@@ -241,11 +245,11 @@ function forcePositionChart(rows: Row[], extra: ReactNode, xDomain: Domain) {
     <ComposedChart data={rows} margin={{ top: 14, right: 4, bottom: 4, left: 0 }}>
       <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
       {timeAxis(xDomain)}
-      <YAxis yAxisId="f" tick={{ fontSize: 10 }} stroke={C.force} width={40} allowDataOverflow {...niceAxis(...minMax(rows.map(r => r.force)), 5)} tickFormatter={v => fmtNum(v, 2)} />
+      <YAxis yAxisId="f" tick={{ fontSize: 10 }} stroke={C.force} width={44} allowDataOverflow {...niceAxis(...minMax(rows.map(r => r.force_mn)), 5)} tickFormatter={v => fmtNum(v, 0)} />
       <YAxis yAxisId="p" orientation="right" tick={{ fontSize: 10 }} stroke={C.position} width={44} allowDataOverflow {...niceAxis(...minMax(rows.map(r => r.position)), 5)} tickFormatter={v => Math.round(v).toString()} />
-      <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 3)} />
+      <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 1)} />
       <Legend wrapperStyle={{ fontSize: 10 }} />
-      <Line yAxisId="f" dataKey="force" name="F [N]" stroke={C.force} dot={false} strokeWidth={1.2} isAnimationActive={false} />
+      <Line yAxisId="f" dataKey="force_mn" name="F [mN]" stroke={C.force} dot={false} strokeWidth={1.2} isAnimationActive={false} />
       <Line yAxisId="p" dataKey="position" name="s [µm]" stroke={C.position} dot={false} strokeWidth={1.2} isAnimationActive={false} />
       {extra}
     </ComposedChart>
@@ -305,7 +309,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
     const fwd: Row[] = []
     const rev: Row[] = []
     data.ts_ms.forEach((ts, i) => {
-      const r = { position: data.position[i], force: data.force[i] }
+      const r = { position: data.position[i], force_mn: data.force_mn[i] }
       if (ts <= tTtp) fwd.push(r)
       if (ts >= tTtp) rev.push(r)
     })
@@ -321,9 +325,14 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
   const thresholdV = data.switch_threshold_v ?? DEFAULT_SWITCH_THRESHOLD_V
   // časová osa od 0 (záznam začíná těsně po startu měření)
   const tDom: Domain = [Math.min(0, Math.floor(data.ts_ms[0] ?? 0)), Math.ceil(data.ts_ms[data.ts_ms.length - 1] ?? 1)]
-  const posAxis   = niceAxis(...minMax(data.position), 6, true)
-  const forceAxis = niceAxis(...minMax(data.force), 6, true)
-  const hystAxis  = niceAxis(...minMax(data.position), 10, true)
+  // Souřadnice zákazníka: poloha při stlačení klesá → osa polohy v hysterezi obráceně
+  // (stlačování vpravo jako v referenčních grafech, hodnoty stejné jako v tabulce parametrů).
+  // Osa poloh od 0 jen na stupnici enkodéru — výška nad osou otvorů (~7–9,5 mm) by se smrskla.
+  const customerScale = data.position_scale === 'customer'
+  const posRef = data.position_reference_um
+  const posAxis   = niceAxis(...minMax(data.position), 6, !customerScale)
+  const forceAxis = niceAxis(...minMax(data.force_mn), 6, true)
+  const hystAxis  = niceAxis(...minMax(data.position), 10, !customerScale)
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview',   label: t.chart.signalOverview },
     { id: 'results',    label: t.chart.signalResults },
@@ -360,6 +369,9 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
               {x.label}
             </button>
           ))}
+          {customerScale && posRef != null && (
+            <span className="sig-tabs__info">{t.chart.sigPositionRef.replace('{c}', posRef.toFixed(1))}</span>
+          )}
           <span className="sig-tabs__info">{data.total_raw.toLocaleString()} {t.chart.signalSamples}</span>
         </div>
       )}
@@ -382,16 +394,16 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
               )
             }}
           </ZoomPanel>
-          <ZoomPanel title={`${t.chart.sigForce} [N]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
+          <ZoomPanel title={`${t.chart.sigForce} [mN]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
             {(d, hi) => {
               const v = hi ?? sliceRows(rows, 'ts_ms', d)
               return (
                 <LineChart data={v} syncId="sig-ov" syncMethod="value" margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
                   {timeAxis(d)}
-                  <YAxis tick={{ fontSize: 10 }} width={44} allowDataOverflow {...fitAxis(v, 'force', forceAxis, !isFull(d, tDom))} tickFormatter={v => fmtNum(v, 2)} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 3)} />
-                  <Line dataKey="force" name="F [N]" stroke={C.force} dot={false} strokeWidth={1.2} isAnimationActive={false} />
+                  <YAxis tick={{ fontSize: 10 }} width={44} allowDataOverflow {...fitAxis(v, 'force_mn', forceAxis, !isFull(d, tDom))} tickFormatter={v => fmtNum(v, 0)} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 1)} />
+                  <Line dataKey="force_mn" name="F [mN]" stroke={C.force} dot={false} strokeWidth={1.2} isAnimationActive={false} />
                 </LineChart>
               )
             }}
@@ -402,7 +414,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
           <ZoomPanel title={`${t.chart.sigCurrent} [mA]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
             {(d, hi) => currentChart(hi ?? sliceRows(rows, 'ts_ms', d), null, d)}
           </ZoomPanel>
-          <ZoomPanel title={`${t.chart.sigResistance} [Ω] — ${t.chart.sigOpenContact}`} height={170} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
+          <ZoomPanel title={`${t.chart.sigResistance} [mΩ] — ${t.chart.sigOpenContact}`} height={170} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
             {(d, hi) => resistanceChart(hi ?? sliceRows(rows, 'ts_ms', d), null, d, timeLabel)}
           </ZoomPanel>
         </div>
@@ -415,7 +427,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
           {headline && <div className="sig-headline">{headline}</div>}
           <div className="sig-results__layout">
             <div className="sig-results__charts">
-              <ZoomPanel title={`${t.chart.sigPosition} [µm] + ${t.chart.sigForce} [N]`} height={300} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
+              <ZoomPanel title={`${t.chart.sigPosition} [µm] + ${t.chart.sigForce} [mN]`} height={300} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
                 {(d, hi) => {
                   const v = hi ?? sliceRows(rows, 'ts_ms', d)
                   const zoomed = !isFull(d, tDom)
@@ -424,11 +436,11 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
                   {timeAxis(d)}
                   <YAxis yAxisId="p" tick={{ fontSize: 10 }} stroke={C.position} width={44} allowDataOverflow {...fitAxis(v, 'position', posAxis, zoomed)} />
-                  <YAxis yAxisId="f" orientation="right" tick={{ fontSize: 10 }} stroke={C.force} width={40} allowDataOverflow {...fitAxis(v, 'force', forceAxis, zoomed)} tickFormatter={v => fmtNum(v, 2)} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 3)} />
+                  <YAxis yAxisId="f" orientation="right" tick={{ fontSize: 10 }} stroke={C.force} width={44} allowDataOverflow {...fitAxis(v, 'force_mn', forceAxis, zoomed)} tickFormatter={v => fmtNum(v, 0)} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 1)} />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
                   <Line yAxisId="p" dataKey="position" name={`${t.chart.sigPosition} [µm]`} stroke={C.position} dot={false} strokeWidth={1.2} isAnimationActive={false} />
-                  <Line yAxisId="f" dataKey="force" name={`${t.chart.sigForce} [N]`} stroke={C.force} dot={false} strokeWidth={1.4} isAnimationActive={false} />
+                  <Line yAxisId="f" dataKey="force_mn" name={`${t.chart.sigForce} [mN]`} stroke={C.force} dot={false} strokeWidth={1.4} isAnimationActive={false} />
                   {kpLines(kp, false, 'p')}
                   {KP_ORDER.filter(k => kp[k]).map(k => (
                     <ReferenceDot key={`pd-${k}`} yAxisId="p" x={kp[k].ts_ms} y={kp[k].position} r={5}
@@ -438,7 +450,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
                   {KP_ORDER.filter(k => kp[k]?.force != null).map(k => (
                     <ReferenceDot key={`fd-${k}`} yAxisId="f" x={kp[k].ts_ms} y={kp[k].force as number} r={4}
                       fill="#fff" stroke={KP_COLORS[k]} strokeWidth={2}
-                      label={{ value: newton(kp[k].force), position: 'bottom', fontSize: 9, fill: KP_COLORS[k] }} />
+                      label={{ value: milliNewton(kp[k].force), position: 'bottom', fontSize: 9, fill: KP_COLORS[k] }} />
                   ))}
                 </ComposedChart>
                   )
@@ -450,7 +462,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
               <ZoomPanel title={`${t.chart.sigCurrent} [mA]`} height={150} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
                 {(d, hi) => currentChart(hi ?? sliceRows(rows, 'ts_ms', d), kpLines(kp, false), d)}
               </ZoomPanel>
-              <ZoomPanel title={`${t.chart.sigResistance} [Ω]`} height={170} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
+              <ZoomPanel title={`${t.chart.sigResistance} [mΩ] — ${t.chart.sigOpenContact}`} height={170} fullDomain={tDom} minSpan={MIN_SPAN_MS} loadRange={loadRange}>
                 {(d, hi) => resistanceChart(hi ?? sliceRows(rows, 'ts_ms', d), kpLines(kp, false), d, timeLabel)}
               </ZoomPanel>
             </div>
@@ -466,12 +478,12 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
           <div className="sig-chips">
             {(['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] as const)
               .filter(k => P[k] != null)
-              .map(k => <span key={k} className="sig-chip"><b>{PARAM_LABELS[k]}</b> {newton(P[k])}</span>)}
+              .map(k => <span key={k} className="sig-chip"><b>{PARAM_LABELS[k]}</b> {milliNewton(P[k])}</span>)}
             {P.md_movementdifferential != null && (
               <span className="sig-chip sig-chip--md"><b>MD</b> {um(P.md_movementdifferential)}</span>
             )}
           </div>
-          <ZoomPanel title={`${t.chart.sigForce} [N] × ${t.chart.sigPosition} [µm]`} height={440} fullDomain={hystAxis.domain} minSpan={5}>
+          <ZoomPanel title={`${t.chart.sigForce} [mN] × ${t.chart.sigPosition} [µm]`} height={440} fullDomain={hystAxis.domain} minSpan={5}>
             {d => {
               const zoomed = !isFull(d, hystAxis.domain)
               const xt = zoomed ? fixedTicks(d, 10) : { ticks: hystAxis.ticks, decimals: 0 }
@@ -480,24 +492,24 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
             <LineChart margin={{ top: 24, right: 24, bottom: 20, left: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
               <XAxis type="number" dataKey="position" allowDataOverflow domain={d} ticks={xt.ticks} tick={{ fontSize: 10 }}
-                tickFormatter={(v: number) => v.toFixed(xt.decimals)}
+                reversed={customerScale} tickFormatter={(v: number) => v.toFixed(xt.decimals)}
                 label={{ value: `${t.chart.sigPosition} [µm]`, position: 'insideBottom', offset: -10, fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 10 }} width={44} allowDataOverflow {...fitAxis(inView, 'force', forceAxis, zoomed)} tickFormatter={v => fmtNum(v, 2)}
-                label={{ value: `${t.chart.sigForce} [N]`, angle: -90, position: 'insideLeft', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${Math.round(Number(v))} µm`} formatter={(v: number) => `${fmtNum(v, 3)} N`} />
+              <YAxis tick={{ fontSize: 10 }} width={48} allowDataOverflow {...fitAxis(inView, 'force_mn', forceAxis, zoomed)} tickFormatter={v => fmtNum(v, 0)}
+                label={{ value: `${t.chart.sigForce} [mN]`, angle: -90, position: 'insideLeft', fontSize: 11 }} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${Number(v).toFixed(1)} µm`} formatter={(v: number) => `${fmtNum(v, 1)} mN`} />
               <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
               {kp.op && kp.rp && (
                 <ReferenceArea x1={Math.min(kp.rp.position, kp.op.position)} x2={Math.max(kp.rp.position, kp.op.position)} ifOverflow="hidden"
                   fill="#fb923c" fillOpacity={0.18} stroke="#fb923c" strokeDasharray="3 3"
                   label={{ value: `MD ${um(Math.abs(kp.op.position - kp.rp.position))}`, position: 'insideBottom', fontSize: 11, fontWeight: 700, fill: '#ea580c' }} />
               )}
-              <Line data={fwdRows} dataKey="force" name={t.chart.sigForward} stroke="#1d4ed8" dot={false} strokeWidth={1.8} isAnimationActive={false} />
-              <Line data={revRows} dataKey="force" name={t.chart.sigReverse} stroke="#b91c1c" dot={false} strokeWidth={1.8} isAnimationActive={false} />
+              <Line data={fwdRows} dataKey="force_mn" name={t.chart.sigForward} stroke="#1d4ed8" dot={false} strokeWidth={1.8} isAnimationActive={false} />
+              <Line data={revRows} dataKey="force_mn" name={t.chart.sigReverse} stroke="#b91c1c" dot={false} strokeWidth={1.8} isAnimationActive={false} />
               {KP_ORDER.filter(k => kp[k] && kp[k].force != null).map(k => (
                 <ReferenceDot key={`h-${k}`} x={kp[k].position} y={kp[k].force as number} r={6}
                   fill={KP_COLORS[k]} stroke="#fff" strokeWidth={1.5}
                   label={{
-                    value: `${KP_LABELS[k]}  ${um(kp[k].position)} · ${newton(kp[k].force)}`,
+                    value: `${KP_LABELS[k]}  ${um(kp[k].position)} · ${milliNewton(kp[k].force)}`,
                     position: k === 'ttp' ? 'left' : k === 'rp' ? 'bottom' : 'top', fontSize: 10, fontWeight: 700, fill: KP_COLORS[k],
                   }} />
               ))}
@@ -522,7 +534,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
               <ReferenceLine key="sw" x={p.ts_ms} yAxisId={row === 'fp' ? 'f' : undefined} stroke="#ef4444" strokeDasharray="5 4"
                 label={row === 'v' ? { value: `${KP_LABELS[side]} ≈ ${fmtMs(p.ts_ms)} ms`, position: 'insideTopRight', fontSize: 10, fill: '#ef4444' } : undefined} />
             )
-            const titles = { v: `${t.chart.sigVoltage} [V]`, i: `${t.chart.sigCurrent} [mA]`, fp: `${t.chart.sigForce} [N] + ${t.chart.sigPosition} [µm]` }
+            const titles = { v: `${t.chart.sigVoltage} [V]`, i: `${t.chart.sigCurrent} [mA]`, fp: `${t.chart.sigForce} [mN] + ${t.chart.sigPosition} [µm]` }
             const title = (
               <>
                 <span style={{ color: KP_COLORS[side] }}>{KP_LABELS[side]}</span> — {titles[row]}
@@ -631,7 +643,7 @@ function TimingLegend({ params: P }: { params: Record<string, number> }) {
 
 const SUMMARY_GROUPS: { unit: string; keys: string[] }[] = [
   { unit: 'µm', keys: ['fp_freeposition', 'op_operatingposition', 'ttp_totaltravelposition', 'rp_realeasingposition'] },
-  { unit: 'N',  keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] },
+  { unit: 'mN', keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] },
   { unit: 'µm', keys: ['pt_pretravel', 'ot_overtravel', 'rt_realisingtravel', 'tt_totaltravel', 'md_movementdifferential'] },
   { unit: 'µs', keys: ['ot_operatingtime', 'rt_reversetime', 'bt_bouncetime', 'ut_unstabletime'] },
 ]

@@ -27,7 +27,8 @@ python ..\..\main.py --config srv\Config.toml
 python shots.py cs
 python shots.py en
 
-:: 4. Parametry z paramMeta.ts → params.json (příloha A)
+:: 4. Parametry z paramMeta.ts → params.json (příloha A); konzole cp1250 → nutné UTF-8 (znak Ω)
+set PYTHONIOENCODING=utf-8
 python extract_params.py
 
 :: 5. Dokumenty + obsah + PDF
@@ -38,6 +39,7 @@ powershell -File word_finish.ps1 -In "%CD%\out_en.docx" -Pdf "%CD%\out_en.pdf"
 ```
 
 Poznámky:
+- Verze v manuálu se bere z `00_backend/scada/__init__.py` (`__version__`).
 - `shots.py` skrývá toasty jen přes CSS — mazání jejich DOM uzlů shodí React (`removeChild`).
 - V Nastavení → Připojení se dočasné cesty a fiktivní Net ID na snímku nahradí typickými
   produkčními hodnotami (jen vzhled, nic se neukládá).

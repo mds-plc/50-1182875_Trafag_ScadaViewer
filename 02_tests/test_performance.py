@@ -305,10 +305,11 @@ def test_key_points_from_voltage_edges(tmp_path: Path) -> None:
     kp = r["key_points"]
     assert (kp["op"]["idx"], kp["op"]["source"]) == (3, "electric")
     assert (kp["rp"]["idx"], kp["rp"]["source"]) == (8, "electric")
-    assert kp["op"]["force"] == pytest.approx(0.3)
+    assert kp["op"]["force"] == pytest.approx(300.0)             # síla v mN (soubor [N])
     assert r["params"]["op_operatingposition"] == 2.0            # AnalyzedParameters jako čísla
-    assert r["r_nc_ohm"][0] == pytest.approx(0.005)              # odpor v Ω pro log osu
-    assert r["r_no_ohm"][0] == pytest.approx(1e6)
+    assert r["r_nc_mohm"][0] == pytest.approx(5.0)               # odpor v mΩ pro log osu
+    assert r["r_no_mohm"][0] == pytest.approx(1e9)
+    assert r["position_scale"] is None                           # bez FP a TTP — souřadnice neznámé
     sr._cache.clear(); sr._resp_cache.clear()
 
 

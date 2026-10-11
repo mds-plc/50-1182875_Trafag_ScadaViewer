@@ -151,13 +151,15 @@ def test_xlsx_endpoint_production(client) -> None:
     assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     assert 'filename="PROD_0042_M_20261001_080000_DONE.xlsx"' in r.headers["content-disposition"]
     rows = _sheet(r.content)
-    assert [_val(c) for c in rows[0]] == ["Order", "Microswitch_ID", "Microswitch_Name", *HEAD.split(";")]
+    # jednotky zákazníka (audit X1): [N] ze starého souboru → [mN], hodnota × 1000
+    assert [_val(c) for c in rows[0]] == ["Order", "Microswitch_ID", "Microswitch_Name",
+                                          *HEAD.replace("[N]", "[mN]").split(";")]
     assert len(rows) == 1201
     first = rows[1]
     assert _val(first[0]) == "0042" and first[0].get("t") == "inlineStr"   # úvodní nula zůstane
     assert _val(first[2]) == "Mar&quardt"
     assert first[3].get("s") == "2"                                         # Timestamp → datum
-    assert first[4].get("t") is None and float(_val(first[4])) == pytest.approx(1.0)
+    assert first[4].get("t") is None and float(_val(first[4])) == pytest.approx(1000.0)
 
 
 def test_xlsx_endpoint_testing_and_errors(client) -> None:

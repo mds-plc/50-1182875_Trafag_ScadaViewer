@@ -261,14 +261,14 @@ def test_k4_signal_parsed_in_blocks_with_bad_row_and_next_section(tmp_path: Path
     cols = sr.read_signal_data(f)
     assert list(cols["ts"]) == [i * 1000.0 for i in range(8)]
     assert list(cols["position"]) == [0.5, 1.5, 2.5, 3.5, 0.0, 5.5, 6.5, 7.5]   # vadná → 0.0, zarovnáno
-    assert list(cols["force"]) == [float(i) for i in range(8)]
+    assert list(cols["force"]) == [i * 1000.0 for i in range(8)]              # [N] → mN (audit X1)
 
 
 def test_k26_non_finite_values_become_null() -> None:
     out = sr._convert_units({"ts": [0.0, 1e6], "position": [float("nan"), 1.0],
                              "r_nc": [float("nan"), 2.0]}, {})
     assert out["position"] == [None, 1.0]
-    assert out["r_nc_ohm"] == [None, 2.0]
+    assert out["r_nc_mohm"] == [None, 2.0]
 
 
 # ── K15 — čištění ověřuje cíleně (stat), ne výpisem celé NAS složky ──────────

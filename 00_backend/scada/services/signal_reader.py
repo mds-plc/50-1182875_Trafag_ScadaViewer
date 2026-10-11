@@ -34,6 +34,7 @@ from pathlib import Path
 
 from scada.services.repositories.csv_repository import _parse_sectioned
 from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
+from scada.services.units import position_scale, unit_factor
 
 try:                      # volitelné — rychlé parsování; bez numpy funguje Python cesta
     import numpy as _np
@@ -140,6 +141,9 @@ def read_signal_data(
 
     Vrací dict se sloupcovými daty: {'ts': [...], 'position': [...], ...}
     Vrátí None pokud soubor neobsahuje [SignalData] sekci.
+
+    Jednotky podle hlavičky převede na jednotky zákazníka (units.py): síla mN, proud mA,
+    odpor mΩ. Poloha zůstává surová (x — stupnice enkodéru), čas ns, napětí V.
     """
     columns: dict[str, array] = {col: array('d') for col in _SIGNAL_COLS}
 
@@ -151,14 +155,18 @@ def read_signal_data(
         else:
             return None
 
-        # 2) Hlavička — odstranit [jednotka], lowercase
+        # 2) Hlavička — odstranit [jednotka], lowercase; násobek na jednotku zákazníka
         header: list[str] = []
+        factors: dict[str, float] = {}
         for raw_line in f:
             line = raw_line.strip()
             if line:
                 for h in line.split(separator):
                     bracket = h.find('[')
-                    header.append((h[:bracket] if bracket >= 0 else h).strip().lower())
+                    name = (h[:bracket] if bracket >= 0 else h).strip().lower()
+                    header.append(name)
+                    if name in columns and unit_factor(h) != 1.0:
+                        factors[name] = unit_factor(h)
                 break
 
         targets = [(i, columns[name]) for i, name in enumerate(header) if name in columns]
@@ -183,9 +191,22 @@ def read_signal_data(
 
     # Sloupce, které soubor neobsahuje, vynechat (prázdný list by rozbil decimaci)
     columns = {col: data for col, data in columns.items() if data}
+    for col, factor in factors.items():                      # N → mN, A → mA, Ω → mΩ
+        if col in columns:
+            columns[col] = _scaled(columns[col], factor)
 
     log.debug("[SIG]   read_signal_data: %d řádků z %s", len(columns['ts']), path.name)
     return columns
+
+
+def _scaled(arr: array, factor: float) -> array:
+    """Sloupec × factor (numpy v C, jinak Python)."""
+    out = array('d')
+    if _np is not None:
+        out.frombytes((_np.frombuffer(arr, dtype=_np.float64) * factor).tobytes())
+    else:
+        out.extend(v * factor for v in arr)
+    return out
 
 
 def decimate_minmax(
@@ -292,11 +313,19 @@ def find_key_points(
         dict s klíči 'fp', 'op', 'rp', 'ttp', každý obsahuje
         {idx, ts_ms, position, force, source}.
 
-    OP a RP se určují stejně jako v Analyzing: okamžik, kdy napětí U_NC projde prahem
-    switching_threshold() (OP: NC se rozepne → U_NC stoupne; RP: NC se sepne → U_NC klesne).
-    Pokud U_NC chybí nebo práh nikdy nepřekročí, fallback = nejbližší poloha k analyzované hodnotě.
-    Výsledek obsahuje navíc klíč 'threshold_v' (float) — použitý práh; _convert_units ho
-    vytáhne do odpovědi jako switch_threshold_v.
+    Souřadnice: signál má polohu x na stupnici enkodéru, AnalyzedParameters od 10/2026 polohy
+    zákazníka P = C − x (při stlačení klesají; starší soubory x). C se dopočítá z TTP:
+    TTP je v Analyzing maximum polohy → C = TTP_P + max(x) (na reálných souborech ≤ 0,5 µm).
+    Body se hledají na stupnici enkodéru; 'position' bodu je ve stejných souřadnicích jako
+    tabulka parametrů.
+
+    TTP = maximum polohy a OP se hledá až od FP — stejně jako Analyzing (_find_fp_ttp,
+    _detect_switching; audit X8). OP a RP elektricky: U_NC projde prahem switching_threshold()
+    (OP: NC se rozepne → U_NC stoupne; RP: NC se sepne → U_NC klesne). Bez přepnutí
+    fallback = nejbližší poloha k analyzované hodnotě.
+    Výsledek obsahuje navíc klíče 'threshold_v' (použitý práh), 'position_scale'
+    ('customer' / 'encoder' / None) a 'position_reference_um' (C nebo None) — _convert_units
+    je vytáhne do odpovědi.
     """
     position = signal.get('position', [])
     force    = signal.get('force', [])
@@ -337,22 +366,30 @@ def find_key_points(
 
     points: dict[str, dict] = {}
 
-    # TTP — Total Travel Point — maximální pozice (argmax)
-    ttp_idx = 0
-    for i in range(1, n):
-        if position[i] > position[ttp_idx]:
-            ttp_idx = i
+    # TTP — Total Travel Point — maximum polohy (jako Analyzing: np.argmax, první výskyt)
+    if _np is not None and isinstance(position, array):
+        ttp_idx = int(_np.argmax(_np.frombuffer(position, dtype=_np.float64)))
+    else:
+        ttp_idx = max(range(n), key=position.__getitem__)
 
-    # Preferuj analyzovanou hodnotu pokud existuje
+    # Souřadnice poloh v AnalyzedParameters: zákazník (P = C − x) nebo enkodér (x)
+    fp_val  = _get_pos('freeposition')
     ttp_val = _get_pos('totaltravelposition')
-    if ttp_val is not None:
-        ttp_idx = _argmin_abs(position, ttp_val)
+    scale   = position_scale(fp_val, ttp_val)
+    ref: float | None = None
+    if scale == 'customer' and ttp_val is not None:
+        ref = ttp_val + position[ttp_idx]                 # C [µm]
+
+    def to_x(p: float) -> float:
+        """Poloha z AnalyzedParameters → stupnice enkodéru signálu."""
+        return ref - p if ref is not None else p
 
     def _point(idx: int, source: str = 'position') -> dict:
+        x = position[idx]
         return {
             'idx':      idx,
             'ts_ms':    ts[idx] / 1_000_000 if idx < len(ts) else 0,
-            'position': position[idx],
+            'position': ref - x if ref is not None else x,   # souřadnice tabulky parametrů
             'force':    force[idx] if idx < len(force) else None,
             'source':   source,
         }
@@ -373,22 +410,23 @@ def find_key_points(
     points['ttp'] = _point(ttp_idx)
 
     # FP — Free Position
-    fp_val = _get_pos('freeposition')
     fp_idx: int | None = None
     if fp_val is not None:
-        fp_idx = _argmin_abs(position, fp_val, 0, ttp_idx + 1) if ttp_idx > 0 else 0
+        fp_idx = _argmin_abs(position, to_x(fp_val), 0, ttp_idx + 1) if ttp_idx > 0 else 0
         points['fp'] = _point(fp_idx)
 
     # Práh přepnutí jako v Analyzing (klidové U_NC před FP → maximum, 50 %)
     threshold_v = switching_threshold(list(u_nc), fp_idx)
 
-    # OP — Operating Position (v první polovině — sestupná část)
-    op_edge = _edge(1, ttp_idx + 1, rising=True)
+    # OP — Operating Position (dopředný pohyb FP → TTP; jako Analyzing až od FP — přechodový
+    # jev U_NC před dotykem není přepnutí)
+    op_from = max(fp_idx or 1, 1)
+    op_edge = _edge(op_from, ttp_idx + 1, rising=True)
     op_val  = _get_pos('operatingposition')
     if op_edge is not None:
         points['op'] = _point(op_edge, 'electric')
     elif op_val is not None:
-        op_idx = _argmin_abs(position, op_val, 0, ttp_idx + 1) if ttp_idx > 0 else 0
+        op_idx = _argmin_abs(position, to_x(op_val), op_from - 1, ttp_idx + 1) if ttp_idx > 0 else 0
         points['op'] = _point(op_idx)
 
     # RP — Releasing Position (v druhé polovině — vzestupná část)
@@ -398,10 +436,12 @@ def find_key_points(
     if rp_edge is not None:
         points['rp'] = _point(rp_edge, 'electric')
     elif rp_val is not None and ttp_idx < n - 1:
-        rp_idx = _argmin_abs(position, rp_val, ttp_idx, n)
+        rp_idx = _argmin_abs(position, to_x(rp_val), ttp_idx, n)
         points['rp'] = _point(rp_idx)
 
-    points['threshold_v'] = threshold_v   # type: ignore[assignment] — viz docstring
+    points['threshold_v'] = threshold_v              # type: ignore[assignment] — viz docstring
+    points['position_scale'] = scale                 # type: ignore[assignment]
+    points['position_reference_um'] = ref            # type: ignore[assignment]
     return points
 
 
@@ -536,27 +576,34 @@ def _convert_units(
     key_points: dict[str, dict],
     params: dict[str, float] | None = None,
 ) -> dict:
-    """Konvertuje jednotky pro frontend: ns→ms, A→mA; odpor v Ω (frontend: logaritmická osa)."""
+    """Odpověď pro frontend v jednotkách zákazníka: čas ms, poloha µm (souřadnice tabulky
+    parametrů — zákazník P = C − x, starší soubory x), síla mN, proud mA, odpor mΩ
+    (logaritmická osa; read_signal_data už převedla podle hlavičky)."""
     n = len(data.get('ts', []))
     threshold = _finite_or_none(key_points.get('threshold_v'))
     if threshold is None:
         threshold = _SWITCH_THRESHOLD_V
+    ref = _finite_or_none(key_points.get('position_reference_um'))
+    pos = data.get('position', [])
     result: dict = {
         # NaN / inf (vadná hodnota v CSV) → None: JSON je neumí, odpověď by skončila HTTP 500
         'ts_ms':     [v / 1_000_000 if _isfinite(v) else None for v in data.get('ts', [])],
-        'position':  _finite_list(data.get('position', [])),
-        'force':     _finite_list(data.get('force', [])),
+        'position':  ([ref - v if _isfinite(v) else None for v in pos] if ref is not None
+                      else _finite_list(pos)),
+        'force_mn':  _finite_list(data.get('force', [])),
         'u_nc':      _finite_list(data.get('u_nc', [])),
         'u_no':      _finite_list(data.get('u_no', [])),
-        'i_nc_ma':   [v * 1000 if _isfinite(v) else None for v in data.get('i_nc', [])],
-        'i_no_ma':   [v * 1000 if _isfinite(v) else None for v in data.get('i_no', [])],
-        'r_nc_ohm':  [_clip_ohm(v) for v in data.get('r_nc', [])],
-        'r_no_ohm':  [_clip_ohm(v) for v in data.get('r_no', [])],
-        # threshold_v není klíčový bod — do odpovědi zvlášť (frontend: čára prahu v grafu napětí).
-        # NaN i v bodech (poloha/síla vzorku) a v parametrech — jinak JSON → HTTP 500 (C3).
+        'i_nc_ma':   _finite_list(data.get('i_nc', [])),
+        'i_no_ma':   _finite_list(data.get('i_no', [])),
+        'r_nc_mohm': [_clip_mohm(v) for v in data.get('r_nc', [])],
+        'r_no_mohm': [_clip_mohm(v) for v in data.get('r_no', [])],
+        # threshold_v a souřadnice nejsou klíčové body — do odpovědi zvlášť (frontend: čára prahu,
+        # popisky os). NaN i v bodech (poloha/síla vzorku) a v parametrech → null (C3).
         'key_points': {k: {kk: _finite_or_none(vv) for kk, vv in v.items()}
-                       for k, v in key_points.items() if k != 'threshold_v'},
+                       for k, v in key_points.items() if k not in _NON_POINT_KEYS},
         'switch_threshold_v': threshold,
+        'position_scale': key_points.get('position_scale'),
+        'position_reference_um': ref,
         'params':     {k: v for k, v in (params or {}).items() if _isfinite(v)},
         'total_raw':  n,
     }
@@ -579,11 +626,14 @@ def _finite_list(values) -> list[float | None]:
     return out
 
 
-def _clip_ohm(v: float) -> float | None:
-    """Odpor pro logaritmickou osu — ořez na [1e-4, 1e7] Ω, None pro nekladné hodnoty / NaN."""
+_NON_POINT_KEYS = frozenset({'threshold_v', 'position_scale', 'position_reference_um'})
+
+
+def _clip_mohm(v: float) -> float | None:
+    """Odpor pro logaritmickou osu — ořez na [0,1; 1e10] mΩ, None pro nekladné hodnoty / NaN."""
     if not v > 0:                                  # zachytí i NaN
         return None
-    return max(1e-4, min(1e7, v))
+    return max(0.1, min(1e10, v))
 
 
 def _numeric_params(analyzed: dict[str, str]) -> dict[str, float]:

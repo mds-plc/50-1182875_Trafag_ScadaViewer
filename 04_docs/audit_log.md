@@ -8,14 +8,13 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (nejhlubší audit — 81 nálezů X, Z, N, F, R, C, T, E; 2026-10-11 opraveno 13)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (nejhlubší audit — 81 nálezů X, Z, N, F, R, C, T, E; 2026-10-11 opraveno 17 vč. sladění jednotek X1)**.
 > Nálezy K1–K42 jsou zde jen odkazem — plný popis, scénář a oprava v záznamu „[2026-10-10] Kompletní audit".
 
 ### 🔴 HIGH
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| X1 | 🟣 CRITICAL — Analyzing `6dd2b6b` mění jednotky (mN, mΩ) a souřadnice poloh, Gateway hlavičky `[N]`/`[Ohm]` ani ScadaViewer to nevědí → 1000× chybné hodnoty, FP na konci zdvihu. Analyzing nenasazovat před sladěním | Analyzing / Gateway / `paramMeta.ts`, `signal_reader.py` | [2026-10-10 nejhlubší] |
 | X2 | Gateway část: `shutil.move` → `os.replace` s opakováním, `uploaded_at` až po přesunu (ScadaViewer opraven 2026-10-11 — `open_shared`) | `csv_repository.py`, `files.py`; Gateway `file_manager.py` | [2026-10-10 nejhlubší] |
 | T2 | Jádro AdsMonitor — `_reconnect_loop` (backoff, `clear_symbols`, broadcast) bez testu; úklid, RUN/verze a offline zápis už pokryty | `ads_monitor.py` | [2026-10-10 nejhlubší] |
 | X3 | Diakritika v názvu zakázky z PLC shodí Gateway (UTF-8), ScadaViewer čte cp1250 — kódování nedohodnuté | Gateway `ads_reader.py`, `ads_monitor.py:79` | [2026-10-10 nejhlubší] |
@@ -24,7 +23,6 @@
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| X4, X5 | Neúspěšná analýza jako platné nuly; rozlišení zobrazení pod požadavkem 9.3 | Gateway, `paramMeta.ts` | [2026-10-10 nejhlubší] |
 | Z2–Z4, Z6 | Zámek přihlášení obejde souběh; DoS velkým tělem / WS; admin rozbije users.toml (Z1, Z5 opraveny 2026-10-11) | `app.py`, `auth.py`, `plc_ws.py`, `files.py:230`, `users_api.py` | [2026-10-10 nejhlubší] |
 | N2, N3 | Výpadek NAS při výpisu = prázdný archiv 200; zákmity v grafech Signal Data mizí (N1 opraven 2026-10-11) | `csv_repository.py:576`, `signal_reader.py:214` | [2026-10-10 nejhlubší] |
 | F2–F6 | Offline banner se neukáže; Zpět → stránka 1; klik otevře jiný kus; vlastní heslo v UI; malé dotykové plochy (F1 opraven 2026-10-11) | `useDatabaseState.ts`, `useBackendOnline.ts`, `ChartView.tsx`, `FileTable.tsx`, `Settings.tsx`, CSS | [2026-10-10 nejhlubší] |
@@ -55,7 +53,7 @@
 | A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
-| X6–X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R7, R9, C4–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
+| X6, X7, X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R7, R9, C4–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
 | K21, K23, K24, K27–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny) | — | [2026-10-10 kompletní] |
 | A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
 
@@ -100,14 +98,14 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| X1 | 🟣 CRITICAL | Analyzing commit `6dd2b6b` (10. 10., zatím nenasazen) posílá do PLC sílu v **mN**, odpory v **mΩ**, rozepnutý kontakt 9999,9 a polohy jako `9500 − x`. Gateway dál píše hlavičky `[N]`, `[Ohm]`, `[um]`; ScadaViewer je bere doslova → 1046 mN = „1046.00 N“, 33,4 mΩ = „33400.0 mΩ“, rozepnuto = „9999900.0 mΩ“ místo ∞; FP v Signal Data skončí na TTP (index 188869 místo ~30 tis.); nápověda PT = OP − FP nesedí se znaménky. Oprava napříč projekty: Gateway hlavičky dle skutečných jednotek + verze formátu a C do [Metadata]; ScadaViewer jednotku z hlavičky (dnes ji `_normalize_key` zahodí), ∞ i pro 9999,9 mΩ, FP/TTP v signálu přepočítat; Analyzing do té doby nenasazovat | Analyzing `io/writer.py:28-81`, `pipeline.py:931-937`; Gateway `models/order.py:122-149`; `paramMeta.ts:194,243-259`, `SignalCharts.tsx`, `signal_reader.py:348,378` | ⬜ Otevřeno — rozhodnutí všech 3 projektů |
+| X1 | 🟣 CRITICAL | Analyzing commit `6dd2b6b` (10. 10., zatím nenasazen) posílá do PLC sílu v **mN**, odpory v **mΩ**, rozepnutý kontakt 9999,9 a polohy jako `9500 − x`. Gateway dál píše hlavičky `[N]`, `[Ohm]`, `[um]`; ScadaViewer je bere doslova → 1046 mN = „1046.00 N“, 33,4 mΩ = „33400.0 mΩ“, rozepnuto = „9999900.0 mΩ“ místo ∞; FP v Signal Data skončí na TTP (index 188869 místo ~30 tis.); nápověda PT = OP − FP nesedí se znaménky. Oprava napříč projekty: Gateway hlavičky dle skutečných jednotek + verze formátu a C do [Metadata]; ScadaViewer jednotku z hlavičky (dnes ji `_normalize_key` zahodí), ∞ i pro 9999,9 mΩ, FP/TTP v signálu přepočítat; Analyzing do té doby nenasazovat | Analyzing `io/writer.py:28-81`, `pipeline.py:931-937`; Gateway `models/order.py:122-149`; `paramMeta.ts:194,243-259`, `SignalCharts.tsx`, `signal_reader.py:348,378` | ✅ Opraveno 2026-10-11 ve všech třech aplikacích (fáze 42) — PLC komentáře DUT / HMI / meze poloh zbývají v PLC |
 | X2 | 🔴 HIGH | Python `open()` na Windows bez `FILE_SHARE_DELETE` → když ScadaViewer čte soubor (WIP při každém `files_changed`, `_build_index`, signál, `FileResponse` po dobu stahování), Gateway `shutil.move` selže `WinError 32` a nechá **obě kopie**. Uzavření zakázky → `SAVE_FAILED` → PLC Error; `mark_uploaded` → soubor v done_local i done_remote (zobrazen 2×). Ověřeno `lock_test.py`; **změřeno za běhu: 2 ze 42 uzavření zakázky (≈ 5 %) selže** při rozbaleném řádku WIP v kiosku (FileTable znovu načítá celý soubor při každé změně počtu), selhal i přesun done_local → done_remote při XLSX/stahování. Oprava: ScadaViewer číst přes `CreateFileW` s `FILE_SHARE_READ\|WRITE\|DELETE` (ověřeno `sharedel.py`); Gateway `os.replace` s opakováním, `uploaded_at` až po úspěšném přesunu | `csv_repository.py`, `signal_reader.py`, `files.py:245`; Gateway `file_manager.py:266,568` | ✅ Opraveno 2026-10-11 (ScadaViewer — `open_shared`); Gateway `os.replace` + opakování ⬜ |
 | X3 | 🔴 HIGH | Název zakázky z PLC s diakritikou: Gateway (pyads 3.5.2 striktní UTF-8) spadne `UnicodeDecodeError` → `SAVE_FAILED`; ScadaViewer dekóduje cp1250 (komentář K2 uvádí cp1252). Kódování nikde dohodnuté. Oprava: Gateway číst STRING jako bajty, jedna konstanta kódování v obou projektech, ověřit na PLC | Gateway `ads_reader.py:52-198`; `ads_monitor.py:79` | ⬜ Otevřeno |
-| X4 | ⚠️ MEDIUM | Neúspěšná analýza vypadá jako platné hodnoty: Gateway zapisuje NaN/inf jako `0.0000`, Analyzing při W5/W6 nuluje → „0.00 N“, „0.0 mΩ“ (dokonale sepnutý kontakt). Oprava: NaN/inf jako prázdné pole (→ „—“), sloupec s kódem varování analýzy, označit řádek | Gateway `models/order.py:44-48` | ⬜ Otevřeno |
-| X5 | ⚠️ MEDIUM | Rozlišení zobrazení pod požadavkem zákazníka 9.3: Analyzing počítá polohy na 0,1 µm a sílu na 1 mN, ScadaViewer ukazuje celé µm a N na 2 des. místa (8325,7 → 8326). Oprava: `GROUP_DECIMALS` spolu s X1 | `paramMeta.ts:197-199` | ⬜ Otevřeno |
+| X4 | ⚠️ MEDIUM | Neúspěšná analýza vypadá jako platné hodnoty: Gateway zapisuje NaN/inf jako `0.0000`, Analyzing při W5/W6 nuluje → „0.00 N“, „0.0 mΩ“ (dokonale sepnutý kontakt). Oprava: NaN/inf jako prázdné pole (→ „—“), sloupec s kódem varování analýzy, označit řádek | Gateway `models/order.py:44-48` | ✅ Opraveno 2026-10-11 (Gateway: NaN → prázdné pole); sloupec s kódem varování analýzy ⬜ (PLC + Gateway) |
+| X5 | ⚠️ MEDIUM | Rozlišení zobrazení pod požadavkem zákazníka 9.3: Analyzing počítá polohy na 0,1 µm a sílu na 1 mN, ScadaViewer ukazuje celé µm a N na 2 des. místa (8325,7 → 8326). Oprava: `GROUP_DECIMALS` spolu s X1 | `paramMeta.ts:197-199` | ✅ Opraveno 2026-10-11 — mN celé, µm na 0,1, mΩ na 0,1, µs celé |
 | X6 | 🔵 LOW | Zakázka s „..“ v názvu (Gateway povolí) je v přehledu, ale nejde otevřít/stáhnout/smazat — `validate_params` odmítá `..` kdekoli. Oprava: odmítat jen `name in ('.', '..')` | `csv_repository.py:1151` | ⬜ Otevřeno |
 | X7 | 🔵 LOW | Podtržítko v typu spínače („Marq_V2“) rozbije zakázku a typ v přehledu z názvu; na NAS se opraví jen pro zobrazenou stránku → řazení podle zakázky chybné. Oprava: Gateway zakáže `_` v typu, nebo jednoznačný oddělovač | `csv_repository.py:71` | ⬜ Otevřeno |
-| X8 | 🔵 LOW | Klíčové body: TTP = první vzorek nejbližší hodnotě z CSV (186999), Analyzing bere maximum (189102, ~105 ms rozdíl); OP se hledá od vzorku 1, Analyzing od FP. Oprava: TTP = maximum polohy, OP od FP | `signal_reader.py:348,385` | ⬜ Otevřeno |
+| X8 | 🔵 LOW | Klíčové body: TTP = první vzorek nejbližší hodnotě z CSV (186999), Analyzing bere maximum (189102, ~105 ms rozdíl); OP se hledá od vzorku 1, Analyzing od FP. Oprava: TTP = maximum polohy, OP od FP | `signal_reader.py:348,385` | ✅ Opraveno 2026-10-11 — TTP = maximum polohy, OP od FP |
 | X9 | 🔵 LOW | Zastaralý popis kontraktu: GVL Gateway je `…DatabaseGatewayApp`, sloupec `Group` je `SortingCategory [-]`, „1 000 000 Ω“, cp1252 vs cp1250; NAS podsložky `production`/`testing` natvrdo (funguje jen díky case-insensitive SMB) | `sibling-projects.md`, CLAUDE.md §6, `paramMeta.ts:11,193` | ⬜ Otevřeno |
 
 ### API a bezpečnost (Z)
@@ -163,7 +161,7 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 | F13 | 🔵 LOW | `CsvRecord` typy neodpovídají Pydantic (`str \| None`, `null`); `useRemoteStatus` nekontroluje `res.ok` (401/503 = „NAS nedostupný“) | `types/index.ts:27-34`, `useData.ts:246` | ⬜ Otevřeno |
 | F14 | 🔵 LOW | PlcProvider pod StrictMode (dev) drží 2 živá WS (sdílený ref `destroyed`) | `PlcContext.tsx:76-123` | ⬜ Otevřeno |
 | F15 | 🔵 LOW | UsersTab: fragment bez klíče, `handleDelete`/`handleChangePwd` bez `catch`, „Změnit heslo“ i u vyšší role (→ 403, obecná chyba) | `Settings.tsx:357` | ⬜ Otevřeno |
-| F16 | 🔵 LOW | `formatParam` vrací „-0“; natvrdo „Code: {reason}“; skládané toasty „3 Nepodařilo se smazat…“; datumy vždy `cs-CZ` (rozšíření K41) | `paramMeta.ts:259`, `ChartView.tsx:780`, `useDatabaseState.ts:563` | ⬜ Otevřeno |
+| F16 | 🔵 LOW | `formatParam` vrací „-0“; natvrdo „Code: {reason}“; skládané toasty „3 Nepodařilo se smazat…“; datumy vždy `cs-CZ` (rozšíření K41) | `paramMeta.ts:259`, `ChartView.tsx:780`, `useDatabaseState.ts:563` | 🟡 Částečně 2026-10-11 — „−0“ opraveno; texty / toasty / locale zbývají |
 | F17 | 🔵 LOW | Přístupnost: modaly bez `role="dialog"`/fokusu, Escape nezavře hromadné mazání ani čištění, F5 s fokusem na checkboxu = reload stránky, toasty bez `aria-live` | `components/` | ⬜ Otevřeno |
 | F18 | 🔵 LOW | `SortTh` definovaná uvnitř renderu `FileTable` → záhlaví se při každém překreslení přemontuje; `resetKey={pathname}` ErrorBoundary bez query | `FileTable.tsx:374`, `App.tsx` | ⬜ Otevřeno |
 
@@ -247,7 +245,7 @@ Skutečný server s fiktivní konfigurací v dočasné složce: 6 lokálních + 
 | C6 | 🔵 LOW | Zlom výkonu nad 3 zakázky: 3 různé zakázky p50 32 ms, 4 → 236 ms, 8 klientů 1,9 s (index se staví dokola). `_INDEX_CACHE_FILES = 3`, přitom 256 MB unese ~10 indexů. Oprava: omezovat jen pamětí, sdílet rozestavěný index (K35) | `csv_repository.py:53` | ⬜ Otevřeno |
 | C7 | 🔵 LOW | Paměť po špičce 40 klientů 690 MB (nad dokumentovanými 0,3–0,6 GB), zůstává ~600 MB (fragmentace + plné cache, ne únik). Doplnit do `architecture.md`, omezit souběh těžkých operací (C2) | `architecture.md` | ⬜ Otevřeno |
 
-**Celkem (všech 7 větví):** 81 nálezů | 1 CRITICAL, 7 HIGH, 27 MEDIUM, 46 LOW | 13 opraveno + 2 částečně (2026-10-11)
+**Celkem (všech 7 větví):** 81 nálezů | 1 CRITICAL, 7 HIGH, 27 MEDIUM, 46 LOW | 17 opraveno + 3 částečně (2026-10-11)
 
 ### Ověřeno v pořádku
 Matice rout (každý zápis `require_local` + role, každý datový endpoint `require_auth`), eskalace rolí,
@@ -277,6 +275,24 @@ Gateway (production dvoudílný, testing 6 sekcí) ScadaViewer čte správně, O
 
 Testy: backend **324** ✅ (+25 `test_audit_20261011.py`, +8 `test_remote_access.py`), frontend **119** ✅
 (+ `useDatabaseState.test.tsx`), `tsc` 0, `lint` 0. Nové regresní testy na původním kódu selžou (ověřeno).
+
+### Opravy (2026-10-11) — sladění jednotek ve všech třech aplikacích (X1, X4, X5, X8)
+
+Rozhodnutí uživatele 2026-10-11: jednotky zákazníka (požadavek 9.3) ve všech aplikacích, důsledně.
+
+| Aplikace | Změna |
+|----------|-------|
+| Analyzing | beze změny výpočtu (`6dd2b6b` už zapisuje mN / µm 0,1 / mΩ, nad 999,9 = 9999,9 / µs, polohy P = C − x); `analyze_signal.py` kreslí polohy také jako P = C − x (hystereze s obrácenou osou) |
+| DatabaseGateway | hlavičky `[mN]`, `[mOhm]` (Production + Testing [AnalyzedParameters]); REAL zápisem float32 (`9263.4`, ne `9263.4004`); NaN / inf → prázdné pole (X4); vzory CSV CZ/EN + PDF „Struktura ukládaných souborů“ (Claude Docs) převedeny; `[SignalData]` zůstává surová (x, N, V, A, Ω) |
+| ScadaViewer | `services/units.py` — jednotka z hlavičky → mN / mΩ / mA (starší soubory `[N]`, `[Ohm]`, `[A]` převedeny; chybné hlavičky `Electric_Current [A]` a `Measuring_BasePeriod [ms]` bez převodu); `/api/data`, XLSX (hlavičky `[mN]`, `[mOhm]`), `/api/signal` (`force_mn`, `r_*_mohm`, `position` v souřadnicích tabulky, `position_scale`, `position_reference_um` = C = TTP + max x); `paramMeta` (mN celé, µm 0,1, mΩ 0,1, ∞ jen u odporu nad 999,9); grafy signálu v mN / mΩ, osa polohy bez nuly a v hysterezi obráceně; poznámka u starších souborů (`PositionScaleNote`); TTP = maximum, OP od FP (X8) |
+
+Ověření: `02_tests/test_ecosystem_units.py` — skutečný kód Analyzing (`run_analysis`, `build_plc_struct`) →
+Gateway (`AdsReader` nad atrapou PLC, `FileManager`) → ScadaViewer API: hodnoty, polohy zákazníka, klíčové
+body grafů (± 5 µm od tabulky), C = 9500 ± 2 µm, XLSX. `02_tests/test_units.py` (starší soubory, signál
+v obou souřadnicích, X8). Vizuálně (Playwright): tabulky, hystereze, výsledky signálu, detail záznamu,
+starší soubor s poznámkou. Testy: backend **345**, frontend **120**, Gateway **72**, Analyzing **68**.
+**Nasazení:** Analyzing ≥ 6dd2b6b + DatabaseGateway (2026-10-11) + ScadaViewer 2.1.2 současně —
+jinak hlavičky neodpovídají hodnotám v PLC.
 
 ---
 

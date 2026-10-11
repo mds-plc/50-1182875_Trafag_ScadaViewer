@@ -978,6 +978,38 @@ Audit 81 nálezů (`audit_log.md` → „[2026-10-10] Nejhlubší audit"). Archi
 **Stav testů po fázi 41:** Backend **324/324** (+25 `test_audit_20261011.py`, +8 `test_remote_access.py`),
 Frontend **119/119** (18 souborů, + `useDatabaseState.test.tsx`), lint 0, `tsc` 0.
 
+### Fáze 42 — Jednotky zákazníka ve všech třech aplikacích (2026-10-11, verze 2.1.2)
+
+Kontrakt CSV (DatabaseGateway → ScadaViewer): **jednotka je v hlavičce** a ScadaViewer ji čte.
+
+| Veličina | V PLC / CSV (od 10/2026) | Starší CSV | ScadaViewer zobrazí |
+|---|---|---|---|
+| Síla | `[mN]` | `[N]` | mN, celá čísla |
+| Dráha | `[um]` | `[um]` | µm, 0,1 |
+| Poloha FP/OP/RP/TTP | `[um]` — výška nad osou upevňovacích otvorů P = C − x | `[um]` — enkodér x | jak je v souboru + poznámka u enkodéru |
+| Odpor | `[mOhm]`, 9999,9 = rozepnuto | `[Ohm]`, 1 000 000 = rozepnuto | mΩ 0,1, nad 999,9 = ∞ |
+| Čas | `[us]` | `[us]` | µs, celá čísla |
+| NaN / inf | prázdné pole | `0.0000` | „—“ |
+
+- **`services/units.py`** — `unit_factor` / `canonical_header` / `scale_text` / `position_scale`; převod
+  v `_parse_sectioned` (Testing), `_OrderIndex.scales` (Production — jen vrácené řádky), `read_table` (XLSX
+  s hlavičkami v jednotkách zákazníka). Výjimky pro chybné hlavičky starších souborů (`Electric_Current [A]`
+  = mA, `Measuring_BasePeriod [ms]` = µs).
+- **Signál (`signal_reader`)** — `[SignalData]` zůstává surový (x enkodér, N, V, A, Ω), převod podle hlavičky
+  na mN / mA / mΩ. C = TTP_P + max(x) (TTP v Analyzing = maximum polohy; na reálných souborech ≤ 0,5 µm).
+  Klíčové body se hledají na stupnici enkodéru, `position` bodů i řady v souřadnicích tabulky; odpověď nese
+  `position_scale`, `position_reference_um`, pole `force_mn`, `r_nc_mohm`, `r_no_mohm`. X8: TTP = argmax,
+  OP od FP.
+- **Frontend** — `formatParam` už nepřevádí (mN celé, µm 0,1, mΩ 0,1, ∞ jen u odporu nad 999,9);
+  `positionScaleOf` + `PositionScaleNote`; grafy v mN / mΩ, osa polohy bez nuly u souřadnic zákazníka,
+  hystereze `reversed` (stlačování vpravo); popisky drah jako vzdálenosti „FP → OP“ (platí v obou souřadnicích).
+- **Test napříč aplikacemi** `02_tests/test_ecosystem_units.py` — Analyzing `run_analysis` + `build_plc_struct`
+  → Gateway `AdsReader` (atrapa PLC) + `FileManager` → ScadaViewer API (přeskočí se bez sesterských projektů
+  nebo lokálního exportu signálu Analyzing).
+
+**Stav testů po fázi 42:** Backend **345/345** (+17 `test_units.py`, +4 `test_ecosystem_units.py`),
+Frontend **120/120**, DatabaseGateway 72, Analyzing 68; lint 0, `tsc` 0.
+
 ---
 
 ## Tok dat

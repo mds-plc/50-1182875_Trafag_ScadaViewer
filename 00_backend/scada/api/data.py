@@ -39,6 +39,7 @@ from scada.models import DataResponse, TimelineResponse
 from scada.services.io_pool import NasBusyError, run_io
 from scada.services.protocols import DataReader
 from scada.services.signal_reader import prepare_signal_response
+from scada.services.units import position_scale
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -180,7 +181,17 @@ async def get_data(
         file_expected_count=file_expected_count,
         has_signal=has_signal,
         total_all=stats.get('total_all') if filtering else None,
+        position_scale=_position_scale(records),
     )
+
+
+def _position_scale(records: list[dict]) -> str | None:
+    """Souřadnice poloh v souboru podle prvního záznamu s FP a TTP (units.position_scale)."""
+    for rec in records:
+        scale = position_scale(rec.get('fp_freeposition'), rec.get('ttp_totaltravelposition'))
+        if scale is not None:
+            return scale
+    return None
 
 
 @router.get("/timeline", response_model=TimelineResponse, dependencies=[Depends(require_auth)])

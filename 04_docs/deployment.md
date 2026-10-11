@@ -34,6 +34,12 @@
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
+> **Nasazení 2.1.2 (jednotky zákazníka, 2026-10-11):** nasadit **současně** s Analyzing ≥ `6dd2b6b`
+> (zápis mN / mΩ / polohy C − x do PLC) a DatabaseGateway z 2026-10-11 (hlavičky `[mN]`, `[mOhm]`).
+> Samotný ScadaViewer 2.1.2 zobrazí správně i starší soubory; nová Gateway bez nového Analyzing by ale
+> do CSV zapsala hodnoty v N pod hlavičkou `[mN]`. Po nasazení otevřít jeden nový záznam a ověřit,
+> že síla je v mN (stovky až tisíce), odpor v mΩ a polohy kolem 7 000–9 300 µm.
+
 ---
 
 ## Předpoklady (build PC)

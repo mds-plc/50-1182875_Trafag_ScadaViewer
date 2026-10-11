@@ -44,6 +44,7 @@ from pathlib import Path
 
 from scada.config import DataConfig
 from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
+from scada.services.units import canonical_header, scale_text, unit_factor
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +104,8 @@ class _OrderIndex:
     status:      list[str]
     ec:          list[str] | None   # expected_count po řádcích (None = sloupec v datech není)
     nbytes:      int = 0            # odhad paměti indexu (limit _INDEX_CACHE_BYTES)
+    # klíč → násobek na jednotky zákazníka (N → mN, Ω → mΩ); jen sloupce, které převod potřebují
+    scales:      dict[str, float] | None = None
 
 
 def _record_matches(
@@ -139,6 +142,8 @@ def _normalize_key(k: str) -> str:
 
     'OF_OperatingForce [N]' → 'of_operatingforce'
     'Timestamp'             → 'timestamp'
+
+    Jednotku hodnot převádí na jednotky zákazníka volající (units.unit_factor podle hlavičky).
     """
     bracket = k.find('[')
     if bracket >= 0:
@@ -184,7 +189,7 @@ def _parse_sectioned(
             # Second non-empty line = values
             vals = [v.strip() for v in line.split(separator)]
             sections[current_section] = {
-                _normalize_key(h): v
+                _normalize_key(h): scale_text(v, unit_factor(h))   # N → mN, Ω → mΩ (units.py)
                 for h, v in zip(header, vals)
                 if v  # skip empty values
             }
@@ -983,8 +988,12 @@ class CsvRepository:
         # dict jen pro vrácené řádky — stejná podoba jako dřív z csv.DictReader nad celým souborem
         reader = csv.DictReader((ix.lines[i] for i, _ in picked),
                                 fieldnames=ix.fieldnames, delimiter=self._cfg.csv_separator)
+        scales = ix.scales or {}
         for row, (_, idx) in zip(reader, picked):
-            rec = {_normalize_key(k): v for k, v in row.items()}
+            rec = {_normalize_key(k): v for k, v in row.items() if k}
+            for sk, factor in scales.items():                    # N → mN, Ω → mΩ (units.py)
+                if sk in rec:
+                    rec[sk] = scale_text(rec[sk], factor)
             for mk, mv in ix.meta_inject.items():
                 if mk not in rec:
                     rec[mk] = mv
@@ -1106,14 +1115,16 @@ class CsvRepository:
                 if ec_l is not None:
                     ec_l.append(cell(row, 'expected_count') or '')
         nbytes = sum(len(x) for x in lines) + len(lines) * 260      # text + seznamy, časy, objekty
+        scales = {_normalize_key(k): unit_factor(k) for k in fieldnames if unit_factor(k) != 1.0}
         return _OrderIndex(meta_header, meta_vals, meta_inject, fieldnames,
-                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes)
+                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes, scales)
 
     def read_table(self, path: Path) -> tuple[list[str], Iterator[list[str]]]:
         """Celý soubor jako tabulka pro export (XLSX): originální názvy sloupců i hodnoty.
 
         Production: metadata (Order, Microswitch_ID, …) jako první sloupce + datová část.
         Testing (sekční): jeden řádek se sloučenými sekcemi (klíče jako v /api/data).
+        Hodnoty i jednotky v hlavičce v jednotkách zákazníka (N → mN, Ω → mΩ), jako na obrazovce.
         """
         ix = self._order_index(path)
         if ix is None:
@@ -1121,11 +1132,18 @@ class CsvRepository:
                 recs, _, _, _ = self._read_sectioned(f, None, None)
             rec = {k: v for k, v in recs[0].items() if not k.startswith('_')} if recs else {}
             return list(rec), iter([list(rec.values())])
-        n_meta = len(ix.meta_header)
-        meta   = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
-        rows   = (meta + row
-                  for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
-        return list(ix.meta_header) + list(ix.fieldnames), rows
+        n_meta  = len(ix.meta_header)
+        meta    = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
+        factors = [(i, unit_factor(k)) for i, k in enumerate(ix.fieldnames) if unit_factor(k) != 1.0]
+
+        def scaled(row: list[str]) -> list[str]:
+            for i, factor in factors:
+                if i < len(row):
+                    row[i] = scale_text(row[i], factor) or ''
+            return row
+        rows = (meta + scaled(row)
+                for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
+        return list(ix.meta_header) + [canonical_header(k) for k in ix.fieldnames], rows
 
     # ------------------------------------------------------------------
     # Vyhledání cesty + validace vstupů

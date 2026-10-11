@@ -14,8 +14,9 @@ export type SignalMode = 'overview' | 'results' | 'hysteresis' | 'zoom_op' | 'zo
 export interface KeyPoint {
   idx: number
   ts_ms: number
+  /** Poloha bodu [µm] — souřadnice tabulky parametrů (zákazník / enkodér, viz position_scale) */
   position: number
-  /** Síla v okamžiku bodu [N] (ze signálu) */
+  /** Síla v okamžiku bodu [mN] (ze signálu) */
   force: number | null
   /** 'electric' = OP/RP z průchodu U_NC prahem 5 V; 'position' = z polohy (fallback) */
   source: 'electric' | 'position'
@@ -23,19 +24,26 @@ export interface KeyPoint {
 
 export interface SignalData {
   ts_ms: number[]
+  /** Poloha [µm] — zákazník: výška nad osou upevňovacích otvorů (P = C − x, při stlačení klesá);
+   *  starší soubory: stupnice enkodéru (x) */
   position: number[]
-  force: number[]
+  /** Síla [mN] */
+  force_mn: number[]
   u_nc: number[]
   u_no: number[]
   i_nc_ma: number[]
   i_no_ma: number[]
-  /** Odpor kontaktu [Ω], ořez 1e-4…1e7 (1e6 = rozepnuto) — logaritmická osa */
-  r_nc_ohm: (number | null)[]
-  r_no_ohm: (number | null)[]
+  /** Odpor kontaktu [mΩ], ořez 0,1…1e10 (nad 999,9 = rozepnuto) — logaritmická osa */
+  r_nc_mohm: (number | null)[]
+  r_no_mohm: (number | null)[]
   key_points: Record<string, KeyPoint>
+  /** Souřadnice poloh: 'customer' | 'encoder' | null (nelze určit) */
+  position_scale?: 'customer' | 'encoder' | null
+  /** C [µm] — poloha zákazníka = C − x (null u stupnice enkodéru) */
+  position_reference_um?: number | null
   /** Práh přepnutí U_NC [V] — shodně s Analyzing (klidové + (max − klidové) × 0,5) */
   switch_threshold_v?: number
-  /** AnalyzedParameters souboru jako čísla (klíče po _normalize_key, jednotky dle CSV) */
+  /** AnalyzedParameters souboru jako čísla (klíče po _normalize_key, jednotky zákazníka) */
   params: Record<string, number>
   total_raw: number
 }

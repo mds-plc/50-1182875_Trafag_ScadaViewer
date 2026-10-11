@@ -281,11 +281,11 @@ describe('FileTable', () => {
 
   // ── Rozbalený řádek — jednotné formátování (reálný production záznam) ──
 
-  it('expanded row: units, mΩ, whole µm, open contacts hidden, time with seconds', () => {
-    const rec = {
+  it('expanded row: customer units (mN, µm 0.1, mΩ), open contacts hidden, time with seconds', () => {
+    const rec = {      // jak posílá /api/data — jednotky zákazníka (audit X1)
       timestamp: '2026-09-20T11:36:45', status: '2', sortingcategory: '2',
-      op_operatingposition: '926.0000', of_operatingforce: '1.0600',
-      r_nc_operatingposition_neg: '0.0090', r_no_operatingposition_neg: '1000000.0000',
+      op_operatingposition: '8574.0', of_operatingforce: '1060',
+      r_nc_operatingposition_neg: '9', r_no_operatingposition_neg: '9999.9',
     }
     const original = vi.mocked(useFileRecords).getMockImplementation()
     vi.mocked(useFileRecords).mockReturnValue({
@@ -300,13 +300,13 @@ describe('FileTable', () => {
     )
     const sub = container.querySelector('.db-subtable')!
     const headers = Array.from(sub.querySelectorAll('th')).map(th => th.textContent ?? '')
-    expect(headers).toContain('OFN')
+    expect(headers).toContain('OFmN')
     expect(headers).toContain('OPµm')
     expect(headers).toContain('R NCo−mΩ')
     expect(headers.some(h => h.startsWith('R NOo−'))).toBe(false)   // vždy rozepnuto → skryto
     const cells = Array.from(sub.querySelectorAll('tbody td')).map(td => td.textContent ?? '')
-    expect(cells).toContain('926')
-    expect(cells).toContain('1.06')
+    expect(cells).toContain('8574.0')
+    expect(cells).toContain('1060')
     expect(cells).toContain('9.0')
     expect(cells.some(c => /11:36:45/.test(c))).toBe(true)
     if (original) vi.mocked(useFileRecords).mockImplementation(original)

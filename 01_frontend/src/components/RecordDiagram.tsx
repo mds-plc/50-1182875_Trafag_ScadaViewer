@@ -14,7 +14,7 @@ interface Props {
   record: Record<string, unknown>
 }
 
-/** Hodnota parametru pro zobrazení — sdílené formatParam (µm/µs celá čísla, N 2 des., mΩ, ∞). */
+/** Hodnota parametru pro zobrazení — sdílené formatParam (mN, µm 0,1, µs, mΩ, ∞). */
 function makeVal(record: Record<string, unknown>) {
   return (key: string): string => formatParam(key, record[key]).text
 }
@@ -108,7 +108,7 @@ function ForceTravelDiagram({ record }: Props) {
       {/* ── Osy ── */}
       <line x1={145} y1={380} x2={145} y2={22} stroke={C_AXIS} strokeWidth={1.5} />
       <polygon points={`145,22 ${145-AS/2},${22+AS*1.5} ${145+AS/2},${22+AS*1.5}`} fill={C_AXIS} />
-      <text x={140} y={19} textAnchor="end" fontSize={11} fill={C_AXIS}>Force [N]</text>
+      <text x={140} y={19} textAnchor="end" fontSize={11} fill={C_AXIS}>Force [mN]</text>
 
       <line x1={135} y1={y_zero} x2={730} y2={y_zero} stroke={C_AXIS} strokeWidth={1.5} />
       <polygon points={`730,${y_zero} ${730-AS*1.5},${y_zero-AS/2} ${730-AS*1.5},${y_zero+AS/2}`}

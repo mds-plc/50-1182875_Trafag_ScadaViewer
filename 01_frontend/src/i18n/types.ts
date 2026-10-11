@@ -92,6 +92,7 @@ export interface Translations {
     diagramForceTravel: string
     diagramSwitchingTimes: string
     openContact: string
+    positionScaleEncoder: string
     colCategory: string
     unitPcs: string
     exportCsv: string
@@ -159,6 +160,7 @@ export interface Translations {
     sigAnalysis: string
     sigTime: string
     sigOpenContact: string
+    sigPositionRef: string
     catNokTrafag: string
     catNokMaker: string
     nokCategories: string

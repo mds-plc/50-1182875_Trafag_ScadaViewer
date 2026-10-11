@@ -5,11 +5,14 @@
  *   rozbalený řádek v Database (FileTable), detail zakázky (ChartView) i detail záznamu
  *   (RecordDiagram) — stejná hodnota se tak všude zobrazí stejně.
  *
- *   Jednotky zobrazení (zdroj dat = CSV z DatabaseGateway):
- *     Síly N (2 des. místa) · pozice a dráhy µm (celá čísla) · časy µs (celá čísla)
- *     Odpory: CSV je v Ω, zobrazují se v mΩ (×1000, 1 des. místo) — reálné hodnoty 5–950 mΩ.
- *     Rozepnutý kontakt: CSV hodnota 1 000 000 Ω → „∞".
- *   Exporty (CSV/XLSX) zůstávají v originálních jednotkách CSV.
+ *   Jednotky zákazníka (požadavek 9.3) — backend je už převedl podle hlavičky CSV
+ *   (services/units.py; starší soubory N / Ω):
+ *     Síly mN (celá čísla) · polohy a dráhy µm (0,1) · časy µs (celá čísla) · odpory mΩ (0,1)
+ *     Odpor nad 999,9 mΩ = rozepnutý kontakt „∞" (Analyzing zapisuje 9999,9, starší soubory 10⁹).
+ *   Polohy FP/OP/RP/TTP: souřadnice zákazníka P = výška hmatníku nad osou upevňovacích otvorů
+ *   (při stlačení klesá); starší soubory stupnice enkodéru (při stlačení roste) — /api/data
+ *   to hlásí v position_scale. Dráhy jsou v obou případech kladné vzdálenosti.
+ *   XLSX ze serveru má stejné jednotky; originální CSV zůstává beze změny.
  */
 
 /** Zkratka pro záhlaví sloupce — pro klíče bez záznamu se zobrazí surový klíč. */
@@ -84,7 +87,7 @@ export const PARAM_LABELS: Record<string, string> = {
  * `keys`  — CSV klíče v této skupině
  */
 export const PARAM_GROUPS: { id: string; label: string; unit: string; color: string; keys: string[] }[] = [
-  { id: 'forces',    label: 'Forces',    unit: 'N',   color: '#d97706',
+  { id: 'forces',    label: 'Forces',    unit: 'mN',  color: '#d97706',
     keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] },
   { id: 'positions', label: 'Positions', unit: 'µm',  color: '#2563eb',
     keys: ['fp_freeposition', 'op_operatingposition', 'rp_realeasingposition', 'ttp_totaltravelposition'] },
@@ -136,15 +139,16 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   sortingcategory:  'Sorting Category / box (1–4 OK · 5 NOK Trafag · 6 NOK Manufacturer)',
   status:           'Status (2 = OK · 5 = NOK)',
   // Forces
-  of_operatingforce:           'Operating Force [N]',
-  rf_realisingforce:           'Releasing Force [N]',
-  ttf_totaltravelforce:        'Total Travel Force [N]',
-  // Distances
-  pt_pretravel:                'Pre-travel [µm] (OP − FP)',
-  ot_overtravel:               'Overtravel [µm] (TTP − OP)',
-  rt_realisingtravel:          'Releasing Travel [µm] (TTP − RP)',
-  md_movementdifferential:     'Movement Differential [µm] (OP − RP)',
-  tt_totaltravel:              'Total Travel [µm] (TTP − FP)',
+  of_operatingforce:           'Operating Force [mN]',
+  rf_realisingforce:           'Releasing Force [mN]',
+  ttf_totaltravelforce:        'Total Travel Force [mN]',
+  // Distances — dráha mezi body (platí v souřadnicích zákazníka i na stupnici enkodéru starších
+  // souborů); vzorec se znaménkem v nápovědě PARAM_DESC
+  pt_pretravel:                'Pre-travel [µm] (FP → OP)',
+  ot_overtravel:               'Overtravel [µm] (OP → TTP)',
+  rt_realisingtravel:          'Releasing Travel [µm] (TTP → RP)',
+  md_movementdifferential:     'Movement Differential [µm] (OP → RP)',
+  tt_totaltravel:              'Total Travel [µm] (FP → TTP)',
   fp_freeposition:             'Free Position [µm]',
   op_operatingposition:        'Operating Position [µm]',
   rp_realeasingposition:       'Releasing Position [µm]',
@@ -182,7 +186,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   measuring_oversampling:      'Measuring Oversampling [−]',
   measuring_samplesreserve:    'Measuring Samples Reserve [−]',
   limits_distancemax:          'Distance Limit Max [mm]',
-  limits_forcemax:             'Force Limit Max [N]',
+  limits_forcemax:             'Force Limit Max [mN]',
   // Measured info
   measuretime:                 'Measurement Duration [s]',
   meas_ts:                     'Measurement Timestamp [unix s]',
@@ -190,12 +194,12 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
 
 // ── Formátování hodnot — jediný zdroj pro všechny pohledy ────────────────────
 
-/** CSV hodnota odporu ≥ této mezi = rozepnutý kontakt (DatabaseGateway zapisuje 1 000 000 Ω). */
-export const OPEN_CONTACT_THRESHOLD = 999_999
+/** Odpor nad touto hodnotou [mΩ] = rozepnutý kontakt („∞") — zákazník 9.3, Analyzing zapisuje 9999,9. */
+export const OPEN_CONTACT_THRESHOLD = 999.9
 
-/** Počet desetinných míst podle skupiny parametru. */
+/** Počet desetinných míst podle skupiny (rozlišení zákazníka 9.3: 1 mN, 0,1 µm, 1 µs, 0,1 mΩ). */
 const GROUP_DECIMALS: Record<string, number> = {
-  forces: 2, positions: 0, travel: 0, times: 0, electric: 1,
+  forces: 0, positions: 1, travel: 1, times: 0, electric: 1,
 }
 
 /** Klíč parametru → id skupiny (forces / positions / travel / times / electric). */
@@ -219,7 +223,7 @@ const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   measuring_oversampling:   { unit: '',      decimals: 0 },
   measuring_samplesreserve: { unit: '',      decimals: 0 },
   limits_distancemax:       { unit: 'mm',    decimals: 3 },
-  limits_forcemax:          { unit: 'N',     decimals: 2 },
+  limits_forcemax:          { unit: 'mN',    decimals: 0 },   // backend převádí [N] → mN
   measuretime:              { unit: 's',     decimals: 1 },
 }
 
@@ -236,9 +240,20 @@ export interface FormattedParam {
   open: boolean
 }
 
+/** Číslo na daný počet des. míst bez „−0" (záporná nula po zaokrouhlení). */
+function toFixedNoNegZero(n: number, decimals: number): string {
+  const text = n.toFixed(decimals)
+  return Number(text) === 0 ? (0).toFixed(decimals) : text
+}
+
+/** true = klíč je odpor kontaktu (skupina electric). */
+function isResistance(key: string): boolean {
+  return KEY_GROUP[key] === 'electric'
+}
+
 /**
  * Naformátuje hodnotu parametru pro zobrazení. Ne-parametry (timestamp, status…) vrací beze změny.
- * Odpory se převádí z Ω (CSV) na mΩ.
+ * Hodnoty jsou už v jednotkách zákazníka (převod podle hlavičky CSV dělá backend).
  */
 export function formatParam(key: string, raw: unknown): FormattedParam {
   if (raw == null || String(raw).trim() === '') return { text: '—', open: false }
@@ -251,11 +266,10 @@ export function formatParam(key: string, raw: unknown): FormattedParam {
     }), open: false }
   }
   const extra = EXTRA_FORMAT[key]
-  if (extra && !isNaN(n)) return { text: n.toFixed(extra.decimals), open: false }
+  if (extra && !isNaN(n)) return { text: toFixedNoNegZero(n, extra.decimals), open: false }
   if (!group || isNaN(n)) return { text: String(raw), open: false }
-  if (n >= OPEN_CONTACT_THRESHOLD) return { text: '∞', open: true }
-  const value = group === 'electric' ? n * 1000 : n
-  return { text: value.toFixed(GROUP_DECIMALS[group] ?? 2), open: false }
+  if (isResistance(key) && n > OPEN_CONTACT_THRESHOLD) return { text: '∞', open: true }
+  return { text: toFixedNoNegZero(n, GROUP_DECIMALS[group] ?? 2), open: false }
 }
 
 /** true pokud má parametr aspoň v jednom záznamu měřenou hodnotu (ne prázdnou, ne ∞). */
@@ -264,8 +278,25 @@ export function hasMeasuredValue(key: string, records: Record<string, unknown>[]
     const v = r[key]
     if (v == null || String(v).trim() === '') return false
     const n = Number(v)
-    return isNaN(n) || n < OPEN_CONTACT_THRESHOLD
+    return isNaN(n) || !isResistance(key) || n <= OPEN_CONTACT_THRESHOLD
   })
+}
+
+/**
+ * Souřadnice poloh v záznamech: 'customer' = výška nad osou upevňovacích otvorů (FP > TTP,
+ * při stlačení klesá), 'encoder' = stupnice enkodéru (starší soubory, FP < TTP), null = nelze určit.
+ * Stejné pravidlo jako backend (services/units.position_scale).
+ */
+export function positionScaleOf(records: Record<string, unknown>[]): 'customer' | 'encoder' | null {
+  for (const r of records) {
+    // prázdná hodnota (NaN z analýzy → Gateway zapíše prázdné pole) není 0
+    if (String(r.fp_freeposition ?? '').trim() === '' || String(r.ttp_totaltravelposition ?? '').trim() === '') continue
+    const fp = Number(r.fp_freeposition)
+    const ttp = Number(r.ttp_totaltravelposition)
+    if (!isFinite(fp) || !isFinite(ttp) || fp === ttp) continue
+    return fp > ttp ? 'customer' : 'encoder'
+  }
+  return null
 }
 
 /** Všechny měřené parametry v pořadí skupin (Forces, Positions, Travel, Times, Electric). */
@@ -277,29 +308,29 @@ export const ALL_PARAM_KEYS: string[] = PARAM_GROUPS.flatMap(g => g.keys)
  *  Anglická verze: PARAM_DESC_EN; výběr podle jazyka přes paramDesc(key, lang). */
 export const PARAM_DESC: Record<string, string> = {
   of_operatingforce:
-    'Síla [N] v bodě sepnutí (OP). Pokud je příliš velká nebo malá, spínač neodpovídá specifikaci.',
+    'Síla [mN] v bodě sepnutí (OP). Pokud je příliš velká nebo malá, spínač neodpovídá specifikaci.',
   rf_realisingforce:
-    'Síla [N] při uvolnění kontaktu na zpáteční cestě (RP). Spolu s OF definuje silovou hysterezi.',
+    'Síla [mN] při uvolnění kontaktu na zpáteční cestě (RP). Spolu s OF definuje silovou hysterezi.',
   ttf_totaltravelforce:
-    'Maximální síla [N] na konci zdvihu (TTP). Nesmí překročit povolenou mez pro daný typ.',
+    'Maximální síla [mN] na konci zdvihu (TTP). Nesmí překročit povolenou mez pro daný typ.',
   fp_freeposition:
-    'Výchozí poloha kladky [µm] bez vnější síly — referenční bod pro všechny délkové hodnoty.',
+    'Klidová poloha hmatníku [µm] bez vnější síly — výška nad osou upevňovacích otvorů (jako kóty výkresu; při stlačení klesá). Starší soubory: dráha vozíku od klidové polohy.',
   op_operatingposition:
-    'Poloha [µm] bodu sepnutí kontaktu na dopředné cestě (absolutní poloha). PT = OP − FP.',
+    'Poloha [µm] bodu sepnutí kontaktu na dopředné cestě — výška nad osou upevňovacích otvorů. PT = FP − OP.',
   rp_realeasingposition:
-    'Poloha [µm] bodu uvolnění kontaktu na zpáteční cestě (absolutní poloha). MD = OP − RP.',
+    'Poloha [µm] bodu uvolnění kontaktu na zpáteční cestě — výška nad osou upevňovacích otvorů. MD = RP − OP.',
   ttp_totaltravelposition:
-    'Poloha [µm] konce zdvihu — nejhlubší bod stlačení při měření. TT = TTP − FP.',
+    'Poloha [µm] konce zdvihu — nejhlubší bod stlačení při měření (výška nad osou upevňovacích otvorů). TT = FP − TTP.',
   pt_pretravel:
-    'Předzdvih [µm] — dráha od FP do OP (PT = OP − FP). Musí být dostatečná pro spolehlivé sepnutí.',
+    'Předzdvih [µm] — dráha od FP do OP (PT = FP − OP). Musí být dostatečná pro spolehlivé sepnutí.',
   ot_overtravel:
-    'Přezdvih [µm] — rezerva za bodem sepnutí (OT = TTP − OP). Chrání kontakt před přetížením.',
+    'Přezdvih [µm] — rezerva za bodem sepnutí (OT = OP − TTP). Chrání kontakt před přetížením.',
   rt_realisingtravel:
-    'Uvolňovací zdvih [µm] — dráha od konce zdvihu zpět do bodu uvolnění (RT = TTP − RP).',
+    'Uvolňovací zdvih [µm] — dráha od konce zdvihu zpět do bodu uvolnění (RT = RP − TTP).',
   md_movementdifferential:
-    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (MD = OP − RP, polohová hystereze). Větší MD = stabilnější přepínání. Záporné MD = záporná hystereze (RP leží za OP) — spínač neodpovídá běžnému chování.',
+    'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (MD = RP − OP, polohová hystereze). Větší MD = stabilnější přepínání. Záporné MD = záporná hystereze (RP leží za OP) — spínač neodpovídá běžnému chování.',
   tt_totaltravel:
-    'Celkový zdvih [µm] — dráha od FP do TTP (TT = TTP − FP).',
+    'Celkový zdvih [µm] — dráha od FP do TTP (TT = FP − TTP).',
   ut_unstabletime:
     'Nestabilní čas [µs] — délka kmitů kontaktu těsně po sepnutí, než se kontakt definitivně otevře.',
   rt_reversetime:
@@ -309,7 +340,7 @@ export const PARAM_DESC: Record<string, string> = {
   ot_operatingtime:
     'Čas sepnutí [µs] — celková doba spínání, součet UT + RevT + BT.',
   r_nc_operatingposition_neg:
-    'Odpor [mΩ] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace.',
+    'Odpor [mΩ] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace. Nad 999,9 mΩ = rozepnuto (∞).',
   r_nc_operatingposition_pos:
     'Odpor [mΩ] NC kontaktu v bodě sepnutí (OP), kladný pól.',
   r_nc_releasingposition_neg:
@@ -348,7 +379,7 @@ export const PARAM_DESC: Record<string, string> = {
   limits_distancemax:
     'Maximální povolená dráha [mm] — při překročení se měření přeruší (ochrana mikrospínače).',
   limits_forcemax:
-    'Maximální povolená síla [N] — při překročení se měření přeruší (ochrana mikrospínače i snímače).',
+    'Maximální povolená síla [mN] — při překročení se měření přeruší (ochrana mikrospínače i snímače).',
   measuretime:
     'Celková doba měření [s] — délka záznamu signálu (dopředný i zpětný chod).',
   meas_ts:
@@ -358,29 +389,29 @@ export const PARAM_DESC: Record<string, string> = {
 /** Anglický popis parametru — stejné klíče jako PARAM_DESC (nápověda „?" v režimu EN). */
 export const PARAM_DESC_EN: Record<string, string> = {
   of_operatingforce:
-    'Force [N] at the operating point (OP). If it is too high or too low, the switch does not meet the specification.',
+    'Force [mN] at the operating point (OP). If it is too high or too low, the switch does not meet the specification.',
   rf_realisingforce:
-    'Force [N] at which the contact releases on the return stroke (RP). Together with OF it defines the force hysteresis.',
+    'Force [mN] at which the contact releases on the return stroke (RP). Together with OF it defines the force hysteresis.',
   ttf_totaltravelforce:
-    'Maximum force [N] at the end of travel (TTP). Must not exceed the permitted limit for the switch type.',
+    'Maximum force [mN] at the end of travel (TTP). Must not exceed the permitted limit for the switch type.',
   fp_freeposition:
-    'Rest position of the actuator [µm] without external force — the reference point for all travel values.',
+    'Rest position of the actuator [µm] without external force — height above the mounting-hole axis (as in the drawing; decreases when actuated). Older files: carriage travel from its rest position.',
   op_operatingposition:
-    'Position [µm] where the contact switches on the forward stroke (absolute position). PT = OP − FP.',
+    'Position [µm] where the contact switches on the forward stroke — height above the mounting-hole axis. PT = FP − OP.',
   rp_realeasingposition:
-    'Position [µm] where the contact releases on the return stroke (absolute position). MD = OP − RP.',
+    'Position [µm] where the contact releases on the return stroke — height above the mounting-hole axis. MD = RP − OP.',
   ttp_totaltravelposition:
-    'Position [µm] at the end of travel — the deepest point of actuation during the measurement. TT = TTP − FP.',
+    'Position [µm] at the end of travel — the deepest point of actuation (height above the mounting-hole axis). TT = FP − TTP.',
   pt_pretravel:
-    'Pre-travel [µm] — distance from FP to OP (PT = OP − FP). Must be sufficient for reliable switching.',
+    'Pre-travel [µm] — distance from FP to OP (PT = FP − OP). Must be sufficient for reliable switching.',
   ot_overtravel:
-    'Overtravel [µm] — reserve beyond the operating point (OT = TTP − OP). Protects the contact from overload.',
+    'Overtravel [µm] — reserve beyond the operating point (OT = OP − TTP). Protects the contact from overload.',
   rt_realisingtravel:
-    'Releasing travel [µm] — distance from the end of travel back to the releasing point (RT = TTP − RP).',
+    'Releasing travel [µm] — distance from the end of travel back to the releasing point (RT = RP − TTP).',
   md_movementdifferential:
-    'Movement differential [µm] — distance between OP and RP (MD = OP − RP, position hysteresis). Larger MD = more stable switching. Negative MD = negative hysteresis (RP lies beyond OP) — abnormal switch behaviour.',
+    'Movement differential [µm] — distance between OP and RP (MD = RP − OP, position hysteresis). Larger MD = more stable switching. Negative MD = negative hysteresis (RP lies beyond OP) — abnormal switch behaviour.',
   tt_totaltravel:
-    'Total travel [µm] — distance from FP to TTP (TT = TTP − FP).',
+    'Total travel [µm] — distance from FP to TTP (TT = FP − TTP).',
   ut_unstabletime:
     'Unstable time [µs] — duration of contact oscillation right after switching, before the contact settles.',
   rt_reversetime:
@@ -390,7 +421,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   ot_operatingtime:
     'Operating time [µs] — total switching time, the sum UT + RevT + BT.',
   r_nc_operatingposition_neg:
-    'Resistance [mΩ] of the normally closed (NC) contact at the operating point (OP), negative pole. High resistance = degradation.',
+    'Resistance [mΩ] of the normally closed (NC) contact at the operating point (OP), negative pole. High resistance = degradation. Above 999.9 mΩ = open (∞).',
   r_nc_operatingposition_pos:
     'Resistance [mΩ] of the NC contact at the operating point (OP), positive pole.',
   r_nc_releasingposition_neg:
@@ -428,7 +459,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   limits_distancemax:
     'Maximum permitted distance [mm] — the measurement stops when exceeded (protects the microswitch).',
   limits_forcemax:
-    'Maximum permitted force [N] — the measurement stops when exceeded (protects the microswitch and the sensor).',
+    'Maximum permitted force [mN] — the measurement stops when exceeded (protects the microswitch and the sensor).',
   measuretime:
     'Total measurement time [s] — length of the signal record (forward and return stroke).',
   meas_ts:

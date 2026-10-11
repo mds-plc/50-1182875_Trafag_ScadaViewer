@@ -1095,6 +1095,17 @@
   .page-title { font-size: 16px !important; }
 }
 
+/* Poznámka: polohy na stupnici enkodéru (starší soubory) */
+.cv-scale-note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
 /* ============================================================
  * PROTOKOL — tiskové rozvržení A4 (detail zakázky, záznamu, testu)
  * Doplňuje blok @media print výše; pozdější pravidla mají přednost.
