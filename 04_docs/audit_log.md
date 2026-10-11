@@ -79,6 +79,40 @@
 
 ---
 
+## [2026-10-11] Ověření kontraktu jednotek napříč aplikacemi (2. kolo, 4 nezávislé větve)
+
+### Scope
+Nezávislé ověření po fázi 42: (1) řetězec polí PLC XML → ctypes Analyzing → SYM / ads_reader Gateway →
+hlavička CSV → ScadaViewer → paramMeta, (2) sémantika jednotek a souřadnic ve všech pohledech, (3) dynamický
+test skutečným kódem všech tří aplikací na **769 reálných signálech** × C = 9500 / 9300 / 0 (2 303 běhů),
+(4) dokumentace a zákaznické podklady proti kódu.
+
+**Výsledek ověření:** 24 polí, typy, pořadí, 48 cest symbolů a zarovnání hlavička ↔ hodnoty 1:1 (96 B).
+Tabulkové hodnoty 0 neshod (Testing 55 272, Production 55 368, XLSX 55 368 hodnot); C dopočtené ze souboru
+max. 0,05 µm od skutečného; klíčové body FP/OP/RP/TTP max. 0,1 µm od tabulky; zoom / range / XLSX shodné.
+
+### Nálezy a opravy
+
+| # | Závažnost | Nález | Oprava (2026-10-11) |
+|---|-----------|-------|---------------------|
+| V1 | 🔴 HIGH | Rozpracovaná zakázka přes upgrade: Gateway pokračuje ve WIP se starou hlavičkou `[N]`/`[Ohm]`, nové řádky v mN → ScadaViewer převede dvakrát (1050 mN → 1 050 000, sepnutý kontakt → ∞) | Gateway: WIP se starou hlavičkou při startu → ERROR, Op2 odmítnut (Op3 projde); `deployment.md`: před upgradem uzavřít zakázky |
+| V2 | 🔴 HIGH | Neúspěšná analýza (W5 / W6) zapisuje 0, ne NaN → „0 mN / 0,0 µm / 0,0 mΩ“; bod RP v grafu na TTP (`to_x(0)` = C) | ScadaViewer: 0 u polohy, síly a odporu → „—“; nulová poloha se v grafu nehledá. Čisté řešení = kód varování v PLC DUT / CSV (⬜, PLC) |
+| V3 | ⚠️ MEDIUM | Analyzing `build_plc_struct` spadne na NaN (`round(nan)`) → zápis výsledků do PLC selže | `_int()` / `_mohm()` propustí NaN (Gateway → prázdné pole) + test |
+| V4 | ⚠️ MEDIUM | Nápověda Neg / Pos = „záporný / kladný pól“, R_NO_OP_Neg „nízký odpor = správně“ (i v manuálu) | Neg / Pos = těsně před / po přepnutí, očekávaný stav kontaktu (CS + EN), manuál přegenerován |
+| V5 | ⚠️ MEDIUM | XLSX Testing bez jednotek (normalizované klíče), prázdné hodnoty vynechané; starý soubor: rozepnuto 10⁹ mΩ, polohy enkodéru neoznačené | Originální hlavičky v jednotkách zákazníka, prázdné zůstanou, rozepnuto jednotně `9999.9`, `[um, encoder]` |
+| V6 | ⚠️ MEDIUM | Zoom hystereze na obrácené ose zrcadlově (kolečko, pinch, posun) | `ZoomPanel` prop `reversed`; ověřeno v prohlížeči (kurzor u 7980 µm → výřez 7980–8020) |
+| V7 | ⚠️ MEDIUM | MD v pásmu hystereze bez znaménka (z bodů grafu), chip se znaménkem | MD z parametru se znaménkem |
+| V8 | 🔵 LOW | SamplesReserve 1,1 zobrazen jako „1“; nan / inf textem; ∞ u 999,90002; tooltip síly 0,1 mN; upozornění „enkodér“ jen v detailu, text zavádějící při C = 0 | opraveno (desetinná místa, „—“ / ∞, zaokrouhlené porovnání, celé mN, upozornění i v Database, nový text) |
+| V9 | 🔵 LOW | `analyze_signal.py`: korekce tření `np.interp` s klesajícími polohami (souřadnice zákazníka) | seřazení před interpolací |
+| V10 | 🔵 LOW | Dokumentace: Gateway `constants.py` komentáře (N, mm, Ω, ms), hlavička [SignalData], 5 sekcí, vzory (MD text, zápis čísel, C z výňatku, FP > 9300); Analyzing zaokrouhlení, W5/W6, vzorce, 80 B; ScadaViewer pravidla, how_to_extend, architecture, roadmap, acceptance_test | opraveno ve všech třech projektech; PDF „Struktura ukládaných souborů“ znovu exportováno |
+
+Otevřené: kód varování analýzy (W5 / W6) v PLC DUT + CSV místo nul (rozhodnutí PLC); verze formátu v CSV;
+diagram síla–dráha (RecordDiagram) kreslí kótu RF u OP — ověřit se zákaznickým screenem 29; při chybějícím
+FP nebo TTP je graf na stupnici enkodéru a tabulka zákazníka (neočekává se).
+Testy: ScadaViewer backend **347**, frontend **123**, Gateway **73**, Analyzing **69**.
+
+---
+
 ## [2026-10-10] Nejhlubší audit — po řádcích, návaznost na DatabaseGateway / Analyzing, útoky, výpadky
 
 ### Scope
@@ -106,7 +140,7 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 | X6 | 🔵 LOW | Zakázka s „..“ v názvu (Gateway povolí) je v přehledu, ale nejde otevřít/stáhnout/smazat — `validate_params` odmítá `..` kdekoli. Oprava: odmítat jen `name in ('.', '..')` | `csv_repository.py:1151` | ⬜ Otevřeno |
 | X7 | 🔵 LOW | Podtržítko v typu spínače („Marq_V2“) rozbije zakázku a typ v přehledu z názvu; na NAS se opraví jen pro zobrazenou stránku → řazení podle zakázky chybné. Oprava: Gateway zakáže `_` v typu, nebo jednoznačný oddělovač | `csv_repository.py:71` | ⬜ Otevřeno |
 | X8 | 🔵 LOW | Klíčové body: TTP = první vzorek nejbližší hodnotě z CSV (186999), Analyzing bere maximum (189102, ~105 ms rozdíl); OP se hledá od vzorku 1, Analyzing od FP. Oprava: TTP = maximum polohy, OP od FP | `signal_reader.py:348,385` | ✅ Opraveno 2026-10-11 — TTP = maximum polohy, OP od FP |
-| X9 | 🔵 LOW | Zastaralý popis kontraktu: GVL Gateway je `…DatabaseGatewayApp`, sloupec `Group` je `SortingCategory [-]`, „1 000 000 Ω“, cp1252 vs cp1250; NAS podsložky `production`/`testing` natvrdo (funguje jen díky case-insensitive SMB) | `sibling-projects.md`, CLAUDE.md §6, `paramMeta.ts:11,193` | ⬜ Otevřeno |
+| X9 | 🔵 LOW | Zastaralý popis kontraktu: GVL Gateway je `…DatabaseGatewayApp`, sloupec `Group` je `SortingCategory [-]`, „1 000 000 Ω“, cp1252 vs cp1250; NAS podsložky `production`/`testing` natvrdo (funguje jen díky case-insensitive SMB) | `sibling-projects.md`, CLAUDE.md §6, `paramMeta.ts:11,193` | 🟡 Částečně 2026-10-11 — paramMeta / units (9999,9, 10⁹ mΩ) a `Group`/`SortingCategory` v CLAUDE.md opraveny; GVL název, cp1252, NAS podsložky zbývají |
 
 ### API a bezpečnost (Z)
 

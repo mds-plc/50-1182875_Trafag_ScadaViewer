@@ -35,6 +35,8 @@
 | 1.5 | `npm run build` | build bez chyb a varování o velikosti chunků |
 | 1.5a | `npm audit` | 0 zranitelností (2026-10-10) |
 | 1.6 | Sesterské projekty: `pytest` v DatabaseGateway a Analyzing | všechny prošly (formát CSV musí sedět napříč) |
+| 1.7 | `pytest 02_tests/test_ecosystem_units.py -v` (Analyzing → Gateway → ScadaViewer) | 4 passed — **nesmí být skipped** (vyžaduje sesterské projekty a export signálu Analyzing) |
+| 1.8 | Po nasazení otevřít jeden nový záznam | síla stovky až tisíce mN, odpor v mΩ (rozepnuto ∞), polohy 7 000–9 300 µm, poznámka „enkodér“ jen u starých souborů |
 
 ---
 

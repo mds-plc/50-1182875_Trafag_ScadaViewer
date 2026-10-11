@@ -91,7 +91,7 @@ export const en: Translations = {
     diagramForceTravel:    'Force – travel',
     diagramSwitchingTimes: 'Contact switching times',
     openContact:           'open contact (> 999.9 mΩ)',
-    positionScaleEncoder:  'Positions FP/OP/RP/TTP in this file are on the encoder scale (recorded before the switch to customer units) — they increase when actuated. All other values are in customer units.',
+    positionScaleEncoder:  'Positions FP/OP/RP/TTP in this file are on the encoder scale (carriage travel from its rest position — an older record or an analysis without the calibration constant C) — they increase when actuated and the travel formulas apply with the opposite sign. All other values are in customer units.',
     colCategory:           'Cat.',
     unitPcs:               'pcs',
     exportCsv:      'Download CSV',

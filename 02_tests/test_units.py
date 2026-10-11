@@ -160,3 +160,49 @@ def test_x8_op_searched_from_fp(tmp_path: Path) -> None:
     kp = sr.prepare_signal_response(f, "overview", 1000)["key_points"]
     assert kp["op"]["position"] == pytest.approx(8900.0)
     sr._cache.clear(); sr._resp_cache.clear()
+
+
+
+# ── Export XLSX: testovací soubor s hlavičkami, starý soubor, rozepnutý kontakt ───
+
+def test_xlsx_testing_headers_and_old_file_normalized(tmp_path: Path) -> None:
+    from scada.config import DataConfig
+    from scada.services.repositories.csv_repository import CsvRepository
+    t = tmp_path / "TEST_M_20260920_080000_DONE.csv"
+    t.write_text(
+        "[Metadata]\nTimestamp;Microswitch_ID;Microswitch_Name\n2026-09-20T08:00:00;1;M\n\n"
+        "[TestingParameters]\nElectric_Current [A];Limits_ForceMax [N]\n100;4\n\n"
+        "[AnalyzedParameters]\nOF_OperatingForce [N];FP_FreePosition [um];TTP_TotalTravelPosition [um];"
+        "R_NO_OperatingPosition_Neg [Ohm];RF_RealisingForce [N]\n1.046;242;1799;1000000;\n\n"
+        "[SignalData]\nts [ns];position [um]\n0;0\n", encoding="utf-8-sig")
+    repo = CsvRepository(DataConfig(local_path=tmp_path, remote_path="", csv_separator=";",
+                                    csv_encoding="utf-8-sig"))
+    try:
+        heads, rows = repo.read_table(t)
+        row = dict(zip(heads, next(rows)))
+    finally:
+        repo.close()
+    assert row["OF_OperatingForce [mN]"] == "1046"
+    assert row["Electric_Current [mA]"] == "100" and row["Limits_ForceMax [mN]"] == "4000"
+    assert row["R_NO_OperatingPosition_Neg [mOhm]"] == "9999.9"          # jednotně jako nové soubory
+    assert row["FP_FreePosition [um, encoder]"] == "242"                  # stará stupnice označená
+    assert row["RF_RealisingForce [mN]"] == ""                            # prázdné zůstane (sloupec ano)
+    assert not any(h.split(" ")[0] == "ts" for h in heads)                # bez [SignalData]
+
+
+def test_signal_rp_zero_is_not_a_position(tmp_path: Path) -> None:
+    """W6 (bez přepnutí): RP = 0 z Analyzing — bod RP se nehledá podle polohy (dřív skončil na TTP)."""
+    sr._cache.clear(); sr._resp_cache.clear()
+    f = tmp_path / "W6_DONE.csv"
+    _signal_file(f, _AN_HEAD, "9300.0;8900.0;0;8500.0;1000")
+    text = f.read_text(encoding="utf-8-sig").split("\n")
+    start = text.index("[SignalData]") + 2
+    for i in range(start + 101, len(text)):                    # zpětný chod: U_NC už nepřepne
+        parts = text[i].split(";")
+        if len(parts) > 3:
+            parts[3] = "10.0"
+            text[i] = ";".join(parts)
+    f.write_text("\n".join(text), encoding="utf-8-sig")
+    kp = sr.prepare_signal_response(f, "overview", 1000)["key_points"]
+    assert "rp" not in kp and kp["ttp"]["position"] == pytest.approx(8500.0)
+    sr._cache.clear(); sr._resp_cache.clear()

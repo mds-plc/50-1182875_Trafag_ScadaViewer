@@ -194,7 +194,9 @@ const numericKeys = useMemo(() => {
 ## Parametry, grafy, tisk — sdílené stavební bloky (nerozbíjet)
 
 - **Hodnoty měřených parametrů** VŽDY přes `formatParam()` / `paramUnit()` z `utils/paramMeta.ts`
-  (N 2 des. místa, µm/µs celá čísla, odpor mΩ = Ω×1000, ≥ 999 999 → ∞). Nikdy ruční `toFixed`.
+  (mN celá, µm 0,1, µs celá, mΩ 0,1, odpor > 999,9 mΩ → ∞, 0 u polohy/síly/odporu → „—“ = nestanoveno
+  Analyzing W5/W6). Převod jednotek podle hlavičky CSV dělá backend (`services/units.py`), `formatParam`
+  už nepřevádí. Nikdy ruční `toFixed`.
   Nový parametr: `PARAM_LABELS` + `PARAM_TOOLTIPS` (anglicky, se vzorcem) + `PARAM_DESC` (česká nápověda)
   + `PARAM_DESC_EN` (anglická nápověda — hlídá `test/i18n.test.ts`); zobrazovat přes `paramDesc(key, lang)`
   + skupina v `PARAM_GROUPS` (nebo `EXTRA_FORMAT` pro vstupy testu).

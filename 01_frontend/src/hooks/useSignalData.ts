@@ -18,7 +18,7 @@ export interface KeyPoint {
   position: number
   /** Síla v okamžiku bodu [mN] (ze signálu) */
   force: number | null
-  /** 'electric' = OP/RP z průchodu U_NC prahem 5 V; 'position' = z polohy (fallback) */
+  /** 'electric' = OP/RP z průchodu U_NC prahem přepnutí (switch_threshold_v, 50 % rozsahu U_NC); 'position' = z polohy (fallback) */
   source: 'electric' | 'position'
 }
 

@@ -382,7 +382,7 @@ export const PARAM_LABELS   = { …, pr_pressure: 'PR' }                        
 export const PARAM_TOOLTIPS = { …, pr_pressure: 'Pressure [bar]' }            // popis + jednotka
 export const PARAM_DESC     = { …, pr_pressure: 'Tlak [bar] — …' }             // česká nápověda „?"
 export const PARAM_GROUPS   = [ …,
-  { id: 'forces', label: 'Forces', unit: 'N', color: '#d97706',
+  { id: 'forces', label: 'Forces', unit: 'mN', color: '#d97706',
     keys: ['of_operatingforce', …, 'pr_pressure'] },                         // ← do skupiny
 ]
 ```
@@ -405,7 +405,8 @@ export interface CsvRecord { …; pr_pressure?: string }
 
 - [ ] Domluveno s DatabaseGateway týmem (název, formát, jednotka)
 - [ ] `utils/paramMeta.ts` — `PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS`
-- [ ] Sentinel hodnota (≥ 999999 = otevřený kontakt) — ChartView ji u neelektrických veličin skrývá
+- [ ] Jednotka sloupce: CSV nese jednotku v hlavičce; nová jednotka k převodu → `_TO_CUSTOMER` v `services/units.py`
+      (∞ jen u odporů > 999,9 mΩ; sloupec odporu, který je ve všech záznamech ∞, se v tabulce skryje)
 - [ ] `CLAUDE.md § 6` — tabulka CSV sloupců
 
 ---

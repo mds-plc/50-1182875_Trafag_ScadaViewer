@@ -168,7 +168,8 @@ def test_xlsx_endpoint_testing_and_errors(client) -> None:
     rows = _sheet(r.content)
     assert len(rows) == 2
     header = [_val(c) for c in rows[0]]
-    assert "of_operatingforce" in header and not any(h.startswith("_") for h in header)
+    # originální hlavičky v jednotkách zákazníka (ne normalizované klíče), bez interních „_" a [SignalData]
+    assert "OF_OperatingForce [mN]" in header and not any(h.startswith("_") for h in header)
     assert client.get("/api/files/NENI_DONE.csv/xlsx").status_code == 404
     client.headers.pop("Authorization")
     assert client.get("/api/files/PROD_0042_M_20261001_080000_DONE.csv/xlsx").status_code == 401

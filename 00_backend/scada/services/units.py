@@ -85,6 +85,34 @@ def scale_text(value: str | None, factor: float) -> str | None:
     return _fmt(x * factor)
 
 
+#: Rozepnutý kontakt v exportu — jednotně jako Analyzing / PLC (starší soubory mají 1 000 000 Ω = 10⁹ mΩ)
+OPEN_CONTACT_EXPORT = "9999.9"
+_POSITION_NAMES = frozenset({"fp_freeposition", "op_operatingposition", "rp_realeasingposition",
+                             "ttp_totaltravelposition"})
+
+
+def export_value(header: str, value: str | None) -> str:
+    """Hodnota sloupce pro export (XLSX) v jednotkách zákazníka; odpor nad 999,9 mΩ → 9999.9."""
+    out = scale_text(value, unit_factor(header)) or ""
+    name, unit = split_unit(header)
+    if unit and unit.lower() in ("ohm", "mohm") and name.lower().startswith("r_"):
+        try:
+            if round(float(out), 1) > OPEN_CONTACT_MOHM:
+                return OPEN_CONTACT_EXPORT
+        except ValueError:
+            pass
+    return out
+
+
+def export_header(header: str, scale: str | None) -> str:
+    """Hlavička pro export v jednotkách zákazníka; polohy na stupnici enkodéru označené."""
+    canon = canonical_header(header)
+    name, unit = split_unit(canon)
+    if scale == "encoder" and name.lower() in _POSITION_NAMES and unit:
+        return f"{name} [{unit}, encoder]"
+    return canon
+
+
 def position_scale(fp: str | float | None, ttp: str | float | None) -> str | None:
     """Souřadnice poloh podle FP a TTP: 'customer' (FP > TTP — při stlačení klesá),
     'encoder' (FP < TTP — starší soubory, x od klidové polohy vozíku), None = nelze určit."""

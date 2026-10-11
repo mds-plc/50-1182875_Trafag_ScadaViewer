@@ -17,6 +17,7 @@ import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit } from '../utils/paramMeta'
+import PositionScaleNote from './PositionScaleNote'
 
 /** NOK kategorie — sloupce se zobrazí jen pokud je CSV obsahuje. */
 const NOK_CATS = [
@@ -176,6 +177,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
           )}
 
           {/* Tabulka záznamů */}
+          <PositionScaleNote records={records} />
           <div className="db-subtable-wrap">
             <table className="db-subtable">
               <thead>

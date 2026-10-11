@@ -44,7 +44,9 @@ from pathlib import Path
 
 from scada.config import DataConfig
 from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
-from scada.services.units import canonical_header, scale_text, unit_factor
+from scada.services.units import (
+    canonical_header, export_header, export_value, position_scale, scale_text, unit_factor,
+)
 
 log = logging.getLogger(__name__)
 
@@ -197,6 +199,35 @@ def _parse_sectioned(
             header = None
 
     return sections
+
+
+def _sectioned_pairs(f, separator: str) -> list[tuple[str, str]]:
+    """Sekční formát (TEST) pro export: (originální hlavička, hodnota) všech sekcí kromě [SignalData].
+
+    Na rozdíl od _parse_sectioned zachová hlavičky s jednotkami i prázdné hodnoty — sloupce XLSX
+    jsou pak u všech souborů stejné.
+    """
+    pairs: list[tuple[str, str]] = []
+    header: list[str] | None = None
+    in_section = False
+    for raw_line in f:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            if line[1:-1].lower() == 'signaldata':
+                break
+            in_section, header = True, None
+            continue
+        if not in_section:
+            continue
+        if header is None:
+            header = [c.strip() for c in line.split(separator)]
+        else:
+            vals = [v.strip() for v in line.split(separator)]
+            pairs.extend((h, vals[i] if i < len(vals) else '') for i, h in enumerate(header))
+            in_section, header = False, None
+    return pairs
 
 
 class FileMeta(Mapping):
@@ -1123,27 +1154,39 @@ class CsvRepository:
         """Celý soubor jako tabulka pro export (XLSX): originální názvy sloupců i hodnoty.
 
         Production: metadata (Order, Microswitch_ID, …) jako první sloupce + datová část.
-        Testing (sekční): jeden řádek se sloučenými sekcemi (klíče jako v /api/data).
-        Hodnoty i jednotky v hlavičce v jednotkách zákazníka (N → mN, Ω → mΩ), jako na obrazovce.
+        Testing (sekční): jeden řádek se sloučenými sekcemi, originální hlavičky (bez [SignalData]).
+        Hodnoty i jednotky v hlavičce v jednotkách zákazníka (N → mN, Ω → mΩ), jako na obrazovce;
+        rozepnutý kontakt jednotně 9999.9; polohy na stupnici enkodéru (starší soubory) mají v hlavičce
+        „[um, encoder]" (units.export_header / export_value).
         """
         ix = self._order_index(path)
         if ix is None:
             with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
-                recs, _, _, _ = self._read_sectioned(f, None, None)
-            rec = {k: v for k, v in recs[0].items() if not k.startswith('_')} if recs else {}
-            return list(rec), iter([list(rec.values())])
-        n_meta  = len(ix.meta_header)
-        meta    = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
-        factors = [(i, unit_factor(k)) for i, k in enumerate(ix.fieldnames) if unit_factor(k) != 1.0]
+                pairs = _sectioned_pairs(f, self._cfg.csv_separator)
+            vals  = {_normalize_key(h): v for h, v in pairs}
+            scale = position_scale(vals.get('fp_freeposition'), vals.get('ttp_totaltravelposition'))
+            return ([export_header(h, scale) for h, _ in pairs],
+                    iter([[export_value(h, v) for h, v in pairs]]))
+        n_meta = len(ix.meta_header)
+        meta   = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
+        heads  = list(ix.fieldnames)
+        pos    = {_normalize_key(k): i for i, k in enumerate(heads)}
+        scale  = None
+        for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator):
+            cell = lambda k: row[pos[k]] if k in pos and pos[k] < len(row) else None  # noqa: E731
+            scale = position_scale(cell('fp_freeposition'), cell('ttp_totaltravelposition'))
+            if scale is not None:
+                break
+        convert = [i for i, k in enumerate(heads) if export_value(k, '1') != '1' or k.lower().startswith('r_')]
 
-        def scaled(row: list[str]) -> list[str]:
-            for i, factor in factors:
+        def converted(row: list[str]) -> list[str]:
+            for i in convert:
                 if i < len(row):
-                    row[i] = scale_text(row[i], factor) or ''
+                    row[i] = export_value(heads[i], row[i])
             return row
-        rows = (meta + scaled(row)
+        rows = (meta + converted(row)
                 for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
-        return list(ix.meta_header) + [canonical_header(k) for k in ix.fieldnames], rows
+        return list(ix.meta_header) + [export_header(k, scale) for k in heads], rows
 
     # ------------------------------------------------------------------
     # Vyhledání cesty + validace vstupů

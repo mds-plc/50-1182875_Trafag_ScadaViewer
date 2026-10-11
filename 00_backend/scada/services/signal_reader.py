@@ -306,7 +306,7 @@ def find_key_points(
     """Extrahuje klíčové body FP/OP/RP/TTP z AnalyzedParameters + signal dat.
 
     Args:
-        analyzed: dict z _parse_sectioned() — 'fp_freeposition': '898.0000' atd.
+        analyzed: dict z _parse_sectioned() — 'fp_freeposition': '9271.0' atd. (jednotky zákazníka)
         signal: dict ze read_signal_data() — surová (nedecimovaná) data.
 
     Returns:
@@ -346,9 +346,11 @@ def find_key_points(
                 continue  # skip resistance keys
             if key in k:
                 try:
-                    return float(v)
+                    val = float(v)
                 except (ValueError, TypeError):
-                    pass
+                    continue
+                # 0 = Analyzing polohu nestanovil (W5 bez dotyku, W6 bez přepnutí) — ne poloha 0
+                return val if math.isfinite(val) and val != 0.0 else None
         return None
 
     def _argmin_abs(arr: list[float], target: float, start: int = 0, end: int | None = None) -> int:

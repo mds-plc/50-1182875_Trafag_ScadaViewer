@@ -155,7 +155,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── useClientLocal.ts   ← GET /api/auth/client — u stroje / vzdáleně; opakuje, dokud server neodpoví (kiosk po startu PC)
     │   └── usePrintMode.ts     ← tiskové tabulky vykreslit až při tisku (printNow / beforeprint, flushSync)
     ├── utils/
-    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (N, µm, µs, mΩ, ∞; vstupy testu EXTRA_FORMAT)
+    │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (mN, µm 0,1, µs, mΩ 0,1, ∞ nad 999,9; 0 u polohy/síly/odporu = „—“ (W5/W6); vstupy testu EXTRA_FORMAT)
     │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
@@ -440,7 +440,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 ```json
 {
   "status":  "ok",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "checks": {
     "local_storage": true,
     "ads":           false
@@ -505,9 +505,9 @@ encoding   = "utf-8-sig"
 | `Order` | ✅ | — | `order` | číslo zakázky |
 | `Microswitch_ID` | ✅ | ✅ | `microswitch_id` | |
 | `Microswitch_Name` | ✅ | ✅ | `microswitch_name` | typ mikrospínače (zobrazován jako "Microswitch type") |
-| `Group` | ✅ (opt.) | — | `group` | skupina třídění 1–6 |
+| `Group` / `SortingCategory [-]` | ✅ (opt.) | — | `group` / `sortingcategory` | kategorie třídění 1–6 (Gateway zapisuje `SortingCategory`, starší soubory `Group`) |
 | `Expected_Count` | ✅ (opt.) | — | `expected_count` | plánovaný počet vzorků v zakázce |
-| *(AnalyzedParams)* | ✅ (budoucí) | ✅ (budoucí) | lowercase | zákaznické sloupce — `CsvRecordModel(extra='allow')` je zachová automaticky |
+| *(AnalyzedParams, 24)* | ✅ | ✅ | lowercase | `[mN]`, `[um]`, `[mOhm]`, `[us]` (od 10/2026; starší `[N]`, `[Ohm]` převádí `units.py`) — `CsvRecordModel(extra='allow')` |
 
 > CsvRepository normalizuje klíče (`_normalize_key`: lowercase + odstranění `[jednotka]`).
 > Jednotku z hlavičky převádí `services/units.py` na jednotky zákazníka (mN, µm, mΩ, µs) — od 10/2026 je

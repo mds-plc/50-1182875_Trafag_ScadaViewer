@@ -522,6 +522,9 @@ Měření (310 testing + 58 production souborů na NAS, 6,3 GB):
 
 ### Fáze 24 — Jednotné jednotky a formátování v production detailech (2026-09-24)
 
+> **Historický stav (09/2026, stupnice enkodéru, N / Ω) — nahrazeno fází 42** (jednotky zákazníka,
+> polohy P = C − x, vzorce PT = FP − OP, OT = OP − TTP, RT = RP − TTP, MD = RP − OP, TT = FP − TTP).
+
 Kontrola rozbaleného řádku (Database), detailu zakázky a detailu záznamu proti hlavičce CSV
 (DatabaseGateway `ProductionRecord.csv_header`) a 215 reálným záznamům.
 
@@ -989,7 +992,8 @@ Kontrakt CSV (DatabaseGateway → ScadaViewer): **jednotka je v hlavičce** a Sc
 | Poloha FP/OP/RP/TTP | `[um]` — výška nad osou upevňovacích otvorů P = C − x | `[um]` — enkodér x | jak je v souboru + poznámka u enkodéru |
 | Odpor | `[mOhm]`, 9999,9 = rozepnuto | `[Ohm]`, 1 000 000 = rozepnuto | mΩ 0,1, nad 999,9 = ∞ |
 | Čas | `[us]` | `[us]` | µs, celá čísla |
-| NaN / inf | prázdné pole | `0.0000` | „—“ |
+| NaN / inf | prázdné pole | `0.0000` | prázdné → „—“; `0.0000` starších souborů nelze odlišit |
+| Nestanoveno (Analyzing W5/W6) | `0` | `0` | 0 u polohy, síly a odporu → „—“ (fyzikálně nenastane); bod RP se v grafu nehledá |
 
 - **`services/units.py`** — `unit_factor` / `canonical_header` / `scale_text` / `position_scale`; převod
   v `_parse_sectioned` (Testing), `_OrderIndex.scales` (Production — jen vrácené řádky), `read_table` (XLSX
@@ -1188,9 +1192,12 @@ Query parametry stránkování: `?page=1&per_page=50` (výchozí; per_page max 2
   "group_counts": {"1": 3, "2": 9},  ← kategorie za celý soubor (i při filtru)
   "file_expected_count": null,
   "has_signal": false,
-  "total_all": null                  ← jen při filtru status/category: počet kusů bez filtru
+  "total_all": null,                 ← jen při filtru status/category: počet kusů bez filtru
+  "position_scale": "customer"       ← "customer" (P = C − x) | "encoder" (starší soubory) | null
 }
 ```
+
+Hodnoty parametrů jsou v jednotkách zákazníka (mN, µm, mΩ, µs) — převedené podle hlavičky CSV.
 
 Při filtru `status` / `category` nese každý záznam `_idx` (pořadí v nefiltrovaném souboru).
 
@@ -1325,7 +1332,7 @@ interface Props {
 
 Sloupce nejsou auto-detekované — určuje je `PARAM_GROUPS` z `utils/paramMeta.ts`
 (záložky `TABLE_TABS`) + pevné `FIXED_COLS`. Zobrazí se jen sloupce, které mají v datech
-neprázdnou hodnotu; sentinel ≥ 999999 (otevřený kontakt) se u neelektrických veličin skrývá.
+neprázdnou hodnotu; sloupec odporu, který je ve všech záznamech nad 999,9 mΩ (∞), se skryje.
 
 ---
 
@@ -1474,7 +1481,7 @@ ChartView
 ```
 
 **`tableColumns`** = `FIXED_COLS` + klíče aktivní záložky (`TABLE_TABS`), jen sloupce s neprázdnou
-hodnotou; sentinel ≥ 999999 (otevřený kontakt) se u neelektrických veličin vynechá.
+hodnotou; sloupec odporu, který je ve všech záznamech nad 999,9 mΩ (∞), se vynechá.
 
 **Navigace na record detail** (klik na řádek):
 ```tsx
@@ -1497,7 +1504,7 @@ ChartView
 └── <RecordDiagram record={record}>        (components/RecordDiagram.tsx)
     ├── ForceTravelDiagram  — SVG 840×500 (odpovídá HMI screen 29): síla vs. dráha, FP/OP/RP/TTP
     ├── TimeDiagram         — SVG 840×470 (HMI screen 30): spínací časy kontaktů NC/NO
-    ├── ParamTable          — 5 skupin z PARAM_GROUPS (utils/paramMeta.ts), jednotky µm / µs / Ω
+    ├── ParamTable          — 5 skupin z PARAM_GROUPS (utils/paramMeta.ts), jednotky mN / µm / µs / mΩ
     └── maximize modal (Escape zavře); titulky přes i18n (chart.diagramForceTravel / diagramSwitchingTimes)
 ```
 

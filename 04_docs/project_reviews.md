@@ -67,7 +67,7 @@ Pro dlouhodobý provoz a další rozvoj je potřeba zpevnit smlouvu, čas a pře
 
 | # | Doporučení | Řeší |
 |---|------------|------|
-| 1 | **Společná specifikace formátu** — jeden dokument (názvy, jednotky, sekce CSV, kódy), **verze formátu přímo v CSV** a **test napříč aplikacemi** (DatabaseGateway vygeneruje vzorový soubor → ScadaViewer ho načte a ověří hodnoty) | E1, E6 |
+| 1 | **Společná specifikace formátu** — jeden dokument (názvy, jednotky, sekce CSV, kódy), **verze formátu přímo v CSV** a **test napříč aplikacemi** (DatabaseGateway vygeneruje vzorový soubor → ScadaViewer ho načte a ověří hodnoty) — *částečně 2026-10-11: jednotky v hlavičce + `units.py`, `test_ecosystem_units.py` (Analyzing → Gateway → ScadaViewer), matice nasazení v `deployment.md`, zákaznický popis „Struktura ukládaných souborů“; verze formátu v CSV zbývá* | E1, E6 |
 | 2 | **Čas** — ukládat časové značky s časovou zónou (nebo v UTC) a synchronizovat hodiny PLC s PC (hodiny PLC řeší uživatel) | E2 |
 | 3 | **Stav DatabaseGateway ve ScadaViewer** — běží / neběží, počet nenahraných souborů, poslední úspěšná synchronizace (např. heartbeat + stav do souboru nebo přes ADS) | E4, E3 |
 | 4 | **Heslo k NAS pryč z gitu** — `cmdkey` pro servisní účet a prázdný `[server] host` v DatabaseGateway (postup je v `deployment.md`) | E5 |

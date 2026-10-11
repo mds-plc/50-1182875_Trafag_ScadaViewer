@@ -52,6 +52,25 @@ describe('formatParam', () => {
   })
 })
 
+describe('formatParam — neurčené a neplatné hodnoty (Analyzing W5/W6, NaN)', () => {
+  it('0 u polohy, síly a odporu = nestanoveno → —; dráhy a časy 0 zůstávají', () => {
+    expect(formatParam('rp_realeasingposition', '0').text).toBe('—')
+    expect(formatParam('rf_realisingforce', '0').text).toBe('—')
+    expect(formatParam('r_nc_releasingposition_pos', '0').text).toBe('—')
+    expect(formatParam('md_movementdifferential', '0').text).toBe('0.0')
+    expect(formatParam('bt_bouncetime', '0').text).toBe('0')
+  })
+  it('text nan / inf z CSV', () => {
+    expect(formatParam('of_operatingforce', 'nan').text).toBe('—')
+    expect(formatParam('r_no_operatingposition_neg', 'inf')).toEqual({ text: '∞', open: true })
+    expect(formatParam('fp_freeposition', 'inf').text).toBe('—')
+  })
+  it('∞ podle hodnoty zaokrouhlené na 0,1 mΩ (artefakt float32)', () => {
+    expect(formatParam('r_no_operatingposition_neg', '999.90002').text).toBe('999.9')
+    expect(formatParam('r_no_operatingposition_neg', '999.96').open).toBe(true)
+  })
+})
+
 describe('positionScaleOf', () => {
   it('customer (FP > TTP), encoder (FP < TTP), unknown', () => {
     expect(positionScaleOf([{ fp_freeposition: '9271', ttp_totaltravelposition: '7849.2' }])).toBe('customer')

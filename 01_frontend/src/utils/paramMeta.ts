@@ -209,7 +209,7 @@ const KEY_GROUP: Record<string, string> = Object.fromEntries(
 
 /**
  * Vstupní parametry testu (Testing) — jednotka a desetinná místa.
- * Jednotky přesně dle hlavičky CSV z DatabaseGateway.
+ * Jednotky dle hlavičky CSV z DatabaseGateway po převodu na jednotky zákazníka (backend units.py).
  */
 const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   drive_distance:           { unit: 'mm',    decimals: 3 },
@@ -221,7 +221,7 @@ const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   electric_voltage:         { unit: 'V',     decimals: 1 },
   measuring_baseperiod:     { unit: 'µs',    decimals: 0 },   // perioda PLC cyklu v µs (starší CSV mají v hlavičce chybně [ms])
   measuring_oversampling:   { unit: '',      decimals: 0 },
-  measuring_samplesreserve: { unit: '',      decimals: 0 },
+  measuring_samplesreserve: { unit: '',      decimals: 1 },   // koeficient (např. 1,1 = +10 %)
   limits_distancemax:       { unit: 'mm',    decimals: 3 },
   limits_forcemax:          { unit: 'mN',    decimals: 0 },   // backend převádí [N] → mN
   measuretime:              { unit: 's',     decimals: 1 },
@@ -246,6 +246,9 @@ function toFixedNoNegZero(n: number, decimals: number): string {
   return Number(text) === 0 ? (0).toFixed(decimals) : text
 }
 
+/** Skupiny, kde 0 = hodnota nestanovena (Analyzing W5/W6), ne naměřená nula. Dráhy a časy 0 mít mohou. */
+const UNDETERMINED_IF_ZERO = new Set(['positions', 'forces', 'electric'])
+
 /** true = klíč je odpor kontaktu (skupina electric). */
 function isResistance(key: string): boolean {
   return KEY_GROUP[key] === 'electric'
@@ -267,8 +270,16 @@ export function formatParam(key: string, raw: unknown): FormattedParam {
   }
   const extra = EXTRA_FORMAT[key]
   if (extra && !isNaN(n)) return { text: toFixedNoNegZero(n, extra.decimals), open: false }
-  if (!group || isNaN(n)) return { text: String(raw), open: false }
-  if (isResistance(key) && n > OPEN_CONTACT_THRESHOLD) return { text: '∞', open: true }
+  if (group && /^[+-]?inf/i.test(String(raw).trim())) {            // „inf" z CSV
+    return isResistance(key) ? { text: '∞', open: true } : { text: '—', open: false }
+  }
+  if (group && isNaN(n)) return { text: '—', open: false }          // „nan" a jiný text u parametru
+  if (!group) return { text: String(raw), open: false }
+  // ∞ podle hodnoty zaokrouhlené na rozlišení 0,1 mΩ (999,90002 z float32 = 999,9, ne ∞)
+  if (isResistance(key) && Math.round(n * 10) / 10 > OPEN_CONTACT_THRESHOLD) return { text: '∞', open: true }
+  // 0 u polohy, síly nebo odporu fyzikálně nenastane — Analyzing ji zapisuje, když hodnotu
+  // nestanovil (varování W5 = bez dotyku, W6 = bez přepnutí). Zobrazit jako chybějící, ne „0".
+  if (n === 0 && UNDETERMINED_IF_ZERO.has(group)) return { text: '—', open: false }
   return { text: toFixedNoNegZero(n, GROUP_DECIMALS[group] ?? 2), open: false }
 }
 
@@ -278,7 +289,7 @@ export function hasMeasuredValue(key: string, records: Record<string, unknown>[]
     const v = r[key]
     if (v == null || String(v).trim() === '') return false
     const n = Number(v)
-    return isNaN(n) || !isResistance(key) || n <= OPEN_CONTACT_THRESHOLD
+    return isNaN(n) || !isResistance(key) || Math.round(n * 10) / 10 <= OPEN_CONTACT_THRESHOLD
   })
 }
 
@@ -316,11 +327,11 @@ export const PARAM_DESC: Record<string, string> = {
   fp_freeposition:
     'Klidová poloha hmatníku [µm] bez vnější síly — výška nad osou upevňovacích otvorů (jako kóty výkresu; při stlačení klesá). Starší soubory: dráha vozíku od klidové polohy.',
   op_operatingposition:
-    'Poloha [µm] bodu sepnutí kontaktu na dopředné cestě — výška nad osou upevňovacích otvorů. PT = FP − OP.',
+    'Poloha [µm] bodu sepnutí kontaktu na dopředné cestě — výška nad osou upevňovacích otvorů. PT = FP − OP. Starší soubory: stupnice enkodéru (při stlačení roste).',
   rp_realeasingposition:
-    'Poloha [µm] bodu uvolnění kontaktu na zpáteční cestě — výška nad osou upevňovacích otvorů. MD = RP − OP.',
+    'Poloha [µm] bodu uvolnění kontaktu na zpáteční cestě — výška nad osou upevňovacích otvorů. MD = RP − OP. Starší soubory: stupnice enkodéru (při stlačení roste).',
   ttp_totaltravelposition:
-    'Poloha [µm] konce zdvihu — nejhlubší bod stlačení při měření (výška nad osou upevňovacích otvorů). TT = FP − TTP.',
+    'Poloha [µm] konce zdvihu — nejhlubší bod stlačení při měření (výška nad osou upevňovacích otvorů). TT = FP − TTP. Starší soubory: stupnice enkodéru (při stlačení roste).',
   pt_pretravel:
     'Předzdvih [µm] — dráha od FP do OP (PT = FP − OP). Musí být dostatečná pro spolehlivé sepnutí.',
   ot_overtravel:
@@ -340,21 +351,21 @@ export const PARAM_DESC: Record<string, string> = {
   ot_operatingtime:
     'Čas sepnutí [µs] — celková doba spínání, součet UT + RevT + BT.',
   r_nc_operatingposition_neg:
-    'Odpor [mΩ] normálně zavřeného (NC) kontaktu v bodě sepnutí (OP), záporný pól. Vysoký odpor = degradace. Nad 999,9 mΩ = rozepnuto (∞).',
+    'Odpor [mΩ] kontaktu NC těsně před přepnutím v bodě OP (medián v okně 3 µm dráhy) — NC je ještě sepnutý, očekává se nízká hodnota (jednotky mΩ). Vysoký odpor = opotřebení nebo znečištění kontaktu.',
   r_nc_operatingposition_pos:
-    'Odpor [mΩ] NC kontaktu v bodě sepnutí (OP), kladný pól.',
+    'Odpor [mΩ] kontaktu NC těsně po přepnutí v bodě OP — NC je už rozepnutý, očekává se ∞ (nad 999,9 mΩ).',
   r_nc_releasingposition_neg:
-    'Odpor [mΩ] NC kontaktu v bodě uvolnění (RP), záporný pól.',
+    'Odpor [mΩ] kontaktu NC těsně před přepnutím v bodě RP (zpětný chod) — NC je ještě rozepnutý, očekává se ∞ (nad 999,9 mΩ).',
   r_nc_releasingposition_pos:
-    'Odpor [mΩ] NC kontaktu v bodě uvolnění (RP), kladný pól.',
+    'Odpor [mΩ] kontaktu NC těsně po přepnutí v bodě RP — NC je znovu sepnutý, očekává se nízká hodnota (jednotky mΩ).',
   r_no_operatingposition_neg:
-    'Odpor [mΩ] normálně otevřeného (NO) kontaktu v bodě sepnutí (OP), záporný pól. Nízký odpor = správně uzavřeno.',
+    'Odpor [mΩ] kontaktu NO těsně před přepnutím v bodě OP — NO je ještě rozepnutý, očekává se ∞ (nad 999,9 mΩ).',
   r_no_operatingposition_pos:
-    'Odpor [mΩ] NO kontaktu v bodě sepnutí (OP), kladný pól.',
+    'Odpor [mΩ] kontaktu NO těsně po přepnutí v bodě OP (medián v okně 3 µm dráhy) — NO je sepnutý, očekává se nízká hodnota (jednotky mΩ). Vysoký odpor = špatně sepnutý kontakt.',
   r_no_releasingposition_neg:
-    'Odpor [mΩ] NO kontaktu v bodě uvolnění (RP), záporný pól.',
+    'Odpor [mΩ] kontaktu NO těsně před přepnutím v bodě RP (zpětný chod) — NO je ještě sepnutý, očekává se nízká hodnota (jednotky mΩ).',
   r_no_releasingposition_pos:
-    'Odpor [mΩ] NO kontaktu v bodě uvolnění (RP), kladný pól.',
+    'Odpor [mΩ] kontaktu NO těsně po přepnutí v bodě RP — NO je rozepnutý, očekává se ∞ (nad 999,9 mΩ).',
   // ── Vstupní parametry testu (Testing — [TestingParameters], [MeasuredInfo]) ──
   drive_distance:
     'Dráha pohonu [mm] — jak daleko pohon při testu mikrospínač stlačí (délka zdvihu).',
@@ -375,7 +386,7 @@ export const PARAM_DESC: Record<string, string> = {
   measuring_oversampling:
     'Převzorkování — kolik vzorků se pořizuje na jednu základní periodu.',
   measuring_samplesreserve:
-    'Rezerva vzorků — počet vzorků navíc zaznamenaných před a po měření.',
+    'Rezerva počtu vzorků — koeficient velikosti záznamu (např. 1,1 = o 10 % více vzorků než nominální doba měření).',
   limits_distancemax:
     'Maximální povolená dráha [mm] — při překročení se měření přeruší (ochrana mikrospínače).',
   limits_forcemax:
@@ -397,11 +408,11 @@ export const PARAM_DESC_EN: Record<string, string> = {
   fp_freeposition:
     'Rest position of the actuator [µm] without external force — height above the mounting-hole axis (as in the drawing; decreases when actuated). Older files: carriage travel from its rest position.',
   op_operatingposition:
-    'Position [µm] where the contact switches on the forward stroke — height above the mounting-hole axis. PT = FP − OP.',
+    'Position [µm] where the contact switches on the forward stroke — height above the mounting-hole axis. PT = FP − OP. Older files: encoder scale (increases when actuated).',
   rp_realeasingposition:
-    'Position [µm] where the contact releases on the return stroke — height above the mounting-hole axis. MD = RP − OP.',
+    'Position [µm] where the contact releases on the return stroke — height above the mounting-hole axis. MD = RP − OP. Older files: encoder scale (increases when actuated).',
   ttp_totaltravelposition:
-    'Position [µm] at the end of travel — the deepest point of actuation (height above the mounting-hole axis). TT = FP − TTP.',
+    'Position [µm] at the end of travel — the deepest point of actuation (height above the mounting-hole axis). TT = FP − TTP. Older files: encoder scale (increases when actuated).',
   pt_pretravel:
     'Pre-travel [µm] — distance from FP to OP (PT = FP − OP). Must be sufficient for reliable switching.',
   ot_overtravel:
@@ -421,21 +432,21 @@ export const PARAM_DESC_EN: Record<string, string> = {
   ot_operatingtime:
     'Operating time [µs] — total switching time, the sum UT + RevT + BT.',
   r_nc_operatingposition_neg:
-    'Resistance [mΩ] of the normally closed (NC) contact at the operating point (OP), negative pole. High resistance = degradation. Above 999.9 mΩ = open (∞).',
+    'Resistance [mΩ] of the NC contact just before switching at OP (median over a 3 µm travel window) — NC is still closed, a low value is expected (a few mΩ). High resistance = worn or dirty contact.',
   r_nc_operatingposition_pos:
-    'Resistance [mΩ] of the NC contact at the operating point (OP), positive pole.',
+    'Resistance [mΩ] of the NC contact just after switching at OP — NC is already open, ∞ is expected (above 999.9 mΩ).',
   r_nc_releasingposition_neg:
-    'Resistance [mΩ] of the NC contact at the releasing point (RP), negative pole.',
+    'Resistance [mΩ] of the NC contact just before switching at RP (return stroke) — NC is still open, ∞ is expected (above 999.9 mΩ).',
   r_nc_releasingposition_pos:
-    'Resistance [mΩ] of the NC contact at the releasing point (RP), positive pole.',
+    'Resistance [mΩ] of the NC contact just after switching at RP — NC is closed again, a low value is expected (a few mΩ).',
   r_no_operatingposition_neg:
-    'Resistance [mΩ] of the normally open (NO) contact at the operating point (OP), negative pole. Low resistance = properly closed.',
+    'Resistance [mΩ] of the NO contact just before switching at OP — NO is still open, ∞ is expected (above 999.9 mΩ).',
   r_no_operatingposition_pos:
-    'Resistance [mΩ] of the NO contact at the operating point (OP), positive pole.',
+    'Resistance [mΩ] of the NO contact just after switching at OP (median over a 3 µm travel window) — NO is closed, a low value is expected (a few mΩ). High resistance = poorly closed contact.',
   r_no_releasingposition_neg:
-    'Resistance [mΩ] of the NO contact at the releasing point (RP), negative pole.',
+    'Resistance [mΩ] of the NO contact just before switching at RP (return stroke) — NO is still closed, a low value is expected (a few mΩ).',
   r_no_releasingposition_pos:
-    'Resistance [mΩ] of the NO contact at the releasing point (RP), positive pole.',
+    'Resistance [mΩ] of the NO contact just after switching at RP — NO is open, ∞ is expected (above 999.9 mΩ).',
   drive_distance:
     'Drive distance [mm] — how far the drive actuates the microswitch during the test (stroke length).',
   drive_velocity:
@@ -455,7 +466,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   measuring_oversampling:
     'Oversampling — how many samples are taken per base period.',
   measuring_samplesreserve:
-    'Samples reserve — number of extra samples recorded before and after the measurement.',
+    'Samples reserve — coefficient of the record size (e.g. 1.1 = 10 % more samples than the nominal measurement time).',
   limits_distancemax:
     'Maximum permitted distance [mm] — the measurement stops when exceeded (protects the microswitch).',
   limits_forcemax:

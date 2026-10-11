@@ -37,6 +37,8 @@ interface Props {
   minSpan?: number
   /** Dotažení dat v plném rozlišení pro výřez (vrací řádky pro graf) */
   loadRange?: (d: Domain, signal: AbortSignal) => Promise<Row[]>
+  /** Osa X vykreslená obráceně (vlevo maximum) — zoom a posun pak počítají zprava */
+  reversed?: boolean
   /** Vykreslí graf pro aktuální rozsah; `hiRows` = data v plném rozlišení (pokud jsou k dispozici) */
   children: (domain: Domain, hiRows: Row[] | null) => ReactElement
 }
@@ -61,7 +63,7 @@ export function sliceRows(rows: Row[], key: string, d: Domain): Row[] {
 const TAP_MS = 300          // dvojité klepnutí
 const TAP_MOVE_PX = 10
 
-export default function ZoomPanel({ title, header = false, height, fullDomain, minSpan, loadRange, children }: Props) {
+export default function ZoomPanel({ title, header = false, height, fullDomain, minSpan, loadRange, reversed = false, children }: Props) {
   const { t } = useLang()
   const [domain, setDomain]   = useState<Domain | null>(null)      // null = základní velikost
   const [fullscreen, setFs]   = useState(false)
@@ -115,7 +117,8 @@ export default function ZoomPanel({ title, header = false, height, fullDomain, m
     const plot = () => (el.querySelector('.recharts-cartesian-grid') ?? el).getBoundingClientRect()
     const frac = (clientX: number) => {
       const r = plot()
-      return r.width > 0 ? Math.min(1, Math.max(0, (clientX - r.left) / r.width)) : 0.5
+      const f = r.width > 0 ? Math.min(1, Math.max(0, (clientX - r.left) / r.width)) : 0.5
+      return reversed ? 1 - f : f                     // obrácená osa: vlevo je konec domény
     }
 
     let hintTimer = 0
@@ -171,7 +174,8 @@ export default function ZoomPanel({ title, header = false, height, fullDomain, m
         if (w >= fullW * 0.999) return                  // nepřiblíženo — není kam posouvat
         const r = plot()
         if (r.width <= 0) return
-        apply(pan.dom[0] - ((e.clientX - pan.x) / r.width) * w, w)
+        const dir = reversed ? -1 : 1                  // obrácená osa → tažení opačným směrem
+        apply(pan.dom[0] - dir * ((e.clientX - pan.x) / r.width) * w, w)
       }
     }
     const onUp = (e: PointerEvent) => {
@@ -208,7 +212,7 @@ export default function ZoomPanel({ title, header = false, height, fullDomain, m
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
     }
-  }, [el, apply, reset, minW, fullW])
+  }, [el, apply, reset, minW, fullW, reversed])
 
   // ── Data v plném rozlišení pro přiblížený výřez ────────────────────────
   useEffect(() => {

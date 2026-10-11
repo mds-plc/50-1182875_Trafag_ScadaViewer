@@ -91,7 +91,7 @@ export const cs: Translations = {
     diagramForceTravel:    'Síla – dráha',
     diagramSwitchingTimes: 'Spínací časy kontaktů',
     openContact:           'rozepnutý kontakt (> 999,9 mΩ)',
-    positionScaleEncoder:  'Polohy FP/OP/RP/TTP jsou v tomto souboru na stupnici enkodéru (záznam z doby před přechodem na jednotky zákazníka) — při stlačení rostou. Ostatní hodnoty jsou v jednotkách zákazníka.',
+    positionScaleEncoder:  'Polohy FP/OP/RP/TTP jsou v tomto souboru na stupnici enkodéru (dráha vozíku od klidové polohy — starší záznam nebo analýza bez kalibrační konstanty C) — při stlačení rostou a vzorce drah platí s opačným znaménkem. Ostatní hodnoty jsou v jednotkách zákazníka.',
     colCategory:           'Kat.',
     unitPcs:               'ks',
     exportCsv:      'Stáhnout CSV',

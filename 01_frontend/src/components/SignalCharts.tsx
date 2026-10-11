@@ -6,7 +6,8 @@
  *
  * Záložky:
  *   1. Přehled     — 5 grafů nad sebou: poloha, síla, napětí, proud, odpor (log. osa)
- *   2. Výsledky    — poloha + síla (2 osy) s body FP/OP/TTP/RP, napětí s prahem 5 V, proud,
+ *   2. Výsledky    — poloha + síla (2 osy) s body FP/OP/TTP/RP, napětí s prahem přepnutí
+ *                    (switch_threshold_v — 50 % rozsahu U_NC jako Analyzing), proud,
  *                    odpor; svislé čáry bodů přes všechny grafy; souhrn výsledků analýzy
  *   3. Hystereze   — síla vs. poloha (dopředný / zpětný chod), body s hodnotami, pásmo MD
  *   4. Detail přepnutí — 3×2: OP | RP × (napětí, proud, síla + poloha), okno ±20 ms
@@ -402,7 +403,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
                   <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
                   {timeAxis(d)}
                   <YAxis tick={{ fontSize: 10 }} width={44} allowDataOverflow {...fitAxis(v, 'force_mn', forceAxis, !isFull(d, tDom))} tickFormatter={v => fmtNum(v, 0)} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 1)} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${fmtMs(Number(v))} ms`} formatter={(v: number) => fmtNum(v, 0)} />
                   <Line dataKey="force_mn" name="F [mN]" stroke={C.force} dot={false} strokeWidth={1.2} isAnimationActive={false} />
                 </LineChart>
               )
@@ -483,7 +484,7 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
               <span className="sig-chip sig-chip--md"><b>MD</b> {um(P.md_movementdifferential)}</span>
             )}
           </div>
-          <ZoomPanel title={`${t.chart.sigForce} [mN] × ${t.chart.sigPosition} [µm]`} height={440} fullDomain={hystAxis.domain} minSpan={5}>
+          <ZoomPanel title={`${t.chart.sigForce} [mN] × ${t.chart.sigPosition} [µm]`} height={440} fullDomain={hystAxis.domain} minSpan={5} reversed={customerScale}>
             {d => {
               const zoomed = !isFull(d, hystAxis.domain)
               const xt = zoomed ? fixedTicks(d, 10) : { ticks: hystAxis.ticks, decimals: 0 }
@@ -496,12 +497,12 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
                 label={{ value: `${t.chart.sigPosition} [µm]`, position: 'insideBottom', offset: -10, fontSize: 11 }} />
               <YAxis tick={{ fontSize: 10 }} width={48} allowDataOverflow {...fitAxis(inView, 'force_mn', forceAxis, zoomed)} tickFormatter={v => fmtNum(v, 0)}
                 label={{ value: `${t.chart.sigForce} [mN]`, angle: -90, position: 'insideLeft', fontSize: 11 }} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${Number(v).toFixed(1)} µm`} formatter={(v: number) => `${fmtNum(v, 1)} mN`} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={v => `${Number(v).toFixed(1)} µm`} formatter={(v: number) => `${fmtNum(v, 0)} mN`} />
               <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
               {kp.op && kp.rp && (
                 <ReferenceArea x1={Math.min(kp.rp.position, kp.op.position)} x2={Math.max(kp.rp.position, kp.op.position)} ifOverflow="hidden"
                   fill="#fb923c" fillOpacity={0.18} stroke="#fb923c" strokeDasharray="3 3"
-                  label={{ value: `MD ${um(Math.abs(kp.op.position - kp.rp.position))}`, position: 'insideBottom', fontSize: 11, fontWeight: 700, fill: '#ea580c' }} />
+                  label={{ value: `MD ${um(P.md_movementdifferential ?? (customerScale ? kp.rp.position - kp.op.position : kp.op.position - kp.rp.position))}`, position: 'insideBottom', fontSize: 11, fontWeight: 700, fill: '#ea580c' }} />
               )}
               <Line data={fwdRows} dataKey="force_mn" name={t.chart.sigForward} stroke="#1d4ed8" dot={false} strokeWidth={1.8} isAnimationActive={false} />
               <Line data={revRows} dataKey="force_mn" name={t.chart.sigReverse} stroke="#b91c1c" dot={false} strokeWidth={1.8} isAnimationActive={false} />
