@@ -14,6 +14,8 @@ Vyžaduje sesterské projekty vedle sebe (11.Parallel scripts/) a lokální expo
 """
 from __future__ import annotations
 
+import ctypes
+
 import sys
 import time
 from pathlib import Path
@@ -56,14 +58,18 @@ class _FakePlc:
     def __init__(self, ct, strings: dict[str, str]) -> None:
         self._ct, self._strings = ct, strings
 
-    def read_by_name(self, name: str, plc_type=None):
+    def read_by_name(self, name: str, plc_type=None, return_ctypes: bool = False, **_kw):
         for marker in (".AnalyzedParams.", ".AnalyzedParameters."):
             if marker in name:
                 group, field = name.split(marker, 1)[1].split(".")
                 return float(getattr(getattr(self._ct, group), field))
         for key, val in self._strings.items():
             if name.endswith(key):
-                return val
+                if not return_ctypes:                 # jako pyads 3.5: STRING striktně UTF-8
+                    return val
+                buf = ctypes.create_string_buffer(81)  # STRING(80) — bajty v kódování PLC (cp1250)
+                buf.raw = val.encode("cp1250").ljust(81, bytes(1))[:81]
+                return buf
         if "NokCategory" in name or name.endswith("Valid"):
             return False
         return 0

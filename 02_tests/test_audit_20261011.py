@@ -314,3 +314,64 @@ def test_t1_expired_session_on_regular_endpoint(app_client) -> None:
     assert r.status_code == 401
     assert r.headers.get("www-authenticate") == "Bearer"
     assert _TOKEN not in app.state.sessions
+
+
+# ── R4 — zrušená úloha ve frontě NAS poolu neuvolnila slot ───────────────────
+
+def test_r4_cancelled_queued_nas_task_releases_slot(monkeypatch) -> None:
+    import asyncio
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from scada.services import io_pool
+
+    monkeypatch.setattr(io_pool, "_NAS_WORKERS", 3)
+    monkeypatch.setattr(io_pool, "_nas_executor", ThreadPoolExecutor(max_workers=2))   # fronta > vlákna
+    monkeypatch.setattr(io_pool, "_nas_active", 0)
+    gate = threading.Event()
+
+    async def scenario() -> None:
+        busy = [asyncio.ensure_future(io_pool.run_io("remote", gate.wait, 5)) for _ in range(2)]
+        await asyncio.sleep(0.05)
+        try:                                            # 3. úloha čeká ve frontě executoru → timeout → zrušena
+            await asyncio.wait_for(io_pool.run_io("remote", gate.wait, 5), timeout=0.05)
+        except asyncio.TimeoutError:
+            pass
+        gate.set()
+        await asyncio.gather(*busy)
+        await asyncio.sleep(0.05)
+
+    asyncio.run(scenario())
+    assert io_pool._nas_active == 0
+
+
+# ── N2 — výpadek NAS během výpisu složky ≠ prázdný archiv ────────────────────
+
+def test_n2_nas_outage_during_listing_keeps_last_state(tmp_path: Path, monkeypatch) -> None:
+    import pytest
+    from scada.config import DataConfig
+    from scada.services.repositories import csv_repository as repo_mod
+    from scada.services.repositories.csv_repository import CsvRepository
+
+    nas = tmp_path / "nas"
+    for k in range(3):
+        _two_part(nas / "production" / f"PROD_{k}_M_2026100{k + 1}_080000_DONE.csv", str(k))
+    repo = CsvRepository(DataConfig(local_path=tmp_path / "local", remote_path=str(nas),
+                                    csv_separator=";", csv_encoding="utf-8-sig"))
+    try:
+        assert len(repo.list_remote("production")) == 3
+        n_meta = len(repo._meta)
+        for key in list(repo._listing):                    # TTL vypršelo → nové skenování
+            repo._listing[key] = (0.0, repo._listing[key][1])
+
+        def down(_path):
+            raise FileNotFoundError(2, "Síťová cesta nebyla nalezena")   # WinError 53 / 67
+        monkeypatch.setattr(repo_mod.os, "scandir", down)
+        assert len(repo.list_remote("production")) == 3    # poslední známý stav, ne prázdno
+        assert len(repo._meta) == n_meta                   # cache se nesmazala
+        assert not repo._moved                             # NAS soubory nejsou „přesunuté"
+
+        repo._listing.clear()                              # bez známého stavu → chyba (API 503)
+        with pytest.raises(OSError):
+            repo.list_remote("production")
+    finally:
+        repo.close()

@@ -38,16 +38,10 @@ class NasBusyError(Exception):
     """Všechna NAS vlákna jsou obsazena — NAS pravděpodobně nereaguje."""
 
 
-def _tracked(func: Callable[..., T]) -> Callable[..., T]:
-    """Obalí func počítadlem — slot se uvolní až skutečným dokončením vlákna."""
-    def wrapper() -> T:
-        global _nas_active
-        try:
-            return func()
-        finally:
-            with _nas_lock:
-                _nas_active -= 1
-    return wrapper
+def _release(_fut: object = None) -> None:
+    global _nas_active
+    with _nas_lock:
+        _nas_active -= 1
 
 
 async def run_io(location: str, func: Callable[..., T], /, *args, **kwargs) -> T:
@@ -64,6 +58,13 @@ async def run_io(location: str, func: Callable[..., T], /, *args, **kwargs) -> T
     # copy_context — zachová request_id pro logy (stejně jako asyncio.to_thread)
     ctx  = contextvars.copy_context()
     call = functools.partial(ctx.run, func, *args, **kwargs)
-    loop = asyncio.get_running_loop()
-    # Slot uvolní _tracked až dokončením vlákna — i když await níže skončí timeoutem
-    return await loop.run_in_executor(_nas_executor, _tracked(call))
+    try:
+        fut = _nas_executor.submit(call)
+    except BaseException:
+        _release()
+        raise
+    # Slot se uvolní dokončením budoucnosti v executoru — i když await níže skončí timeoutem
+    # (vlákno dál visí na NAS) a i když se úloha zruší ještě ve frontě executoru (dřív se
+    # wrapper nespustil a slot zůstal obsazený navždy → po 6 únicích každé NAS volání 503; audit R4)
+    fut.add_done_callback(_release)
+    return await asyncio.wrap_future(fut)

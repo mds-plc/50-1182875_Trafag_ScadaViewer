@@ -16,7 +16,7 @@ import {
 import { useLang } from '../context/LangContext'
 import { useOrderTimeline } from '../hooks/useOrderTimeline'
 import {
-  buildCumulativeSeries, computeTimelineStats, formatDuration, parseTimes,
+  buildCumulativeSeries, computeTimelineStats, formatDuration, normalizeClockShift, parseTimes,
   PAUSE_FACTOR, PAUSE_MIN_MS,
 } from '../utils/orderTimeline'
 import LoadingSpinner from './LoadingSpinner'
@@ -61,7 +61,7 @@ function OrderTimelineChart({ fileId, location, fileType, enabled }: Props) {
 
   const model = useMemo(() => {
     if (!timeline) return null
-    const times = parseTimes(timeline.timestamps)
+    const times = normalizeClockShift(parseTimes(timeline.timestamps))
     return { stats: computeTimelineStats(times), cumulative: buildCumulativeSeries(times) }
   }, [timeline])
 

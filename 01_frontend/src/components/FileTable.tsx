@@ -4,7 +4,7 @@
  *   (ExpandedRow), stránkování a footer se součty.
  *   Čistá prezentační komponenta — veškerá logika žije v useDatabaseState.
  */
-import React, { Fragment, useEffect, useMemo, useState } from 'react'
+import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, Trash2, BarChart2, Download } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -52,6 +52,11 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords } = useFileRecords()
 
   const [recordPage, setRecordPage] = useState(1)
+  // Stránka, ze které jsou ZOBRAZENÉ záznamy — při přechodu na další stránku se tabulka ještě
+  // chvíli ukazuje stará (ztlumená). Index kusu se počítá z ní, ne z požadované (audit F4).
+  const requestedPageRef = useRef(1)
+  const [shownPage, setShownPage] = useState(1)
+  useEffect(() => { setShownPage(requestedPageRef.current) }, [records])
   const [tooltipKey, setTooltipKey] = useState<string | null>(null)
 
   const chartUrl = `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
@@ -65,6 +70,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   // (rozpracovaná zakázka: DatabaseGateway přidal záznam → tabulka se doplní sama)
   useEffect(() => {
     if (dataType === 'production') {
+      requestedPageRef.current = recordPage
       fetchRecords(file.file_id, location, dataType, recordPage)
     }
   }, [file.file_id, file.record_count, location, dataType, recordPage, fetchRecords])
@@ -104,7 +110,9 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   )
 
   // Absolutní index záznamu v celém souboru (0-based) — pro navigaci do ChartView
-  const absIdx = (i: number) => (recordPage - 1) * RECORDS_PER_PAGE + i
+  const absIdx = (i: number) => (shownPage - 1) * RECORDS_PER_PAGE + i
+  /** Otevřít detail kusu — během načítání jiné stránky ne (tabulka ještě ukazuje předchozí) */
+  const openRecord = (i: number) => { if (!loading) navigate(`${chartUrl}&record=${absIdx(i)}`) }
 
   // ── Production — skupinový graf + podtabulka záznamů ──
   // (Testing se nikdy nerendruje — hlavní řádek Testing má přímé navigate tlačítko)
@@ -210,7 +218,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                   <tr
                     key={i}
                     className="db-subtable__row"
-                    onClick={() => navigate(`${chartUrl}&record=${absIdx(i)}`)}
+                    onClick={() => openRecord(i)}
                   >
                     <td className="db-subtable__td db-subtable__td--num">{absIdx(i) + 1}</td>
                     <td className="db-subtable__td">{formatDateTime(String(r.timestamp ?? ''), true)}</td>
@@ -279,7 +287,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                         title={t.db.openInChart}
                         onClick={e => {
                           e.stopPropagation()
-                          navigate(`${chartUrl}&record=${absIdx(i)}`)
+                          openRecord(i)
                         }}
                       >
                         <BarChart2 size={16} />

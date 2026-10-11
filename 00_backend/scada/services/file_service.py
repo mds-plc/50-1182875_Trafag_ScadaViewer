@@ -29,6 +29,32 @@ from scada.services.repositories.csv_repository import CsvRepository
 log = logging.getLogger(__name__)
 
 
+def _chronological_except_dst(times: list[_dt]) -> bool:
+    """
+    Je pořadí v souboru chronologické až na nejvýš jeden zpětný skok v hodině 02:00–03:00
+    poslední říjnové neděle (konec letního času, pravidlo EU)?
+
+    PROČ: časové značky jsou místní čas bez zóny — 25. 10. se hodina 02:00–03:00 zopakuje.
+    Seřazení podle textu by kusy z obou průchodů hodinou promíchalo a zakázka by se zkrátila
+    o hodinu. Gateway zapisuje kusy v pořadí výroby, takové pořadí proto zůstane a frontend
+    skok srovná (utils/orderTimeline.ts → normalizeClockShift). Jiné nepořádky → seřadit.
+    """
+    shifts = 0
+    for a, b in zip(times, times[1:]):
+        if b >= a:
+            continue
+        try:
+            back = (a - b).total_seconds()
+        except TypeError:               # smíšené časy s / bez zóny
+            return False
+        if (shifts == 0 and back <= 3600 and a.hour == 2 and b.hour == 2
+                and b.month == 10 and b.day >= 25 and b.weekday() == 6):   # poslední neděle října
+            shifts += 1
+            continue
+        return False
+    return True
+
+
 class FileService:
     """Service vrstva — business logika nad CSV daty."""
 
@@ -265,7 +291,8 @@ class FileService:
         file_type: str = 'production',
     ) -> tuple[list[str], list[int | None]] | None:
         """
-        Časové značky a kategorie všech záznamů souboru, seřazené podle času.
+        Časové značky a kategorie všech záznamů souboru, seřazené podle času
+        (pořadí souboru zůstane, je-li jediným nepořádkem konec letního času — viz _chronological_except_dst).
 
         BUSINESS PRAVIDLO: jen production (testing soubor = jeden záznam). Záznamy bez
         parsovatelného času se vynechají — do časové osy nepatří.
@@ -279,9 +306,10 @@ class FileService:
         points: list[tuple[str, str]] = []
         self._repo.read_records(path, page=1, per_page=1, timeline=points)
         valid: list[tuple[str, int | None]] = []
+        parsed: list[_dt] = []
         for ts, grp in points:
             try:
-                _dt.fromisoformat(ts)
+                dt = _dt.fromisoformat(ts)
             except (ValueError, TypeError):
                 continue
             try:
@@ -289,7 +317,9 @@ class FileService:
             except ValueError:
                 cat = None
             valid.append((ts, cat))
-        valid.sort(key=lambda p: p[0])
+            parsed.append(dt)
+        if not _chronological_except_dst(parsed):
+            valid.sort(key=lambda p: p[0])
         return [p[0] for p in valid], [p[1] for p in valid]
 
     # ------------------------------------------------------------------

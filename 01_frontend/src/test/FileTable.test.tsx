@@ -312,6 +312,44 @@ describe('FileTable', () => {
     if (original) vi.mocked(useFileRecords).mockImplementation(original)
   })
 
+  // ── F4 — klik během načítání další stránky nesmí otevřít jiný kus ────────
+
+  it('row click while the next page is loading does not open a different record (F4)', () => {
+    const page1 = [{ timestamp: '2026-10-01T08:00:00', status: '2' }, { timestamp: '2026-10-01T08:00:10', status: '2' }]
+    const page2 = [{ timestamp: '2026-10-01T09:00:00', status: '2' }]
+    const state = {
+      records: page1 as Record<string, unknown>[], loading: false, error: null, fetchRecords: vi.fn(),
+      total: 401, pages: 3, groupCounts: {}, fileExpectedCount: null,
+    }
+    const original = vi.mocked(useFileRecords).getMockImplementation()
+    vi.mocked(useFileRecords).mockImplementation(() => ({ ...state }) as unknown as ReturnType<typeof useFileRecords>)
+    const file = makeFile()
+    const ui = () => (
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[file]} total={1} expandedId={file.file_id} />
+      </Wrapper>
+    )
+    const { container, rerender } = render(ui())
+    const rows = () => Array.from(container.querySelectorAll('.db-subtable tbody tr'))
+    const num = (r: Element) => r.querySelector('td')?.textContent
+
+    fireEvent.click(screen.getByLabelText('Next page'))          // požadována stránka 2
+    state.loading = true                                         // odpověď ještě nepřišla
+    rerender(ui())
+    expect(num(rows()[0])).toBe('1')                             // zobrazené kusy jsou pořád ze stránky 1
+    mockNavigate.mockClear()
+    fireEvent.click(rows()[0])
+    expect(mockNavigate).not.toHaveBeenCalled()                  // během načítání neotevírat
+
+    state.loading = false
+    state.records = page2                                        // stránka 2 dorazila
+    rerender(ui())
+    expect(num(rows()[0])).toBe(String(200 + 1))
+    fireEvent.click(rows()[0])
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('&record=200'))
+    if (original) vi.mocked(useFileRecords).mockImplementation(original)
+  })
+
   // ── Prázdná tabulka kvůli datumovému filtru ──────────────────────────
 
   it('empty because of date filter: offers the last day with records', () => {

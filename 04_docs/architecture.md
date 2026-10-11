@@ -2165,3 +2165,14 @@ Data se dosud ignorovala. V této fázi jsou přečtena, decimována na serveru 
 ```
 
 **Stav testů po fázi 20:** Backend 152/152, Frontend 102/102.
+
+## Změna času (konec letního času) v časovém průběhu zakázky (2026-10-11)
+
+Časové značky CSV jsou místní čas bez zóny (DatabaseGateway). 25. 10. se hodina 02:00–03:00 zopakuje.
+- `GET /api/timeline` záznamy řadí podle času, **kromě** souboru, jehož jediným nepořádkem je jeden zpětný
+  skok v hodině 02:00–03:00 poslední říjnové neděle (`file_service._chronological_except_dst`) — pak zůstane
+  pořadí výroby (Gateway zapisuje kusy chronologicky).
+- Frontend `utils/orderTimeline.normalizeClockShift` kusům druhého průchodu přičte hodinu (dokud čas
+  nedosáhne posledního kusu před skokem); jiné zpětné skoky (seřízení hodin PLC) zarovná na předchozí kus.
+- Omezení: prodleva přes změnu času bez zpětného skoku v zápisu se ukáže o hodinu kratší. Čisté řešení =
+  čas se zónou v CSV (změna formátu napříč aplikacemi).

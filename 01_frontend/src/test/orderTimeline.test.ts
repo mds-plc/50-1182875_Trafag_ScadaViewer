@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  buildCumulativeSeries, computeTimelineStats, formatDuration, parseTimes,
+  buildCumulativeSeries, computeTimelineStats, formatDuration, normalizeClockShift, parseTimes,
 } from '../utils/orderTimeline'
 
 const T0 = Date.parse('2026-07-20T08:00:00')
@@ -79,3 +79,28 @@ describe('parseTimes / formatDuration', () => {
     expect(formatDuration((26 * 3600) * S)).toBe('1 d 2 h')
   })
 })
+
+describe('normalizeClockShift (konec letního času)', () => {
+  const at = (h: number, m: number) => new Date(2026, 9, 25, h, m).getTime()
+
+  it('second pass through 02:00–03:00 is shifted by one hour, series stays monotonic', () => {
+    const first  = [at(2, 0), at(2, 20), at(2, 40), at(2, 55)]
+    const second = [at(2, 5), at(2, 25), at(2, 45)]          // prohlížeč je čte stejně jako 1. průchod
+    const out = normalizeClockShift([...first, ...second, at(3, 10)])
+    expect(out.slice(0, 4)).toEqual(first)
+    expect(out.slice(4, 7)).toEqual(second.map(t => t + 3_600_000))
+    for (let i = 1; i < out.length; i++) expect(out[i]).toBeGreaterThanOrEqual(out[i - 1])
+  })
+
+  it('other backward jumps are clamped, not shifted', () => {
+    const d = (h: number, m: number) => new Date(2026, 9, 20, h, m).getTime()
+    expect(normalizeClockShift([d(10, 0), d(10, 5), d(10, 3), d(10, 8)]))
+      .toEqual([d(10, 0), d(10, 5), d(10, 5), d(10, 8)])
+  })
+
+  it('chronological series is unchanged', () => {
+    const s = [at(1, 0), at(1, 30), at(4, 0)]
+    expect(normalizeClockShift(s)).toEqual(s)
+  })
+})
+

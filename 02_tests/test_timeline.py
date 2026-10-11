@@ -96,3 +96,28 @@ def test_requires_auth(env) -> None:
     c, _ = env
     c.headers.pop("Authorization")
     assert _get(c, "1_M_DONE.csv").status_code == 401
+
+
+def test_dst_end_keeps_file_order(env) -> None:
+    """Konec letního času (25. 10.): hodina 02:00–03:00 dvakrát — pořadí výroby zůstane, nepromíchá se."""
+    c, local = env
+    stamps = (["2026-10-25T02:%02d:00" % m for m in range(0, 60, 15)]      # 1. průchod (CEST)
+              + ["2026-10-25T02:%02d:00" % m for m in range(5, 60, 15)]    # 2. průchod (CET)
+              + ["2026-10-25T03:00:00"])
+    rows = [{"Timestamp": ts, "Order": "1", "Microswitch_ID": str(i), "Microswitch_Name": "M",
+             "Group": "1"} for i, ts in enumerate(stamps)]
+    _write_csv(local / "production/done_local/1_M_DONE.csv",
+               ["Timestamp", "Order", "Microswitch_ID", "Microswitch_Name", "Group"], rows)
+    body = _get(c, "1_M_DONE.csv").json()
+    assert body["timestamps"] == stamps
+
+
+def test_other_disorder_is_sorted(env) -> None:
+    """Dva zpětné skoky (nejde o změnu času) → seřadit jako dřív."""
+    c, local = env
+    stamps = ["2026-10-20T10:00:00", "2026-10-20T09:00:00", "2026-10-20T11:00:00", "2026-10-20T10:00:30"]
+    rows = [{"Timestamp": ts, "Order": "1", "Microswitch_ID": str(i), "Microswitch_Name": "M",
+             "Group": "1"} for i, ts in enumerate(stamps)]
+    _write_csv(local / "production/done_local/1_M_DONE.csv",
+               ["Timestamp", "Order", "Microswitch_ID", "Microswitch_Name", "Group"], rows)
+    assert _get(c, "1_M_DONE.csv").json()["timestamps"] == sorted(stamps)

@@ -582,6 +582,13 @@ class CsvRepository:
                 return self._collect(cached[1])
         try:
             return self._scan_folder_locked(folder, file_type, location, sync_status, suffix)
+        except OSError as exc:
+            # NAS vypadl během výpisu — poslední známý stav (cache beze změny), jinak 503 v API.
+            # Dřív se výpadek bral jako prázdná složka: smazaná cache a prázdný archiv s HTTP 200 (N2).
+            if cached is not None:
+                log.warning("[CSV]   výpis NAS %s selhal (%s) — poslední známý stav", folder, exc)
+                return self._collect(cached[1])
+            raise
         finally:
             lock.release()
 
@@ -611,6 +618,8 @@ class CsvRepository:
                         st = e.stat()
                         entries.append((e.path, e.name, st.st_mtime_ns, st.st_size, st.st_mtime))
         except (FileNotFoundError, NotADirectoryError):
+            if location == 'remote':
+                raise           # NAS: WinError 53/67 = FileNotFoundError — výpadek, ne prázdná složka (N2)
             entries = []
         entries.sort(key=lambda x: x[1], reverse=True)
 
@@ -683,7 +692,8 @@ class CsvRepository:
                 gone = self._meta.get(k)
                 self._drop(k)
                 changed = True
-                if gone is not None and gone[2] is not None and not is_wip:
+                # přesun done_local → done_remote je jen lokální; zmizelý soubor z NAS sem nepatří (N5)
+                if gone is not None and gone[2] is not None and not is_wip and location == 'local':
                     self._moved[os.path.basename(k)] = gone
                     while len(self._moved) > 2000:
                         self._moved.popitem(last=False)

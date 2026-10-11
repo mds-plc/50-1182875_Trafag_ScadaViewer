@@ -39,6 +39,43 @@ export function parseTimes(timestamps: string[]): number[] {
   return out
 }
 
+const HOUR_MS = 3_600_000
+
+/** Poslední neděle října, hodina 02:00–02:59 místního času (konec letního času, pravidlo EU). */
+function inRepeatedHour(ms: number): boolean {
+  const d = new Date(ms)
+  return d.getMonth() === 9 && d.getDate() >= 25 && d.getDay() === 0 && d.getHours() === 2
+}
+
+/**
+ * Srovná konec letního času a zpětné posuny hodin — časy v pořadí výroby → neklesající řada.
+ *
+ * Časové značky CSV jsou místní čas bez zóny: 25. 10. se hodina 02:00–03:00 zopakuje a prohlížeč
+ * druhý průchod přečte o hodinu dřív. Backend v takovém případě zachová pořadí souboru
+ * (file_service._chronological_except_dst); tady se kusům druhého průchodu přičte hodina
+ * (dokud čas nedosáhne posledního kusu před skokem — od 03:00 je čtení zase správné).
+ * Jiný zpětný skok (seřízení hodin PLC) se zarovná na předchozí kus — mezery nejsou záporné.
+ */
+export function normalizeClockShift(times: number[]): number[] {
+  const out: number[] = []
+  let shiftUntil: number | null = null    // surový čas posledního kusu před skokem
+  let used = false
+  for (const raw of times) {
+    let t = raw
+    const prev = out.length ? out[out.length - 1] : null
+    if (shiftUntil !== null && raw < shiftUntil) t = raw + HOUR_MS
+    else shiftUntil = null
+    if (prev !== null && t < prev && !used && shiftUntil === null
+        && prev - t <= HOUR_MS && inRepeatedHour(t) && inRepeatedHour(prev)) {
+      used = true
+      shiftUntil = times[out.length - 1]
+      t = raw + HOUR_MS
+    }
+    out.push(prev !== null && t < prev ? prev : t)
+  }
+  return out
+}
+
 function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2)
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
