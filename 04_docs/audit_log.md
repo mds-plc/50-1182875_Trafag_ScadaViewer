@@ -8,7 +8,7 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (nejhlubší audit — 81 nálezů X, Z, N, F, R, C, T, E)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-10 (nejhlubší audit — 81 nálezů X, Z, N, F, R, C, T, E; 2026-10-11 opraveno 13)**.
 > Nálezy K1–K42 jsou zde jen odkazem — plný popis, scénář a oprava v záznamu „[2026-10-10] Kompletní audit".
 
 ### 🔴 HIGH
@@ -16,10 +16,8 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | X1 | 🟣 CRITICAL — Analyzing `6dd2b6b` mění jednotky (mN, mΩ) a souřadnice poloh, Gateway hlavičky `[N]`/`[Ohm]` ani ScadaViewer to nevědí → 1000× chybné hodnoty, FP na konci zdvihu. Analyzing nenasazovat před sladěním | Analyzing / Gateway / `paramMeta.ts`, `signal_reader.py` | [2026-10-10 nejhlubší] |
-| X2 | Čtení souboru ve ScadaViewer zablokuje přesun v Gateway (`WinError 32`) → PLC Error / duplicitní kopie — změřeno ≈ 5 % uzavření zakázky | `csv_repository.py`, `files.py`; Gateway `file_manager.py` | [2026-10-10 nejhlubší] |
-| T1, T2 | Role a TTL relace bez hlídacího testu (mutace přežijí); jádro AdsMonitor (reconnect, heartbeat, dekódování) 0 % pokrytí | `dependencies.py`, `ads_monitor.py` | [2026-10-10 nejhlubší] |
-| R1, R2 | ADS: únik paměti pyads při každém reconnectu (~100 MB/den při kolísajícím PLC); heartbeat nepozná STOP ani download programu → živé hodnoty zamrznou | `ads_monitor.py` | [2026-10-10 nejhlubší] |
-| E1 | `nssm_install.bat` jako správce nenajde `nssm.exe`, služba nevznikne a skript hlásí úspěch | `06_build/exe/nssm_install.bat` | [2026-10-10 nejhlubší] |
+| X2 | Gateway část: `shutil.move` → `os.replace` s opakováním, `uploaded_at` až po přesunu (ScadaViewer opraven 2026-10-11 — `open_shared`) | `csv_repository.py`, `files.py`; Gateway `file_manager.py` | [2026-10-10 nejhlubší] |
+| T2 | Jádro AdsMonitor — `_reconnect_loop` (backoff, `clear_symbols`, broadcast) bez testu; úklid, RUN/verze a offline zápis už pokryty | `ads_monitor.py` | [2026-10-10 nejhlubší] |
 | X3 | Diakritika v názvu zakázky z PLC shodí Gateway (UTF-8), ScadaViewer čte cp1250 — kódování nedohodnuté | Gateway `ads_reader.py`, `ads_monitor.py:79` | [2026-10-10 nejhlubší] |
 
 ### ⚠️ MEDIUM
@@ -27,11 +25,11 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | X4, X5 | Neúspěšná analýza jako platné nuly; rozlišení zobrazení pod požadavkem 9.3 | Gateway, `paramMeta.ts` | [2026-10-10 nejhlubší] |
-| Z1–Z6 | Cizí web v kiosku získá PLC relaci (CORS `*`, bez kontroly Host); zámek přihlášení obejde souběh; DoS velkým tělem / WS; **regrese** `resolve()` NAS v event loopu; admin rozbije users.toml | `app.py`, `auth.py`, `plc_ws.py`, `files.py:230`, `users_api.py` | [2026-10-10 nejhlubší] |
-| N1–N3 | `counts_pending` v API obchází opravu K16 (FE se ptá donekonečna); výpadek NAS při výpisu = prázdný archiv 200; zákmity v grafech Signal Data mizí | `file_service.py:125`, `csv_repository.py:576`, `signal_reader.py:214` | [2026-10-10 nejhlubší] |
-| F1–F6 | Hromadné mazání neviditelných souborů; offline banner se neukáže; Zpět → stránka 1; klik otevře jiný kus; vlastní heslo v UI; malé dotykové plochy | `useDatabaseState.ts`, `useBackendOnline.ts`, `ChartView.tsx`, `FileTable.tsx`, `Settings.tsx`, CSS | [2026-10-10 nejhlubší] |
-| T3, E2–E6 | Nepokryté kritické cesty v testech; `AppDirectory` s `\"`; přibalená `TcAdsDll.dll`; verze nezvednuta po K1–K42; build.bat bez kontroly stromu a testů; `users.toml.example` znemožní přihlášení | `02_tests/`, `06_build/exe/`, `config.py` | [2026-10-10 nejhlubší] |
-| R3, R4 | Oprava K10 s uvicornem (`ws=auto`, bez flow control) nefunguje + stop služby visí/padá; únik slotů NAS poolu při zrušení → trvalé 503 | `ws_manager.py`, `main.py`, `io_pool.py` | [2026-10-10 nejhlubší] |
+| Z2–Z4, Z6 | Zámek přihlášení obejde souběh; DoS velkým tělem / WS; admin rozbije users.toml (Z1, Z5 opraveny 2026-10-11) | `app.py`, `auth.py`, `plc_ws.py`, `files.py:230`, `users_api.py` | [2026-10-10 nejhlubší] |
+| N2, N3 | Výpadek NAS při výpisu = prázdný archiv 200; zákmity v grafech Signal Data mizí (N1 opraven 2026-10-11) | `csv_repository.py:576`, `signal_reader.py:214` | [2026-10-10 nejhlubší] |
+| F2–F6 | Offline banner se neukáže; Zpět → stránka 1; klik otevře jiný kus; vlastní heslo v UI; malé dotykové plochy (F1 opraven 2026-10-11) | `useDatabaseState.ts`, `useBackendOnline.ts`, `ChartView.tsx`, `FileTable.tsx`, `Settings.tsx`, CSS | [2026-10-10 nejhlubší] |
+| T3, E3–E6 | Nepokryté kritické cesty v testech; přibalená `TcAdsDll.dll`; verze nezvednuta; build.bat bez kontroly stromu a testů; `users.toml.example` znemožní přihlášení (E2 opraven 2026-10-11) | `02_tests/`, `06_build/exe/`, `config.py` | [2026-10-10 nejhlubší] |
+| R4 | Únik slotů NAS poolu při zrušení → trvalé 503 (R3 opraven 2026-10-11) | `io_pool.py` | [2026-10-10 nejhlubší] |
 | C1, C2 | `/api/data` vrací 200 prázdné místo 404/503 (NAS pryč, WIP uzavřen); souběh zahltí sdílený pool vláken → health stojí, zdravý NAS hlásí 503 | `file_service.py:314`, `io_pool.py` | [2026-10-10 nejhlubší] |
 | K13 | Fronta dopočtu z NAS bez stropu, priority a rušení (proklikání archivu = hodiny stahování) | `csv_repository.py`, `file_service.py` | [2026-10-10 kompletní] |
 | K17 | DatabaseGateway zapisuje TEST soubor rovnou jako `_DONE.csv` (signál připojen později) — oprava v Gateway (tmp + `os.replace`) | DatabaseGateway `file_manager.py` | [2026-10-10 kompletní] |
@@ -57,7 +55,7 @@
 | A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
-| X6–X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R9, C3–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
+| X6–X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R7, R9, C4–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
 | K21, K23, K24, K27–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny) | — | [2026-10-10 kompletní] |
 | A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
 
@@ -103,7 +101,7 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
 | X1 | 🟣 CRITICAL | Analyzing commit `6dd2b6b` (10. 10., zatím nenasazen) posílá do PLC sílu v **mN**, odpory v **mΩ**, rozepnutý kontakt 9999,9 a polohy jako `9500 − x`. Gateway dál píše hlavičky `[N]`, `[Ohm]`, `[um]`; ScadaViewer je bere doslova → 1046 mN = „1046.00 N“, 33,4 mΩ = „33400.0 mΩ“, rozepnuto = „9999900.0 mΩ“ místo ∞; FP v Signal Data skončí na TTP (index 188869 místo ~30 tis.); nápověda PT = OP − FP nesedí se znaménky. Oprava napříč projekty: Gateway hlavičky dle skutečných jednotek + verze formátu a C do [Metadata]; ScadaViewer jednotku z hlavičky (dnes ji `_normalize_key` zahodí), ∞ i pro 9999,9 mΩ, FP/TTP v signálu přepočítat; Analyzing do té doby nenasazovat | Analyzing `io/writer.py:28-81`, `pipeline.py:931-937`; Gateway `models/order.py:122-149`; `paramMeta.ts:194,243-259`, `SignalCharts.tsx`, `signal_reader.py:348,378` | ⬜ Otevřeno — rozhodnutí všech 3 projektů |
-| X2 | 🔴 HIGH | Python `open()` na Windows bez `FILE_SHARE_DELETE` → když ScadaViewer čte soubor (WIP při každém `files_changed`, `_build_index`, signál, `FileResponse` po dobu stahování), Gateway `shutil.move` selže `WinError 32` a nechá **obě kopie**. Uzavření zakázky → `SAVE_FAILED` → PLC Error; `mark_uploaded` → soubor v done_local i done_remote (zobrazen 2×). Ověřeno `lock_test.py`; **změřeno za běhu: 2 ze 42 uzavření zakázky (≈ 5 %) selže** při rozbaleném řádku WIP v kiosku (FileTable znovu načítá celý soubor při každé změně počtu), selhal i přesun done_local → done_remote při XLSX/stahování. Oprava: ScadaViewer číst přes `CreateFileW` s `FILE_SHARE_READ\|WRITE\|DELETE` (ověřeno `sharedel.py`); Gateway `os.replace` s opakováním, `uploaded_at` až po úspěšném přesunu | `csv_repository.py`, `signal_reader.py`, `files.py:245`; Gateway `file_manager.py:266,568` | ⬜ Otevřeno |
+| X2 | 🔴 HIGH | Python `open()` na Windows bez `FILE_SHARE_DELETE` → když ScadaViewer čte soubor (WIP při každém `files_changed`, `_build_index`, signál, `FileResponse` po dobu stahování), Gateway `shutil.move` selže `WinError 32` a nechá **obě kopie**. Uzavření zakázky → `SAVE_FAILED` → PLC Error; `mark_uploaded` → soubor v done_local i done_remote (zobrazen 2×). Ověřeno `lock_test.py`; **změřeno za běhu: 2 ze 42 uzavření zakázky (≈ 5 %) selže** při rozbaleném řádku WIP v kiosku (FileTable znovu načítá celý soubor při každé změně počtu), selhal i přesun done_local → done_remote při XLSX/stahování. Oprava: ScadaViewer číst přes `CreateFileW` s `FILE_SHARE_READ\|WRITE\|DELETE` (ověřeno `sharedel.py`); Gateway `os.replace` s opakováním, `uploaded_at` až po úspěšném přesunu | `csv_repository.py`, `signal_reader.py`, `files.py:245`; Gateway `file_manager.py:266,568` | ✅ Opraveno 2026-10-11 (ScadaViewer — `open_shared`); Gateway `os.replace` + opakování ⬜ |
 | X3 | 🔴 HIGH | Název zakázky z PLC s diakritikou: Gateway (pyads 3.5.2 striktní UTF-8) spadne `UnicodeDecodeError` → `SAVE_FAILED`; ScadaViewer dekóduje cp1250 (komentář K2 uvádí cp1252). Kódování nikde dohodnuté. Oprava: Gateway číst STRING jako bajty, jedna konstanta kódování v obou projektech, ověřit na PLC | Gateway `ads_reader.py:52-198`; `ads_monitor.py:79` | ⬜ Otevřeno |
 | X4 | ⚠️ MEDIUM | Neúspěšná analýza vypadá jako platné hodnoty: Gateway zapisuje NaN/inf jako `0.0000`, Analyzing při W5/W6 nuluje → „0.00 N“, „0.0 mΩ“ (dokonale sepnutý kontakt). Oprava: NaN/inf jako prázdné pole (→ „—“), sloupec s kódem varování analýzy, označit řádek | Gateway `models/order.py:44-48` | ⬜ Otevřeno |
 | X5 | ⚠️ MEDIUM | Rozlišení zobrazení pod požadavkem zákazníka 9.3: Analyzing počítá polohy na 0,1 µm a sílu na 1 mN, ScadaViewer ukazuje celé µm a N na 2 des. místa (8325,7 → 8326). Oprava: `GROUP_DECIMALS` spolu s X1 | `paramMeta.ts:197-199` | ⬜ Otevřeno |
@@ -116,11 +114,11 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| Z1 | ⚠️ MEDIUM | Cizí web otevřený v prohlížeči u stroje získá PLC relaci: CORS `*` + `POST /api/auth/plc-login` (simple request bez preflightu) → token → `POST /api/storage/cleanup?force=true` smazal vše v done_remote. Hlavička `Host` se nekontroluje → DNS rebinding i při zúženém `cors_origins`. Oprava: CORS pro `/api` vypnout (same-origin), `require_local` a `plc-login` jen s `Host` ∈ localhost/127.0.0.1/[::1]:port, zápisy s cizím `Origin` odmítat | `app.py:336-343`, `auth.py:204-237`, `dependencies.py:412` | ⬜ Otevřeno |
+| Z1 | ⚠️ MEDIUM | Cizí web otevřený v prohlížeči u stroje získá PLC relaci: CORS `*` + `POST /api/auth/plc-login` (simple request bez preflightu) → token → `POST /api/storage/cleanup?force=true` smazal vše v done_remote. Hlavička `Host` se nekontroluje → DNS rebinding i při zúženém `cors_origins`. Oprava: CORS pro `/api` vypnout (same-origin), `require_local` a `plc-login` jen s `Host` ∈ localhost/127.0.0.1/[::1]:port, zápisy s cizím `Origin` odmítat | `app.py:336-343`, `auth.py:204-237`, `dependencies.py:412` | ✅ Opraveno 2026-10-11 |
 | Z2 | ⚠️ MEDIUM | Zámek přihlášení (5 / 10 min) obejde souběh: kontrola → `await` PBKDF2 → zápis selhání; 40 souběžných pokusů = 40× 401, 30 hádání v dávce + správné heslo = přihlášeno. Oprava: rezervovat pokus synchronně před `await` | `auth.py:165-185,288-308`, `users_api.py:547-551` | ⬜ Otevřeno |
 | Z3 | ⚠️ MEDIUM | Bez limitu velikosti těla: 200 MB JSON na `/api/auth/logout` bez přihlášení → špička ~630 MB RAM. Oprava: middleware `Content-Length` > 1 MB → 413 (i chunked) | `app.py` | ⬜ Otevřeno |
 | Z4 | ⚠️ MEDIUM | `/ws/plc` bez stropu spojení, zprávy až 16 MiB: 1000 spojení + 180× 16 MB → paměť 70 MB → 1,38 GB. Oprava: `ws_max_size=4096`, strop spojení celkem / na IP | `plc_ws.py:45-73`, `ws_manager.py:80`, `main.py:63` | ⬜ Otevřeno |
-| Z5 | ⚠️ MEDIUM | **Regrese z 5f5958f:** `path.resolve()` pro `location=remote` běží v event loopu (`realpath` přes SMB) → pomalý NAS zastaví celou aplikaci (to, co měl opravit K16) | `files.py:230` | ⬜ Otevřeno |
+| Z5 | ⚠️ MEDIUM | **Regrese z 5f5958f:** `path.resolve()` pro `location=remote` běží v event loopu (`realpath` přes SMB) → pomalý NAS zastaví celou aplikaci (to, co měl opravit K16) | `files.py:230` | ✅ Opraveno 2026-10-11 |
 | Z6 | ⚠️ MEDIUM | Admin rozbije users.toml jedním znakem: `\x7f` v `display_name` projde → po restartu se načte jen záložní admin z Config.toml; surrogate v `username` → každé přihlášení heslem 500 do restartu; `_persist` chytá jen `OSError`. Oprava: validace `[\x00-\x1f\x7f]` + `encode('utf-8')`, username `^[\w.\-]{1,64}$`, `max_length` hesel, `_persist` chytat `Exception` | `users_api.py:386,424`, `config.py:154`, `auth.py:175` | ⬜ Otevřeno |
 | Z7 | 🔵 LOW | `PATCH /api/config/paths` s `"` nebo `\x7f` v cestě zapíše nespustitelný Config.toml (regex `"[^"]*"` neumí `\"`) → služba po restartu nenastartuje | `config_api.py:370-381` | ⬜ Otevřeno |
 | Z8 | 🔵 LOW | `POST /api/auth/login` s `username="\ud800"` bez přihlášení → 500, pokus se nezapočítá | `auth.py:175` | ⬜ Otevřeno |
@@ -136,7 +134,7 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| N1 | ⚠️ MEDIUM | **Oprava K16/K1 se přes API neprojeví:** `FileService` počítá `counts_pending` jako „nějaký `None` na stránce“, `repo.counts_pending()` (odklad, zaseknutý dopočet) se v aplikaci nevolá. Nedopočitatelný soubor → FE volá `/api/files` každých 1,5 s donekonečna, z NAS každých 60 s stahuje vadný soubor. Regresní test volá jen `repo`. Oprava: `repo.is_pending(path)` v `list_files_paginated` + test přes `/api/files` | `file_service.py:125`, `csv_repository.py:774` | ⬜ Otevřeno |
+| N1 | ⚠️ MEDIUM | **Oprava K16/K1 se přes API neprojeví:** `FileService` počítá `counts_pending` jako „nějaký `None` na stránce“, `repo.counts_pending()` (odklad, zaseknutý dopočet) se v aplikaci nevolá. Nedopočitatelný soubor → FE volá `/api/files` každých 1,5 s donekonečna, z NAS každých 60 s stahuje vadný soubor. Regresní test volá jen `repo`. Oprava: `repo.is_pending(path)` v `list_files_paginated` + test přes `/api/files` | `file_service.py:125`, `csv_repository.py:774` | ✅ Opraveno 2026-10-11 |
 | N2 | ⚠️ MEDIUM | Výpadek NAS během `os.scandir` (WinError 53/67 → `FileNotFoundError`) = „prázdná složka“: SQLite `meta` smazána, `_moved` naplněn, 15 s `total=0` s HTTP 200. Oprava: u `remote` výjimku propustit (503) a ponechat poslední `_listing` | `csv_repository.py:576,640-655` | ⬜ Otevřeno |
 | N3 | ⚠️ MEDIUM | Overview grafy Signal Data decimují min-max jen podle `force` → zákmity U_NC/U_NO, proudu a odporu mizí (reálný soubor: 4 průchody prahem → 2; puls 2 ms zmizí; i v `range` ±200 ms). Oprava: min-max po sloupcích | `signal_reader.py:214-233` | ⬜ Otevřeno |
 | N4 | 🔵 LOW | Řádek s víc poli než hlavička → klíč `None` → `_normalize_key(None)` → `/api/data` 500 (třída K7) | `csv_repository.py:976` | ⬜ Otevřeno |
@@ -150,7 +148,7 @@ Kontroly: `tsc` 0, `lint` 0, Vitest 117/117. Regrese z `5f5958f`: Z5 (resolve v 
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| F1 | ⚠️ MEDIUM | Výběr souborů se nuluje jen při změně lokality/typu → po smazání, změně filtru, stránky či řazení hromadné mazání smaže i neviditelné soubory (done_local = nevratně); dialog ukazuje jen počet. Oprava: oříznout výběr na aktuální `files`, v dialogu názvy | `useDatabaseState.ts:492,519-544`, `FileTable.tsx:503-526` | ⬜ Otevřeno |
+| F1 | ⚠️ MEDIUM | Výběr souborů se nuluje jen při změně lokality/typu → po smazání, změně filtru, stránky či řazení hromadné mazání smaže i neviditelné soubory (done_local = nevratně); dialog ukazuje jen počet. Oprava: oříznout výběr na aktuální `files`, v dialogu názvy | `useDatabaseState.ts:492,519-544`, `FileTable.tsx:503-526` | ✅ Opraveno 2026-10-11 |
 | F2 | ⚠️ MEDIUM | `useBackendOnline` nikdy neukáže offline, když `/api/health` visí (každá kontrola zruší předchozí, `AbortError` ignorován). Oprava: `AbortSignal.timeout(5000)` → offline | `useBackendOnline.ts:13-24` | ⬜ Otevřeno |
 | F3 | ⚠️ MEDIUM | Zpět z detailu záznamu vrátí tabulku zakázky na stránku 1 (efekt při `recordIdx=null`) → u 250 stránek obsluha ztratí místo. Oprava: `page` v URL | `ChartView.tsx:408-410` | ⬜ Otevřeno |
 | F4 | ⚠️ MEDIUM | Klik v rozbaleném řádku Database během načítání další stránky otevře jiný kus (`absIdx` z nové stránky, data ze staré) → protokol jiného kusu | `FileTable.tsx:106,207-213,293` | ⬜ Otevřeno |
@@ -179,9 +177,9 @@ nezneplatní relace, M16 `require_role` pustí roli o úroveň nižší (+ M5 ek
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| T1 | 🔴 HIGH | Hierarchie rolí a TTL relace bez hlídacího testu: `require_role` pouštějící nižší roli i vypnuté TTL v `require_auth` projdou všemi 291 testy (M16, M2). Oprava: parametrizovaná matice role × endpoint + prošlý token na `GET /api/files` → 401 s `WWW-Authenticate` | `dependencies.py:135,156` | ⬜ Otevřeno |
-| T2 | 🔴 HIGH | Jádro AdsMonitor (24/7) bez testů: `_reconnect_loop`, heartbeat, `_write_offline`, callback s ctypes dekódováním 0 % pokrytí. Oprava: testy s mock pyads (selhání → `connected:false` + `clear_symbols` + backoff; heartbeat výjimka → reconnect; dekódování BOOL/UINT/STRING) | `ads_monitor.py:185-271,389-410` | ⬜ Otevřeno |
-| T3 | ⚠️ MEDIUM | Nepokryté cesty: `/api/signal` na úrovni API; úspěšná change-password (uložení + zneplatnění relací, M14); Origin u `/ws/plc` (M10); strop 20 000 (M7); plná WS fronta (M13); úspěšný `PATCH /config/paths` a `/config/fs`; zaseknutý dopočet přes API (N1) | `02_tests/` | ⬜ Otevřeno |
+| T1 | 🔴 HIGH | Hierarchie rolí a TTL relace bez hlídacího testu: `require_role` pouštějící nižší roli i vypnuté TTL v `require_auth` projdou všemi 291 testy (M16, M2). Oprava: parametrizovaná matice role × endpoint + prošlý token na `GET /api/files` → 401 s `WWW-Authenticate` | `dependencies.py:135,156` | ✅ Opraveno 2026-10-11 |
+| T2 | 🔴 HIGH | Jádro AdsMonitor (24/7) bez testů: `_reconnect_loop`, heartbeat, `_write_offline`, callback s ctypes dekódováním 0 % pokrytí. Oprava: testy s mock pyads (selhání → `connected:false` + `clear_symbols` + backoff; heartbeat výjimka → reconnect; dekódování BOOL/UINT/STRING) | `ads_monitor.py:185-271,389-410` | 🟡 Částečně 2026-10-11 — testy úklidu, RUN/verze, sv_ready, offline zápisu; `_reconnect_loop` zbývá |
+| T3 | ⚠️ MEDIUM | Nepokryté cesty: `/api/signal` na úrovni API; úspěšná change-password (uložení + zneplatnění relací, M14); Origin u `/ws/plc` (M10); strop 20 000 (M7); plná WS fronta (M13); úspěšný `PATCH /config/paths` a `/config/fs`; zaseknutý dopočet přes API (N1) | `02_tests/` | 🟡 Částečně 2026-10-11 — (g) counts_pending přes API; ostatní zbývá |
 | T4 | 🔵 LOW | Testy závislé na `sleep` (k10, FilesWatcher, big_order, performance) — na zatíženém stroji mohou flakovat; `ResourceWarning: unclosed database` (CsvRepository bez `close()`) | `test_audit_20261010.py:216,234`, `test_wip_live.py:141`, … | ⬜ Otevřeno |
 
 conftest `_OfflineAdsMonitor` odpovídá rozhraní, testy nesahají na síť/NAS/ADS, žádný test neprochází ze špatného důvodu.
@@ -190,8 +188,8 @@ conftest `_OfflineAdsMonitor` odpovídá rozhraní, testy nesahají na síť/NAS
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| E1 | 🔴 HIGH | `nssm_install.bat` „jako správce“ (pracovní složka `System32`) nenajde `nssm.exe` ve složce aplikace (holé `nssm`, bez `pushd "%~dp0"`), služba nevznikne, a skript přesto hlásí „Sluzba nainstalovana a spustena“ (bez kontroly errorlevel). Oprava: `pushd "%~dp0"`, `"%~dp0nssm.exe"` + fallback PATH, kontrola errorlevel a admin práv | `06_build/exe/nssm_install.bat:22-45` | ⬜ Otevřeno |
-| E2 | ⚠️ MEDIUM | `AppDirectory "%INSTALL_DIR%"` končí `"` → podle pravidel argv zbloudilá uvozovka v cestě (chování NSSM neověřeno); stejně v DatabaseGateway. Oprava: `"%INSTALL_DIR:~0,-1%"`, ověřit `nssm get … AppDirectory` | `nssm_install.bat:31` | ⬜ Otevřeno |
+| E1 | 🔴 HIGH | `nssm_install.bat` „jako správce“ (pracovní složka `System32`) nenajde `nssm.exe` ve složce aplikace (holé `nssm`, bez `pushd "%~dp0"`), služba nevznikne, a skript přesto hlásí „Sluzba nainstalovana a spustena“ (bez kontroly errorlevel). Oprava: `pushd "%~dp0"`, `"%~dp0nssm.exe"` + fallback PATH, kontrola errorlevel a admin práv | `06_build/exe/nssm_install.bat:22-45` | ✅ Opraveno 2026-10-11 |
+| E2 | ⚠️ MEDIUM | `AppDirectory "%INSTALL_DIR%"` končí `"` → podle pravidel argv zbloudilá uvozovka v cestě (chování NSSM neověřeno); stejně v DatabaseGateway. Oprava: `"%INSTALL_DIR:~0,-1%"`, ověřit `nssm get … AppDirectory` | `nssm_install.bat:31` | ✅ Opraveno 2026-10-11 |
 | E3 | ⚠️ MEDIUM | Release přibaluje `TcAdsDll.dll` z vývojového PC → na cílovém PC nedeterministicky přibalená vs. TwinCAT verze (nesoulad s ADS routerem, redistribuce DLL Beckhoff). Oprava: vyfiltrovat ve `scada.spec` | `scada.spec`, `dist/…/_internal/TcAdsDll.dll` | ⬜ Otevřeno |
 | E4 | ⚠️ MEDIUM | Verze se po K1–K42 nezvedla (HEAD `5f5958f`, tag `v2.1.1` na `4726cf6`, `__version__` 2.1.1); dist je starý kód (access log bez `--debug`). Oprava: 2.1.2 před releasem, build.bat failnout při existujícím tagu | `scada/__init__.py`, `package.json`, `build.bat` | ⬜ Otevřeno |
 | E5 | ⚠️ MEDIUM | build.bat nehlídá čistý strom (tag dostane HEAD, build je z pracovního stromu), nespouští pytest/vitest/lint, `npm install` místo `npm ci`, „Tag byl pushnut“ i když nebyl | `build.bat:84-118,176-196` | ⬜ Otevřeno |
@@ -208,14 +206,14 @@ cache SQLite se vytvoří, `/ws/plc` funguje, `Config.toml.example` se načte, l
 
 | # | Závažnost | Popis | Soubor | Status |
 |---|-----------|-------|--------|--------|
-| R1 | 🔴 HIGH | Únik paměti v pyads při každém připojení: `_disconnect` volá jen `plc.close()`, ne `del_device_notification` → `pyads_ex.callback_store` roste (klíč `AmsAddr` bez `__hash__`), na PLC zůstávají notifikace a handly. Skript: 3039 cyklů = 72 960 položek / 119 MB (~39 kB/cyklus). Stačí PLC bez `…ScadaViewerApp.In.*` nebo kolísající linka → ~2 700 cyklů/den ≈ 100 MB/den + toast „PLC připojeno/odpojeno“ každých ~32 s. Oprava: `del_device_notification` pro každý handle (když PLC odpovídá), fallback smazat klíče z `callback_store`; trvalé selhání heartbeatu po připojení logovat jednou a zkoušet s dlouhým intervalem | `ads_monitor.py:315-330` | ⬜ Otevřeno |
-| R2 | 🔴 HIGH | Heartbeat nepozná PLC v STOP ani nový download programu: `read_state()` se zahazuje, `write_by_name` bere pokaždé nový handle (projde i po downloadu), download zneplatní notifikace → `mode`, zakázka, boxy i `plc_operator_login` zamrznou do restartu služby; `sv_ready` se zapisuje jen při připojení. Ověřeno čtením kódu, na reálném PLC ne. Oprava: chyba při `ads_state != RUN`, sledovat verzi symbolů `0xF008` → reconnect, `sv_ready` periodicky, handle heartbeatu jednou | `ads_monitor.py:255-261,308` | ⬜ Otevřeno |
-| R3 | ⚠️ MEDIUM | **Oprava K10 s nasazeným uvicornem nefunguje:** uvicorn 0.51 `ws="auto"` = `websockets_sansio_impl` bez flow control → `send_text` se nezablokuje, `_SEND_TIMEOUT`/`_QUEUE_MAX` se neuplatní, buffer transportu neomezený; mrtvý peer zůstane navždy `closing`, handler visí. Stop služby pak spadne (`InvalidState`) nebo visí (`timeout_graceful_shutdown=None`) → NSSM zabije, `finally` lifespanu neproběhne. Oprava: `uvicorn.run(..., ws="websockets", timeout_graceful_shutdown=3)` + hidden import ve spec, případně připnout uvicorn | `ws_manager.py:126-151`, `main.py:61` | ⬜ Otevřeno |
+| R1 | 🔴 HIGH | Únik paměti v pyads při každém připojení: `_disconnect` volá jen `plc.close()`, ne `del_device_notification` → `pyads_ex.callback_store` roste (klíč `AmsAddr` bez `__hash__`), na PLC zůstávají notifikace a handly. Skript: 3039 cyklů = 72 960 položek / 119 MB (~39 kB/cyklus). Stačí PLC bez `…ScadaViewerApp.In.*` nebo kolísající linka → ~2 700 cyklů/den ≈ 100 MB/den + toast „PLC připojeno/odpojeno“ každých ~32 s. Oprava: `del_device_notification` pro každý handle (když PLC odpovídá), fallback smazat klíče z `callback_store`; trvalé selhání heartbeatu po připojení logovat jednou a zkoušet s dlouhým intervalem | `ads_monitor.py:315-330` | ✅ Opraveno 2026-10-11 |
+| R2 | 🔴 HIGH | Heartbeat nepozná PLC v STOP ani nový download programu: `read_state()` se zahazuje, `write_by_name` bere pokaždé nový handle (projde i po downloadu), download zneplatní notifikace → `mode`, zakázka, boxy i `plc_operator_login` zamrznou do restartu služby; `sv_ready` se zapisuje jen při připojení. Ověřeno čtením kódu, na reálném PLC ne. Oprava: chyba při `ads_state != RUN`, sledovat verzi symbolů `0xF008` → reconnect, `sv_ready` periodicky, handle heartbeatu jednou | `ads_monitor.py:255-261,308` | ✅ Opraveno 2026-10-11 (na reálném PLC neověřeno) |
+| R3 | ⚠️ MEDIUM | **Oprava K10 s nasazeným uvicornem nefunguje:** uvicorn 0.51 `ws="auto"` = `websockets_sansio_impl` bez flow control → `send_text` se nezablokuje, `_SEND_TIMEOUT`/`_QUEUE_MAX` se neuplatní, buffer transportu neomezený; mrtvý peer zůstane navždy `closing`, handler visí. Stop služby pak spadne (`InvalidState`) nebo visí (`timeout_graceful_shutdown=None`) → NSSM zabije, `finally` lifespanu neproběhne. Oprava: `uvicorn.run(..., ws="websockets", timeout_graceful_shutdown=3)` + hidden import ve spec, případně připnout uvicorn | `ws_manager.py:126-151`, `main.py:61` | ✅ Opraveno 2026-10-11 |
 | R4 | ⚠️ MEDIUM | `io_pool._nas_active` uniká, když se zruší úloha ještě čekající ve frontě executoru (wrapper se nespustí, `finally` neproběhne). Skript: 9 000 volání s timeouty → `_nas_active=5` při prázdné frontě; 6 úniků = každé NAS volání 503 až do restartu. Oprava: uvolnění slotu v `fut.add_done_callback` | `io_pool.py:270-298` | ⬜ Otevřeno |
 | R5 | 🔵 LOW | `order_name` registrován s 82 B, PLC `STRING` = STRING(80) = 81 B → přesah do `Count_Expected` (zbytečné notifikace; pokud TwinCAT odmítne 0x705, jméno se neaktualizuje). `SYM` má 24 položek, dokumentace uvádí 23 | `constants.py` | ⬜ Otevřeno |
 | R6 | 🔵 LOW | Souběh úvodního `read_by_name` s notifikací (registrována dřív) → stará hodnota může přepsat novou a platit do další změny (např. `plc_operator_login`) | `ads_monitor.py:332-361` | ⬜ Otevřeno |
 | R7 | 🔵 LOW | Běžné odpojení klienta (`WebSocketDisconnect`) logováno jako WARNING (24 hlášek / 600 připojení); task `_close` bez uložené reference | `ws_manager.py:134,144` | ⬜ Otevřeno |
-| R8 | 🔵 LOW | Stop služby trvá až ~8 s (heartbeat + `_write_offline` 2 × 2 s), NSSM po 1,5 s eskaluje a do ~4,5 s zabije. Oprava: `AppStopMethodConsole 10000`, při `connected=False` přeskočit `_write_offline` | `nssm_install.bat`, `ads_monitor.py` | ⬜ Otevřeno |
+| R8 | 🔵 LOW | Stop služby trvá až ~8 s (heartbeat + `_write_offline` 2 × 2 s), NSSM po 1,5 s eskaluje a do ~4,5 s zabije. Oprava: `AppStopMethodConsole 10000`, při `connected=False` přeskočit `_write_offline` | `nssm_install.bat`, `ads_monitor.py` | ✅ Opraveno 2026-10-11 |
 | R9 | 🔵 LOW | Staré logy se mažou jen při startu → služba běžící měsíce bez restartu je nepromazává. Oprava: prune 1× denně | `logging_setup.py`, `main.py:43` | ⬜ Otevřeno |
 
 Ověřeno v pořádku: most ADS → asyncio (broadcast nevyhodí, callback po zavření loopu chycen), ctypes dekódování BOOL/UINT/STRING,
@@ -243,13 +241,13 @@ Skutečný server s fiktivní konfigurací v dočasné složce: 6 lokálních + 
 |---|-----------|-------|--------|--------|
 | C1 | ⚠️ MEDIUM | `/api/data` vrací 200 `{"records":[],"total":0}` místo 404/503 pro nedostupný NAS, smazaný soubor i WIP po uzavření (ostatní endpointy 404) → ChartView ukáže „0 kusů“ bez chyby, otevřená rozpracovaná zakázka po uzavření zmizí. Oprava: `raise FileNotFoundError` (u remote přednost 503), ChartView WIP → `_DONE` | `file_service.py:314-317`, `api/data.py:160` | ⬜ Otevřeno |
 | C2 | ⚠️ MEDIUM | Souběh zahltí sdílený pool vláken: lokální I/O, `/api/health`, PBKDF2 a těžké operace (XLSX, stavba indexu, GIL) v jednom výchozím poolu → health stojí sekundy, lokální data 504; `NasBusyError` počítá i dlouhé (ne zaseknuté) operace → zdravý NAS hlásí 503 „NAS nereaguje“. Oprava: malý executor pro těžké operace, health/výpisy oddělit, NAS pool rozdělit na výpis a čtení | `io_pool.py:51-56`, `health.py` | ⬜ Otevřeno |
-| C3 | 🔵 LOW | **Oprava K26 nefunguje:** NaN v `[SignalData]` → všechny režimy 500 (`Out of range float values are not JSON compliant`) — `key_points` a `params` zůstávají NaN | `signal_reader.py:350-356`, `api/signal.py:114` | ⬜ Otevřeno |
+| C3 | 🔵 LOW | **Oprava K26 nefunguje:** NaN v `[SignalData]` → všechny režimy 500 (`Out of range float values are not JSON compliant`) — `key_points` a `params` zůstávají NaN | `signal_reader.py:350-356`, `api/signal.py:114` | ✅ Opraveno 2026-10-11 |
 | C4 | 🔵 LOW | XLSX z poškozeného souboru (cp1250, binární, 50MB řádek) → 500 s tracebackem (chytá jen `OSError`); totéž `/api/signal` u binárního testu (souvisí s N8). Oprava: 422 „Soubor je poškozený“ | `api/files.py:302`, `csv_repository.py:1107` | ⬜ Otevřeno |
 | C5 | 🔵 LOW | Poškozená SQLite cache se neopraví: `_open` projde, `load()` `malformed`, každý zápis selže, cache trvale prázdná (NAS se dopočítává stahováním po každém restartu); WAL narostl na 50 MB. Oprava: při `DatabaseError` cache smazat a založit znovu, `quick_check`, `journal_size_limit` | `csv_repository.py:296-345` | ⬜ Otevřeno |
 | C6 | 🔵 LOW | Zlom výkonu nad 3 zakázky: 3 různé zakázky p50 32 ms, 4 → 236 ms, 8 klientů 1,9 s (index se staví dokola). `_INDEX_CACHE_FILES = 3`, přitom 256 MB unese ~10 indexů. Oprava: omezovat jen pamětí, sdílet rozestavěný index (K35) | `csv_repository.py:53` | ⬜ Otevřeno |
 | C7 | 🔵 LOW | Paměť po špičce 40 klientů 690 MB (nad dokumentovanými 0,3–0,6 GB), zůstává ~600 MB (fragmentace + plné cache, ne únik). Doplnit do `architecture.md`, omezit souběh těžkých operací (C2) | `architecture.md` | ⬜ Otevřeno |
 
-**Celkem (všech 7 větví):** 81 nálezů | 1 CRITICAL, 7 HIGH, 27 MEDIUM, 46 LOW | 0 opraveno
+**Celkem (všech 7 větví):** 81 nálezů | 1 CRITICAL, 7 HIGH, 27 MEDIUM, 46 LOW | 13 opraveno + 2 částečně (2026-10-11)
 
 ### Ověřeno v pořádku
 Matice rout (každý zápis `require_local` + role, každý datový endpoint `require_auth`), eskalace rolí,
@@ -259,6 +257,26 @@ XLSX bez vzorců (`inlineStr`), žádné `dangerouslySetInnerHTML`/`eval`; soub�
 4 vlákna × 3 běhy: 0 výjimek, 0 nesouladů), stránkování a `_idx` bez off-by-one; soubory zapsané kódem
 Gateway (production dvoudílný, testing 6 sekcí) ScadaViewer čte správně, OP/RP a práh 5 V shodné s Analyzing,
 `constants.py` = XML export (23 Out + 2 In); apiFetch a AbortController všude, cache na FE omezené.
+
+### Opravy (2026-10-11) — priority 1–5
+
+| Nález | Oprava |
+|-------|--------|
+| Z5 | `files.py` download: lokální kopie poznána textově (`path.is_relative_to(Path(local_path))`), žádné `resolve()` na UNC v event loopu |
+| N1 | `CsvRepository.counts_pending(metas)` — jen skutečně čekající dopočty zobrazené stránky (ne odklad po chybě, ne zaseknuté); `FileService` ho volá |
+| R3 | `main.py`: `ws="wsproto"` (flow control) + `timeout_graceful_shutdown=3`; `wsproto` v requirements + spec. Ověřeno skriptem: nečtoucí klient vyřazen, buffer 64 kB, stop 3,15 s |
+| C3 | `_convert_units`: NaN / inf v `key_points`, `params` a prahu → `null` / výchozí práh |
+| X2 | `services/shared_open.py` — `CreateFileW` + `FILE_SHARE_READ\|WRITE\|DELETE`; všechna čtení CSV a signálu, stažení CSV jen `StreamingResponse` přes `open_shared`. Ověřeno: běžné `open()` WinError 32, `open_shared` přesun projde a čtení pokračuje |
+| R1 | `_release()`: `del_device_notification` + `release_handle` (po prvním selhání bez sítě), úklid `pyads_ex.callback_store` podle `_adr`; úklid i při nedokončeném `_connect`. Skript 1000 cyklů: 0 položek / 0,1 MB (dřív ~24 000 / 39 MB). PLC bez `In.*` → hlídání jen `read_state`, bez smyčky reconnectů |
+| R2 | Heartbeat: handle jednou za spojení, `ADSSTATE_RUN`, změna `ADSIGRP_SYM_VERSION` → `_PlcChanged` (okamžitý reconnect), `sv_ready` každých 10 s; `_connect` vyžaduje RUN |
+| R8 | Neodpovídající PLC: bez `_write_offline` a síťového úklidu; `AppStopMethodConsole 10000` v `nssm_install.bat` |
+| F1 | `useDatabaseState`: výběr se po každé změně `files` ořízne na viditelné, `batchDelete` posílá jen viditelné; dialog vypíše názvy souborů |
+| Z1 | `CORSMiddleware` odstraněn (stejný origin); `is_local_client` navíc vyžaduje Host `localhost` / IP adresu (DNS rebinding) — testy: cizí Origin bez ACAO, 7 variant Host |
+| E1, E2 | `nssm_install.bat`: `net session`, `pushd "%~dp0"`, `nssm.exe` vedle skriptu → PATH, kontrola exe / Config.toml / každého `nssm set`, `mkdir` logů, `AppDirectory` bez koncového `\`, upozornění na servisní účet; chyba → exit 1 |
+| T1 | `test_audit_20261011.py`: matice role × 8 zápisových endpointů, prošlý token na `GET /api/files` → 401 + `WWW-Authenticate`. Mutace M16 a M2 teď zabity |
+
+Testy: backend **324** ✅ (+25 `test_audit_20261011.py`, +8 `test_remote_access.py`), frontend **119** ✅
+(+ `useDatabaseState.test.tsx`), `tsc` 0, `lint` 0. Nové regresní testy na původním kódu selžou (ověřeno).
 
 ---
 

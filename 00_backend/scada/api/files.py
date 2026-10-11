@@ -16,7 +16,7 @@ Rozhraní:
   GET    /api/files                    → FilesResponse (files[], total, page, pages, wip[], counts_pending)
                                           record_count null = dopočítává se (přehled z názvů souborů)
   GET    /api/files/{file_id}          → OrderFileModel
-  GET    /api/files/{file_id}/download → FileResponse (originální CSV)
+  GET    /api/files/{file_id}/download → StreamingResponse (originální CSV)
   GET    /api/files/{file_id}/xlsx     → XLSX celé zakázky (sestavený na serveru)
   DELETE /api/files/{file_id}          → 204 / 403 (NAS nebo vzdálený přístup) / 404 / 503
   POST   /api/files/batch-delete       → BatchDeleteResult (deleted, failed, errors[])
@@ -38,12 +38,13 @@ from typing import BinaryIO
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from scada.services.io_pool import NasBusyError, run_io
 from scada.api.dependencies import require_auth, require_local, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
+from scada.services.shared_open import open_shared
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ async def download_file(
     request:   Request,
     location:  str = Query('local',      alias="location"),
     file_type: str = Query('production', alias="type"),
-) -> FileResponse:
+) -> StreamingResponse:
     """Stáhne originální CSV soubor — přesně ve formátu, ve kterém ho zapsal DatabaseGateway."""
     reader: DataReader = request.app.state.csv_reader
     timeout = 30.0 if location == "remote" else 10.0
@@ -226,26 +227,25 @@ async def download_file(
     if path is None:
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
     log.info("[API]   download %s location=%s type=%s", file_id, location, file_type)
-    local_root = Path(request.app.state.config.data.local_path).resolve()
-    if location == "remote" and not path.resolve().is_relative_to(local_root):
-        # Soubor jen na NAS — číst po blocích přes NAS pool s timeoutem. FileResponse by četl
-        # UNC ve výchozím poolu bez timeoutu; zaseknutý NAS by blokoval obecná vlákna.
-        try:
-            f, size = await asyncio.wait_for(run_io("remote", _open_sized, path), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
-        except OSError as exc:
-            raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
-        return StreamingResponse(
-            _stream_remote(f, timeout),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(file_id)}",
-                     "Content-Length": str(size)},
-        )
-    return FileResponse(
-        path=path,
-        filename=file_id,
+    # Lokální kopii skládá repozitář jako Path(local_path) / … → stačí porovnat cesty textově.
+    # Žádné resolve(): na UNC cestě otevírá soubor přes SMB a blokoval by event loop (Z5).
+    local_root = Path(request.app.state.config.data.local_path)
+    io_loc = "remote" if location == "remote" and not path.is_relative_to(local_root) else "local"
+    # Vždy po blocích přes run_io (NAS pool s timeoutem) a open_shared — FileResponse by soubor
+    # držel otevřený bez FILE_SHARE_DELETE po celou dobu přenosu a Gateway by ho nepřesunul (X2).
+    try:
+        f, size = await asyncio.wait_for(run_io(io_loc, _open_sized, path), timeout=timeout)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=503, detail=f"Úložiště nedostupné — timeout ({timeout:.0f} s)") from None
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Soubor nenalezen") from None
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+    return StreamingResponse(
+        _stream_file(f, io_loc, timeout),
         media_type="text/csv; charset=utf-8",   # BOM je součástí souboru
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(file_id)}",
+                 "Content-Length": str(size)},
     )
 
 
@@ -253,7 +253,7 @@ _STREAM_CHUNK = 1024 * 1024
 
 
 def _open_sized(path: Path) -> tuple[BinaryIO, int]:
-    f = open(path, "rb")
+    f = open_shared(path, "rb")
     try:
         return f, os.fstat(f.fileno()).st_size
     except OSError:
@@ -261,11 +261,11 @@ def _open_sized(path: Path) -> tuple[BinaryIO, int]:
         raise
 
 
-async def _stream_remote(f: BinaryIO, timeout: float) -> AsyncIterator[bytes]:
-    """Bloky souboru z NAS — každé čtení přes run_io s timeoutem (výpadek = přerušený přenos)."""
+async def _stream_file(f: BinaryIO, location: str, timeout: float) -> AsyncIterator[bytes]:
+    """Bloky souboru — každé čtení přes run_io s timeoutem (výpadek NAS = přerušený přenos)."""
     try:
         while True:
-            chunk = await asyncio.wait_for(run_io("remote", f.read, _STREAM_CHUNK), timeout=timeout)
+            chunk = await asyncio.wait_for(run_io(location, f.read, _STREAM_CHUNK), timeout=timeout)
             if not chunk:
                 return
             yield chunk

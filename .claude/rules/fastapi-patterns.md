@@ -147,6 +147,9 @@ result = await asyncio.wait_for(
   `read_table()`, nový filtr = předpočítaný sloupec v `_build_index()`.
 - XLSX celé zakázky jen na serveru (`services/xlsx_export.build_xlsx`); `per_page=0` má strop 20 000.
 - Soubor z NAS číst přes `FileService._read_path()` (lokální kopie, je-li).
+- **Soubory (CSV, signál, stažení) otevírat VŽDY `open_shared()`** (`services/shared_open.py`) — běžné
+  `open()` na Windows blokuje přesun v DatabaseGateway (WinError 32 → PLC Error, duplikát; audit X2).
+  Stažení souboru = `StreamingResponse` přes `run_io`, ne `FileResponse`.
 - **Každá nová cache s limitem** (počet + paměť) — stropy v `architecture.md` → „Výkon, paměť a škálovatelnost".
 - `signal_reader` — LRU cache naparsovaných souborů + cache hotových odpovědí; numpy parser
 - `/api/data` spouští prefetch signálu na pozadí (`_prefetch_tasks`)

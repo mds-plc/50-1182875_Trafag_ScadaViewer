@@ -179,8 +179,12 @@ export default function Database() {
             <div className="db-modal__body">
               {t.db.batchConfirmBody}
               <div style={{ marginTop: 'var(--space-3)', fontWeight: 600 }}>
-                ({t.db.selectedCount}: {selectedIds.size})
+                {t.db.selectedCount}: {selectedIds.size}
               </div>
+              {/* Názvy, ne jen počet — obsluha vidí, co přesně maže (audit F1) */}
+              <ul className="db-modal__list">
+                {[...selectedIds].map(id => <li key={id}>{id}</li>)}
+              </ul>
             </div>
             <div className="db-modal__actions">
               <button className="btn btn--secondary" onClick={() => setBatchConfirm(false)}>

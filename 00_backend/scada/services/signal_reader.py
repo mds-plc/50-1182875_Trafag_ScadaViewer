@@ -33,6 +33,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from scada.services.repositories.csv_repository import _parse_sectioned
+from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
 
 try:                      # volitelné — rychlé parsování; bez numpy funguje Python cesta
     import numpy as _np
@@ -142,7 +143,7 @@ def read_signal_data(
     """
     columns: dict[str, array] = {col: array('d') for col in _SIGNAL_COLS}
 
-    with open(path, encoding=encoding, newline='') as f:
+    with open_shared(path, encoding=encoding, newline='') as f:
         # 1) Přeskočit na [SignalData]
         for raw_line in f:
             if raw_line.strip().lower() == '[signaldata]':
@@ -430,7 +431,7 @@ def load_signal(
 
         try:
             with _parse_sem:
-                with open(path, encoding=encoding, newline='') as f:
+                with open_shared(path, encoding=encoding, newline='') as f:
                     analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
                 raw        = read_signal_data(path, encoding, separator)
                 key_points = find_key_points(analyzed, raw) if raw is not None else {}
@@ -537,6 +538,9 @@ def _convert_units(
 ) -> dict:
     """Konvertuje jednotky pro frontend: ns→ms, A→mA; odpor v Ω (frontend: logaritmická osa)."""
     n = len(data.get('ts', []))
+    threshold = _finite_or_none(key_points.get('threshold_v'))
+    if threshold is None:
+        threshold = _SWITCH_THRESHOLD_V
     result: dict = {
         # NaN / inf (vadná hodnota v CSV) → None: JSON je neumí, odpověď by skončila HTTP 500
         'ts_ms':     [v / 1_000_000 if _isfinite(v) else None for v in data.get('ts', [])],
@@ -548,16 +552,23 @@ def _convert_units(
         'i_no_ma':   [v * 1000 if _isfinite(v) else None for v in data.get('i_no', [])],
         'r_nc_ohm':  [_clip_ohm(v) for v in data.get('r_nc', [])],
         'r_no_ohm':  [_clip_ohm(v) for v in data.get('r_no', [])],
-        # threshold_v není klíčový bod — do odpovědi zvlášť (frontend: čára prahu v grafu napětí)
-        'key_points': {k: v for k, v in key_points.items() if k != 'threshold_v'},
-        'switch_threshold_v': key_points.get('threshold_v', _SWITCH_THRESHOLD_V),
-        'params':     params or {},
+        # threshold_v není klíčový bod — do odpovědi zvlášť (frontend: čára prahu v grafu napětí).
+        # NaN i v bodech (poloha/síla vzorku) a v parametrech — jinak JSON → HTTP 500 (C3).
+        'key_points': {k: {kk: _finite_or_none(vv) for kk, vv in v.items()}
+                       for k, v in key_points.items() if k != 'threshold_v'},
+        'switch_threshold_v': threshold,
+        'params':     {k: v for k, v in (params or {}).items() if _isfinite(v)},
         'total_raw':  n,
     }
     return result
 
 
 _isfinite = math.isfinite
+
+
+def _finite_or_none(v):
+    """Číslo NaN / inf → None (JSON je neumí); ostatní hodnoty beze změny."""
+    return None if isinstance(v, float) and not _isfinite(v) else v
 
 
 def _finite_list(values) -> list[float | None]:

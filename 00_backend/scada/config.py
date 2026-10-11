@@ -52,8 +52,9 @@ class ServerConfig:
 
     host:         bind adresa; "0.0.0.0" = dostupné z LAN, "127.0.0.1" = jen localhost
     port:         TCP port (1–65535); výchozí 8080
-    cors_origins: povolené Origins pro CORS middleware i WebSocket origin check;
-                  [] = bez omezení (dev), ["*"] = vše, ["http://host:8080"] = konkrétní
+    cors_origins: povolené Origins pro kontrolu Origin u WebSocketu (/ws/plc);
+                  [] = bez omezení (dev), ["*"] = vše, ["http://host:8080"] = konkrétní.
+                  HTTP API CORS nepoužívá — frontend jde ze stejného originu.
     local_clients: adresy klientů „u stroje" (IP nebo CIDR rozsah). Hlavní klient otevírá
                   http://localhost:8080 → 127.0.0.1 / ::1. Jen odsud funguje PLC auto-login
                   a zápisové akce (mazání, čištění, nastavení, správa uživatelů);

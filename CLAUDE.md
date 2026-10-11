@@ -52,7 +52,7 @@ CLAUDE.md                  ← tento soubor
     └── api-implementer.md     ← @api-implementer
 
 00_backend/
-├── requirements.txt           ← fastapi, uvicorn, pyads, numpy, tomli
+├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
     ├── __init__.py            ← __version__ = "2.1.1"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
@@ -81,6 +81,7 @@ CLAUDE.md                  ← tento soubor
         ├── file_service.py    ← list_files(), list_files_paginated() (+ wip), sort + stránkování
         ├── files_watcher.py   ← každé 2 s otisk lokálních složek → WS {"type":"files_changed"} (auto-refresh Database)
         ├── io_pool.py         ← run_io(): NAS I/O ve vlastním poolu (6 vláken), plný → NasBusyError → 503
+        ├── shared_open.py     ← open_shared(): čtení s FILE_SHARE_DELETE — Gateway může soubor přesunout i během čtení (X2)
         ├── repositories/csv_repository.py ← CSV I/O, validace file_id; přehled z názvů souborů (FileMeta) + dopočet počtů na pozadí;
         │                                     SQLite cache metadat (_MetaStore, tabulka known); NAS výpis 15 s v paměti;
         │                                     zakázka v paměti (_OrderIndex, LRU 3 soubory / 256 MB); prefer_local()
@@ -196,6 +197,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_big_order.py          ← velké zakázky a archiv: index v paměti, XLSX, přehled z názvů, dopočet, SQLite cache,
 │                                 NAS výpis v paměti, dopočet jen pro stránku, lokální kopie, limity paměti, tabulka known
 ├── test_audit_20261010.py     ← regrese kompletního auditu K1–K42 (dopočet, WS, ADS STRING, signál po blocích, uživatelé, čištění, logy)
+├── test_audit_20261011.py     ← regrese nejhlubšího auditu (open_shared/X2, ADS úklid + RUN/verze, counts_pending, role × endpoint, NaN signál)
 └── test_scada.py              ← offline testy konfigurace
 
 03_output/
@@ -534,7 +536,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 [server]
 host = "0.0.0.0"   # 0.0.0.0 = všechny síťovky (síť stroje i firemní síť); "127.0.0.1" = pouze localhost
 port = 8080
-cors_origins = ["*"]                 # i pro WebSocket origin check; při DHCP ve firemní síti ["*"]
+cors_origins = ["*"]                 # jen WebSocket origin check (HTTP API bez CORS); při DHCP ve firemní síti ["*"]
 local_clients = ["127.0.0.1", "::1"] # „u stroje" (volitelné, výchozí); síť stroje NEPŘIDÁVAT
 
 [ads]
@@ -571,6 +573,7 @@ dopočítá); starší `file_meta.json` se při startu sám smaže. Paměť slu�
 |---------|-------|------|
 | `fastapi` | ≥0.111 | REST API + WebSocket endpoint framework |
 | `uvicorn[standard]` | ≥0.30 | ASGI server (WebSocket podpora, hot-reload) |
+| `wsproto` | ≥1.2 | WebSocket s flow control (`main.py` `ws="wsproto"`) — nestíhající klient se odpojí |
 | `pyads` | ≥3.4 | ADS klient pro TwinCAT PLC (read-only notifikace) |
 | `tomli` | ≥2.0 | TOML parser pro Python < 3.11 (3.11+ má tomllib v stdlib) |
 | `numpy` | ≥1.24 | Rychlé parsování `[SignalData]` (`loadtxt`, ~2× rychlejší); bez ní funguje Python fallback |
@@ -762,7 +765,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | REST /api/auth/login + logout | ✅ | auth.py — PBKDF2-HMAC-SHA256; session tokeny v app.state.sessions; TTL 8 h (lazy GC) |
 | REST /api/auth/change-password | ✅ | auth.py — ověří token+heslo, hash nového, zápis do Config.toml, invaliduje sessions |
 | REST /api/config | ✅ | config_api.py — bezpečná podmnožina AppConfig (bez hash); server/ads/data/auth |
-| CORS | ✅ | CORSMiddleware v app.py; `cors_origins` v Config.toml [server] |
+| CORS | ✅ | HTTP API bez CORS (stejný origin, audit Z1 2026-10-11); `cors_origins` jen pro Origin u `/ws/plc`; „u stroje" navíc vyžaduje Host `localhost` / IP |
 | Frontend routing (5 stránek) | ✅ | React Router v6 |
 | Kontexty (PlcContext, AuthContext, ToastContext) | ✅ | provider nesting, PlcContext má exponential backoff reconnect (1 s→30 s) |
 | i18n (LangContext, cs.ts, en.ts) | ✅ | přepínač CS/EN v Topbar, localStorage persistence |
@@ -784,8 +787,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **291 testů** (regrese auditu 2026-10-10 `test_audit_20261010.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 17 souborů) — **117 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **324 testů** (regrese auditu 2026-10-10 `test_audit_20261010.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 18 souborů) — **119 testů**: useData, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -796,6 +799,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Nejhlubší audit — opravy priorit 1–5 (Fáze 41, 2026-10-11) | ✅ | 81 nálezů (X/Z/N/F/R/C/T/E); opraveno X2 (ScadaViewer), Z1, Z5, N1, R1, R2, R3, R8, C3, F1, E1, E2, T1 — viz audit_log; **X1 (jednotky Analyzing) čeká na rozhodnutí** |
 | Kompletní audit K1–K42 (Fáze 40, 2026-10-10) | ✅ | 42 nálezů / 21 opraveno (dopočet neskrývá soubory, ADS STRING cp1250, filtr o půlnoci, signál po blocích, rozdělený PlcContext, WS fronta na klienta, ErrorBoundary, rotace logů) — otevřené K13, K17, K18 + LOW, viz audit_log |
 | Audit kvality + ESLint (2026-09-26) | ✅ | 14 nálezů / 9 opraveno (mj. retry `useClientLocal`, `proxy_headers=False`, atomický zápis Config.toml); otevřené A6, A7, A9–A11 — viz audit_log |
 | Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |

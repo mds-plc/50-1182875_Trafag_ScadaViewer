@@ -203,14 +203,25 @@ class TestDecodeRead:
 # spojeným s full start() → reconnect loop → heartbeat loop flow.
 # ======================================================================
 
+def _plc_mock() -> MagicMock:
+    """pyads.Connection v RUN — read_state (ADSSTATE_RUN, 0), verze symbolů 1, handle heartbeatu."""
+    import pyads
+    conn = MagicMock()
+    conn.read_by_name.return_value = False
+    conn.read_state.return_value = (pyads.ADSSTATE_RUN, 0)
+    conn.read.return_value = 1
+    conn.get_handle.return_value = 77
+    conn.add_device_notification.side_effect = lambda *a, **k: (len(conn.add_device_notification.mock_calls), 0)
+    return conn
+
+
 class TestAdsMonitorConnectMocked:
     @patch('pyads.Connection')
     def test_connect_opens_plc(self, mock_cls: MagicMock, cfg: AppConfig, ws_manager: MagicMock) -> None:
         """
         _connect() zavolá open() na pyads.Connection.
         """
-        mock_conn = MagicMock()
-        mock_conn.read_by_name.return_value = False
+        mock_conn = _plc_mock()
         mock_cls.return_value = mock_conn
 
         monitor = AdsMonitor(cfg, ws_manager)
@@ -229,8 +240,7 @@ class TestAdsMonitorConnectMocked:
         _connect() registruje notifikace pro každý symbol ze SYM dict.
         """
         from scada.constants import SYM
-        mock_conn = MagicMock()
-        mock_conn.read_by_name.return_value = False
+        mock_conn = _plc_mock()
         mock_cls.return_value = mock_conn
 
         monitor = AdsMonitor(cfg, ws_manager)
@@ -248,8 +258,7 @@ class TestAdsMonitorConnectMocked:
         """
         Po _connect() je monitor.connected True (self._plc není None).
         """
-        mock_conn = MagicMock()
-        mock_conn.read_by_name.return_value = False
+        mock_conn = _plc_mock()
         mock_cls.return_value = mock_conn
 
         monitor = AdsMonitor(cfg, ws_manager)
@@ -267,8 +276,7 @@ class TestAdsMonitorConnectMocked:
         """
         _disconnect() zavolá close() a monitor.connected je False.
         """
-        mock_conn = MagicMock()
-        mock_conn.read_by_name.return_value = False
+        mock_conn = _plc_mock()
         mock_cls.return_value = mock_conn
 
         monitor = AdsMonitor(cfg, ws_manager)

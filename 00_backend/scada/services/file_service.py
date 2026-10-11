@@ -122,7 +122,8 @@ class FileService:
             page=page,
             pages=pages,
             wip=[dict(f) for f in self.list_wip(location, file_type)],
-            counts_pending=any(f.get('record_count') is None for f in page_files),
+            # Jen skutečně čekající dopočty — ne soubory v odkladu po chybě ani zaseknuté (K1, K16)
+            counts_pending=self._repo.counts_pending(page_files),
             **self._hidden_by_filter(location, file_type, total, from_date, to_date),
         )
 

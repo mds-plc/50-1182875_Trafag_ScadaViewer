@@ -680,6 +680,21 @@
   line-height: 1.6;
 }
 
+/* Seznam mazaných souborů v dialogu hromadného smazání */
+.db-modal__list {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  max-height: 180px;
+  overflow-y: auto;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
 .db-modal__actions {
   display: flex;
   gap: var(--space-3);

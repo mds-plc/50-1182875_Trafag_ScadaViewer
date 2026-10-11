@@ -40,14 +40,47 @@ log = logging.getLogger(__name__)
 REMOTE_READ_ONLY_DETAIL = "Vzdálený přístup je jen pro prohlížení — tuto akci proveďte na PC u stroje"
 
 
+def _host_header_ok(request: Request) -> bool:
+    """Hlavička Host je „localhost" nebo IP adresa — ne doménové jméno.
+
+    DNS rebinding: cizí stránka (attacker.example → 127.0.0.1) je pro prohlížeč u stroje
+    „stejný origin" a její požadavky přijdou z 127.0.0.1. Pozná se jen podle Host — kiosk
+    otevírá http://localhost:8080, IP adresu přesměrovat přes DNS nelze (audit Z1).
+    """
+    raw = request.headers.get("host", "")
+    if raw.startswith("["):                  # [::1]:8080
+        name = raw[1:raw.find("]")] if "]" in raw else raw
+    else:
+        name = raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
+    name = name.strip().lower()
+    if name == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        return False
+
+
 def is_local_client(request: Request) -> bool:
     """
-    Klient „u stroje" — adresa odesílatele je v server.local_clients (IP nebo CIDR).
+    Klient „u stroje" — adresa odesílatele je v server.local_clients (IP nebo CIDR)
+    a hlavička Host je localhost / IP adresa (ochrana proti DNS rebinding, viz _host_header_ok).
 
     Rozlišuje se podle adresy TCP spojení, ne podle síťové karty serveru: hlavní klient na PC
     u stroje jde přes localhost (127.0.0.1 / ::1), kancelář přes firemní síť (jiná adresa).
     Neznámá / neparsovatelná adresa = vzdálený (bezpečná výchozí volba).
     """
+    if not _ip_is_local(request):
+        return False
+    if not _host_header_ok(request):
+        log.warning("[AUTH]  klient u stroje s cizím Host %r — bráno jako vzdálený (DNS rebinding?)",
+                    request.headers.get("host", ""))
+        return False
+    return True
+
+
+def _ip_is_local(request: Request) -> bool:
     host = request.client.host if request.client else ""
     allowed = request.app.state.config.server.local_clients
     if host in allowed:                      # přesná shoda (i ne-IP identifikátory v testech)

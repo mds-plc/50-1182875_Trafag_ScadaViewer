@@ -50,6 +50,7 @@ def _testclient_is_local(monkeypatch):
 
     def init(self, *args, **kwargs):
         kwargs.setdefault("client", ("127.0.0.1", 50000))
+        kwargs.setdefault("base_url", "http://localhost")   # kiosk otevírá localhost (Host check, Z1)
         original(self, *args, **kwargs)
 
     monkeypatch.setattr(TestClient, "__init__", init)

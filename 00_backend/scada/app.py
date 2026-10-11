@@ -6,7 +6,7 @@ FastAPI factory — sestavení instance aplikace, middleware a lifecycle service
 
 Zodpovědnost:
   - Inicializuje AdsMonitor a FileService při startu (lifespan).
-  - Konfiguruje middleware stack: CORS → RateLimit → SecurityHeaders (LIFO pořadí Starlette).
+  - Konfiguruje middleware stack: GZip → RateLimit → RequestId → SecurityHeaders (LIFO pořadí Starlette).
   - Sestavuje CSP hlavičku: inline skripty z index.html se zahashují (SHA-256) a přidají
     do script-src — zabrání spuštění cizího JavaScriptu bez whitelistování.
   - Registruje všechny API routery pod /api a WS routery pod /ws.
@@ -47,7 +47,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -325,22 +324,17 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app = FastAPI(title="ScadaViewer", version=__version__, lifespan=lifespan)
 
     # Middleware — starlette aplikuje v opačném pořadí přidání (LIFO):
-    # požadavek projde: CORS → GZip → RateLimit → RequestId → SecurityHeaders → router
-    # odpověď projde:   router → SecurityHeaders → RequestId → RateLimit → GZip → CORS
+    # požadavek projde: GZip → RateLimit → RequestId → SecurityHeaders → router
+    # odpověď projde:   router → SecurityHeaders → RequestId → RateLimit → GZip
     app.add_middleware(_SecurityHeadersMiddleware, csp=_build_csp(_FRONTEND_DIST))
     app.add_middleware(_RequestIdMiddleware)
     app.add_middleware(_RateLimitMiddleware, max_per_minute=rate_limit)
     # GZip — JSON odpovědi (/api/data, /api/signal ~190 kB) a JS/CSS bundle jsou dobře
     # komprimovatelné (typicky 5–10×). Přidáno až po ostatních → nejvíc vně (komprimuje finální tělo).
     app.add_middleware(GZipMiddleware, minimum_size=1024)
-    if cfg.server.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cfg.server.cors_origins,
-            allow_methods=["GET", "POST", "DELETE", "PATCH"],
-            allow_headers=["Content-Type", "Authorization"],
-            allow_credentials=False,
-        )
+    # Bez CORS: frontend jde ze stejného originu (produkce StaticFiles, dev přes Vite proxy).
+    # CORS „*" dovoloval cizí stránce v prohlížeči u stroje přečíst token z plc-login a mazat
+    # (audit Z1). server.cors_origins dál platí pro kontrolu Origin u WebSocketu.
 
     @app.exception_handler(NasBusyError)
     async def _nas_busy(_request: Request, exc: NasBusyError) -> JSONResponse:

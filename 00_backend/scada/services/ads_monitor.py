@@ -41,6 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import pyads
+from pyads.constants import ADSIGRP_SYM_VERSION
 
 from scada.config import AppConfig
 from scada.constants import SYM, SYM_TYPES, SYM_WRITE
@@ -56,6 +57,17 @@ _DEFAULT_SIZE = 1
 _HB_MAX_FAILURES   = 3
 # Reconnect — maximální čekací doba mezi pokusy (exponential backoff: 1→2→4→…→30 s)
 _RECONNECT_MAX_S   = 30
+# sv_ready se přepisuje každých N heartbeatů (N × 0,5 s) — PLC po restartu rychlejším než
+# _HB_MAX_FAILURES by jinak mělo Ready = FALSE, přestože heartbeat běží (audit R2)
+_READY_EVERY       = 20
+# ADS chyba „symbol nenalezen" — PLC program bez GV_IO_ADS_API.ScadaViewerApp.In.*
+_ADSERR_SYMBOL_NOT_FOUND = 0x710
+
+
+def _require_run(state: tuple[int, int] | None) -> None:
+    """PLC mimo RUN (STOP, konfigurace) → ConnectionError: hodnoty by zamrzly (audit R2)."""
+    if state is None or state[0] != pyads.ADSSTATE_RUN:
+        raise ConnectionError(f"PLC není v RUN (ADS stav {state[0] if state else '?'})")
 
 
 def _plctype(name: str) -> type:
@@ -97,6 +109,10 @@ def _decode_read(raw: object, plctype: type) -> bool | int | str:
     return bool(raw)
 
 
+class _PlcChanged(ConnectionError):
+    """PLC odpovídá, ale není v RUN nebo má nový program — znovu připojit hned, ne po 3 selháních."""
+
+
 class AdsMonitor:
     """
     Připojí se k PLC přes ADS a broadcastuje změny přes WebSocket.
@@ -127,6 +143,10 @@ class AdsMonitor:
         # Vlastní vlákno pro ADS volání — heartbeat (500 ms) nesmí čekat ve výchozím poolu za
         # XLSX exportem, stavbou indexu zakázky nebo PBKDF2 (watchdog v PLC by hlásil výpadek)
         self._executor:         ThreadPoolExecutor | None = None
+        self._hb_handle:   int | None = None   # handle sv_heartbeat (jednou za spojení — 1 round-trip místo 3)
+        self._sym_version: int | None = None   # verze symbolů PLC — změna = nový program (download)
+        self._hb_count = 0
+        self._alive = False                    # poslední heartbeat prošel — PLC odpovídá
         # Cache posledních hodnot symbolů — čtena z endpointů (GIL chrání dict ops)
         self.current_values: dict[str, bool | int | str] = {}
 
@@ -165,7 +185,7 @@ class AdsMonitor:
         # Safety cleanup — CancelledError v _reconnect_loop mohl přerušit disconnect
         if self._plc is not None:
             try:
-                await self._run(self._disconnect)
+                await self._run(self._disconnect, self._alive)
             except Exception as exc:
                 log.debug("[ADS]   Safety cleanup selhal: %s", exc)
         if self._executor is not None:
@@ -203,14 +223,15 @@ class AdsMonitor:
                 attempt = 0
                 await self._heartbeat_loop()   # blokuje dokud PLC funguje
             except asyncio.CancelledError:
-                # Shutdown — zapíše offline bity a ukončí čistě
+                # Shutdown — zapíše offline bity a ukončí čistě (neodpovídající PLC přeskočí,
+                # jinak by stop služby čekal na timeouty déle, než NSSM dovolí)
                 await self._run(self._write_offline)
-                await self._run(self._disconnect)
+                await self._run(self._disconnect, self._alive)
                 raise
             except Exception as exc:
                 log.warning("[ADS]   Spojení selhalo/ztraceno: %s", exc)
 
-            await self._run(self._disconnect)
+            await self._run(self._disconnect, self._alive)
             self._manager.clear_symbols()   # nový WS klient nesmí dostat staré hodnoty
             await self._manager.broadcast({"type": "ads_status", "connected": False})
             delay = min(2 ** attempt, _RECONNECT_MAX_S)
@@ -241,10 +262,14 @@ class AdsMonitor:
             try:
                 await self._run(self._write_hb, toggle)
                 consecutive_failures = 0
+                self._alive = True
             except asyncio.CancelledError:
+                raise
+            except _PlcChanged:                          # STOP / nový program — hned znovu připojit
                 raise
             except Exception as exc:
                 consecutive_failures += 1
+                self._alive = False
                 log.warning("[ADS]   Heartbeat selhal (%d/%d): %s",
                             consecutive_failures, _HB_MAX_FAILURES, exc)
                 if consecutive_failures >= _HB_MAX_FAILURES:
@@ -253,16 +278,33 @@ class AdsMonitor:
                     ) from exc
 
     def _write_hb(self, value: bool) -> None:
-        if self._plc is None:
+        plc = self._plc
+        if plc is None:
             raise ConnectionError("PLC není připojeno")
-        self._plc.write_by_name(SYM_WRITE["sv_heartbeat"], value, pyads.PLCTYPE_BOOL)
+        if self._hb_handle is not None:
+            plc.write_by_name("", value, pyads.PLCTYPE_BOOL, handle=self._hb_handle)
         # read_state() vynutí skutečný round-trip k PLC (write může projít přes lokální
         # ADS router i při odpojeném kabelu — read vždy vyžaduje odpověď od PLC).
-        self._plc.read_state()
+        try:
+            _require_run(plc.read_state())
+        except ConnectionError as exc:
+            raise _PlcChanged(str(exc)) from None
+        # Download programu (ne online change) zneplatní handly i notifikace — živé hodnoty by
+        # zamrzly, přestože heartbeat prochází. Pozná se podle změny verze symbolů.
+        if self._sym_version is not None:
+            ver = plc.read(ADSIGRP_SYM_VERSION, 0, pyads.PLCTYPE_BYTE)
+            if ver != self._sym_version:
+                raise _PlcChanged(f"V PLC je nový program (verze symbolů {self._sym_version} → {ver})")
+        self._hb_count += 1
+        if self._hb_count % _READY_EVERY == 0:
+            try:
+                plc.write_by_name(SYM_WRITE["sv_ready"], True, pyads.PLCTYPE_BOOL)
+            except Exception as exc:
+                log.debug("[ADS]   sv_ready refresh selhal: %s", exc)
 
     def _write_offline(self) -> None:
-        """Zapíše Ready=False a Heartbeat=False před odpojením."""
-        if self._plc is None:
+        """Zapíše Ready=False a Heartbeat=False před odpojením (jen když PLC odpovídá)."""
+        if self._plc is None or not self._alive:
             return
         for sym_key, val in [("sv_ready", False), ("sv_heartbeat", False)]:
             try:
@@ -283,8 +325,29 @@ class AdsMonitor:
         """
         plc = pyads.Connection(self._cfg.ads.net_id, self._cfg.ads.port)
         plc.open()
+        try:
+            self._register(plc)
+        except BaseException:
+            # Nedokončené připojení — uvolnit notifikace i callbacky, jinak by každý neúspěšný
+            # pokus nechal záznamy v pyads callback_store (únik paměti, audit R1)
+            self._release(plc, graceful=False)
+            raise
+        self._plc = plc
+        self._alive = True
+
+        # Oznámit PLC že jsme připraveni
+        try:
+            plc.write_by_name(SYM_WRITE["sv_ready"], True, pyads.PLCTYPE_BOOL)
+            log.debug("[ADS]   sv_ready = True")
+        except Exception as exc:
+            log.warning("[ADS]   sv_ready write selhal: %s", exc)
+
+        self._read_and_broadcast_initial()
+
+    def _register(self, plc: pyads.Connection) -> None:
+        """Ověří RUN, zaregistruje notifikace, zjistí verzi symbolů a handle heartbeatu."""
         plc.set_timeout(2000)   # 2 s — zkrátí detekci výpadku při network timeoutu (výchozí ~5 s)
-        plc.read_state()   # vyhodí ADSError pokud PLC runtime nedostupný
+        _require_run(plc.read_state())   # ADSError pokud runtime nedostupný, ConnectionError mimo RUN
 
         for name, symbol in SYM.items():
             size = _bytesize(name)
@@ -301,33 +364,62 @@ class AdsMonitor:
             except pyads.ADSError as exc:
                 log.warning("[ADS]   symbol přeskočen [%s]: %s", name, exc)
 
-        self._plc = plc
-
-        # Oznámit PLC že jsme připraveni
         try:
-            plc.write_by_name(SYM_WRITE["sv_ready"], True, pyads.PLCTYPE_BOOL)
-            log.debug("[ADS]   sv_ready = True")
-        except Exception as exc:
-            log.warning("[ADS]   sv_ready write selhal: %s", exc)
+            self._sym_version = plc.read(ADSIGRP_SYM_VERSION, 0, pyads.PLCTYPE_BYTE)
+        except Exception as exc:                        # nepodporováno — detekce downloadu vypnuta
+            log.debug("[ADS]   verze symbolů nečitelná: %s", exc)
+            self._sym_version = None
 
-        self._read_and_broadcast_initial()
+        try:
+            self._hb_handle = plc.get_handle(SYM_WRITE["sv_heartbeat"])
+        except pyads.ADSError as exc:
+            if exc.err_code != _ADSERR_SYMBOL_NOT_FOUND:
+                raise
+            # PLC program bez In symbolů — spojení hlídat jen čtením stavu. Dřív 3 selhané
+            # heartbeaty → odpojit → znovu připojit dokola (únik paměti, problikávání topbaru).
+            log.warning("[ADS]   PLC nemá symbol %s — heartbeat se nezapisuje, spojení se hlídá "
+                        "jen čtením stavu", SYM_WRITE["sv_heartbeat"])
+            self._hb_handle = None
 
-    def _disconnect(self) -> None:
-        """Zavře ADS spojení. Notifikace jsou zrušeny automaticky AMS routerem při close()."""
+    def _disconnect(self, graceful: bool = True) -> None:
+        """Zavře ADS spojení a uvolní notifikace (graceful=False: PLC neodpovídá — bez síťových volání)."""
         if self._plc is None:
             return
+        self._release(self._plc, graceful)
+        self.current_values.clear()
+        self._plc = None
+        self._alive = False
+        log.info("[ADS]   Odpojeno")
+
+    def _release(self, plc: pyads.Connection, graceful: bool) -> None:
+        """Zruší notifikace a handly, zavře port a odstraní callbacky z pyads callback_store.
+
+        pyads maže záznam z callback_store jen v del_device_notification; close() ho nechá
+        a klíč (AmsAddr bez __eq__) je pro každé spojení nový → bez úklidu ~39 kB na každé
+        připojení (audit R1). Po prvním selhání (PLC neodpovídá) už jen lokální úklid —
+        jinak 24 × timeout 2 s.
+        """
+        if graceful:
+            try:
+                if self._hb_handle is not None:
+                    plc.release_handle(self._hb_handle)
+                for h in self._handles:
+                    plc.del_device_notification(*h)
+            except Exception as exc:
+                log.debug("[ADS]   uvolnění notifikací selhalo (PLC neodpovídá): %s", exc)
         # Nejdřív zavřít spojení (AMS router zruší notifikace), teprve pak uvolnit
         # callback reference — jinak by pozdní notifikace mohla volat uvolněný callback
         try:
-            self._plc.close()
+            plc.close()
         except Exception as exc:
             log.debug("[ADS]   plc.close() selhal: %s", exc)
-
+        adr = getattr(plc, "_adr", None)
+        store = pyads.pyads_ex.callback_store
+        for key in [k for k in list(store) if k[0] is adr]:
+            store.pop(key, None)
         self._handles.clear()
         self._callback_refs.clear()
-        self.current_values.clear()
-        self._plc = None
-        log.info("[ADS]   Odpojeno")
+        self._hb_handle = None
 
     def _read_and_broadcast_initial(self) -> None:
         """

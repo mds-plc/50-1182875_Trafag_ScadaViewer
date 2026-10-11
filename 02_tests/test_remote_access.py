@@ -132,3 +132,29 @@ def test_invalid_local_clients_rejected(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, ["127.0.0.1", "stroj-pc"])
     with pytest.raises(ValueError, match="local_clients"):
         _validate_config(cfg)
+
+
+# ── Z1 (audit 2026-10-10) — cizí stránka v prohlížeči u stroje ───────────────
+
+def test_z1_no_cors_headers_for_foreign_origin(make_client) -> None:
+    c = make_client()
+    c.app.state.monitor.current_values["plc_operator_login"] = True
+    r = c.post("/api/auth/plc-login", headers={"Origin": "http://evil.example"})
+    assert "access-control-allow-origin" not in r.headers      # prohlížeč odpověď cizí stránce nevydá
+    pre = c.options("/api/storage/cleanup", headers={
+        "Origin": "http://evil.example", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization"})
+    assert "access-control-allow-origin" not in pre.headers    # preflight neprojde → DELETE/POST nepůjde
+
+
+@pytest.mark.parametrize("host, local", [
+    ("localhost:8080", True), ("127.0.0.1:8080", True), ("[::1]:8080", True), ("LOCALHOST", True),
+    ("attacker.example:8080", False), ("pc-u-stroje:8080", False), ("", False),
+])
+def test_z1_dns_rebinding_host_header(make_client, host: str, local: bool) -> None:
+    c = make_client()
+    c.app.state.monitor.current_values["plc_operator_login"] = True
+    assert c.get("/api/auth/client", headers={"Host": host}).json() == {"local": local}
+    assert (c.post("/api/auth/plc-login", headers={"Host": host}).status_code == 200) is local
+    r = c.post("/api/storage/cleanup", headers={"Host": host})
+    assert (r.status_code == 403) is not local

@@ -944,6 +944,40 @@ Audit K1–K42 (`audit_log.md`), opraveno 21 nálezů. Architektonicky podstatn�
 **Stav testů po fázi 40:** Backend **291/291** (+17 `test_audit_20261010.py`), Frontend **117/117**,
 lint 0, `tsc` 0.
 
+### Fáze 41 — Nejhlubší audit: opravy priorit 1–5 (2026-10-11)
+
+Audit 81 nálezů (`audit_log.md` → „[2026-10-10] Nejhlubší audit"). Architektonicky podstatné změny:
+
+- **Čtení souborů nebrání přesunu (`services/shared_open.py`, X2):** `open_shared()` otevírá soubor
+  na Windows přes `CreateFileW` s `FILE_SHARE_READ | WRITE | DELETE` (jinde `open()`). Všechna čtení CSV
+  (`csv_repository`, `signal_reader`) i stahování (`/api/files/{id}/download` — už jen `StreamingResponse`
+  po 1 MB přes `run_io`, žádný `FileResponse`). Dřív DatabaseGateway při uzavření zakázky během čtení
+  dostal WinError 32 (~5 % uzavření), `shutil.move` nechal kopii → PLC Error a duplikát.
+  **Nové čtení souborů VŽDY přes `open_shared`.**
+- **ADS (`ads_monitor.py`, R1/R2):** `_release()` ruší notifikace a handle heartbeatu
+  (`del_device_notification`, `release_handle`; po prvním selhání už bez sítě) a maže záznamy spojení
+  z `pyads.pyads_ex.callback_store` (pyads je při `close()` nechává → ~39 kB na připojení). Nedokončené
+  `_connect` uklízí taky. Heartbeat: handle `sv_heartbeat` jednou za spojení, `read_state()` musí být
+  `ADSSTATE_RUN`, verze symbolů (`ADSIGRP_SYM_VERSION`) se nesmí změnit (download programu zneplatní
+  notifikace) → `_PlcChanged` = okamžitý reconnect. `sv_ready` se přepisuje každých 10 s. PLC bez
+  symbolů `In.*` → spojení se hlídá jen čtením stavu (dřív smyčka reconnectů). Neodpovídající PLC:
+  bez `_write_offline` a síťového úklidu (stop služby v limitu NSSM).
+- **uvicorn (`main.py`, R3):** `ws="wsproto"` (flow control — nestíhající WS klient zaplní frontu
+  a `ws_manager` ho zavře 1011; výchozí websockets-sansio posílal do neomezeného bufferu)
+  + `timeout_graceful_shutdown=3`. Nová závislost `wsproto`.
+- **Bez CORS, kontrola Host (`app.py`, `dependencies.py`, Z1):** HTTP API CORS nepoužívá (stejný origin).
+  „U stroje" = adresa v `local_clients` **a** hlavička `Host` je `localhost` / IP adresa (DNS rebinding).
+  `cors_origins` platí jen pro kontrolu Origin u `/ws/plc`.
+- **Dopočet (`counts_pending`, N1):** `FileService` se ptá repozitáře na skutečně čekající dopočty
+  zobrazené stránky (`counts_pending(page_files)`) — ne soubory v odkladu po chybě ani zaseknuté.
+- **Ostatní:** stažení z NAS bez `Path.resolve()` v event loopu (Z5); NaN v klíčových bodech
+  a parametrech signálu → `null` (C3); výběr pro hromadné mazání jen z viditelných souborů + názvy
+  v dialogu (F1); `nssm_install.bat` — práva správce, `nssm.exe` vedle skriptu, kontrola každého kroku,
+  `AppDirectory` bez `\"`, `AppStopMethodConsole 10000`, upozornění na servisní účet (E1, E2, R8).
+
+**Stav testů po fázi 41:** Backend **324/324** (+25 `test_audit_20261011.py`, +8 `test_remote_access.py`),
+Frontend **119/119** (18 souborů, + `useDatabaseState.test.tsx`), lint 0, `tsc` 0.
+
 ---
 
 ## Tok dat

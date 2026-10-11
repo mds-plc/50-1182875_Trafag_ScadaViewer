@@ -211,6 +211,17 @@ export function useDatabaseState() {
   }, [expandedId, wip, files])
 
   useEffect(() => { setExpandedId(null); setPage(1); setSelectedIds(new Set()) }, [location, dataType])
+
+  // Výběr jen z viditelných souborů — po smazání, změně filtru, stránky nebo řazení by v něm
+  // zůstaly soubory, které obsluha nevidí, a hromadné mazání by je smazalo (audit F1).
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (prev.size === 0) return prev
+      const visible = new Set(files.map(f => f.file_id))
+      const next = new Set([...prev].filter(id => visible.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [files])
   useEffect(() => { setPage(1) }, [dateFrom, dateTo])
 
   // F5 = ruční refresh, Escape = zavřít expand + modal
@@ -267,7 +278,9 @@ export function useDatabaseState() {
 
   const batchDelete = useCallback(async (): Promise<void> => {
     setBatchConfirm(false)
-    const ids = [...selectedIds]
+    const visible = new Set(files.map(f => f.file_id))
+    const ids = [...selectedIds].filter(id => visible.has(id))   // pojistka F1 — jen to, co je vidět
+    if (ids.length === 0) return
     try {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
@@ -293,7 +306,7 @@ export function useDatabaseState() {
     } catch {
       addToast(t.db.deleteError, 'danger')
     }
-  }, [selectedIds, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, clearSelect])
+  }, [selectedIds, files, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, clearSelect])
 
   const showSync     = location === 'local'
   // null = některé počty se ještě dopočítávají (patička ukáže „…")

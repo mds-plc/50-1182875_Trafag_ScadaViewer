@@ -195,8 +195,9 @@ csv_encoding  = "utf-8-sig"
 local_max_gb  = 5.0       # limit lokálního úložiště [GB] — dle velikosti disku; varování ≥ 80 %, kritické ≥ 95 %
 ```
 
-**`cors_origins`** — podle něj server povoluje i živé spojení (WebSocket: stav PLC, automatická
-aktualizace seznamu souborů). Kontroluje se přesná adresa, kterou má uživatel v prohlížeči:
+**`cors_origins`** — podle něj server povoluje živé spojení (WebSocket: stav PLC, automatická
+aktualizace seznamu souborů). HTTP API ho nepoužívá (od 2026-10-11 bez CORS — stránka i API jdou
+ze stejné adresy). Kontroluje se přesná adresa, kterou má uživatel v prohlížeči:
 
 | Hodnota | Chování |
 |---------|---------|
@@ -237,8 +238,8 @@ Dokud `users.toml` neexistuje, platí jediný účet z `Config.toml [auth]` — 
 
 ### Krok N1: Stáhnout NSSM
 
-Stáhnout z [nssm.cc](https://nssm.cc) → rozbalit `nssm.exe` do složky aplikace
-nebo do `C:\Windows\System32` (pak bude v PATH).
+Stáhnout z [nssm.cc](https://nssm.cc) → rozbalit `nssm.exe` (win64) do složky aplikace
+(vedle `nssm_install.bat`) nebo do `C:\Windows\System32` (pak bude v PATH).
 
 ### Krok N2: Spustit instalátor
 
@@ -248,10 +249,14 @@ nssm_install.bat
 ```
 
 Skript automaticky:
-- Odinstaluje předchozí verzi služby (pokud existuje)
+- Ověří práva správce, `nssm.exe` (složka aplikace → PATH), `scada_viewer.exe` a `Config.toml`
+- Odinstaluje předchozí verzi služby (pokud existuje) — **běžela-li pod servisním účtem (krok N3),
+  vypíše ho a účet je potřeba nastavit znovu** (heslo nelze převzít)
 - Nainstaluje `ScadaViewer` jako Windows službu s auto-start
-- Nakonfiguruje log soubory a rotaci (10 MB)
+- Nakonfiguruje log soubory a rotaci (10 MB), na zastavení dá službě 10 s (`AppStopMethodConsole`)
 - Spustí službu
+
+Každý krok se kontroluje — při chybě skript vypíše `Instalace NEPROBEHLA` a skončí s kódem 1.
 
 ### Krok N3: Servisní účet (kvůli přístupu k NAS)
 
@@ -328,8 +333,13 @@ U služby nainstalované **dřívější** verzí `nssm_install.bat` jednou dopl
 
 ```bat
 nssm set ScadaViewer AppRotateOnline 1
+nssm set ScadaViewer AppStopMethodConsole 10000
 nssm restart ScadaViewer
 ```
+
+**Kiosk otevírá `http://localhost:8080`** (ne jméno PC ani jinou doménu) — zápisové akce a PLC
+auto-login platí jen pro adresu `localhost` / IP adresu v hlavičce Host (ochrana proti DNS rebinding,
+od 2026-10-11). Otevření přes jméno PC funguje, ale jen pro prohlížení.
 
 ---
 

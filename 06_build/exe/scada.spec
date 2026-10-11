@@ -21,6 +21,7 @@ a = Analysis(
         'uvicorn.loops', 'uvicorn.loops.auto',
         'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto',
         'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto',
+        'uvicorn.protocols.websockets.wsproto_impl', 'wsproto',
         'uvicorn.lifespan', 'uvicorn.lifespan.on',
         # async + http
         'anyio', 'anyio._backends._asyncio',

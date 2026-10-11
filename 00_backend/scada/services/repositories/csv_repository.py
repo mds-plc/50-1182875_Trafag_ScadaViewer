@@ -43,6 +43,7 @@ from datetime import datetime
 from pathlib import Path
 
 from scada.config import DataConfig
+from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
 
 log = logging.getLogger(__name__)
 
@@ -771,16 +772,26 @@ class CsvRepository:
             changes.update(created_at=full.get('created_at') or meta.created_at, ts_final=True)
         self._put(key, mtime_ns, size, meta.replace(**changes))
 
-    def counts_pending(self) -> bool:
-        """Čeká-li nějaký dopočet. Zaseknuté (> _COUNT_STALL_S) se nepočítají — viz výše."""
+    def counts_pending(self, metas: Iterable[Mapping] | None = None) -> bool:
+        """Čeká-li nějaký dopočet (s `metas` jen pro tyto soubory, např. zobrazenou stránku).
+
+        Nepočítají se zaseknuté (> _COUNT_STALL_S) ani soubory v odkladu po selhání
+        (`_count_failed` — `request_counts` je do fronty nezařadí), jinak by se klient ptal donekonečna.
+        """
         with self._count_lock:
-            if not self._count_pending:
+            if metas is None:
+                waiting = set(self._count_pending)
+            else:
+                waiting = {m.path for m in metas
+                           if isinstance(m, FileMeta) and m.record_count is None and m.path}
+                waiting &= self._count_pending
+            if not waiting:
                 return False
             limit = time.monotonic() - _COUNT_STALL_S
-            stalled = sum(1 for t in self._count_started.values() if t < limit)
-            if stalled >= _COUNT_WORKERS:          # všechna vlákna visí (NAS) — fronta nepostoupí
+            stalled = {k for k, t in self._count_started.items() if t < limit}
+            if len(stalled) >= _COUNT_WORKERS:     # všechna vlákna visí (NAS) — fronta nepostoupí
                 return False
-            return len(self._count_pending) > stalled
+            return bool(waiting - stalled)
 
     # ------------------------------------------------------------------
     # Čtení jednotlivého souboru
@@ -808,7 +819,7 @@ class CsvRepository:
             Řádek 3: (prázdný)
             Řádek 4: Timestamp;OF_OperatingForce;...  ← data header
         """
-        with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+        with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
             line1 = f.readline().strip()
             first_col = line1.split(self._cfg.csv_separator)[0].strip()
 
@@ -922,7 +933,7 @@ class CsvRepository:
         try:
             ix = self._order_index(path)
             if ix is None:                                   # sekční formát (TEST)
-                with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+                with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
                     return self._read_sectioned(f, from_day, to_day)
         except (UnicodeDecodeError, csv.Error) as exc:
             # csv.Error: NUL byte, překročený field_size_limit — poškozený soubor ≠ HTTP 500.
@@ -1032,7 +1043,7 @@ class CsvRepository:
     def _build_index(self, path: Path) -> _OrderIndex | None:
         """Jedno přečtení souboru → _OrderIndex. Formát a pravidla jako csv.DictReader nad souborem."""
         sep = self._cfg.csv_separator
-        with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+        with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
             line1 = f.readline().strip()
             if line1.startswith('['):
                 return None
@@ -1106,7 +1117,7 @@ class CsvRepository:
         """
         ix = self._order_index(path)
         if ix is None:
-            with open(path, encoding=self._cfg.csv_encoding, newline='') as f:
+            with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
                 recs, _, _, _ = self._read_sectioned(f, None, None)
             rec = {k: v for k, v in recs[0].items() if not k.startswith('_')} if recs else {}
             return list(rec), iter([list(rec.values())])

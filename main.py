@@ -70,6 +70,12 @@ def main() -> None:
         # vzdáleně" (server.local_clients) stojí na adrese TCP spojení; s proxy_headers by stačila
         # proměnná prostředí FORWARDED_ALLOW_IPS="*" a vzdálený klient by si podvrhl 127.0.0.1.
         proxy_headers=False,
+        # WebSocket přes wsproto: respektuje pause_writing → nestíhající klient zaplní frontu
+        # a ws_manager ho odpojí (1011). Výchozí „auto" (websockets-sansio) bez flow control
+        # posílá do neomezeného bufferu a mrtvý klient by visel navždy (audit R3).
+        ws="wsproto",
+        # Stop služby (NSSM) nesmí viset na otevřených spojeních — lifespan finally musí doběhnout.
+        timeout_graceful_shutdown=3,
     )
 
 
