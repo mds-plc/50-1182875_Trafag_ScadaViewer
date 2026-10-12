@@ -145,7 +145,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── useSettings.ts      ← perPage, refreshMs; localStorage persistence
     │   ├── useTheme.ts         ← dark/light toggle; localStorage scada_theme
     │   ├── useKeyShortcuts.ts  ← F5/Escape generický hook; skip inputs
-    │   ├── useBackendOnline.ts ← polling /api/health 10 s; vrací boolean
+    │   ├── useBackendOnline.ts ← polling /api/health 10 s; bez odpovědi do 5 s = offline; běžící kontrolu neruší
     │   ├── usePlcWatcher.ts    ← toast při změně PLC připojení (volán v AppShell)
     │   ├── useOrderWatcher.ts  ← WebSocket /ws/orders — ⏸ jen pro odpojený Overview
     │   ├── useWipData.ts       ← REST /api/wip — ⏸ jen pro odpojený Overview
@@ -156,7 +156,8 @@ CLAUDE.md                  ← tento soubor
     │   └── usePrintMode.ts     ← tiskové tabulky vykreslit až při tisku (printNow / beforeprint, flushSync)
     ├── utils/
     │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (mN, µm 0,1, µs, mΩ 0,1, ∞ nad 999,9; 0 u polohy/síly/odporu = „—“ (W5/W6); vstupy testu EXTRA_FORMAT)
-    │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration
+    │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration;
+    │   │                         normalizeClockShift (konec letního času 25. 10., zpětné posuny hodin)
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
@@ -412,7 +413,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3` → `total_all`, záznamy s `_idx`; `per_page=0` = vše, strop 20 000 |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
-| `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno; jen production, jinak 404) |
+| `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno — kromě konce letního času, pak pořadí výroby; jen production, jinak 404) |
 | `/api/status` | GET | `{remote_available: bool, remote_path: str}` — dostupnost NAS |
 | `/api/config/paths` | PATCH | Aktualizace local_path / remote_path v Config.toml (admin+) |
 | `/api/config/fs` | GET | Folder picker — seznam podsložek dané cesty (admin+) |
@@ -787,7 +788,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Styling / design | ✅ | design systém hotov; dark mode; topbar redesign (3 skupiny + oddělovače) |
 | Autentizace | ✅ | AuthContext → POST /api/auth/login (PBKDF2); sessionStorage token; `apiFetch` → auto-odhlášení při vypršelé session |
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
-| Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s); červený fixed banner |
+| Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
 | Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.1.2** — release zatím nevydán) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
@@ -806,9 +807,10 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Rizika před nasazením (Fáze 43, 2026-10-11) | ✅ | ScadaViewer: R4 (únik slotů NAS poolu), N2/N5 (výpadek NAS při výpisu → poslední stav / 503), F2 (offline banner při zaseknutém serveru), F4 (klik během načítání stránky), konec letního času v časovém průběhu; Gateway: X2 (přesun bez kopií, `uploaded_at` až po přesunu), K17 (TEST soubor přes `.tmp`), X3 (STRING cp1250) — viz audit_log |
 | Jednotky zákazníka ve všech třech aplikacích (Fáze 42, 2026-10-11) | ✅ | Analyzing → PLC → Gateway `[mN]`/`[mOhm]` → ScadaViewer čte jednotku z hlavičky; polohy zákazníka i v grafech (C = TTP + max x); starší soubory převedeny + poznámka; test napříč aplikacemi `test_ecosystem_units.py`; nasazovat všechny tři najednou |
 | Nejhlubší audit — opravy priorit 1–5 (Fáze 41, 2026-10-11) | ✅ | 81 nálezů (X/Z/N/F/R/C/T/E); opraveno X2 (ScadaViewer), Z1, Z5, N1, R1, R2, R3, R8, C3, F1, E1, E2, T1 — viz audit_log; X1 sladěno ve fázi 42 |
-| Kompletní audit K1–K42 (Fáze 40, 2026-10-10) | ✅ | 42 nálezů / 21 opraveno (dopočet neskrývá soubory, ADS STRING cp1250, filtr o půlnoci, signál po blocích, rozdělený PlcContext, WS fronta na klienta, ErrorBoundary, rotace logů) — otevřené K13, K17, K18 + LOW, viz audit_log |
+| Kompletní audit K1–K42 (Fáze 40, 2026-10-10) | ✅ | 42 nálezů / 21 opraveno (dopočet neskrývá soubory, ADS STRING cp1250, filtr o půlnoci, signál po blocích, rozdělený PlcContext, WS fronta na klienta, ErrorBoundary, rotace logů) — K17 opraven v Gateway 2026-10-11; otevřené K13, K18 + LOW, viz audit_log |
 | Audit kvality + ESLint (2026-09-26) | ✅ | 14 nálezů / 9 opraveno (mj. retry `useClientLocal`, `proxy_headers=False`, atomický zápis Config.toml); otevřené A6, A7, A9–A11 — viz audit_log |
 | Kompaktní ukazatel úložiště + revize textů CS/EN (Fáze 31) | ✅ | ukazatel v hlavičce Database; odborné názvy anglicky, „Kategorie“, Sync odznaky anglicky, nápověda parametrů CS+EN — viz audit_log 2026-09-25 |
 | Filtr kusů, Base Period µs, název XLSX (Fáze 35) | ✅ | `RecordFilterBar` + `/api/data?status=&category=`; DatabaseGateway hlavička `[us]` — viz architecture.md |

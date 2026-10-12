@@ -91,6 +91,11 @@ U každého scénáře sleduj: aplikace nespadne, obsluha pozná, co se děje, a
 | 3.9 | Vypršení relace | přihlásit se lokálně a nechat > 8 h, pak kliknout | hláška „Relace vypršela", po přihlášení pokračuje |
 | 3.10 | Plné úložiště | dočasně snížit `local_max_gb` pod aktuální obsazení | varování v topbaru i Database; čištění vrátí stav do normálu |
 | 3.11 | Poškozený CSV | zkopírovat do `done_local` zkrácený / prázdný soubor (na kopii dat) | soubor se přeskočí nebo ukáže chybu, zbytek seznamu funguje |
+| 3.12 | Zaseknutý server | pozastavit proces ScadaViewer (Správce úloh → Podrobnosti → „Pozastavit“ / Process Explorer Suspend) | do ~15 s červený pruh „Server nedostupný“, po obnovení zmizí |
+| 3.13 | NAS vypadne během výpisu | otevřít záložku Vzdálená a během načítání odpojit NAS | zůstane poslední známý seznam nebo chyba NAS — **nikdy prázdný archiv** |
+| 3.14 | Uzavření zakázky při otevřeném souboru | mít otevřený detail rozpracované zakázky (a stahovat její CSV) a v PLC zakázku uzavřít | Op3 Done, soubor jen v `done_local/` (žádná kopie ve `wip/`); po uploadu jen v `done_remote/` |
+| 3.15 | Diakritika z PLC | zakázka / typ spínače s „ř“, „č“ v názvu (Op1–Op3, Op5) | Gateway uloží bez SAVE_FAILED, název souboru i Database ukazují správné znaky (ověřuje kódování STRING cp1250) |
+| 3.16 | Konec letního času | zakázka běžící přes 25. 10. 02:00–03:00 (nebo kopie CSV s opakovanou hodinou) | Časový průběh: kusy nepromíchané, doba zakázky o hodinu delší než rozdíl časů v souboru |
 
 ---
 

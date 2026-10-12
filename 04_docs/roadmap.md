@@ -41,6 +41,10 @@
 - [ ] **Kalibrace C** (`position_reference_um`, provizorně 9500 µm) kalibrační měrkou — Analyzing `position_calibration.md`
 - [ ] **PLC:** meze poloh FP/OP/RP/TTP na stupnici zákazníka, komentáře DUT a HMI v mN / mΩ; sloupec s kódem
       varování analýzy (W5/W6) do DUT a CSV (dnes nuly → ScadaViewer „—“)
+- [ ] **PLC: synchronizace hodin** (NTP / čas z PC) — časové značky CSV jsou místní čas PLC bez zóny
+- [ ] **PLC: ověřit kódování STRING** zakázkou s „ř“ v názvu — Gateway i ScadaViewer čtou cp1250 (acceptance 3.15)
+- [ ] **Analyzing: nové parametry DF, RPT, FPR** (větev `claude/repository-access-423319`, není v `main`) —
+      rozhodnout, zda půjdou do PLC → CSV → ScadaViewer (rozšíření struktury 96 B, Gateway, paramMeta)
 
 
 ### 1. Odpovědi od Trafag (blokující)
