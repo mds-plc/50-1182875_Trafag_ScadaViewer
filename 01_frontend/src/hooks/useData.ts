@@ -173,6 +173,7 @@ function useDataFetch() {
       if (filter.perPage  != null) params.set('per_page', String(filter.perPage))
       if (filter.status)             params.set('status',   filter.status)
       if (filter.categories?.length) params.set('category', filter.categories.join(','))
+      if (filter.order === 'desc')   params.set('order',    'desc')
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
       const res = await apiFetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)

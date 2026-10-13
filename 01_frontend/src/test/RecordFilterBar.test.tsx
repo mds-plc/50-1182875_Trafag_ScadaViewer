@@ -4,13 +4,14 @@
  *   - volba stavu Vše / OK / NOK
  *   - kategorie se přepínají (zapnout / vypnout) a zůstávají seřazené
  *   - „Zobrazeno X z Y" + „Zrušit filtr" jen při aktivním filtru; zrušení vrátí vše
+ *   - řazení Nejstarší / Nejnovější — není filtr (nezobrazí „Zrušit filtr")
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { LangProvider } from '../context/LangContext'
 import RecordFilterBar from '../components/RecordFilterBar'
-import type { StatusFilter } from '../components/RecordFilterBar'
+import type { SortOrder, StatusFilter } from '../components/RecordFilterBar'
 
 const Wrapper = ({ children }: { children: ReactNode }) => <LangProvider>{children}</LangProvider>
 
@@ -18,15 +19,18 @@ beforeEach(() => {
   localStorage.setItem('scada_lang', 'en')
 })
 
-function setup(status: StatusFilter = 'all', categories: string[] = [], totalAll: number | null = null) {
+function setup(status: StatusFilter = 'all', categories: string[] = [], totalAll: number | null = null,
+               order: SortOrder = 'asc') {
   const onStatus     = vi.fn()
   const onCategories = vi.fn()
+  const onOrder      = vi.fn()
   render(
     <RecordFilterBar status={status} categories={categories} onStatus={onStatus}
-                     onCategories={onCategories} shown={4} totalAll={totalAll} />,
+                     onCategories={onCategories} order={order} onOrder={onOrder}
+                     shown={4} totalAll={totalAll} />,
     { wrapper: Wrapper },
   )
-  return { onStatus, onCategories }
+  return { onStatus, onCategories, onOrder }
 }
 
 describe('RecordFilterBar', () => {
@@ -67,5 +71,13 @@ describe('RecordFilterBar', () => {
     fireEvent.click(screen.getByRole('button', { name: /Clear filter/ }))
     expect(onStatus).toHaveBeenCalledWith('all')
     expect(onCategories).toHaveBeenCalledWith([])
+  })
+
+  it('switches sort order without activating the filter', () => {
+    const { onOrder } = setup('all', [], null, 'desc')
+    expect(screen.getByRole('button', { name: 'Newest' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /Clear filter/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Oldest' }))
+    expect(onOrder).toHaveBeenCalledWith('asc')
   })
 })

@@ -34,7 +34,7 @@ import SignalCharts   from '../components/SignalCharts'
 import OrderTimelineChart from '../components/OrderTimelineChart'
 import { usePrintMode } from '../hooks/usePrintMode'
 import RecordFilterBar from '../components/RecordFilterBar'
-import type { StatusFilter } from '../components/RecordFilterBar'
+import type { SortOrder, StatusFilter } from '../components/RecordFilterBar'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
@@ -398,11 +398,14 @@ export default function ChartView() {
   const filterActive = statusFilter !== 'all' || catFilter.length > 0
   const setStatusFilter = (v: StatusFilter) => { setStatusFilterRaw(v); setTablePage(1) }
   const setCatFilter    = (v: string[])     => { setCatFilterRaw(v);    setTablePage(1) }
+  // Řazení kusů podle času (server) — nejstarší = pořadí výroby, nejnovější = od konce
+  const [sortOrder, setSortOrderRaw] = useState<SortOrder>('asc')
+  const setSortOrder = (v: SortOrder) => { setSortOrderRaw(v); setTablePage(1) }
   // Hlavička zakázky (číslo, očekávaný počet) z posledních neprázdných dat — i když filtr nic nenajde
   const [heroRecords, setHeroRecords] = useState<typeof records>([])
   useEffect(() => { if (records.length > 0) setHeroRecords(records) }, [records])
   useEffect(() => {
-    setStatusFilterRaw('all'); setCatFilterRaw([]); setHeroRecords([])
+    setStatusFilterRaw('all'); setCatFilterRaw([]); setSortOrderRaw('asc'); setHeroRecords([])
   }, [fileId, location, fileType])
 
   // Resetovat stránku při změně souboru nebo cíle záznamu
@@ -436,10 +439,11 @@ export default function ChartView() {
       ? {
           status:     statusFilter === 'all' ? undefined : statusFilter,
           categories: catKey ? catKey.split(',') : undefined,
+          order:      sortOrder,
         }
       : {}
     fetchData({ file: fileId, location, type: fileType, page: tablePage, perPage: RECORDS_PER_PAGE, ...filter })
-  }, [fileId, location, fileType, tablePage, fetchData, isRecordView, statusFilter, catKey])
+  }, [fileId, location, fileType, tablePage, fetchData, isRecordView, statusFilter, catKey, sortOrder])
 
   const tableColumns = useMemo(() => {
     if (records.length === 0) return FIXED_COLS
@@ -461,7 +465,7 @@ export default function ChartView() {
   const openRecord = useCallback((row: Record<string, unknown>) => {
     const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
     if (withinPage < 0) return
-    // Při filtru nese záznam `_idx` = pořadí v celé zakázce (ze serveru)
+    // Při filtru / řazení od nejnovějšího nese záznam `_idx` = pořadí v celé zakázce (ze serveru)
     const absIdx = row._idx != null ? Number(row._idx) : (tablePage - 1) * RECORDS_PER_PAGE + withinPage
     navigate(`/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${absIdx}`)
   }, [records, tablePage, fileId, location, fileType, navigate])
@@ -659,6 +663,8 @@ export default function ChartView() {
                   categories={catFilter}
                   onStatus={setStatusFilter}
                   onCategories={setCatFilter}
+                  order={sortOrder}
+                  onOrder={setSortOrder}
                   shown={total}
                   totalAll={totalAll}
                 />
@@ -682,7 +688,7 @@ export default function ChartView() {
             {/* Tisk — jedna tabulka pro každou skupinu parametrů (aktuální stránka tabulky).
                 # = pořadí kusu v celé zakázce; u více stránek / filtru poznámka, co protokol obsahuje. */}
             {printing && <div className="cv-print-only">
-              {(pages > 1 || filterActive) && records.length > 0 && (() => {
+              {(pages > 1 || filterActive || sortOrder === 'desc') && records.length > 0 && (() => {
                 const fmt = (n: number) => n.toLocaleString(lang === 'cs' ? 'cs-CZ' : 'en-GB')
                 const first = (tablePage - 1) * RECORDS_PER_PAGE + 1
                 const filterDesc = [
@@ -694,6 +700,7 @@ export default function ChartView() {
                     {filterActive && totalAll != null && (
                       <>{t.chart.printFilter.replace('{filter}', filterDesc).replace('{count}', fmt(total)).replace('{all}', fmt(totalAll))}<br /></>
                     )}
+                    {sortOrder === 'desc' && <>{t.chart.printNewestFirst}<br /></>}
                     {t.chart.printRange
                       .replace('{from}', fmt(first)).replace('{to}', fmt(first + records.length - 1))
                       .replace('{total}', fmt(total)).replace('{page}', fmt(tablePage)).replace('{pages}', fmt(pages))}

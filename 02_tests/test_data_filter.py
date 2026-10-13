@@ -8,6 +8,7 @@ POKRYTÍ:
   - bez kategorie se stav bere ze sloupce Status (2 / 5)
   - bez filtru se nic nemění (žádné `_idx`, total_all = None)
   - neplatné hodnoty → 422
+  - řazení order=desc (od nejnovějšího): stránky od konce, `_idx` = pořadí v zakázce, s filtrem
 """
 from __future__ import annotations
 
@@ -116,7 +117,36 @@ def test_status_fallback_without_category(env) -> None:
     {"category": "7"},
     {"category": "1,x"},
     {"category": ","},
+    {"order": "newest"},
 ])
 def test_invalid_params(env, params: dict) -> None:
     c, _ = env
     assert _get(c, **params).status_code == 422
+
+
+def test_order_desc_pages_from_newest(env) -> None:
+    c, _ = env
+    body = _get(c, order="desc", page=1, per_page=5).json()
+    assert body["total"] == 12 and body["pages"] == 3
+    assert [r["microswitch_id"] for r in body["records"]] == ["11", "10", "9", "8", "7"]
+    # _idx = pořadí v zakázce (odkaz na detail záznamu), i bez filtru
+    assert [r["_idx"] for r in body["records"]] == ["11", "10", "9", "8", "7"]
+    body = _get(c, order="desc", page=3, per_page=5).json()
+    assert [r["_idx"] for r in body["records"]] == ["1", "0"]
+    # souhrny za celý soubor se řazením nemění
+    assert body["group_counts"] == _get(c).json()["group_counts"]
+
+
+def test_order_desc_with_filter(env) -> None:
+    c, _ = env
+    body = _get(c, order="desc", status="nok", per_page=3).json()
+    # NOK = kategorie 5, 6 → _idx 4, 5, 10, 11; od nejnovějšího
+    assert body["total"] == 4 and body["total_all"] == 12
+    assert [r["_idx"] for r in body["records"]] == ["11", "10", "5"]
+
+
+def test_order_asc_is_default(env) -> None:
+    c, _ = env
+    asc = _get(c, order="asc", per_page=4).json()
+    assert asc == _get(c, per_page=4).json()
+    assert all("_idx" not in r for r in asc["records"])

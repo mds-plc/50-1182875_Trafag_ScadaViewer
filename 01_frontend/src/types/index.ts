@@ -45,6 +45,8 @@ export interface DataFilter {
   status?:     'ok' | 'nok'
   /** Filtr kategorií '1'–'6'; prázdné = bez filtru */
   categories?: string[]
+  /** Řazení kusů — 'asc' od nejstaršího (výchozí), 'desc' od nejnovějšího (záznamy pak nesou `_idx`) */
+  order?:      'asc' | 'desc'
 }
 
 /** Zaplnění lokálního úložiště — GET /api/storage */

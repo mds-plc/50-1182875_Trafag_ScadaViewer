@@ -480,6 +480,11 @@
   transition: background 0.15s, color 0.15s;
 }
 .cv-rec-filter__btn:last-child { border-right: 0; }
+.cv-rec-filter__btn--sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .cv-rec-filter__btn:hover { background: var(--color-surface-2); color: var(--color-text-primary); }
 
 .cv-rec-filter__btn--active,

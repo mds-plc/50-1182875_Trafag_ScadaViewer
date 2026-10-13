@@ -1,6 +1,6 @@
 /**
  * @file RecordFilterBar.tsx
- * @description Filtr kusů v detailu zakázky (production): stav OK / NOK a kategorie 1–6.
+ * @description Filtr kusů v detailu zakázky (production): stav OK / NOK, kategorie 1–6 a řazení podle času.
  *
  * Účel: Zúžit tabulku záznamů zakázky — filtruje server (`/api/data?status=&category=`),
  *       takže stránkování i počty sedí na celou zakázku, ne jen na aktuální stránku.
@@ -8,17 +8,20 @@
  * Zodpovědnost:
  *   - Stav: Vše / OK / NOK (jedna volba). Kategorie: Vše nebo libovolná kombinace 1–6.
  *     Obě části se kombinují (AND) — např. OK + kategorie 2 = jen kusy v boxu 2.
+ *   - Řazení: Nejstarší (pořadí výroby) / Nejnovější — řadí server, platí přes všechny stránky;
+ *     není to filtr (nezapne „Zrušit filtr").
  *   - Při aktivním filtru ukazuje „Zobrazeno: X z Y" a tlačítko pro zrušení.
  *   - Tlačítka ≥ 44 px (dotykové ovládání u stroje).
  *
  * Napojení: ChartView (detail zakázky — Production); barvy kategorií z `utils/groupColors.ts`.
  */
 import type { CSSProperties } from 'react'
-import { X } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, X } from 'lucide-react'
 import { useLang } from '../context/LangContext'
 import { categoryColor } from '../utils/groupColors'
 
 export type StatusFilter = 'all' | 'ok' | 'nok'
+export type SortOrder = 'asc' | 'desc'
 
 const CATEGORIES = ['1', '2', '3', '4', '5', '6']
 
@@ -27,13 +30,15 @@ interface Props {
   categories:       string[]
   onStatus:         (s: StatusFilter) => void
   onCategories:     (c: string[]) => void
+  order:            SortOrder
+  onOrder:          (o: SortOrder) => void
   /** Počet kusů po filtru */
   shown:            number
   /** Počet kusů celé zakázky (null = filtr neaktivní / neznámý) */
   totalAll:         number | null
 }
 
-export default function RecordFilterBar({ status, categories, onStatus, onCategories, shown, totalAll }: Props) {
+export default function RecordFilterBar({ status, categories, onStatus, onCategories, order, onOrder, shown, totalAll }: Props) {
   const { t } = useLang()
   const active = status !== 'all' || categories.length > 0
 
@@ -45,9 +50,31 @@ export default function RecordFilterBar({ status, categories, onStatus, onCatego
     { id: 'ok',  label: 'OK' },
     { id: 'nok', label: 'NOK' },
   ]
+  const orderOptions: { id: SortOrder; label: string; Icon: typeof X }[] = [
+    { id: 'asc',  label: t.chart.sortOldest, Icon: ArrowUpNarrowWide },
+    { id: 'desc', label: t.chart.sortNewest, Icon: ArrowDownWideNarrow },
+  ]
 
   return (
     <div className="cv-rec-filter" role="group" aria-label={t.chart.filterStatus}>
+      <div className="cv-rec-filter__group">
+        <span className="cv-rec-filter__label">{t.chart.sortOrder}</span>
+        <div className="cv-rec-filter__seg">
+          {orderOptions.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={order === id}
+              className={`cv-rec-filter__btn cv-rec-filter__btn--sort${order === id ? ' cv-rec-filter__btn--active' : ''}`}
+              onClick={() => onOrder(id)}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="cv-rec-filter__group">
         <span className="cv-rec-filter__label">{t.chart.filterStatus}</span>
         <div className="cv-rec-filter__seg">

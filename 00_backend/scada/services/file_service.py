@@ -338,17 +338,18 @@ class FileService:
         categories: frozenset[str] | None = None,
         status:     str | None = None,
         stats:      dict[str, int] | None = None,
+        order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """Načte záznamy z daného souboru — deleguje na repozitář.
         Vrátí (records, total, group_counts, file_expected_count).
-        categories / status / stats — filtr detailu zakázky, viz CsvRepository.read_records."""
+        categories / status / stats / order — filtr a řazení detailu zakázky, viz CsvRepository.read_records."""
         path = self._read_path(file_id, location, file_type)
         if path is None or not path.exists():
             log.warning("[SVC]   soubor nenalezen: %s (%s/%s)", file_id, location, file_type)
             return [], 0, {}, None
         records, total, group_counts, file_expected_count = self._repo.read_records(
             path, from_date, to_date, page=page, per_page=per_page,
-            categories=categories, status=status, stats=stats,
+            categories=categories, status=status, stats=stats, order=order,
         )
         log.debug("[SVC]   read_records %s → %d/%d záznamů (str. %d)", file_id, len(records), total, page)
         return records, total, group_counts, file_expected_count

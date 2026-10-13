@@ -88,6 +88,7 @@ class DataReader(Protocol):
         categories: frozenset[str] | None = None,
         status:     str | None = None,
         stats:      dict[str, int] | None = None,
+        order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]: ...
 
     def export_xlsx(

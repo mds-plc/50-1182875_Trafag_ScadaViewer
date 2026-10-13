@@ -230,6 +230,53 @@ def _sectioned_pairs(f, separator: str) -> list[tuple[str, str]]:
     return pairs
 
 
+# Blokový PROD_ soubor (DatabaseGateway 2.3.0+): [Metadata], [TestingParameters], [SortingCategories],
+# [SortingLimits], [Data]. Sekční TEST soubor začíná také [Metadata] / [TestingParameters] — rozliší je
+# první blok, který má jen jeden z nich.
+_PROD_ONLY_BLOCKS = frozenset({'data', 'sortingcategories', 'sortinglimits'})
+_TEST_ONLY_BLOCKS = frozenset({'analyzedparameters', 'nokinfo', 'measuredinfo', 'signaldata'})
+# Šarže v [Metadata] (Supplier_Order-LOT#1..n) = seznam za celou zakázku bez vazby na kus →
+# do záznamů ani do exportu se nevkládá (kompatibilní čtení; zobrazení šarží je samostatný krok).
+_LOT_PREFIX = 'supplier_order-lot'
+
+
+def _prod_blocks_metadata(f, separator: str) -> tuple[list[str], list[str]] | None:
+    """Blokový PROD_ soubor: přečte bloky před [Data] a vrátí (hlavička, hodnoty) bloku [Metadata].
+
+    f stojí na začátku souboru; po návratu stojí za řádkem ``[Data]`` — další neprázdný řádek je
+    datová hlavička (stejně jako u dvoudílného formátu). [TestingParameters], [SortingCategories]
+    a [SortingLimits] se zatím přeskakují. None = není blokový production soubor (sekční TEST
+    nebo chybí [Data]) — volající vrátí f na začátek.
+    """
+    section: str | None = None
+    meta_header: list[str] = []
+    meta_vals:   list[str] = []
+    rows = 0
+    while True:
+        raw = f.readline()
+        if not raw:
+            return None
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            section = line[1:-1].strip().lower()
+            if section == 'data':
+                keep = [i for i, h in enumerate(meta_header) if not h.lower().startswith(_LOT_PREFIX)]
+                return ([meta_header[i] for i in keep],
+                        [meta_vals[i] if i < len(meta_vals) else '' for i in keep])
+            if section in _TEST_ONLY_BLOCKS:
+                return None
+            rows = 0
+            continue
+        if section == 'metadata':
+            if rows == 0:
+                meta_header = [c.strip() for c in line.split(separator)]
+            elif rows == 1:
+                meta_vals = [v.strip() for v in line.split(separator)]
+            rows += 1
+
+
 class FileMeta(Mapping):
     """Metadata jednoho souboru v přehledu — neměnná, kompaktní (__slots__), čte se jako dict.
 
@@ -857,21 +904,35 @@ class CsvRepository:
         Čistá I/O operace: otevři soubor → přečti → zavři.
         O(1) paměť (nepočítá záznamy do listu).
 
-        Podporuje dva formáty:
+        Podporuje formáty:
           Starý (jednodílný): Timestamp;Order;Microswitch_ID;...  → data od řádku 1
-          Nový (dvoudílný):   metadata sekce (řádky 1–3) + data sekce (řádek 4+)
+          Dvoudílný (≤ 2.2.0): metadata sekce (řádky 1–3) + data sekce (řádek 4+)
             Řádek 1: Order;Microswitch_ID;Microswitch_Name
             Řádek 2: {hodnoty}
             Řádek 3: (prázdný)
             Řádek 4: Timestamp;OF_OperatingForce;...  ← data header
+          Blokový (Gateway 2.3.0+): [Metadata] … [Data] — switch_name = Microswitch_ID (SAP číslo,
+            stejně jako v názvu souboru), viz _prod_blocks_metadata
+          Sekční TEST: [Metadata] + [AnalyzedParameters] + …
         """
         with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
             line1 = f.readline().strip()
             first_col = line1.split(self._cfg.csv_separator)[0].strip()
 
+            blocks = None
             if line1.startswith('['):
-                # Sekční formát (TEST) — [Metadata] + [AnalyzedParameters] + …
                 f.seek(0)
+                blocks = _prod_blocks_metadata(f, self._cfg.csv_separator)
+                if blocks is None:
+                    f.seek(0)
+
+            if blocks is not None:
+                # Blokový production soubor — f stojí na datové hlavičce
+                meta_row    = dict(zip(*blocks))
+                order_id    = meta_row.get('Order')
+                switch_name = meta_row.get('Microswitch_ID') or meta_row.get('Microswitch_Name', '')
+            elif line1.startswith('['):
+                # Sekční formát (TEST) — [Metadata] + [AnalyzedParameters] + …
                 sections = _parse_sectioned(f, self._cfg.csv_separator)
                 md = sections.get('metadata', {})
                 meta: dict = {
@@ -888,7 +949,7 @@ class CsvRepository:
                     meta['sync_status'] = sync_status
                 return meta
 
-            if first_col.lower() == 'timestamp':
+            elif first_col.lower() == 'timestamp':
                 # Starý jednodílný formát — první řádek je datový header
                 f.seek(0)
                 order_id    = None
@@ -951,6 +1012,7 @@ class CsvRepository:
         categories: frozenset[str] | None = None,
         status:     str | None = None,
         stats:      dict[str, int] | None = None,
+        order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
         Přečte záznamy z CSV souboru.
@@ -961,6 +1023,11 @@ class CsvRepository:
         timeline a expected_count dál pro celý soubor. Při aktivním filtru nese každý záznam
         `_idx` = pořadí v nefiltrovaném souboru (odkaz na detail záznamu `?record=N`).
         stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií.
+
+        order: 'asc' = od nejstaršího (pořadí výroby), 'desc' = od nejnovějšího. Řadí se podle
+        pořadí v souboru, ne podle textu času — Gateway zapisuje kusy tak, jak vznikají, a při
+        posunu hodin (konec letního času) by řazení podle času pořadí výroby rozházelo.
+        Při 'desc' nese každý záznam `_idx` (stránka už neodpovídá pořadí v zakázce).
 
         timeline: je-li předán seznam, doplní se do něj (timestamp, kategorie) KAŽDÉHO záznamu
         celého souboru (po filtru) — časový průběh zakázky bez přenášení všech parametrů.
@@ -988,7 +1055,7 @@ class CsvRepository:
             return [], 0, {}, None
 
         records: list[dict] = []
-        total = total_all = 0
+        total = 0
         group_counts: dict[str, int] = {}
         file_expected_count: int | None = None
         ec_const = ix.meta_inject.get('expected_count', '') if ix.ec is None else ''
@@ -996,9 +1063,12 @@ class CsvRepository:
         to_o     = to_day.toordinal()   if to_day   else None
         offset   = (page - 1) * per_page if per_page > 0 else 0
         filtering = bool(categories) or status in ('ok', 'nok')
+        descending = order == 'desc'
         picked: list[tuple[int, int]] = []                   # (řádek v indexu, pořadí v zakázce)
 
+        # 1) filtr data + souhrny za celý soubor — vždy v pořadí výroby (timeline, expected_count)
         days, grps = ix.days, ix.grp
+        rows: list[int] = []                                 # řádky v indexu po filtru data
         for i in range(len(ix.lines)):
             d = days[i]
             if d >= 0:                                       # neparsovatelný čas projde filtrem
@@ -1007,8 +1077,7 @@ class CsvRepository:
                 if to_o is not None and d > to_o:
                     continue
             grp = grps[i]
-            idx = total_all
-            total_all += 1
+            rows.append(i)
             if grp:
                 group_counts[grp] = group_counts.get(grp, 0) + 1
             if timeline is not None:
@@ -1020,7 +1089,12 @@ class CsvRepository:
                         file_expected_count = int(ec)
                     except (ValueError, TypeError):
                         pass
-            if filtering and not _record_matches({'status': ix.status[i]}, grp, categories, status):
+        total_all = len(rows)
+
+        # 2) filtr kusů + stránka v požadovaném pořadí (idx = pořadí v zakázce)
+        for idx in (range(total_all - 1, -1, -1) if descending else range(total_all)):
+            i = rows[idx]
+            if filtering and not _record_matches({'status': ix.status[i]}, grps[i], categories, status):
                 continue
             total += 1
             if per_page == 0 or offset < total <= offset + per_page:
@@ -1038,7 +1112,7 @@ class CsvRepository:
             for mk, mv in ix.meta_inject.items():
                 if mk not in rec:
                     rec[mk] = mv
-            if filtering:
+            if filtering or descending:
                 rec['_idx'] = str(idx)
             records.append(rec)
         if stats is not None:
@@ -1095,12 +1169,16 @@ class CsvRepository:
         sep = self._cfg.csv_separator
         with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
             line1 = f.readline().strip()
-            if line1.startswith('['):
-                return None
             first_col = line1.split(sep)[0].strip()
             meta_header: list[str] = []
             meta_vals:   list[str] = []
-            if first_col.lower() == 'timestamp':
+            if line1.startswith('['):
+                f.seek(0)                                    # blokový formát (Gateway 2.3.0+)
+                blocks = _prod_blocks_metadata(f, sep)
+                if blocks is None:
+                    return None                              # sekční TEST — neindexuje se
+                meta_header, meta_vals = blocks
+            elif first_col.lower() == 'timestamp':
                 f.seek(0)                                    # starý jednodílný formát
             else:
                 meta_header = [c.strip() for c in line1.split(sep)]

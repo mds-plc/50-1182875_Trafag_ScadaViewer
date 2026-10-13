@@ -74,6 +74,10 @@ class _FakePlc:
             return False
         return 0
 
+    def read_list_by_name(self, names: list[str], **_kw) -> dict:
+        """Op1 (Gateway 2.3.0+): Recipe + TestingParameters + SortingParameters jedním SumRead."""
+        return {n: (False if n.endswith(".Active") else 1) for n in names}
+
 
 @pytest.fixture(scope="module")
 def ecosystem(tmp_path_factory):
@@ -97,11 +101,15 @@ def ecosystem(tmp_path_factory):
     gw_cfg = GwConfig()
     gw_cfg.storage.local_base_dir = str(out)
     fm, reader = FileManager(gw_cfg), AdsReader(gw_cfg)
-    plc = _FakePlc(ct, {"Production.Order": "ECO1", "Production.Microswitch_Name": "Marquardt",
+    plc = _FakePlc(ct, {"Production.Order": "ECO1", "Production.Microswitch_ID": "E01389-C",
+                        "Production.Microswitch_Name": "Marquardt",
+                        "Production.SupplierOrder": "185974-598477",
                         "Testing.Microswitch_Name": "Marquardt"})
 
+    # Op1 (blokový PROD_ soubor, Gateway 2.3.0+) → Op2 → Op3
+    order_id, ms_id, ms_name, meta = reader.read_production_metadata(plc)
+    assert fm.create_order(order_id, ms_id, ms_name, meta)
     prod_rec = reader.read_production(plc)
-    assert fm.create_order(prod_rec.order_id, prod_rec.microswitch_name, 1)
     assert fm.append_production_record(prod_rec.order_id, prod_rec)
     prod_path = fm.close_order(prod_rec.order_id)
 
@@ -164,6 +172,21 @@ def test_production_values_customer_units(ecosystem, client) -> None:
         expect = 9999.9 if mohm > 999.9 else round(mohm, 1)
         assert float(rec[key]) == pytest.approx(expect, abs=0.06)
     assert float(rec["ut_unstabletime"]) == pytest.approx(round(p.Times.UT_UnstableTime), abs=1e-3)
+
+
+def test_production_block_format(ecosystem, client) -> None:
+    """Gateway 2.3.0+: PROD_ soubor v blocích [Metadata] … [Data], SAP číslo v názvu → ScadaViewer ho čte."""
+    prod = ecosystem["prod"]
+    assert prod.name.startswith("PROD_ECO1_E01389-C_")
+    assert prod.read_text(encoding="utf-8-sig").startswith("[Metadata]")
+    files = client.get("/api/files", params={"location": "local", "type": "production", "per_page": 50}).json()
+    item = next(f for f in files["files"] if f["file_id"] == prod.name)
+    assert item["order_id"] == "ECO1" and item["switch_name"] == "E01389-C"
+    body = client.get("/api/data", params={"file": prod.name, "location": "local", "type": "production"}).json()
+    assert body["total"] == 1
+    rec = body["records"][0]
+    assert rec["order"] == "ECO1" and rec["microswitch_id"] == "E01389-C" and rec["microswitch_name"] == "Marquardt"
+    assert not any(k.startswith("supplier_order") for k in rec)       # šarže = seznam za zakázku, ne kus
 
 
 def test_testing_signal_key_points_match_table(ecosystem, client) -> None:

@@ -18,7 +18,8 @@ Rozhraní:
                                 has_signal, total_all — počet bez filtru status/category)
   GET /api/timeline → TimelineResponse (timestamps[], categories[]) — časový průběh zakázky
   Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše),
-             status (ok | nok), category (např. "1,3") — filtr detailu zakázky
+             status (ok | nok), category (např. "1,3") — filtr detailu zakázky,
+             order (asc | desc) — řazení kusů od nejstaršího / nejnovějšího
   Vyžaduje autentizaci: Depends(require_auth)
 
 Napojení:
@@ -84,6 +85,7 @@ async def get_data(
     per_page:  int        = Query(200, ge=0, le=5000,  description="Počet záznamů na stránku; 0 = vše"),
     status:    str | None = Query(None, pattern="^(ok|nok)$", description="Filtr stavu: ok (kategorie 1–4) | nok (5–6)"),
     category:  str | None = Query(None, max_length=20,       description="Filtr kategorií, čárkami: např. 1,3,5"),
+    order:     str        = Query('asc', pattern="^(asc|desc)$", description="Řazení kusů: asc = od nejstaršího, desc = od nejnovějšího"),
 ) -> DataResponse:
     """
     Vrátí záznamy z CSV souboru s volitelným filtrováním a stránkováním.
@@ -102,6 +104,7 @@ async def get_data(
         per_page: Počet záznamů na stránku; 0 = vrátit vše najednou.
         status: Filtr stavu 'ok' / 'nok'. total a stránkování pak platí pro vyfiltrované záznamy.
         category: Filtr kategorií 1–6 (čárkami). group_counts zůstávají za celý soubor.
+        order: 'asc' (pořadí výroby) / 'desc' (od nejnovějšího); při 'desc' nesou záznamy `_idx`.
 
     Returns:
         DataResponse — záznamy, total, stránkování a volitelné skupinové statistiky.
@@ -145,7 +148,7 @@ async def get_data(
                 file_id=file, location=location, file_type=file_type,
                 from_date=from_date, to_date=to_date,
                 page=page, per_page=effective_per_page,
-                categories=categories, status=status, stats=stats,
+                categories=categories, status=status, stats=stats, order=order,
             ),
             timeout=timeout,
         )

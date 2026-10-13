@@ -107,6 +107,10 @@ export interface Translations {
     filterShown: string
     filterClear: string
     filterEmpty: string
+    sortOrder: string
+    sortOldest: string
+    sortNewest: string
+    printNewestFirst: string
     printRange: string
     printFilter: string
     tlStart: string
