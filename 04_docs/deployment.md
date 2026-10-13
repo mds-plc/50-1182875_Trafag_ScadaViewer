@@ -34,13 +34,38 @@
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
-> **Nasazení 2.1.2 (jednotky zákazníka, 2026-10-11):** nasadit **současně** s Analyzing ≥ `6dd2b6b`
-> (zápis mN / mΩ / polohy C − x do PLC) a DatabaseGateway z 2026-10-11 (hlavičky `[mN]`, `[mOhm]`).
-> Samotný ScadaViewer 2.1.2 zobrazí správně i starší soubory; nová Gateway bez nového Analyzing by ale
+> **Nasazení 2.2.0 (jednotky zákazníka):** nasadit **současně** s Analyzing 2.2.0
+> (zápis mN / mΩ / polohy C − x do PLC) a DatabaseGateway 2.2.0 (hlavičky `[mN]`, `[mOhm]`) — viz „Release 2.2.0“ níže.
+> Samotný ScadaViewer 2.2.0 zobrazí správně i starší soubory; nová Gateway bez nového Analyzing by ale
 > do CSV zapsala hodnoty v N pod hlavičkou `[mN]`. **Před upgradem uzavřít rozpracované zakázky** (prázdné
 > `production/wip/`) — Gateway jinak do zakázky se starou hlavičkou další kusy odmítne (Op2 Rejected, ERROR v logu).
 > Po nasazení otevřít jeden nový záznam a ověřit,
 > že síla je v mN (stovky až tisíce), odpor v mΩ a polohy kolem 7 000–9 300 µm.
+
+---
+
+## Release 2.2.0 (2026-10-13) — společné vydání všech tří aplikací
+
+**Analyzing 2.2.0 + DatabaseGateway 2.2.0 + ScadaViewer 2.2.0 se nasazují SPOLEČNĚ** (nekompatibilní změna
+jednotek mezi PLC a CSV). Kombinace s verzemi ≤ 2.1.x není podporovaná.
+
+| Aplikace | Hlavní změny |
+|---|---|
+| Analyzing | odpory = medián v okně 3 µm u přepnutí; polohy v souřadnicích zákazníka P = C − x (C = `position_reference_um`, provizorně 9500 µm — **kalibrovat**); zápis do PLC v mN / µm 0,1 / mΩ 0,1 (rozepnuto 9999,9) / µs; NaN do PLC bez pádu |
+| DatabaseGateway | CSV v jednotkách zákazníka (`[mN]`, `[mOhm]`, NaN = prázdné pole); WIP se starou hlavičkou odmítá další kusy; přesuny souborů bez kopií (`os.replace` + opakování), „odesláno“ až po přesunu; TEST soubor se objeví až kompletní (`.tmp`); STRING z PLC v cp1250 |
+| ScadaViewer | jednotky z hlavičky CSV (starší soubory převede), polohy zákazníka i v grafech; nejhlubší audit (zámek souborů, ADS úklid, CORS, …); výpadek NAS při výpisu, NAS pool, offline banner při zaseknutém serveru, klik během načítání, konec letního času v časovém průběhu; `Meas_TS` označen jako čas PLC (hodiny PLC nejsou synchronizované) |
+
+**Postup upgradu:**
+1. Uzavřít rozpracované zakázky (prázdné `production/wip/`) a počkat na synchronizaci na NAS.
+2. Zastavit služby (`nssm stop` ScadaViewer, DatabaseGateway, AdsAnalyzer), vyměnit celé složky aplikací,
+   `Config.toml` / `users.toml` ponechat.
+3. Spustit Analyzing → DatabaseGateway → ScadaViewer; v `/api/health` zkontrolovat verzi 2.2.0.
+4. Otevřít jeden nový záznam: síla v mN (stovky až tisíce), odpor v mΩ (rozepnuto ∞), polohy 7 000–9 300 µm.
+5. Přejímací test `ScadaViewer/04_docs/acceptance_test.md` (vč. 3.12–3.16) a kalibrace C.
+
+**Známá omezení:** hodiny PLC nesynchronizované (`Meas_TS`); časové značky CSV jsou místní čas bez zóny
+(konec letního času ošetřen v časovém průběhu ScadaViewer); kódování STRING (cp1250) ověřit na PLC;
+W5/W6 zapisují 0 místo kódu varování.
 
 ---
 

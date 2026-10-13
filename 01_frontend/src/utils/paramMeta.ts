@@ -189,7 +189,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   limits_forcemax:             'Force Limit Max [mN]',
   // Measured info
   measuretime:                 'Measurement Duration [s]',
-  meas_ts:                     'Measurement Timestamp [unix s]',
+  meas_ts:                     'Measurement Timestamp — PLC clock [unix s]',
 }
 
 // ── Formátování hodnot — jediný zdroj pro všechny pohledy ────────────────────
@@ -394,7 +394,7 @@ export const PARAM_DESC: Record<string, string> = {
   measuretime:
     'Celková doba měření [s] — délka záznamu signálu (dopředný i zpětný chod).',
   meas_ts:
-    'Čas měření zapsaný PLC (unixový čas) — zobrazen jako datum a čas.',
+    'Čas měření podle hodin PLC (unixový čas) — zobrazen jako datum a čas. Hodiny PLC zatím nejsou synchronizované, čas se může lišit o hodiny až dny; spolehlivý čas testu je v záhlaví (čas uložení z PC).',
 }
 
 /** Anglický popis parametru — stejné klíče jako PARAM_DESC (nápověda „?" v režimu EN). */
@@ -474,7 +474,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   measuretime:
     'Total measurement time [s] — length of the signal record (forward and return stroke).',
   meas_ts:
-    'Measurement time written by the PLC (Unix time) — shown as date and time.',
+    'Measurement time from the PLC clock (Unix time) — shown as date and time. The PLC clock is not synchronised yet and may differ by hours or days; the reliable test time is in the header (saved by the PC).',
 }
 
 /** Nápověda parametru v jazyce UI; chybí-li anglická verze, vrátí českou. */

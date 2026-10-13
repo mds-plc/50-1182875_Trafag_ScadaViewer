@@ -36,7 +36,7 @@
 
 ## Co zbývá před předáním Trafag
 
-- [ ] **Nasazení 2.1.2 (jednotky zákazníka)** současně s Analyzing ≥ 6dd2b6b a DatabaseGateway 2026-10-11;
+- [ ] **Nasazení 2.2.0 (jednotky zákazníka)** současně s Analyzing 2.2.0 a DatabaseGateway 2.2.0 (release 2026-10-13);
       před upgradem uzavřít rozpracované zakázky (Gateway jinak Op2 do staré zakázky odmítne) — `deployment.md`
 - [ ] **Kalibrace C** (`position_reference_um`, provizorně 9500 µm) kalibrační měrkou — Analyzing `position_calibration.md`
 - [ ] **PLC:** meze poloh FP/OP/RP/TTP na stupnici zákazníka, komentáře DUT a HMI v mN / mΩ; sloupec s kódem
