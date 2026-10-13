@@ -44,6 +44,20 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.3.0 (2026-10-13) — blokový PROD_ soubor, SAP číslo, řazení kusů
+
+**DatabaseGateway 2.3.0 + nový PLC program (DUT `ST_APP_Dataset_Production`) + ScadaViewer 2.3.0 se nasazují
+SPOLEČNĚ.** Analyzing zůstává 2.2.0 (balíček ho obsahuje kvůli PC, kde 2.2.0 ještě není).
+
+| Aplikace | Hlavní změny |
+|---|---|
+| DatabaseGateway | PROD_ soubor v blocích `[Metadata]` (+ Recipe, šarže), `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]`, `[Data]`; název `PROD_{zakázka}_{SAP číslo}_…`; Gateway 2.3.0 se starým PLC = „symbol not found" |
+| ScadaViewer | čte blokový soubor (2.2.0 by ho ukázal jako 1 kus bez dat); přehled = SAP číslo; řazení kusů Nejstarší / Nejnovější |
+
+**Postup:** nasazovací skript (níže) s balíčkem `deploy_v2.3.0` — kontroluje i potvrzení, že na PLC běží nový
+program. Rozpracované zakázky ze 2.2.0 Gateway dočte (soubor zůstane ve starém formátu). Po nasazení: nová
+zakázka → v Databázi SAP číslo, v detailu všechny kusy.
+
 ## Release 2.2.0 (2026-10-13) — společné vydání všech tří aplikací
 
 **Analyzing 2.2.0 + DatabaseGateway 2.2.0 + ScadaViewer 2.2.0 se nasazují SPOLEČNĚ** (nekompatibilní změna
@@ -55,7 +69,7 @@ jednotek mezi PLC a CSV). Kombinace s verzemi ≤ 2.1.x není podporovaná.
 | DatabaseGateway | CSV v jednotkách zákazníka (`[mN]`, `[mOhm]`, NaN = prázdné pole); WIP se starou hlavičkou odmítá další kusy; přesuny souborů bez kopií (`os.replace` + opakování), „odesláno“ až po přesunu; TEST soubor se objeví až kompletní (`.tmp`); STRING z PLC v cp1250 |
 | ScadaViewer | jednotky z hlavičky CSV (starší soubory převede), polohy zákazníka i v grafech; nejhlubší audit (zámek souborů, ADS úklid, CORS, …); výpadek NAS při výpisu, NAS pool, offline banner při zaseknutém serveru, klik během načítání, konec letního času v časovém průběhu; `Meas_TS` označen jako čas PLC (hodiny PLC nejsou synchronizované) |
 
-**Postup upgradu:**
+**Postup upgradu** (automaticky jedním spuštěním — viz „Nasazovací skript" níže, doporučeno):
 1. Uzavřít rozpracované zakázky (prázdné `production/wip/`) a počkat na synchronizaci na NAS.
 2. Zastavit služby (`nssm stop` ScadaViewer, DatabaseGateway, AdsAnalyzer), vyměnit celé složky aplikací,
    `Config.toml` / `users.toml` ponechat.
@@ -66,6 +80,28 @@ jednotek mezi PLC a CSV). Kombinace s verzemi ≤ 2.1.x není podporovaná.
 **Známá omezení:** hodiny PLC nesynchronizované (`Meas_TS`); časové značky CSV jsou místní čas bez zóny
 (konec letního času ošetřen v časovém průběhu ScadaViewer); kódování STRING (cp1250) ověřit na PLC;
 W5/W6 zapisují 0 místo kódu varování.
+
+> ⚠️ **Analyzing 2.2.0 potřebuje v `Config.toml` nový klíč** `[measurement] position_reference_um` (> 0,
+> provizorně `9500.0` — kalibrovat). Starý produkční `Config.toml` ho nemá → výchozí 0 = polohy na stupnici
+> enkodéru. Nasazovací skript to kontroluje a bez klíče nic nezmění.
+
+### Nasazovací skript (`06_build/deploy/`)
+
+Upgrade všech tří aplikací jedním spuštěním (vytvoření balíčku: `06_build/deploy/README.md`).
+
+1. Složku balíčku (`deploy.ps1`, `deploy.bat`, `rollback.bat` + `Analyzing_v<verze>.zip`,
+   `DatabaseGateway_v<verze>.zip`, `ScadaViewer_v<verze>.zip`) zkopírovat na PC u stroje
+   (vzdálená plocha: Ctrl+C / Ctrl+V).
+2. Spustit **`deploy.bat`** (vyžádá si práva správce). Skript:
+   - najde složky aplikací podle NSSM služeb `AdsAnalyzer` / `DatabaseGateway` / `ScadaViewer`,
+   - **před změnou** zkontroluje `Config.toml` všech tří, `position_reference_um` v Analyzing, prázdné
+     `production/wip` (jinak se zeptá) a upozorní na `done_local`,
+   - po potvrzení zastaví služby, starý exe + `_internal\` přesune do `<složka>.backup_<čas>\`,
+     nahraje novou verzi — `Config.toml`, `users.toml`, `03_output\`, `nssm.exe` a `.bat` **ponechá**
+     (ZIPy Gateway / Analyzing obsahují vlastní `Config.toml` — ten se nepoužije),
+   - spustí Analyzing → Gateway → ScadaViewer a ověří verzi v `/api/health`; log `deploy_<čas>.log`.
+3. Problém → **`rollback.bat`** vrátí exe + `_internal\` z poslední zálohy `*.backup_*`.
+4. Po ověření (přejímací test) zálohy `*.backup_*` smazat.
 
 ---
 
@@ -519,6 +555,42 @@ netsh advfirewall firewall show rule name="ScadaViewer (firemni sit)"
 
 > Bez parametru `remoteip` by byl port otevřený ze všech sítí včetně sítě stroje
 > (přihlašovací obrazovka dosažitelná z notebooku připojeného ke stroji).
+
+### Přístup jen z konkrétních PC
+
+Když má stránku z kanceláře otevírat jen několik počítačů (např. notebook servisního technika), povolit
+port 8080 jen z jejich IP. Windows při prvním spuštění `scada_viewer.exe` často samo vytvoří povolující
+pravidlo pro program (dialog firewallu) — to by omezení obešlo, proto se vypne.
+
+```powershell
+# PowerShell jako správce na PC u stroje
+$myIPs = "10.40.84.23", "192.168.1.249"     # povolená PC (firemní síť, síť stroje)
+
+$byPort = Get-NetFirewallPortFilter -Protocol TCP | Where-Object { $_.LocalPort -contains '8080' } | Get-NetFirewallRule
+$byApp  = Get-NetFirewallApplicationFilter | Where-Object Program -like '*scada_viewer.exe' | Get-NetFirewallRule
+$old = @($byPort) + @($byApp) | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' -and $_.DisplayName -ne 'ScadaViewer (jen muj PC)' } | Sort-Object Name -Unique
+$old | Format-Table DisplayName, Enabled, Profile -AutoSize    # tato pravidla se vypnou (nesmažou)
+$old | Disable-NetFirewallRule
+
+Remove-NetFirewallRule -DisplayName 'ScadaViewer (jen muj PC)' -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName 'ScadaViewer (jen muj PC)' -Direction Inbound -Action Allow `
+  -Protocol TCP -LocalPort 8080 -RemoteAddress $myIPs -Profile Any | Out-Null
+Get-NetFirewallRule -DisplayName 'ScadaViewer (jen muj PC)' | Get-NetFirewallAddressFilter | Select RemoteAddress
+```
+
+- Změna seznamu = upravit `$myIPs` a spustit znovu (pravidlo se nahradí). Zrušení:
+  `Remove-NetFirewallRule -DisplayName 'ScadaViewer (jen muj PC)'` + znovu zapnout vypnutá pravidla.
+- Firewall pozná PC **jen podle IP** → povolená PC potřebují **statickou IP nebo rezervaci v DHCP** (IT).
+  Podle jména to nejde (pravidla firewallu jméno neznají; notebook z cizí domény není v DNS Trafagu).
+- `local_clients` v `Config.toml` se k tomu **nepoužívá** — dává plná práva a PLC auto-login.
+- Aplikace dál vyžaduje přihlášení a vzdáleně povolí jen prohlížení (IP lze podvrhnout v síti stroje).
+
+**Test bez firemní sítě** — notebook přímým kabelem do druhé síťovky PC u stroje, obě strany pevná IP
+ve stejné podsíti (např. PC `10.40.84.10/24` dočasně přes `New-NetIPAddress`, notebook `10.40.84.23/24`,
+bez brány a DNS); vše na PC nastavit předem přes vzdálenou plochu (notebook má často jediný ethernet).
+Ověřit: `http://10.40.84.10:8080` = přihlášení „Vzdálený přístup"; s jinou IP notebooku se neotevře.
+Po testu na PC: `Remove-NetIPAddress -InterfaceAlias "<karta>" -IPAddress 10.40.84.10 -Confirm:$false`
+a `Set-NetIPInterface -InterfaceAlias "<karta>" -Dhcp Enabled`.
 
 S HTTPS přes reverzní proxy (viz níže) místo 8080 povolit 443.
 

@@ -1044,6 +1044,47 @@ Opravy z hodnocení připravenosti ekosystému; každá s testem, který na pův
 **Stav testů po fázi 43:** Backend **351/351**, Frontend **130/130** (19 souborů), DatabaseGateway 79,
 Analyzing 69, `test_ecosystem_units.py` 4 (atrapa PLC vrací STRING jako bajty jako pyads 3.5); lint 0, `tsc` 0.
 
+### Fáze 44 — Řazení kusů v detailu zakázky + nasazovací skript (2026-10-13)
+
+- **Řazení kusů** (detail zakázky, production): skupina **Řazení** jako první zleva v `RecordFilterBar`
+  — ↑ Nejstarší (výchozí) / ↓ Nejnovější. Řadí **server** přes celou zakázku: `GET /api/data?order=asc|desc`
+  (validace regex, jinak 422), kombinuje se s filtrem stavu / kategorie; přepnutí = stránka 1.
+- Řadí se podle **pořadí v souboru** (= pořadí výroby, Gateway zapisuje kusy chronologicky), ne podle
+  textu času — konec letního času (fáze 43) by řazení podle času pořadí rozházel.
+- `csv_repository.read_records`: 1. průchod = filtr data + souhrny (`group_counts`, timeline,
+  `expected_count`) vždy v pořadí výroby; 2. průchod = filtr kusů + stránka v požadovaném pořadí.
+  Při `desc` nese každý záznam `_idx` (pořadí v zakázce) i bez filtru → klik na kus / číslo `#` v tisku sedí.
+- Řazení není filtr: „Zrušit filtr" ho nevrací, jiná zakázka = zpět na Nejstarší. Tisk při `desc`
+  doplní poznámku „Řazeno od nejnovějšího kusu."
+- **Nasazovací skript** `06_build/deploy/` (`deploy.bat` / `deploy.ps1` / `rollback.bat`) — upgrade všech
+  tří aplikací najednou na PC u stroje, viz `deployment.md` → „Nasazovací skript".
+
+**Stav testů po fázi 44:** Backend **355/355**, Frontend **131/131** (19 souborů); lint 0, `tsc` 0, build OK.
+
+### Fáze 45 — Blokový PROD_ soubor z DatabaseGateway 2.3.0 (2026-10-13, verze 2.3.0)
+
+Gateway 2.3.0 (s novým PLC DUT `ST_APP_Dataset_Production`) zapisuje production soubor v blocích
+`[Metadata]`, `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]`, `[Data]` a v názvu
+`PROD_{zakázka}_{Microswitch_ID}_…` nese SAP číslo místo názvu spínače. ScadaViewer ≤ 2.2.0 by soubor
+(začíná `[`) bral jako sekční TEST → „1 kus bez dat".
+
+- **Kompatibilní čtení** (rozhodnutí uživatele: nejdřív jen kompatibilita, nové údaje později):
+  `csv_repository._prod_blocks_metadata()` projde bloky před `[Data]`, vrátí hlavičku a hodnoty `[Metadata]`
+  a nechá soubor na datové hlavičce — dál stejná cesta jako dvoudílný formát (`_build_index`, `read_file_meta`).
+  Production vs. TEST se pozná podle prvního bloku, který má jen jeden z nich (`[Data]` / `[Sorting*]` vs.
+  `[AnalyzedParameters]` / `[NokInfo]` / `[MeasuredInfo]` / `[SignalData]`) — TEST se nečte do konce.
+- Metadata Order, Recipe, Microswitch_ID, Microswitch_Name se vkládají do záznamů a jsou první sloupce XLSX
+  (XLSX jen data — rozhodnutí uživatele). **Šarže** `Supplier_Order-LOT#n` ne — jsou seznamem za zakázku
+  bez vazby na kus (vazba kus → šarže: otázka na Trafag). `[TestingParameters]`, `[SortingCategories]`,
+  `[SortingLimits]` se zatím přeskakují.
+- **Přehled Databáze:** sloupec „Typ spínače" = druhé pole názvu souboru — u nových zakázek SAP číslo
+  (rozhodnutí uživatele), u starších název spínače. `read_file_meta` pro blokový soubor vrací `Microswitch_ID`,
+  takže se hodnota po dopočtu nepřepne.
+- Testy: `test_prod_blocks.py` (6), `test_ecosystem_units.py` upraven na rozhraní Gateway 2.3.0 (Op1 =
+  `read_production_metadata` + `create_order(order, id, name, meta)`) + test blokového formátu.
+
+**Stav testů po fázi 45:** Backend **362/362**, Frontend **131/131**; DatabaseGateway 89.
+
 ---
 
 ## Tok dat
@@ -1139,7 +1180,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/files` | GET | Seznam zakázek; `?location=local\|remote&type=production\|testing&page=1&per_page=50` |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` |
-| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=&page=&per_page=` + filtr detailu zakázky `&status=ok\|nok&category=1,3`; `per_page=0` = vše (strop 20 000) |
+| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=&page=&per_page=` + filtr detailu zakázky `&status=ok\|nok&category=1,3` + řazení `&order=asc\|desc` (od nejstaršího / nejnovějšího); `per_page=0` = vše (strop 20 000) |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data `?file=&location=&type=&mode=&buckets=` (overview / results / hysteresis / zoom_op / zoom_rp) |
 | `/api/timeline` | GET | Časový průběh zakázky `?file=&location=&type=` → `{timestamps[], categories[]}` (jen production) |

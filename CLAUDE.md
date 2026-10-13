@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.2.0"
+    ├── __init__.py            ← __version__ = "2.3.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -113,7 +113,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
     │   ├── AppLogo.tsx        ← SVG logo 4 čtverce
     │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[] (ChartView); memo — stabilní props
-    │   ├── RecordFilterBar.tsx ← filtr kusů v detailu zakázky: Stav Vše/OK/NOK + Kategorie Vše/1–6 (filtruje server)
+    │   ├── RecordFilterBar.tsx ← filtr kusů v detailu zakázky: Řazení Nejstarší/Nejnovější + Stav Vše/OK/NOK + Kategorie Vše/1–6 (vše na serveru)
     │   ├── DeleteModal.tsx    ← potvrzovací dialog mazání
     │   ├── ErrorBoundary.tsx  ← class component, getDerivedStateFromError
     │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (skupiny, count tile, akce)
@@ -196,7 +196,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_timeline.py           ← GET /api/timeline (všechny záznamy, řazení, kategorie, 404)
 ├── test_remote_access.py      ← vzdálený přístup: PLC login jen u stroje, zápisy 403, čtení OK, local_clients
 ├── test_signal_threshold.py   ← práh přepnutí U_NC jako Analyzing (klidové + (max − klidové) × 0,5)
-├── test_data_filter.py        ← filtr kusů /api/data?status=&category= (total_all, _idx, stránkování, 422)
+├── test_data_filter.py        ← filtr a řazení kusů /api/data?status=&category=&order= (total_all, _idx, stránkování, 422)
 ├── test_big_order.py          ← velké zakázky a archiv: index v paměti, XLSX, přehled z názvů, dopočet, SQLite cache,
 │                                 NAS výpis v paměti, dopočet jen pro stránku, lokální kopie, limity paměti, tabulka known
 ├── test_audit_20261010.py     ← regrese kompletního auditu K1–K42 (dopočet, WS, ADS STRING, signál po blocích, uživatelé, čištění, logy)
@@ -246,6 +246,7 @@ CLAUDE.md                  ← tento soubor
 │   └── generate-docs.bat      ← pdoc (backend) + TypeDoc (frontend) → 06_build/docs/backend|frontend/ (gitignore)
 ├── manual/                    ← generátor uživatelského manuálu (demo data, Playwright screenshoty, docx, Word → PDF) — README
 ├── loadtest/                  ← zátěžové testy: make_big_orders.py (vzorové velké zakázky → done_remote!), measure_api.py
+├── deploy/                    ← nasazovací skript pro PC u stroje: deploy.bat / deploy.ps1 / rollback.bat (upgrade všech 3 aplikací) — README
 └── pdf/
     └── pdf_metadata.yaml      ← metadata pro pandoc PDF export (skript build_pdf.bat v repozitáři není)
 ```
@@ -410,7 +411,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) — čísla jako čísla, čas jako datum |
 | `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` → 409 |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
-| `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3` → `total_all`, záznamy s `_idx`; `per_page=0` = vše, strop 20 000 |
+| `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3` → `total_all`, záznamy s `_idx` + řazení `&order=asc\|desc` (pořadí výroby / od nejnovějšího, při `desc` vždy `_idx`); `per_page=0` = vše, strop 20 000 |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
 | `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno — kromě konce letního času, pak pořadí výroby; jen production, jinak 404) |
@@ -499,6 +500,11 @@ DatabaseGateway do ní zapisuje, ScadaViewer z ní čte. Cesta konfigurována v 
 separator  = ";"
 encoding   = "utf-8-sig"
 ```
+
+> **Blokový formát (DatabaseGateway 2.3.0+, `PROD_{zakázka}_{SAP číslo}_…`):** `[Metadata]` (Order;Recipe;
+> Microswitch_ID;Microswitch_Name;Supplier_Order-LOT#1..n) · `[TestingParameters]` · `[SortingCategories]` ·
+> `[SortingLimits]` · `[Data]` (sloupce níže). ScadaViewer čte kusy z `[Data]` a metadata (bez šarží) vkládá
+> do záznamů; ostatní bloky zatím přeskakuje (`csv_repository._prod_blocks_metadata`).
 
 | Sloupec | Production | Testing | Lowercase klíč | Poznámka |
 |---------|-----------|---------|---------------|---------|
@@ -790,13 +796,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.2.0** — společný release s Analyzing a DatabaseGateway 2.2.0, 2026-10-13) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.3.0** — s DatabaseGateway 2.3.0 a novým PLC DUT, 2026-10-13; Analyzing zůstává 2.2.0) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **351 testů** (regrese auditu 2026-10-10 `test_audit_20261010.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 19 souborů) — **130 testů**: useData, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **362 testů** (regrese auditu 2026-10-10 `test_audit_20261010.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 19 souborů) — **131 testů**: useData, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -807,6 +813,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Blokový PROD_ soubor z Gateway 2.3.0 (Fáze 45, 2026-10-13) | ✅ | `[Metadata]` … `[Data]`: kusy z `[Data]`, Order/Recipe/Microswitch_ID/Name do záznamů (šarže `Supplier_Order-LOT#n` ne), přehled = SAP číslo z názvu, XLSX jen data; `_prod_blocks_metadata()`; `test_prod_blocks.py` + `test_ecosystem_units.py` — viz audit_log 2026-10-13 |
+| Řazení kusů + nasazovací skript (Fáze 44, 2026-10-13) | ✅ | detail zakázky: Řazení Nejstarší / Nejnovější (první v liště filtru, server `order=asc\|desc`, podle pořadí výroby); `06_build/deploy/` — upgrade všech tří aplikací s kontrolami a zálohou, rollback; firewall „jen konkrétní PC“ v deployment.md — viz audit_log 2026-10-13 |
 | Rizika před nasazením (Fáze 43, 2026-10-11) | ✅ | ScadaViewer: R4 (únik slotů NAS poolu), N2/N5 (výpadek NAS při výpisu → poslední stav / 503), F2 (offline banner při zaseknutém serveru), F4 (klik během načítání stránky), konec letního času v časovém průběhu; Gateway: X2 (přesun bez kopií, `uploaded_at` až po přesunu), K17 (TEST soubor přes `.tmp`), X3 (STRING cp1250) — viz audit_log |
 | Jednotky zákazníka ve všech třech aplikacích (Fáze 42, 2026-10-11) | ✅ | Analyzing → PLC → Gateway `[mN]`/`[mOhm]` → ScadaViewer čte jednotku z hlavičky; polohy zákazníka i v grafech (C = TTP + max x); starší soubory převedeny + poznámka; test napříč aplikacemi `test_ecosystem_units.py`; nasazovat všechny tři najednou |
 | Nejhlubší audit — opravy priorit 1–5 (Fáze 41, 2026-10-11) | ✅ | 81 nálezů (X/Z/N/F/R/C/T/E); opraveno X2 (ScadaViewer), Z1, Z5, N1, R1, R2, R3, R8, C3, F1, E1, E2, T1 — viz audit_log; X1 sladěno ve fázi 42 |
@@ -842,7 +850,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 9. Zpevnění ekosystému (hodnocení 2026-09-26, `project_reviews.md`): společná specifikace formátu CSV
    + verze v souboru + test napříč aplikacemi, časové značky s časovou zónou, stav DatabaseGateway
    ve ScadaViewer, heslo k NAS mimo git
-10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13
+10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13; ~~Release 2.3.0~~ (blokový PROD_ soubor, řazení kusů) — 2026-10-13
 11. Škálování (audit 2026-10-10 S1–S5, `roadmap.md` → 6.): podsložky `Production/RRRR/MM/` na NAS
     (s DatabaseGateway), počet kusů v souboru při uzavření zakázky, retence archivu (Trafag),
     nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje

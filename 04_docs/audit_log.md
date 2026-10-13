@@ -76,6 +76,64 @@
 
 ---
 
+## [2026-10-13] Release 2.3.0 — blokový PROD_ soubor z DatabaseGateway 2.3.0
+
+### Dopad změny formátu (prověřeno před opravou)
+| Místo | ScadaViewer 2.2.0 s novým souborem | 2.3.0 |
+|-------|-----------------------------------|-------|
+| `_build_index` / `read_records` | soubor začínající `[` = TEST → 1 záznam bez dat | kusy z `[Data]`, filtr / řazení / časový průběh |
+| `read_file_meta` | počet 1, čte až do konce (hledá `[SignalData]`) | počet kusů, zakázka, SAP číslo |
+| Přehled „Typ spínače" | z názvu SAP číslo, po dopočtu `Microswitch_Name` (přepínal se) | vždy SAP číslo |
+| XLSX (`read_table`) | 1 řádek | jen data + Order/Recipe/ID/Name |
+| `test_ecosystem_units.py` | 4 chyby (nové rozhraní `create_order`) | 5 passed |
+
+Rozhodnutí uživatele: jen kompatibilita (šarže, testovací parametry, MD skupiny, limity později), XLSX jen data,
+přehled = SAP číslo, vazba kus → šarže = otázka na Trafag. Detail: `architecture.md` → Fáze 45.
+
+Release **2.3.0** = ScadaViewer 2.3.0 + DatabaseGateway 2.3.0 + nový PLC program; Analyzing beze změny (2.2.0).
+Obsahuje i řazení kusů (fáze 44). Testy: backend **362**, frontend **131**, Gateway **89**.
+
+---
+
+## [2026-10-13] Řazení kusů v detailu zakázky, nasazení 2.2.0, přístup jen z konkrétního PC
+
+### Řazení kusů (nová funkce, požadavek uživatele)
+| Co | Řešení |
+|----|--------|
+| Detail zakázky neuměl ukázat nejnovější kusy — u velké zakázky až na poslední stránce | `GET /api/data?order=asc\|desc`; řadí server přes celou zakázku, kombinace s filtrem stavu / kategorie |
+| Řazení podle textu času by na konci letního času promíchalo kusy (fáze 43) | řadí se podle pořadí v souboru (= pořadí výroby) |
+| Při `desc` neodpovídá pozice na stránce pořadí v zakázce → klik by otevřel jiný kus | záznamy nesou `_idx` i bez filtru; frontend ho už používá (`openRecord`, `#` v tisku) |
+| UI | `RecordFilterBar`: skupina „Řazení" (Nejstarší / Nejnovější) jako první zleva; není filtr („Zrušit filtr" ji nevrací); tisk s poznámkou |
+
+Soubory: `api/data.py`, `services/{protocols,file_service}.py`, `repositories/csv_repository.py`,
+`RecordFilterBar.tsx`, `ChartView.tsx`, `useData.ts`, `types/index.ts`, i18n (4 klíče CS/EN), `chart.css`.
+Testy: `test_data_filter.py` +3 testy a +1 případ 422 (desc stránky a `_idx`, desc + filtr, asc výchozí),
+`RecordFilterBar.test.tsx` +1. Backend **355**, frontend **131**; lint, `tsc` 0; build OK.
+
+### Nasazení 2.2.0 na PC u stroje — nasazovací skript
+- `06_build/deploy/deploy.ps1` (+ `deploy.bat`, `rollback.bat`, `README.md`): složky aplikací najde podle
+  NSSM služeb (`AppDirectory`); **před změnou** kontroluje `Config.toml`, `position_reference_um > 0` v Analyzing
+  (bez něj 2.2.0 zapíše polohy na stupnici enkodéru), prázdné `production/wip` a `done_local`; zastaví služby,
+  starý exe + `_internal\` přesune do `<složka>.backup_<čas>\`, `Config.toml` / `users.toml` / `03_output\`
+  / `nssm.exe` / `.bat` ponechá; spustí služby a ověří `/api/health`. Log `deploy_<čas>.log`.
+- První běh na PC u stroje: kontrola zastavila nasazení — produkční `Config.toml` Analyzing neměl
+  `position_reference_um` (nový klíč 2.2.0, výchozí 0 = vypnuto). Doplnit ručně (9500.0, provizorní) a spustit znovu.
+- Zjištěno: aplikace na PC u stroje leží v `C:\Users\admin\Desktop\v2.1.x_…\` (název složky = stará verze,
+  skript je ponechá — služby na ně ukazují). Síťovky: `Ethernet` = síť stroje 192.168.1.5 (vzdálená plocha),
+  `Ethernet 2` / `Ethernet 3` = DHCP bez odpovědi (169.254.x.x) — kterou použít pro firemní síť, ověřit
+  (`Get-NetAdapter`, nesahat na EtherCAT).
+
+### Vzdálený přístup jen z konkrétního PC — rozhodnutí
+- Uživatel chce přístup z kanceláře jen ze svého notebooku. Zvoleno **pravidlo firewallu Windows**
+  s `RemoteAddress` = IP notebooku (+ vypnutí automatických pravidel pro `scada_viewer.exe`), **ne** nastavení
+  v `Config.toml` (`allowed_clients` zvažováno a zamítnuto — stejná závislost na IP, nová verze aplikace).
+- `local_clients` se na to **nepoužívá** (dává plná práva + PLC auto-login).
+- Notebook v doméně `md-solutions.local` → v DNS Trafagu podle jména nedohledatelný → jen IP (statická
+  nebo rezervace v DHCP). PC u stroje na firemní síťovce DHCP → doporučena rezervace / DNS jméno u IT.
+- Postup: `deployment.md` → Firewall → „Přístup jen z konkrétních PC".
+
+---
+
 ## [2026-10-11] Rizika před nasazením — změna času, výpadky NAS, přesuny souborů, kódování PLC
 
 ### Scope
