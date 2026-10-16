@@ -15,7 +15,6 @@
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| E2 | PLC Testing DUT: `NokCategory` v exportu [1..4], Gateway čte [5] — ověřit online v TwinCAT (E1 vyřešeno — Status se u testu nečte) | Gateway `constants.py:82`, PLC | [2026-10-16] |
 | T2 | Jádro AdsMonitor — `_reconnect_loop` (backoff, `clear_symbols`, broadcast) bez testu; úklid, RUN/verze a offline zápis už pokryty | `ads_monitor.py` | [2026-10-10 nejhlubší] |
 | X3 | Kódování STRING z PLC: obě aplikace cp1250 (Gateway opravena 2026-10-11) — **ověřit na PLC** názvem zakázky s „ř“ | Gateway `ads_reader.py`, `ads_monitor.py:79` | [2026-10-10 nejhlubší] |
 
@@ -79,6 +78,22 @@
 
 ---
 
+## [2026-10-16] Nová funkce — hledání zakázky v přehledu Databáze
+
+| Oblast | Popis |
+|---|---|
+| Požadavek uživatele | Na hlavní produkční stránce (Lokální i Vzdálená) filtrovat zakázky podle zadaného názvu; doplněno: hledat i nezávisle na časovém filtru, efektivně s NAS |
+| Řešení | `GET /api/files?q=` — část `order_id` (z názvu souboru), `_fold()` bez diakritiky a velikosti písmen; platí pro stránkování, `total`, `wip[]` a `hidden_by_filter`; během hledání frontend neposílá `from` / `to` (pole data zešednou, „Hledá se ve všech datech") |
+| Výkon / NAS | výpis NAS 15 s v paměti, hledání jen v metadatech (100 000 zakázek ≈ 0,2 s), počty kusů jen pro zobrazenou stránku a trvale v cache `known`; náklad jen u nikdy nespočítaných starých zakázek (jednorázově, zobrazená stránka) |
+| UX | debounce 350 ms (dotyková klávesnice), křížek / Esc maže, 44 px, text přežije návrat z detailu (sessionStorage), prázdný stav „Žádná zakázka neodpovídá…", na Testing pole není |
+| Testy | `02_tests/test_order_search.py` (7 — diakritika, stránkování, wip, hidden_by_filter, NAS, 422, výkon 100 000), `Database.test.tsx` (+3) |
+| Dokumentace | `architecture.md` fáze 47 (návrh + chování s NAS), `how_to_extend.md` § 13 (jak přidat další filtr), `CLAUDE.md` § 5 / § 7 / § 13, `acceptance_test.md` 2.2 + 4.1b, `deployment.md` |
+| Otevřené / možnosti | počty u výsledků hledání až po rozbalení řádku (jen kdyby stahování starých zakázek z NAS vadilo); S1 / S2 s Gateway; uživatelský manuál (`04_docs/manual/`) přegenerovat se screenshotem hledání; další filtry — zadá uživatel |
+
+**Testy:** backend **425 passed**, frontend **157 passed** (22 souborů), `tsc` 0, lint 0, `npm run build` OK.
+
+---
+
 ## [2026-10-16] Kontrola celého ekosystému — Analyzing → PLC → DatabaseGateway → ScadaViewer
 
 > Pracovní kopie všech tří projektů (Gateway s necommitnutým odstraněním `NokReason`, ScadaViewer s opravami
@@ -93,7 +108,7 @@
 | # | Závažnost | Popis | Kde | Status |
 |---|-----------|-------|-----|--------|
 | E1 | 🔴 HIGH | **Testing DUT v exportu PLC nemá `Status`**, nová Gateway ho čte (`Out.Data.Saving.Testing.Status`) → se současným PLC programem každá Op5 „symbol not found“, TEST soubor se neuloží. Production nedotčena | Gateway `constants.py:77`, `ads_reader.py:333`; export `ST_APP_Dataset_Testing.xml` (17. 9.) | ✅ Vyřešeno 2026-10-16 — rozhodnutí uživatele: Status u testu nepotřebujeme; Gateway ho nečte ani nezapisuje (`[NokInfo]` = 5× NokCategory), PLC beze změny |
-| E2 | 🔴 HIGH (ověřit) | Testing `NokCategory` je v exportu `ARRAY[1..4]`, Gateway čte i `[5]` (platí už pro vydanou 2.3.0) — buď je export zastaralý, nebo Op5 na stroji neprošla | Gateway `constants.py:82`; export Testing DUT | ⬜ ověřit online v TwinCAT |
+| E2 | 🔴 HIGH (ověřit) | Testing `NokCategory` je v exportu `ARRAY[1..4]`, Gateway čte i `[5]` (platí už pro vydanou 2.3.0) — buď je export zastaralý, nebo Op5 na stroji neprošla | Gateway `constants.py:82`; export Testing DUT | ✅ Vyřešeno 2026-10-16 — nový export `ST_APP_Dataset_Testing.xml` má `ARRAY[1..5]` |
 | E3 | ⚠️ MEDIUM | Dva různé kontrakty s PLC pod stejnou verzí **2.3.0** (vydaná Gateway čte `NokReason`, pracovní kopie `Testing.Status`); ScadaViewer s necommitnutými změnami také 2.3.0 — z ZIPu ani `/api/health` nepoznat, co se nasazuje | `__init__.py` obou, `06_build/deploy/deploy.ps1:21-24` | ⬜ zvednout verzi (2.3.1 / 2.4.0) |
 | E4 | ⚠️ MEDIUM | `deploy.ps1` `$PlcNote` se ptá jen na Production DUT — nezmiňuje `Testing.Status` ani `NokCategory[1..5]` | `06_build/deploy/deploy.ps1:24` | ⬜ s novou verzí |
 | E5 | ⚠️ MEDIUM | Doporučení: `NokReason` (Production i Testing) na PLC přechodně **ponechat** (Status do Testing se nepřidává — E1) — nový PLC program pak funguje se starou i novou Gateway (žádné „vše najednou“) | PLC | ⬜ |
@@ -106,7 +121,7 @@
 | E12 | 🔵 LOW | `order_name` čten jako STRING 82 B, TwinCAT `STRING(80)` = 81 B — ověřit v logu, že není „symbol přeskočen [order_name]“ (Overview odpojený — dopad nyní žádný) | `constants.py:86` | ⬜ ověřit na stroji |
 | E13 | 🔵 LOW | Zastaralé XML exporty PLC v Analyzing / Gateway (chybí `MeasuredData.Info.TS`, `ST_APP_Mod_Measuring_MeasuredRecord`) — znovu vyexportovat do všech tří projektů | `05_user_data/plc_communication/` | ⬜ |
 | E14 | 🔵 LOW | Dokumentace Gateway si odporuje (CLAUDE.md:330 „jen maska“ × 391/520 „Status“; 552 vede verdikt TEST ve ScadaViewer jako otevřený — je hotový); 2 vzorové soubory bez BOM; „absolutní čas“ v `signal_calc.py:25` | Gateway | ⬜ |
-| E15 | 🔵 LOW | TEST `Microswitch_ID` (UINT pořadové číslo) × PROD (SAP číslo) — stejný popisek „ID“ pro dvě věci; v přehledu Testing prázdné | ScadaViewer přehled | ⬜ |
+| E15 | 🔵 LOW | TEST `Microswitch_ID` (UINT pořadové číslo) × PROD (SAP číslo) — stejný popisek „ID“ pro dvě věci; v přehledu Testing prázdné | ScadaViewer přehled | 🟡 Částečně — Gateway od 2026-10-16 zapisuje do TEST `[Metadata]` Recipe + Microswitch_ID jako SAP číslo (sjednoceno s PROD_); detail testu ukazuje ID a recepturu (`test_gateway_testing_writer_roundtrip`); sloupec ID v přehledu Testing zatím ne (vyžaduje čtení hlavičky každého TEST souboru) |
 
 **Ověřeno bez nesouladu:** 24 analyzovaných parametrů Analyzing → PLC → Gateway (pořadí, názvy vč. překlepů PLC,
 `_pack_=1`), jednotky mN / µm / mΩ / µs a polohy C − x, STRING cp1250 v Gateway i ScadaViewer, každá aplikace
@@ -125,6 +140,12 @@ se nečtou, čištění ověřené na NAS bezpečné, všechny vzorové soubory 
 | E19 | 🔵 LOW (Q3) | `list_remote` při výpadku NAS volal ještě `is_dir()` na NAS (zdvojené čekání) | WinError 53/64/67 → rovnou chyba (503) | `test_list_remote_outage_no_second_network_call` |
 | E20 | 🔵 LOW (Q11) | Zrušený pokus PLC loginu zahodil platný token → osiřelá session do TTL | token z přerušeného pokusu se odhlásí (`/api/auth/logout`) | — |
 | E21 | 🔵 LOW (Q14) | NAS soubory Gateway 2.3.0 spočítané 13.–15. 10. mají po migraci ve sloupci „Mikrospínač“ SAP číslo a ID „—“ (cache schématu 3 ID neznala) | přijato — týká se jen 2 dnů testovacích dat; po smazání cache se dopočítají | — |
+
+**Změny Gateway 2026-10-16 (po kontrole, reflektováno):** TEST `[Metadata]` sjednocena s PROD_ (Recipe, ID jako SAP
+číslo) → detail testu ukazuje ID + recepturu; PROD `[TestingParameters]` přejmenované / doplněné (`Velocity`,
+`Acceleration`, `Deceleration`, `Jerk`) → ScadaViewer generický, upraven jen test kontraktu; Testing DUT export
+s `NokCategory [1..5]` (E2 vyřešen). Kontrakt: `test_gateway_writer_file`, `test_gateway_testing_writer_roundtrip`,
+`test_gateway_testing_sample_verdict`. Vydání: Gateway plánuje společné **2.4.0**.
 
 **Celkem:** 21 nálezů (E1–E21) | 6 opraveno ve ScadaViewer (E16–E20, komentáře z E14) + E1 vyřešen rozhodnutím (Gateway bez Testing.Status, test zapisovač → API `test_gateway_testing_writer_roundtrip`) + 1 přijato (E21) | 13 otevřeno (PLC / Gateway / nasazení)
 

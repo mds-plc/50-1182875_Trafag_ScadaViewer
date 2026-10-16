@@ -116,8 +116,9 @@ export const TESTING_INPUT_GROUPS: { id: string; label: string; unit: string; co
     keys: ['limits_distancemax', 'limits_forcemax'] },
 ]
 
-/** Metadata sekce — klíče z [Metadata] bloku CSV. */
-export const METADATA_KEYS = ['timestamp', 'microswitch_id', 'microswitch_name']
+/** Metadata sekce — klíče z [Metadata] bloku CSV (TEST od 2026-10-16 jako PROD_: Timestamp;Recipe;
+ *  Microswitch_ID (SAP číslo, STRING);Microswitch_Name — starší TEST soubory bez Recipe, ID číslo). */
+export const METADATA_KEYS = ['timestamp', 'recipe', 'microswitch_id', 'microswitch_name']
 
 /** Maska NokCategory[1..5] — Force, Position, Electric, Times, Process ('1' = selhalo). */
 export const NOKCATEGORY_KEYS = ['nokcategory_force', 'nokcategory_position',

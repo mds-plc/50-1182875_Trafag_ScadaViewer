@@ -89,7 +89,7 @@ def gw_file(tmp_path_factory):
     supplier = {c: off for c in cols}
     supplier["OF_OperatingForce [mN]"] = on(2500.0, 1000.0)
     meta = ProductionMetadata(
-        recipe=7, velocity=200.0, acceleration=1.0, jerk=3.0, force_max=4.0, current=100.0, voltage=30.0,
+        recipe=7, velocity=200.0, acceleration=1.0, deceleration=2.0, jerk=3.0, force_max=4.0, current=100.0, voltage=30.0,
         resistance_limit=off,
         categories=[(18.0, 30.0), (30.1, 60.0), (60.1, 80.0), (80.1, 100.0), (0.0, 0.0), (0.0, 0.0)],
         limits=limits, limits_supplier=supplier,
@@ -125,8 +125,10 @@ def test_gateway_writer_file(gw_file) -> None:
     assert info["recipe"] == "7"
     assert info["lots"] == ["LOT-A", "LOT-B", "LOT-C"]                  # pořadí výskytu, bez opakování
     tp = {p["key"]: (p["value"], p["unit"]) for p in info["testing_parameters"]}
-    assert tp == {"actuation_speed": ("200", "mm/s"), "acceleration": ("1", "mm/s2"),
-                  "jerk_up": ("3", "mm/s3"), "jerk_down": ("3", "mm/s3"), "max_force": ("4000", "mN"),
+    # Gateway od 2026-10-16: názvy jako v PLC (Velocity, Acceleration, Deceleration, Jerk); dřív
+    # Actuation_Speed / Jerk_Up / Jerk_Down — ScadaViewer bere názvy z hlavičky, obojí zobrazí
+    assert tp == {"velocity": ("200", "mm/s"), "acceleration": ("1", "mm/s2"),
+                  "deceleration": ("2", "mm/s2"), "jerk": ("3", "mm/s3"), "max_force": ("4000", "mN"),
                   "resistance_current": ("100", "mA"), "resistance_voltage": ("30", "V"),
                   "resistance_limit": (None, "mOhm")}                   # vypnutý limit odporu = prázdné
     cats = info["sorting_categories"]
@@ -208,6 +210,10 @@ def test_gateway_testing_sample_verdict(name: str, tmp_path: Path) -> None:
     assert "nokreason" not in rec and "status" not in rec          # Gateway od 2026-10-16 nezapisuje
     fe = (_ROOT / "01_frontend/src/utils/paramMeta.ts").read_text(encoding="utf-8")
     assert "export const NOKCATEGORY_KEYS" in fe and "testingNokState" in fe
+    # [Metadata] sjednocená s PROD_ (Gateway od 2026-10-16): Recipe + Microswitch_ID jako SAP číslo (text)
+    assert rec.get("recipe") and rec.get("microswitch_id") and not rec["microswitch_id"].isdigit()
+    assert rec.get("microswitch_name")
+
 
 @pytest.mark.parametrize("mask, expect_nok", [((False,) * 5, False), ((False, False, True, False, False), True)])
 def test_gateway_testing_writer_roundtrip(mask: tuple, expect_nok: bool, tmp_path: Path) -> None:
@@ -221,8 +227,12 @@ def test_gateway_testing_writer_roundtrip(mask: tuple, expect_nok: bool, tmp_pat
     cfg.storage.local_base_dir = str(tmp_path)
     fm = FileManager(cfg)
     f, p, e, t, pr = mask
+    import dataclasses
+    unified = "recipe" in {fl.name for fl in dataclasses.fields(TestingRecord)}   # Gateway od 2026-10-16
+    ident = {"microswitch_id": "E01389-C", "recipe": 3} if unified else {}
     rec = TestingRecord(switch_name="Marquardt", of_operating_force=1030.0, rf_realising_force=float("nan"),
-                        nok_cat_force=f, nok_cat_position=p, nok_cat_electric=e, nok_cat_times=t, nok_cat_process=pr)
+                        nok_cat_force=f, nok_cat_position=p, nok_cat_electric=e, nok_cat_times=t, nok_cat_process=pr,
+                        **ident)
     path = Path(fm.save_testing_record("Marquardt", rec))
     assert "[NokInfo]" in path.read_text(encoding="utf-8-sig")
     # ScadaViewer čte done_local / done_remote — soubor Gateway leží v testing/done_local
@@ -234,3 +244,8 @@ def test_gateway_testing_writer_roundtrip(mask: tuple, expect_nok: bool, tmp_pat
     assert (("1" in nok) == expect_nok)
     assert r["of_operatingforce"] == "1030"
     assert r.get("rf_realisingforce", "") == ""               # NaN → prázdné / chybí → UI „—“
+    if unified:                                                # [Metadata] jako PROD_: Recipe + ID (SAP)
+        assert path.read_text(encoding="utf-8-sig").splitlines()[1] == "Timestamp;Recipe;Microswitch_ID;Microswitch_Name"
+        assert (r["recipe"], r["microswitch_id"], r["microswitch_name"]) == ("3", "E01389-C", "Marquardt")
+    fe = (_ROOT / "01_frontend/src/pages/ChartView.tsx").read_text(encoding="utf-8")
+    assert "record.recipe" in fe                               # detail testu recepturu zobrazí

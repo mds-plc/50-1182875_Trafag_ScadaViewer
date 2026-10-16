@@ -62,6 +62,7 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 
 - [ ] Database: přepínání Local/Remote × Production/Testing, řazení všech sloupců, filtr data, stránkování
 - [ ] Database: nové soubory mají chvíli místo počtu záznamů „…" a doplní se samy (počet se dopočítává na pozadí)
+- [ ] Database → Production, Lokální i Vzdálená: „Hledat zakázku…" — část čísla bez diakritiky najde zakázku; pole data zešednou ("Hledá se ve všech datech") a najde se i zakázka starší než filtr; křížek / Esc vrátí filtr; detail → Zpět hledání zachová; nic nenalezeno = hláška; na záložce Testing pole není
 - [ ] Rozpracovaná zakázka (WIP) je nahoře a během výroby přibývají kusy bez ručního obnovení
 - [ ] Detail zakázky: Rozložení kategorií ↔ Časový průběh bez posunu obsahu; klik na záznam → detail → Zpět vrátí pozici
 - [ ] Detail zakázky: filtr Stav (Vše / OK / NOK) a Kategorie (Vše / 1–6), „Zobrazeno: X z Y", klik na vyfiltrovaný kus otevře správný detail
@@ -118,6 +119,7 @@ python 06_build\loadtest\measure_api.py --url http://localhost:8080 --user <jmé
 | # | Test | Příprava | Sledovat |
 |---|------|----------|----------|
 | 4.1 | Mnoho velkých zakázek | `make_big_orders.py --count 100 --rows 50000` (1,3 GB) | výpis Database hned, „…" se doplní; po restartu služby výpis hned i s počty |
+| 4.1b | Hledání ve velkém archivu | po 4.1, záložka Vzdálená | hledání odpovídá do 1 s; počty u výsledků „…" jen u nikdy nespočítaných zakázek (jen zobrazená stránka) |
 | 4.2 | Velká zakázka | zakázka s 50 000 kusy | detail, další stránky, filtr NOK, detail kusu, časový průběh, XLSX, tisk |
 | 4.3 | Velký test | testing soubor s plným `[SignalData]` (~400 000 řádků) | první otevření Signal Data a opakované (cache), zoom v plném rozlišení |
 | 4.4 | Hodně souborů na NAS | archiv na NAS (nebo kopie s tisíci soubory) | záložka Vzdálená první i opakované načtení; „…" jen pro zobrazenou stránku |

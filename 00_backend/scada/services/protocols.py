@@ -53,6 +53,7 @@ class DataReader(Protocol):
         to_date:   str | None = None,
         sort_by:   str = 'created_at',
         sort_dir:  str = 'desc',
+        query:     str | None = None,
     ) -> PagedResult: ...
 
     def get_file(

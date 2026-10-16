@@ -3,6 +3,8 @@ FileService — business logika nad CSV daty.
 
 Odpovědnost:
   - datumové filtrování souborů (business pravidlo: které soubory zobrazit)
+  - hledání zakázky podle části čísla / názvu (_order_matches — bez diakritiky a velikosti písmen,
+    z order_id v názvu souboru → bez čtení souborů, i nad NAS archivem)
   - stránkování (business pravidlo: kolik najednou)
   - určení sync_status ze složkové struktury (business pravidlo)
   - koordinace volání CsvRepository
@@ -18,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import math
+import unicodedata
 from datetime import date as _date
 from datetime import datetime as _dt
 from pathlib import Path
@@ -56,6 +59,17 @@ def _chronological_except_dst(times: list[_dt]) -> bool:
     return True
 
 
+def _fold(text: str) -> str:
+    """Pro hledání: bez diakritiky a velikosti písmen ('Zakázka-Č1' → 'zakazka-c1')."""
+    return ''.join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c)).casefold()
+
+
+def _order_matches(f, query: str) -> bool:
+    """Hledání zakázky v přehledu: zadaný text je částí čísla / názvu zakázky (order_id z názvu
+    souboru — známé hned, bez čtení souboru, i u NAS archivu)."""
+    return _fold(query.strip()) in _fold(str(f.get('order_id') or ''))
+
+
 class FileService:
     """Service vrstva — business logika nad CSV daty."""
 
@@ -74,12 +88,14 @@ class FileService:
         to_date:   str | None = None,
         sort_by:   str = 'created_at',
         sort_dir:  str = 'desc',
+        query:     str | None = None,
     ) -> list[dict]:
         """
-        Vrátí seznam souborů s volitelným datumovým filtrem.
+        Vrátí seznam souborů s volitelným datumovým filtrem a hledáním zakázky.
 
-        Datumový filtr je BUSINESS PRAVIDLO — rozhodnutí, které soubory
+        Datumový filtr a hledání jsou BUSINESS PRAVIDLO — rozhodnutí, které soubory
         uživatel vidí. Proto patří sem, ne do repozitáře.
+        query: část čísla / názvu zakázky (bez ohledu na velikost písmen a diakritiku) — viz _order_matches.
         """
         if not self._repo.validate_params(None, location, file_type):
             return []
@@ -89,6 +105,8 @@ class FileService:
             if location == 'remote'
             else self._repo.list_local(file_type)
         )
+        if query and query.strip():
+            files = [f for f in files if _order_matches(f, query)]
 
         if from_date or to_date:
             from_day = _date.fromisoformat(from_date) if from_date else None
@@ -135,14 +153,16 @@ class FileService:
         to_date:   str | None = None,
         sort_by:   str = 'created_at',
         sort_dir:  str = 'desc',
+        query:     str | None = None,
     ) -> PagedResult:
         """
         Vrátí stránkovaný seznam souborů.
 
         Stránkování je BUSINESS PRAVIDLO (kolik záznamů uživatel vidí najednou),
-        proto patří do service vrstvy, ne do API vrstvy.
+        proto patří do service vrstvy, ne do API vrstvy. Hledání (query) platí i pro
+        rozpracované zakázky (wip) a pro nápovědu „skryto datumovým filtrem".
         """
-        all_files = self.list_files(location, file_type, from_date, to_date, sort_by, sort_dir)
+        all_files = self.list_files(location, file_type, from_date, to_date, sort_by, sort_dir, query)
         total = len(all_files)
         pages = max(1, math.ceil(total / per_page))
         page  = min(page, pages)          # clamp — stránka mimo rozsah → poslední
@@ -155,22 +175,25 @@ class FileService:
             total=total,
             page=page,
             pages=pages,
-            wip=[dict(f) for f in self.list_wip(location, file_type)],
+            wip=[dict(f) for f in self.list_wip(location, file_type)
+                 if not (query and query.strip()) or _order_matches(f, query)],
             # Jen skutečně čekající dopočty — ne soubory v odkladu po chybě ani zaseknuté (K1, K16)
             counts_pending=self._repo.counts_pending(page_files),
-            **self._hidden_by_filter(location, file_type, total, from_date, to_date),
+            **self._hidden_by_filter(location, file_type, total, from_date, to_date, query),
         )
 
     def _hidden_by_filter(
         self, location: str, file_type: str, total: int, from_date: str | None, to_date: str | None,
+        query: str | None = None,
     ) -> dict:
-        """Filtr nic nenašel → kolik souborů existuje mimo něj a kdy vznikl nejnovější.
+        """Datumový filtr nic nenašel → kolik souborů (odpovídajících hledání) existuje mimo něj
+        a kdy vznikl nejnovější.
 
         Metadata jdou z cache repozitáře — druhý průchod bez filtru je levný.
         """
         if total > 0 or not (from_date or to_date):
             return {}
-        everything = self.list_files(location, file_type)
+        everything = self.list_files(location, file_type, query=query)
         if not everything:
             return {}
         latest = max((f.get('created_at') or '' for f in everything), default='') or None

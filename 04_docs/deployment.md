@@ -44,7 +44,17 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
-## Další vydání (po 2.3.0) — zaplnění NAS, údaje zakázky, opravy auditu 2026-10-15
+## Příští vydání (2.4.0, společně s DatabaseGateway 2.4.0) — zaplnění NAS, údaje zakázky, změny formátu
+
+**DatabaseGateway + PLC program (DUT `ST_APP_Dataset_Testing`: `Recipe : UINT`, `Microswitch_ID : STRING`,
+`NokCategory ARRAY[1..5]`) + ScadaViewer se nasazují SPOLEČNĚ** (podrobně `DatabaseGateway/04_docs/deployment.md`).
+
+| Změna formátu (Gateway) | ScadaViewer |
+|---|---|
+| `NokReason` zrušen — PROD `[Data]` 32 sloupců, TEST `[NokInfo]` = 5× `NokCategory` | výsledek testu z masky; čte i starý formát |
+| TEST `[Metadata]` = `Timestamp;Recipe;Microswitch_ID;Microswitch_Name` (ID = SAP číslo) | detail testu ukazuje ID a recepturu |
+| PROD `[TestingParameters]`: `Velocity`, `Acceleration`, `Deceleration`, `Jerk` (dřív `Actuation_Speed`, `Jerk_Up`, `Jerk_Down`) | názvy bere z hlavičky — `OrderInfoPanel` zobrazí obojí |
+| — | nové: hledání zakázky v Database (Production, Lokální i Vzdálená) — informovat obsluhu, aktualizovat manuál |
 
 - **Nasazovat s DatabaseGateway, který nezapisuje `NokReason`** (necommitnuto 2026-10-15) — ScadaViewer čte
   starý i nový formát (výsledek testu z masky `NokCategory_*`, u starších souborů i `NokReason`),
@@ -680,6 +690,8 @@ nssm start   Caddy
 - [ ] „Vyčistit synchronizované" smaže jen soubory ověřené na NAS
 - [ ] Ukazatel zaplnění NAS odpovídá kvótě sdílené složky (nebo svazku) v DSM
 - [ ] Technik nemůže smazat zakázku z `done_local` (dialog varuje „není na NAS“), admin ano
+- [ ] Database → Vzdálená: hledání zakázky odpovídá rychle (výpis NAS je 15 s v paměti); první výpis po startu
+      služby může u velkého archivu trvat déle (S1)
 
 ### Vzdálený přístup (z PC v kanceláři)
 

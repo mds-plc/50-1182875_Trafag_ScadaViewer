@@ -3,8 +3,10 @@
  * @description Stránka prohlížeče databáze CSV souborů (/database) — tenký container.
  *   Veškerá logika (state, data fetching, auto-refresh, klávesové zkratky)
  *   je v hooku useDatabaseState. Tabulka v FileTable, dialog smazání v DeleteModal.
+ *   Lišta nad tabulkou: hledání zakázky (jen Production; během hledání se datumový filtr
+ *   neuplatní — architecture.md fáze 47) + datumový filtr.
  */
-import { HardDrive, Server, RefreshCw, WifiOff, X } from 'lucide-react'
+import { HardDrive, Server, RefreshCw, WifiOff, X, Search } from 'lucide-react'
 import { useLang } from '../context/LangContext'
 import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
@@ -26,6 +28,7 @@ export default function Database() {
     page,     setPage,
     expandedId,   setExpandedId,
     deleteTarget, setDeleteTarget, canDeleteUnsynced,
+    searchInput, setSearchInput, searchQuery, searchAllDates,
     sortBy, sortDir, onSort,
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
@@ -112,31 +115,63 @@ export default function Database() {
       {/* Tabulka + toolbar */}
       <div className="tile tile--12">
         <div className="db-toolbar">
-          <span className="filter-bar__label">{t.common.from}</span>
-          <input
-            type="date"
-            className="filter-bar__input"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-          />
-          <span className="filter-bar__label">{t.common.to}</span>
-          <input
-            type="date"
-            className="filter-bar__input"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-          />
-          {(dateFrom || dateTo) && (
-            <button className="db-clear-btn" onClick={() => { setDateFrom(''); setDateTo('') }}>
-              <X size={13} /> {t.db.clearFilter}
-            </button>
+          {/* Hledání zakázky podle čísla / názvu — filtruje server (stránkování i počty sedí) */}
+          {dataType === 'production' && (
+            <div className="db-search">
+              <Search size={14} className="db-search__icon" aria-hidden="true" />
+              <input
+                type="search"
+                className="filter-bar__input db-search__input"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Escape') setSearchInput('') }}
+                placeholder={t.db.searchOrder}
+                aria-label={t.db.searchOrder}
+                maxLength={100}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              {searchInput && (
+                <button type="button" className="db-search__clear" onClick={() => setSearchInput('')}
+                        title={t.db.searchClear} aria-label={t.db.searchClear}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           )}
+          {/* Během hledání se datumový filtr neuplatní (hledá se ve všech datech) — pole zůstanou
+              nastavená a po vymazání hledání platí zase */}
+          <div className={`db-date-filter${searchAllDates ? ' db-date-filter--suspended' : ''}`}>
+            <span className="filter-bar__label">{t.common.from}</span>
+            <input
+              type="date"
+              className="filter-bar__input"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              disabled={searchAllDates}
+            />
+            <span className="filter-bar__label">{t.common.to}</span>
+            <input
+              type="date"
+              className="filter-bar__input"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              disabled={searchAllDates}
+            />
+            {(dateFrom || dateTo) && !searchAllDates && (
+              <button className="db-clear-btn" onClick={() => { setDateFrom(''); setDateTo('') }}>
+                <X size={13} /> {t.db.clearFilter}
+              </button>
+            )}
+          </div>
+          {searchAllDates && <span className="db-search__note">{t.db.searchAllDates}</span>}
         </div>
 
         <FileTable
           files={files}
           wip={page === 1 ? wip : []}
           hiddenByFilter={hiddenByFilter}
+          searchQuery={searchQuery}
           latestCreatedAt={latestCreatedAt}
           onShowLatestDay={showDaysUntil}
           loading={loading}

@@ -19,8 +19,8 @@
 | Security middleware | ✅ Hotovo | CSP (SHA-256 hash), SecurityHeaders, RateLimit, CORS, WS origin |
 | Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.1.1** (2026-10-10, ZIP + tag) |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
-| Backend testy | ✅ Hotovo | **418 testů** (2026-10-15); `pytest 02_tests/ -v` |
-| Frontend testy | ✅ Hotovo | **154 testů**, 22 souborů Vitest (2026-10-15); `npm run test`; `npm run lint` 0; `npm audit` 0 |
+| Backend testy | ✅ Hotovo | **425 testů** (2026-10-15); `pytest 02_tests/ -v` |
+| Frontend testy | ✅ Hotovo | **157 testů**, 22 souborů Vitest (2026-10-15); `npm run test`; `npm run lint` 0; `npm audit` 0 |
 | Výkon — velké zakázky | ✅ Hotovo | Zakázka 50 000 kusů: stránka / filtr / detail kusu 0,02–0,05 s (index v paměti), XLSX ze serveru ~3 s |
 | Výkon — velký archiv | ✅ Hotovo | Přehled z názvů souborů, dopočet počtů na pozadí, SQLite cache, NAS výpis v paměti; 100 000 souborů: výpis 0,16 s — `architecture.md` „Výkon, paměť a škálovatelnost" |
 | Filtr kusů v detailu zakázky | ✅ Hotovo | Stav OK / NOK + kategorie 1–6 (server) |
@@ -111,7 +111,7 @@ Navíc **změřit rychlost sítě k NAS** (výpis složky, stažení velkého so
 |--------|-----------|--------|
 | Stav DatabaseGateway ve ScadaViewer (běží, nenahrané soubory, poslední sync) | M | Provoz |
 | Alerting (email/webhook při výpadku ADS nebo NAS) | L | Provoz |
-| Vyhledávání v Database (fulltext filtr) | M | UX |
+| ~~Vyhledávání v Database~~ — hledání zakázky hotovo 2026-10-16; další filtry podle zadání | M | UX |
 | Rozdělení velkých modulů (A7 `ChartView` / `Settings`, A12 `csv_repository`) | M | Údržba |
 | Tmavý/světlý motiv per-user (ne per-prohlížeč) | S | UX |
 | Podpora více PLC (multi-AMS) | XL | Enterprise |

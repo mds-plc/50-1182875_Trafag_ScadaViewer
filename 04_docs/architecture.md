@@ -1113,6 +1113,87 @@ Gateway 2.3.0 (s novým PLC DUT `ST_APP_Dataset_Production`) zapisuje production
 
 **Stav testů po fázi 46:** Backend **418/418**, Frontend **154/154** (22 souborů); `tsc` 0, lint 0.
 
+### Fáze 47 — hledání zakázky, sjednocený formát Gateway, kontrola ekosystému (2026-10-16)
+
+#### Hledání zakázky v přehledu Databáze
+
+Záložka **Production** (Lokální i Vzdálená) má pole „Hledat zakázku…". Hledá se **část čísla / názvu
+zakázky** bez ohledu na velikost písmen a diakritiku (`zakazka-c` najde „Zakázka-Č1").
+
+```
+Database.tsx  pole hledání ──► useDatabaseState
+                               searchInput (hned)  ──350 ms pauza──►  search
+                               query = search (jen Production)
+                               searchAllDates = query ≠ '' → from/to se neposílají
+                                       │
+                                       ▼
+useFiles ──► GET /api/files?location=&type=production&q=<text>[&from=&to=]&page=&sort_by=…
+                                       │
+                                       ▼
+FileService.list_files(query) ── _order_matches(f, q): _fold(q) ⊂ _fold(order_id)
+   výpis (cache) → hledání → datum → řazení → stránka → request_counts(jen stránka)
+   + wip[] filtrovaný stejně, hidden_by_filter počítá jen odpovídající zakázky
+```
+
+| Rozhodnutí | Důvod |
+|---|---|
+| Filtruje **server** (`/api/files?q=`), ne prohlížeč | stránkování, `total`, součet kusů v patičce a „Vybrat vše" platí pro výsledek; prohlížeč má jen jednu stránku |
+| Hledá se v `order_id` z **názvu souboru** (`PROD_{zakázka}_…`) | známé hned po výpisu složky — u NAS archivu se kvůli hledání nic nečte ani nestahuje |
+| `_fold()` = NFKD bez diakritiky + `casefold()` | obsluha píše na dotykové klávesnici bez háčků; velikost písmen v číslech zakázek není jednotná |
+| Během hledání se **datumový filtr neuplatní** (pole zešednou, poznámka „Hledá se ve všech datech") | hledaná zakázka bývá starší než výchozí 2 dny; filtr zůstane nastavený a po vymazání hledání platí zase |
+| Dotaz až po **350 ms** pauze v psaní (`SEARCH_DEBOUNCE_MS`), změna → stránka 1 | dotyková klávesnice v kiosku — ne dotaz na každé písmeno |
+| Text přežije návrat z detailu zakázky (`sessionStorage`, klíč `scada_db_search`), ne zavření okna | „Zpět" z detailu nesmí hledání ztratit; nový den / nové okno začíná bez hledání |
+| Rozpracovaná zakázka (`wip[]`) se filtruje stejně | „hledám ABC" = vidím jen ABC |
+| Testing: pole se nezobrazuje, `q` se neposílá | testy nemají číslo zakázky |
+| `q` max. 100 znaků (422) | ochrana vstupu |
+
+**Chování s NAS (záložka Vzdálená):**
+
+1. Výpis složky NAS = jeden `os.scandir` (název, velikost, čas v jedné SMB odpovědi), drží se
+   **15 s** (`_REMOTE_LISTING_TTL`); během obnovy poslední známý stav. Psaní, stránkování a další
+   dotazy v tomto okně na NAS nejdou. Výpis běží v NAS poolu (`run_io`), visící NAS nezablokuje aplikaci.
+2. Hledání = průchod seznamem v paměti — **100 000 zakázek ≈ 0,2 s** (`test_search_whole_archive_is_fast`).
+3. Počty kusů se dopočítávají **jen pro zobrazenou stránku**; spočítaný počet je trvale v SQLite
+   (`known`, název + velikost — přežije restart i smazání lokální kopie); s lokální kopií v `done_remote`
+   se čte z disku. Zakázky z tohoto stroje jsou spočítané z doby, kdy byly lokálně.
+4. Náklad jen u starých zakázek, které aplikace nikdy neviděla (jiný stroj / před nasazením): na stránce
+   výsledků se jednou stáhnou kvůli počtu (do té doby „…"). Při potřebě: počty u výsledků hledání až
+   po rozbalení řádku, nebo S1 / S2 (podsložky `Production/RRRR/MM/`, počet kusů v názvu souboru).
+
+Soubory: `api/files.py` (`q`), `services/file_service.py` (`_fold`, `_order_matches`, `list_files(query)`,
+`list_files_paginated(query)`, `_hidden_by_filter(query)`), `services/protocols.py`, frontend
+`hooks/useData.ts` (`FilesParams.query`), `hooks/useDatabaseState.ts` (`searchInput`, `searchQuery`,
+`searchAllDates`), `pages/Database.tsx`, `components/FileTable.tsx` (`searchQuery` — prázdný stav),
+`styles/database.css` (`.db-search*`, `.db-date-filter*`), i18n `db.searchOrder / searchClear /
+searchNoMatch / searchAllDates`. Testy: `02_tests/test_order_search.py`, `Database.test.tsx`.
+
+#### Změny formátu DatabaseGateway (2026-10-16) — ScadaViewer reflektuje
+
+| Gateway | ScadaViewer |
+|---|---|
+| TEST `[Metadata]` = `Timestamp;Recipe;Microswitch_ID;Microswitch_Name` (jako PROD_; ID = SAP číslo, STRING) | detail testu: ID mikrospínače + ID receptury (`ChartView` testing hero); starší soubory beze změny |
+| TEST `[NokInfo]` = jen 5× `NokCategory` (`NokReason` zrušen, `Testing.Status` se nečte — rozhodnutí 2026-10-16) | `testingNokState()` = maska (případný Status / NokReason starších souborů jako pojistka) |
+| PROD `[TestingParameters]`: `Velocity`, `Acceleration`, `Deceleration`, `Jerk` (dřív `Actuation_Speed`, `Jerk_Up`, `Jerk_Down`) | `_order_info()` + `OrderInfoPanel` berou názvy z hlavičky — beze změny kódu |
+| PLC `ST_APP_Dataset_Testing`: `Recipe`, `Microswitch_ID : STRING`, `NokCategory ARRAY[1..5]` | — (E1, E2 vyřešeny) |
+
+Kontrakt hlídají testy proti pracovní kopii Gateway: `test_gateway_writer_file` (PROD skutečným
+`FileManager`), `test_gateway_testing_writer_roundtrip` (TEST skutečným `FileManager` → API: maska, NaN,
+Recipe, ID), `test_gateway_testing_sample_verdict` a `test_gateway_sample_files` (vzorové soubory CZ/EN).
+Vydání: společné **2.4.0** s Gateway (zatím nenasazovat — rozhodnutí 2026-10-16).
+
+#### Opravy z revize (kontrola ekosystému E16–E20)
+
+- `NasProbe`: starý stav jen dokud obnova neběží déle než `timeout_s`, pak „nedostupný" (výpadek NAS
+  se ukáže do 3 s, dřív až po síťovém timeoutu).
+- Migrace cache 3 → 4 v `BEGIN IMMEDIATE … COMMIT`, `ALTER` jen chybí-li sloupec; cache zamčená
+  jinou instancí se nemaže (běh jen v paměti).
+- `DELETE /api/files/{id}?sync=done_local|done_remote` — smaže se kopie z řádku, na který uživatel klikl.
+- `list_remote`: WinError 53 / 64 / 67 → rovnou 503 bez dalšího síťového volání.
+- Zrušený pokus PLC loginu odhlásí získaný token (žádná osiřelá session).
+
+**Stav testů po fázi 47:** Backend **425/425**, Frontend **157/157** (22 souborů); DatabaseGateway 90,
+Analyzing 69; `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

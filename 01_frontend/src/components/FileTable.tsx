@@ -331,6 +331,8 @@ interface Props {
   latestCreatedAt?:   string | null
   /** Přepnout filtr tak, aby končil daným dnem (YYYY-MM-DD) — tlačítko v prázdném stavu */
   onShowLatestDay?:   (day: string) => void
+  /** Aktivní hledání zakázky ('' = bez hledání) — prázdný stav pak říká „nic neodpovídá" */
+  searchQuery?:       string
   loading:         boolean
   error:           string | null
   dataType:        DataType
@@ -359,7 +361,7 @@ interface Props {
 }
 
 export default function FileTable({
-  files, wip = [], hiddenByFilter = 0, latestCreatedAt = null, onShowLatestDay, loading, error,
+  files, wip = [], hiddenByFilter = 0, latestCreatedAt = null, onShowLatestDay, searchQuery = '', loading, error,
   dataType, location, showSync,
   page, pages, total, totalRecords,
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
@@ -567,7 +569,9 @@ export default function FileTable({
                           </button>
                         )}
                       </div>
-                    ) : (location === 'local' ? t.db.noFilesLocal : t.db.noFilesRemote)}
+                    ) : searchQuery
+                      ? t.db.searchNoMatch.replace('{query}', searchQuery)
+                      : (location === 'local' ? t.db.noFilesLocal : t.db.noFilesRemote)}
                   </td>
                 </tr>
               )}

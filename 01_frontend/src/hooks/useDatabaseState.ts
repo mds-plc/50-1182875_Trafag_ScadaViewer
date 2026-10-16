@@ -98,12 +98,26 @@ const PRODUCTION_ONLY_SORT = new Set(['order_id', 'switch_id'])
 /** Jak často se ptát znovu, dokud server dopočítává počty kusů [ms] */
 const COUNTS_RETRY_MS = 1500
 
+/** Hledání zakázky: dotaz na server až po pauze v psaní [ms] (dotyková klávesnice v kiosku) */
+const SEARCH_DEBOUNCE_MS = 350
+const SEARCH_KEY = LS_PREFIX + 'search'
+
+/** Hledaný text přežije odchod do detailu zakázky a zpět, ne zavření okna (sessionStorage). */
+function _searchGet(): string {
+  try { return sessionStorage.getItem(SEARCH_KEY) ?? '' } catch { return '' }
+}
+function _searchSet(v: string): void {
+  try { if (v) sessionStorage.setItem(SEARCH_KEY, v); else sessionStorage.removeItem(SEARCH_KEY) } catch { /* ignore */ }
+}
+
 /**
  * Kompletní state management pro stránku Database.
  *
  * Filtry location, dataType, sortBy, sortDir se persistují do localStorage — při návratu
  * na stránku Database se obnoví. Datumový filtr se NEPERSISTUJE: vždy posledních
  * DEFAULT_FILTER_DAYS dní (jinak by staré uložené „do" skrývalo nové zakázky).
+ * Hledání zakázky (Production): text v sessionStorage (přežije návrat z detailu), dotaz na server
+ * po SEARCH_DEBOUNCE_MS; během hledání se datumový filtr neposílá (searchAllDates).
  *
  * @returns Veškerý state (location, dataType, filtry, stránkování, výběr)
  *          a handlery (fetchFiles, onSort, deleteFile, downloadCsv, downloadXlsx,
@@ -176,9 +190,27 @@ export function useDatabaseState() {
     setPage(1)
   }, [sortBy, sortDir, setSortBy, setSortDir])
 
+  // Hledání zakázky podle čísla / názvu (jen Production — Testing nemá zakázky). Pole se mění
+  // hned (searchInput), dotaz na server až po pauze v psaní (search); filtruje server.
+  const [searchInput, setSearchInputRaw] = useState(_searchGet)
+  const [search,      setSearch]         = useState(() => _searchGet().trim())
+  const setSearchInput = useCallback((v: string) => { setSearchInputRaw(v); _searchSet(v) }, [])
+  useEffect(() => {
+    const q = searchInput.trim()
+    if (q === search) return
+    const id = setTimeout(() => { setSearch(q); setPage(1) }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [searchInput, search])
+  const query = dataType === 'production' ? search : ''
+  // Hledání jde přes celý archiv — datumový filtr se během hledání neuplatní (zůstane nastavený,
+  // po vymazání hledání platí zase). Levné: přehled je z názvů souborů v paměti, dopočet jen pro stránku.
+  const searchAllDates = query !== ''
+
   const remoteAvailable = useRemoteStatus()
   const { files, wip, hiddenByFilter, latestCreatedAt, countsPending, total, pages, loading, error, fetchFiles } = useFiles({
-    location, type: dataType, page, perPage, dateFrom, dateTo, sortBy, sortDir,
+    location, type: dataType, page, perPage,
+    dateFrom: searchAllDates ? '' : dateFrom, dateTo: searchAllDates ? '' : dateTo,
+    sortBy, sortDir, query,
   })
 
   // auto-refresh; remote s nedostupným NAS přeskočit — banner se zobrazí sám
@@ -336,6 +368,7 @@ export function useDatabaseState() {
     page,         setPage,
     expandedId,   setExpandedId,
     deleteTarget, setDeleteTarget, canDeleteUnsynced,
+    searchInput,  setSearchInput, searchQuery: query, searchAllDates,
     sortBy, sortDir, onSort,
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,

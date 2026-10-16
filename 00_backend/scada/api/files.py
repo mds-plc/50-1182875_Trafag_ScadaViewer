@@ -61,6 +61,7 @@ async def list_files(
     to_date:   str|None = Query(None, alias="to",   description="Filtr do (YYYY-MM-DD inclusive)"),
     sort_by:   str      = Query('created_at', pattern=r'^(created_at|switch_name|switch_id|record_count|order_id)$', description="Sloupec řazení"),
     sort_dir:  str      = Query('desc',       pattern=r'^(asc|desc)$',                                    description="Směr řazení"),
+    q:         str|None = Query(None, max_length=100, description="Hledání zakázky — část čísla / názvu (bez diakritiky a velikosti písmen)"),
 ) -> FilesResponse:
     """Stránkovaný výpis zakázek.
 
@@ -69,6 +70,7 @@ async def list_files(
         per_page: max. 200 na stránku; ``total`` v odpovědi říká celkový počet.
         from_date: filtr od data (YYYY-MM-DD, inclusive).
         to_date: filtr do data (YYYY-MM-DD, inclusive).
+        q: hledání zakázky podle čísla / názvu — platí i pro rozpracované zakázky a `hidden_by_filter`.
 
     Returns:
         FilesResponse — pole souborů, total, aktuální stránka a celkový počet stránek.
@@ -94,6 +96,7 @@ async def list_files(
                 to_date=to_date,
                 sort_by=sort_by,
                 sort_dir=sort_dir,
+                query=q,
             ),
             timeout=timeout,
         )

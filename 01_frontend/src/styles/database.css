@@ -144,6 +144,63 @@
   background: var(--color-danger-muted);
 }
 
+/* Hledání zakázky (Production) — ikona vlevo, mazací křížek vpravo; dotykový cíl 44 px */
+.db-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 260px;
+  min-width: 180px;
+}
+
+.db-search__icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.db-search__input {
+  width: 100%;
+  padding-left: calc(var(--space-3) + 14px + var(--space-2));
+  padding-right: 44px;
+}
+
+/* vlastní křížek místo nativního (na dotyku malý a v různých prohlížečích jiný) */
+.db-search__input::-webkit-search-cancel-button { display: none; }
+
+.db-search__clear {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.db-search__clear:hover { color: var(--color-danger); }
+
+.db-search__note {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* Datumový filtr — obal kvůli dočasnému vypnutí během hledání */
+.db-date-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.db-date-filter--suspended { opacity: 0.45; }
+
 /* MAIN TABLE */
 
 .db-table {

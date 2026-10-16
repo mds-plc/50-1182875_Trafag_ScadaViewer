@@ -33,6 +33,7 @@ const mockSetExpandedId   = vi.fn()
 const mockSetDeleteTarget = vi.fn()
 const mockDeleteFile      = vi.fn()
 const mockDownloadCsv     = vi.fn()
+const mockSetSearchInput  = vi.fn()
 
 /** Výchozí return hodnota useDatabaseState. */
 const defaultState = {
@@ -51,6 +52,10 @@ const defaultState = {
   deleteTarget:   null,
   setDeleteTarget: mockSetDeleteTarget,
   canDeleteUnsynced: false,
+  searchInput:    '',
+  setSearchInput: mockSetSearchInput,
+  searchQuery:    '',
+  searchAllDates: false,
   files:          [],
   wip:            [],
   hiddenByFilter: 0,
@@ -152,15 +157,15 @@ describe('Database page', () => {
 
   it('date input "From" onChange calls setDateFrom', () => {
     renderDatabase()
-    const inputs = screen.getAllByDisplayValue('')
-    // První input je "from" datum, druhý je "to" datum
+    const inputs = screen.getAllByDisplayValue('').filter(el => (el as HTMLInputElement).type === 'date')
+    // První datum je "from", druhé "to" (pole hledání zakázky se nepočítá)
     fireEvent.change(inputs[0], { target: { value: '2026-07-01' } })
     expect(mockSetDateFrom).toHaveBeenCalledWith('2026-07-01')
   })
 
   it('date input "To" onChange calls setDateTo', () => {
     renderDatabase()
-    const inputs = screen.getAllByDisplayValue('')
+    const inputs = screen.getAllByDisplayValue('').filter(el => (el as HTMLInputElement).type === 'date')
     fireEvent.change(inputs[1], { target: { value: '2026-07-31' } })
     expect(mockSetDateTo).toHaveBeenCalledWith('2026-07-31')
   })
@@ -198,5 +203,25 @@ describe('Database page', () => {
     const btn = screen.getByTitle('Refresh')
     fireEvent.click(btn)
     expect(mockFetchFiles).toHaveBeenCalled()
+  })
+  it('search input (Production) calls setSearchInput, Escape clears', () => {
+    renderDatabase()
+    const box = screen.getByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'ZAK-12' } })
+    expect(mockSetSearchInput).toHaveBeenCalledWith('ZAK-12')
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(mockSetSearchInput).toHaveBeenCalledWith('')
+  })
+
+  it('search input hidden on Testing tab', () => {
+    renderDatabase({ dataType: 'testing' as unknown as 'production' })
+    expect(screen.queryByRole('searchbox')).toBeNull()
+  })
+  it('active search suspends date filter (inputs disabled + note)', () => {
+    renderDatabase({ searchInput: 'ABC', searchQuery: 'ABC', searchAllDates: true })
+    const dates = Array.from(document.querySelectorAll('input[type="date"]'))
+    expect(dates).toHaveLength(2)
+    expect(dates.every(d => (d as HTMLInputElement).disabled)).toBe(true)
+    expect(screen.getByText(/ve všech datech|all dates/i)).toBeInTheDocument()
   })
 })

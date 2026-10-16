@@ -79,6 +79,11 @@ export interface Translations {
     batchUnsyncedCount: string
     rangeRecords: string
     clearFilter: string
+    /** Hledání zakázky podle čísla / názvu (Production) */
+    searchOrder: string
+    searchClear: string
+    searchNoMatch: string
+    searchAllDates: string
     page: string
     of: string
     colGroup: string

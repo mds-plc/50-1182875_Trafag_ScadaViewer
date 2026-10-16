@@ -63,6 +63,7 @@ export interface FilesParams {
   dateTo?:   string   // YYYY-MM-DD — server-side filtr
   sortBy?:  string    // sloupec řazení (created_at | switch_name | record_count | order_id)
   sortDir?: 'asc' | 'desc'
+  query?:   string    // hledání zakázky (část čísla / názvu) — server-side, platí pro stránkování i počty
 }
 
 /**
@@ -71,7 +72,7 @@ export interface FilesParams {
  * @param params - Umístění, typ, číslo stránky, datumové filtry a řazení.
  * @returns `files`, `total`, `pages`, `loading`, `error` a `fetchFiles` pro manuální refresh.
  */
-export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo, sortBy = 'created_at', sortDir = 'desc' }: FilesParams) {
+export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo, sortBy = 'created_at', sortDir = 'desc', query }: FilesParams) {
   const { t } = useLang()
   const tRef = useRef(t)
   tRef.current = t
@@ -121,6 +122,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       })
       if (dateFrom) params.set('from', dateFrom)
       if (dateTo)   params.set('to',   dateTo)
+      if (query)    params.set('q',    query)
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
       const res = await apiFetch(`/api/files?${params}`, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -140,7 +142,7 @@ export function useFiles({ location, type, page, perPage = 50, dateFrom, dateTo,
       setError(e instanceof Error ? e.message : tRef.current.common.errorLoading)
       setLoading(false)
     }
-  }, [location, type, page, perPage, dateFrom, dateTo, sortBy, sortDir, token])
+  }, [location, type, page, perPage, dateFrom, dateTo, sortBy, sortDir, query, token])
 
   return { files, wip, hiddenByFilter, latestCreatedAt, countsPending, total, pages, loading, error, fetchFiles }
 }

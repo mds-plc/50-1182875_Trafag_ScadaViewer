@@ -19,6 +19,7 @@
 10. [Přidat údaj do přehledu Databáze (FileMeta)](#10-přidat-údaj-do-přehledu-databáze-filemeta)
 11. [Pracovat s velkými soubory (index, export, paměť)](#11-pracovat-s-velkými-soubory-index-export-paměť)
 12. [Změnit formát názvu souboru nebo složky na NAS](#12-změnit-formát-názvu-souboru-nebo-složky-na-nas)
+13. [Přidat filtr do přehledu Databáze](#13-přidat-filtr-do-přehledu-databáze)
 
 ---
 
@@ -638,6 +639,45 @@ skryté tiskové tabulky vykreslovat až při tisku (`hooks/usePrintMode.ts`).
   + `prefer_local()` / `_local_twin()`; podle filtru data číst jen potřebné měsíce (`FileService.list_files`).
 - Vždy současně s DatabaseGateway (`file_manager.py`, `server_sync.py`) a jejich testy; ověřit
   `02_tests/test_big_order.py` a `test_api.py`.
+
+---
+
+## 13. Přidat filtr do přehledu Databáze
+
+**Kdy:** V seznamu zakázek (stránka Database) má jít filtrovat podle dalšího údaje (typ spínače,
+stav synchronizace, počet kusů…). Vzor: hledání zakázky (`q`, fáze 47 v `architecture.md`).
+
+**Zásada:** filtr vždy na **serveru** (`/api/files`) — stránkování, `total`, součet kusů a „Vybrat vše"
+pak sedí. Prohlížeč má jen jednu stránku.
+
+1. **Zdroj údaje rozhoduje o ceně (hlavně u NAS):**
+   - údaj **z názvu souboru** (zakázka, typ / SAP číslo, datum) nebo ze **složky** (`sync_status`) →
+     známý hned, filtr je zadarmo i nad 100 000 soubory;
+   - údaj **ze souboru** (`record_count`, `switch_id`) → u nepřečtených souborů je `None` (dopočet jen
+     pro zobrazenou stránku) — filtr by je skryl / ukázal nepřesně. Rozhodnout: brát `None` jako
+     „neví se" a řadit na konec, nebo údaj nejdřív dostat do názvu souboru (s DatabaseGateway).
+2. **Backend:**
+   - `api/files.py` — nový `Query` parametr s validací (`pattern` / `max_length` / `ge` / `le` → 422);
+   - `services/file_service.py` — filtr v `list_files()` (stejně jako `query` / datum), předat i do
+     `list_files_paginated()` a `_hidden_by_filter()`, rozhodnout, zda platí i pro `wip[]`;
+   - `services/protocols.py` — rozšířit `DataReader.list_files_paginated`;
+   - text porovnávat přes `_fold()` (bez diakritiky a velikosti písmen).
+3. **Frontend:**
+   - `hooks/useData.ts` — `FilesParams` + `params.set(...)` + **deps `fetchFiles`**;
+   - `hooks/useDatabaseState.ts` — stav filtru, změna → `setPage(1)`; textové pole s debounce
+     (`SEARCH_DEBOUNCE_MS`); uložení podle povahy (`localStorage` volby / `sessionStorage` dočasné / nic);
+   - `pages/Database.tsx` — ovládací prvek v `.db-toolbar` (dotyk: min. 44 px, design tokeny);
+   - `components/FileTable.tsx` — prázdný stav („nic neodpovídá…"), je-li potřeba;
+   - i18n `db.*` ve všech třech souborech (`types.ts`, `cs.ts`, `en.ts`).
+4. **Kombinace s datumovým filtrem:** promyslet — hledání ho záměrně vypíná (`searchAllDates`).
+
+### Checklist
+- [ ] Údaj je známý z názvu / složky, nebo je vyřešeno `None` (nepřečtené soubory)
+- [ ] `api/files.py` + `file_service.list_files` + `list_files_paginated` + `_hidden_by_filter` + `protocols.py`
+- [ ] `useData.ts` (`FilesParams`, URL, deps) + `useDatabaseState.ts` (stav, `setPage(1)`) + `Database.tsx` + i18n
+- [ ] Test: `02_tests/test_order_search.py` (vzor — local, remote, stránkování, wip, hidden_by_filter, 422, výkon 100 000)
+- [ ] Test: `01_frontend/src/test/Database.test.tsx` (mock `useDatabaseState` doplnit o nová pole)
+- [ ] Dokumentace: `CLAUDE.md` § 5 (API) + § 7, `architecture.md`, `acceptance_test.md` 2.2
 
 ---
 

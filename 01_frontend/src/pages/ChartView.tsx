@@ -830,8 +830,12 @@ export default function ChartView() {
           <div className="testing-hero">
             <div className="testing-hero__main">
               <div className="testing-hero__switch">{String(record.microswitch_name ?? '—')}</div>
+              {/* [Metadata] TEST = PROD_ (Gateway od 2026-10-16): Recipe, Microswitch_ID (SAP číslo) */}
               {record.microswitch_id != null && (
-                <div className="testing-hero__id">ID: {String(record.microswitch_id)}</div>
+                <div className="testing-hero__id">{t.db.colId}: {String(record.microswitch_id)}</div>
+              )}
+              {record.recipe != null && record.recipe !== '' && (
+                <div className="testing-hero__id">{t.chart.oiRecipe}: {String(record.recipe)}</div>
               )}
             </div>
             <div className="testing-hero__divider" />
