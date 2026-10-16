@@ -3,11 +3,15 @@
  * @description Tabulka CSV souborů stránky Database — řádky, rozbalené záznamy
  *   (ExpandedRow), stránkování a footer se součty.
  *   Čistá prezentační komponenta — veškerá logika žije v useDatabaseState.
+ *
+ *   Řádek Production: detail zakázky rovnou (ikona grafu) · rozbalit · CSV · XLSX · smazat.
+ *   Rozpracovaná zakázka (wip) nahoře, bez výběru; smazat ji smí jen admin (`canDeleteWip`) — jednotlivě.
+ *   ExpandedRow: graf kategorií `CategoryChart compact` (total = všechny kusy, meze z `orderInfo`),
+ *   počet / plán, podtabulka kusů s přilepenou hlavičkou (`.db-subtable__th` — bez `position: relative`!).
  */
 import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, Trash2, BarChart2, Download } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { useFileRecords, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import LoadingSpinner from './LoadingSpinner'
@@ -15,7 +19,8 @@ import Pagination from './Pagination'
 import { formatDate, formatDateTime } from '../utils/formatting'
 import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
-import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
+import { categoryColor, categoryTextColor } from '../utils/groupColors'
+import CategoryChart from './CategoryChart'
 import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit, recordOkState } from '../utils/paramMeta'
 import PositionScaleNote from './PositionScaleNote'
 
@@ -49,7 +54,7 @@ interface ExpandedRowProps {
 function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   const navigate = useNavigate()
   const { t } = useLang()
-  const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords } = useFileRecords()
+  const { records, total, pages, groupCounts, fileExpectedCount, orderInfo, loading, error, fetchRecords } = useFileRecords()
 
   const [recordPage, setRecordPage] = useState(1)
   // Stránka, ze které jsou ZOBRAZENÉ záznamy — při přechodu na další stránku se tabulka ještě
@@ -78,14 +83,6 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   // groupCounts + fileExpectedCount přicházejí z API — agregovány přes celý soubor,
   // takže skupinový graf je přesný i při stránkování (nezáleží na aktuální stránce).
   const hasGroups = Object.keys(groupCounts).length > 0
-
-  const groupData = useMemo(
-    () => [1, 2, 3, 4, 5, 6].map(g => ({
-      name:  String(g),
-      count: groupCounts[String(g)] ?? 0,
-    })),
-    [groupCounts]
-  )
 
   // Sloupec group v tabulce — z aktuální stránky záznamů
   const hasGroupCol = useMemo(
@@ -131,18 +128,9 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
             <div className="db-order-stats">
               <div className="db-group-chart-wrap">
                 <div className="db-order-stats__label">{t.chart.categoryDistribution}</div>
-                <ResponsiveContainer width="100%" height={90}>
-                  <BarChart data={groupData} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                      {groupData.map((_, idx) => (
-                        <Cell key={idx} fill={CATEGORY_COLORS[idx]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {/* total = všechny kusy zakázky (rozbalený řádek nefiltruje) — podíly stejné jako v detailu zakázky */}
+                <CategoryChart compact groupCounts={groupCounts} total={total}
+                  categories={orderInfo?.sorting_categories} />
               </div>
 
               {fileExpectedCount != null && (
@@ -228,7 +216,8 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                           ? (
                             <span
                               className="db-group-badge"
-                              style={{ background: categoryColor(r.group) }}
+                              data-cat={String(r.group)}
+                              style={{ background: categoryColor(r.group), color: categoryTextColor(r.group) }}
                             >
                               {String(r.group)}
                             </span>
@@ -323,7 +312,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
 
 interface Props {
   files:           OrderFile[]
-  /** Rozpracované zakázky — zobrazí se nahoře, zvýrazněné, bez mazání a výběru */
+  /** Rozpracované zakázky — zobrazí se nahoře, zvýrazněné, bez výběru (smazat jen admin, viz canDeleteWip) */
   wip?:            OrderFile[]
   /** Datumový filtr skryl vše: počet souborů mimo filtr (0 = nic skryté) */
   hiddenByFilter?:    number
@@ -358,6 +347,8 @@ interface Props {
   onBatchDelete:    () => void
   /** Vzdálený přístup — bez výběru a mazání (jen prohlížení) */
   readOnly?:        boolean
+  /** Admin+ smí smazat rozpracovanou zakázku (jednotlivě, dialog s potvrzením rizika; ne hromadně) */
+  canDeleteWip?:    boolean
 }
 
 export default function FileTable({
@@ -367,6 +358,7 @@ export default function FileTable({
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
   sortBy, sortDir, onSort,
   selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, readOnly = false,
+  canDeleteWip = false,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
@@ -389,7 +381,7 @@ export default function FileTable({
     )
   }
 
-  /** Jeden řádek tabulky (+ rozbalený detail). isWip = rozpracovaná zakázka (zvýrazněná, bez mazání). */
+  /** Jeden řádek tabulky (+ rozbalený detail). isWip = rozpracovaná zakázka (zvýrazněná, bez výběru). */
   function renderRow(file: OrderFile, index: number, isWip: boolean) {
     const pendingMeta = dataType === 'production' && file.record_count == null
     return (
@@ -457,13 +449,28 @@ export default function FileTable({
                 <BarChart2 size={18} />
               </button>
             ) : (
-              <button
-                className={`db-icon-btn${expandedId === file.file_id ? ' db-icon-btn--active' : ''}`}
-                onClick={() => onExpandToggle(file.file_id)}
-                title={t.db.showRecords}
-              >
-                <ChevronDown size={18} />
-              </button>
+              <>
+                {/* Detail zakázky přímo — bez rozbalení řádku */}
+                <button
+                  className="db-icon-btn db-icon-btn--detail"
+                  title={t.db.orderDetail}
+                  aria-label={`${t.db.orderDetail}: ${file.order_id ?? file.file_id}`}
+                  onClick={() => navigate(
+                    `/chart?file=${encodeURIComponent(file.file_id)}&location=${location}&type=${dataType}`
+                  )}
+                >
+                  <BarChart2 size={18} />
+                </button>
+                <button
+                  className={`db-icon-btn${expandedId === file.file_id ? ' db-icon-btn--active' : ''}`}
+                  onClick={() => onExpandToggle(file.file_id)}
+                  title={t.db.showRecords}
+                  aria-label={t.db.showRecords}
+                  aria-expanded={expandedId === file.file_id}
+                >
+                  <ChevronDown size={18} />
+                </button>
+              </>
             )}
             {/* Stahování — vždy vedle sebe */}
             <button
@@ -480,8 +487,8 @@ export default function FileTable({
             >
               <Download size={14} /> XLSX
             </button>
-            {readOnly ? null : isWip ? (
-              // Rozpracovanou zakázku nelze smazat — prázdné místo stejné šířky,
+            {readOnly ? null : isWip && !canDeleteWip ? (
+              // Rozpracovanou zakázku smí smazat jen admin — jinak prázdné místo stejné šířky,
               // aby tlačítka CSV / XLSX zůstala ve všech řádcích na stejné pozici
               <span className="db-icon-btn db-icon-btn--placeholder" aria-hidden="true" />
             ) : (

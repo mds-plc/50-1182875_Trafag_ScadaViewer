@@ -80,6 +80,9 @@ _COUNT_RETRY_S        = 60.0
 _COUNT_STALL_S        = 120.0
 # Výpis NAS složky držený v paměti [s] — 100 000 souborů se po síti vypisuje sekundy
 _REMOTE_LISTING_TTL   = 15.0
+# Mazání souboru, který právě drží DatabaseGateway (WinError 32) — opakovat ~1 s, pak 409
+_DELETE_ATTEMPTS      = 5
+_DELETE_DELAY_S       = 0.2
 
 # Název souboru od DatabaseGateway: PROD_{zakázka}_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv,
 # TEST_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv; starší soubory bez prefixu PROD_.
@@ -122,6 +125,14 @@ class _OrderIndex:
     scales:      dict[str, float] | None = None
     # Údaje zakázky z bloků před [Data] (blokový formát, Gateway 2.3.0+) — viz _order_info()
     order_info:  dict | None = None
+    # Maska NOK kategorií po řádcích (bit podle NOK_CATEGORIES; NokCategory_* = 1) — filtr „NOK oblast";
+    # None = soubor sloupce NokCategory_* nemá (starší formát)
+    nok:         list[int] | None = None
+
+
+# NOK kategorie kusu (sloupce NokCategory_Force … _Process z Gateway) — pořadí = bit v _OrderIndex.nok
+NOK_CATEGORIES: tuple[str, ...] = ('force', 'position', 'electric', 'times', 'process')
+_NOK_BIT = {c: 1 << i for i, c in enumerate(NOK_CATEGORIES)}
 
 
 def _record_matches(
@@ -1135,8 +1146,19 @@ class CsvRepository:
         return meta
 
     def delete_file(self, path: Path) -> None:
-        """Smaže CSV soubor z lokálního úložiště."""
-        path.unlink()
+        """Smaže CSV soubor z lokálního úložiště.
+
+        DatabaseGateway může soubor právě držet (zápis kusu do rozpracované zakázky, přesun) → WinError 32.
+        Krátce zopakovat (~1 s); trvalý zámek propustí PermissionError → API 409 „soubor se právě používá".
+        """
+        for attempt in range(_DELETE_ATTEMPTS):
+            try:
+                path.unlink()
+                break
+            except PermissionError:
+                if attempt == _DELETE_ATTEMPTS - 1:
+                    raise
+                time.sleep(_DELETE_DELAY_S)
         log.info("[CSV]   smazán soubor: %s", path.name)
 
     def read_records(
@@ -1151,18 +1173,22 @@ class CsvRepository:
         status:     str | None = None,
         stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
+        nok:        frozenset[str] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
         Přečte záznamy z CSV souboru.
         Vrátí (records, total_matching, group_counts, file_expected_count).
 
         categories / status: filtr detailu zakázky (production) — kategorie '1'–'6' a/nebo
-        'ok' / 'nok'. total_matching a stránkování platí pro vyfiltrované záznamy; group_counts,
+        'ok' / 'nok'. nok: NOK oblasti z NOK_CATEGORIES ('force', 'electric', …) — kus projde, když
+        nevyhověl ALESPOŇ v jedné vybrané (NokCategory_* = 1); soubor bez těchto sloupců → nic.
+        Filtry se kombinují (A ZÁROVEŇ). total_matching a stránkování platí pro vyfiltrované záznamy; group_counts,
         timeline a expected_count dál pro celý soubor. Při aktivním filtru nese každý záznam
         `_idx` = pořadí v nefiltrovaném souboru (odkaz na detail záznamu `?record=N`).
-        stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií
-        a `order_info` = údaje zakázky z bloků blokového PROD_ souboru (ze stejného indexu —
-        bez druhého čtení souboru; audit Q7).
+        stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií,
+        `order_info` = údaje zakázky z bloků blokového PROD_ souboru (ze stejného indexu —
+        bez druhého čtení souboru; audit Q7) a `nok_counts` = počet kusů s NOK v každé oblasti
+        za celý soubor (po filtru data; None = soubor sloupce NokCategory_* nemá).
 
         order: 'asc' = od nejstaršího (pořadí výroby), 'desc' = od nejnovějšího. Řadí se podle
         pořadí v souboru, ne podle textu času — Gateway zapisuje kusy tak, jak vznikají, a při
@@ -1202,12 +1228,16 @@ class CsvRepository:
         from_o   = from_day.toordinal() if from_day else None
         to_o     = to_day.toordinal()   if to_day   else None
         offset   = (page - 1) * per_page if per_page > 0 else 0
-        filtering = bool(categories) or status in ('ok', 'nok')
+        nok_sel  = 0
+        for c in nok or ():
+            nok_sel |= _NOK_BIT.get(c, 0)
+        filtering = bool(categories) or status in ('ok', 'nok') or bool(nok)
         descending = order == 'desc'
         picked: list[tuple[int, int]] = []                   # (řádek v indexu, pořadí v zakázce)
 
         # 1) filtr data + souhrny za celý soubor — vždy v pořadí výroby (timeline, expected_count)
-        days, grps = ix.days, ix.grp
+        days, grps, noks = ix.days, ix.grp, ix.nok
+        nok_counts = [0] * len(NOK_CATEGORIES) if noks is not None else None
         rows: list[int] = []                                 # řádky v indexu po filtru data
         for i in range(len(ix.lines)):
             d = days[i]
@@ -1220,6 +1250,11 @@ class CsvRepository:
             rows.append(i)
             if grp:
                 group_counts[grp] = group_counts.get(grp, 0) + 1
+            if nok_counts is not None and noks[i]:
+                m = noks[i]
+                for b in range(len(NOK_CATEGORIES)):
+                    if m >> b & 1:
+                        nok_counts[b] += 1
             if timeline is not None:
                 timeline.append((ix.ts[i], grp))
             if file_expected_count is None:
@@ -1235,6 +1270,8 @@ class CsvRepository:
         for idx in (range(total_all - 1, -1, -1) if descending else range(total_all)):
             i = rows[idx]
             if filtering and not _record_matches({'status': ix.status[i]}, grps[i], categories, status):
+                continue
+            if nok_sel and (noks is None or not noks[i] & nok_sel):
                 continue
             total += 1
             if per_page == 0 or offset < total <= offset + per_page:
@@ -1258,6 +1295,7 @@ class CsvRepository:
         if stats is not None:
             stats['total_all'] = total_all
             stats['order_info'] = ix.order_info
+            stats['nok_counts'] = (dict(zip(NOK_CATEGORIES, nok_counts)) if nok_counts is not None else None)
         return records, total, group_counts, file_expected_count
 
     def _read_sectioned(self, f, from_day: _date | None, to_day: _date | None,
@@ -1361,6 +1399,7 @@ class CsvRepository:
                 return row[i] if i < len(row) else None
 
             has_ec = 'expected_count' in pos
+            nok_idx = [(pos[f'nokcategory_{c}'], _NOK_BIT[c]) for c in NOK_CATEGORIES if f'nokcategory_{c}' in pos]
             intern = sys.intern
             lines: list[str] = []
             ts_l: list[str] = []
@@ -1368,6 +1407,7 @@ class CsvRepository:
             grp_l: list[str] = []
             st_l: list[str] = []
             ec_l: list[str] | None = [] if has_ec else None
+            nok_l: list[int] | None = [] if nok_idx else None
             for row in rd:
                 raw = ''.join(buf)
                 buf.clear()
@@ -1384,10 +1424,16 @@ class CsvRepository:
                 st_l.append(intern(cell(row, 'status') or ''))
                 if ec_l is not None:
                     ec_l.append(cell(row, 'expected_count') or '')
+                if nok_l is not None:
+                    mask = 0
+                    for ci, bit in nok_idx:
+                        if ci < len(row) and row[ci].strip() == '1':
+                            mask |= bit
+                    nok_l.append(mask)                       # malé int — sdílené objekty, paměť ~8 B / řádek
         nbytes = sum(len(x) for x in lines) + len(lines) * 260      # text + seznamy, časy, objekty
         scales = {_normalize_key(k): unit_factor(k) for k in fieldnames if unit_factor(k) != 1.0}
         return _OrderIndex(meta_header, meta_vals, meta_inject, fieldnames,
-                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes, scales, order_info)
+                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes, scales, order_info, nok_l)
 
     def read_order_info(self, path: Path) -> dict | None:
         """Údaje zakázky (receptura, šarže, testovací parametry, kategorie, limity) — jen blokový

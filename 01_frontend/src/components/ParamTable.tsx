@@ -1,13 +1,17 @@
 /**
  * @file ParamTable.tsx
  * @description Sdílená tabulka parametrů — detail produkčního záznamu i Testing detail.
- *   Zkratka · název · hodnota s jednotkou · nápověda „?" (český popis, výpočet, jednotka).
+ *   Zkratka · název · hodnota s jednotkou · nápověda „?" (český popis, výpočet, jednotka)
+ *   a u analyzovaných parametrů tlačítko grafu → ParamExplainModal (parametr zvýrazněný v diagramu).
  *   Hodnoty přes formatParam (paramMeta.ts) → všude stejné jednotky a formát
  *   (N, µm, µs, mΩ, ∞ pro rozepnutý kontakt, vstupní parametry testu dle CSV).
  */
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
+import { ChartSpline } from 'lucide-react'
 import { useLang } from '../context/LangContext'
 import { PARAM_LABELS, PARAM_TOOLTIPS, formatParam, paramDesc, paramUnit } from '../utils/paramMeta'
+import { PARAM_DIAGRAM } from './ParamDiagrams'
+import ParamExplainModal from './ParamExplainModal'
 
 export interface ParamGroup {
   id:    string
@@ -31,6 +35,9 @@ interface Props {
 
 export default function ParamTable({ record, groups, title, bare = false, hideMissing = false }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  // Grafická nápověda: klíč parametru, jehož diagram je otevřený (null = zavřeno)
+  const [graphKey, setGraphKey] = useState<string | null>(null)
+  const closeGraph = useCallback(() => setGraphKey(null), [])
   const { t, lang } = useLang()
 
   const hasValue = (k: string) => record[k] != null && String(record[k]).trim() !== ''
@@ -73,13 +80,27 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
                         {missing ? '—' : <>{f.text}{u && !f.open && k !== 'meas_ts' && <span className="rd-pt__unit">{u}</span>}</>}
                       </td>
                       <td className="rd-pt__help-cell">
-                        {desc && (
-                          <button
-                            className={`rd-pt__help-btn${isOpen ? ' rd-pt__help-btn--active' : ''}`}
-                            onClick={() => setExpandedKey(isOpen ? null : k)}
-                            aria-expanded={isOpen}
-                          >?</button>
-                        )}
+                        <span className="rd-pt__help-btns">
+                          {desc && (
+                            <button
+                              type="button"
+                              className={`rd-pt__help-btn${isOpen ? ' rd-pt__help-btn--active' : ''}`}
+                              onClick={() => setExpandedKey(isOpen ? null : k)}
+                              aria-expanded={isOpen}
+                              title={t.chart.paramHelp}
+                              aria-label={`${t.chart.paramHelp}: ${PARAM_LABELS[k] ?? k}`}
+                            >?</button>
+                          )}
+                          {PARAM_DIAGRAM[k] && (
+                            <button
+                              type="button"
+                              className="rd-pt__help-btn rd-pt__graph-btn"
+                              onClick={() => setGraphKey(k)}
+                              title={t.chart.paramGraph}
+                              aria-label={`${t.chart.paramGraph}: ${PARAM_LABELS[k] ?? k}`}
+                            ><ChartSpline size={15} aria-hidden="true" /></button>
+                          )}
+                        </span>
                       </td>
                     </tr>
                     {isOpen && desc && (
@@ -97,7 +118,9 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
     </table>
   )
 
-  if (bare) return table
+  const modal = graphKey && <ParamExplainModal paramKey={graphKey} record={record} onClose={closeGraph} />
+
+  if (bare) return <>{table}{modal}</>
   return (
     <div className="tile tile--12">
       {title && (
@@ -106,6 +129,7 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
         </div>
       )}
       {table}
+      {modal}
     </div>
   )
 }

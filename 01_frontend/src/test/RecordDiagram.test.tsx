@@ -9,9 +9,11 @@
  *   - polohy a dráhy na 0,1 µm, časy celá čísla
  */
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { LangProvider } from '../context/LangContext'
 import RecordDiagram from '../components/RecordDiagram'
+import { ForceTravelDiagram, PARAM_DIAGRAM, TimeDiagram } from '../components/ParamDiagrams'
+import { ALL_PARAM_KEYS } from '../utils/paramMeta'
 
 // Klíče po _normalize_key (lowercase, bez [jednotky]) — hodnoty v jednotkách zákazníka
 const RECORD: Record<string, unknown> = {
@@ -34,10 +36,10 @@ function svgTexts(container: HTMLElement): string[] {
 }
 
 describe('RecordDiagram — real production record', () => {
-  it('RT dimension shows RP − TTP and there is no "RL"', () => {
+  it('RvT dimension shows RP − TTP and there is no "RL"', () => {
     const { container } = render(<LangProvider><RecordDiagram record={RECORD} /></LangProvider>)
     const texts = svgTexts(container)
-    expect(texts).toContain('RT')
+    expect(texts).toContain('RvT')                     // stejné zkratky jako tabulka parametrů (PARAM_LABELS)
     expect(texts).toContain('1110.0')
     expect(texts).not.toContain('RL')
     expect(texts).toContain('687.0')   // PT
@@ -61,5 +63,40 @@ describe('RecordDiagram — real production record', () => {
     expect(cells).toContain('6.3mΩ')
     expect(cells).toContain('∞')
     expect(cells.join('|')).not.toMatch(/∞mΩ|\.0000/)
+  })
+})
+
+describe('Grafická nápověda parametru (tlačítko grafu v ParamTable)', () => {
+  it('každý analyzovaný parametr (24) má diagram; vstupy testu ne', () => {
+    for (const k of ALL_PARAM_KEYS) expect(PARAM_DIAGRAM[k], k).toBeDefined()
+    expect(PARAM_DIAGRAM['drive_velocity']).toBeUndefined()
+  })
+
+  it('tlačítko grafu otevře dialog se zvýrazněným parametrem, Esc zavře', () => {
+    render(<LangProvider><RecordDiagram record={RECORD} /></LangProvider>)
+    const btn = screen.getAllByRole('button')
+      .find(b => b.classList.contains('rd-pt__graph-btn') && (b.getAttribute('aria-label') ?? '').endsWith(': PT'))
+    expect(btn).toBeDefined()
+    fireEvent.click(btn!)
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('PT', { selector: '.pe-modal__abbr' })).toBeInTheDocument()
+    expect(dialog.textContent).toContain('687.0')                  // naměřená hodnota záznamu
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('zvýraznění: kóta parametru plná, nesouvisející ztlumené', () => {
+    const { container } = render(<LangProvider><ForceTravelDiagram record={RECORD} highlight="pt_pretravel" /></LangProvider>)
+    const groupOf = (label: string) => Array.from(container.querySelectorAll('svg text'))
+      .find(t => t.textContent === label)?.closest('g')
+    expect(groupOf('PT')?.getAttribute('opacity')).toBe('1')
+    expect(groupOf('TT')?.getAttribute('opacity')).toBe('0.12')
+  })
+
+  it('časový diagram: OpT rozsvítí UT, RevT i BT', () => {
+    const { container } = render(<LangProvider><TimeDiagram record={RECORD} highlight="ot_operatingtime" /></LangProvider>)
+    const groupOf = (label: string) => Array.from(container.querySelectorAll('svg text'))
+      .find(t => t.textContent === label)?.closest('g')
+    for (const l of ['OpT', 'UT', 'RevT', 'BT']) expect(groupOf(l)?.getAttribute('opacity'), l).toBe('1')
   })
 })

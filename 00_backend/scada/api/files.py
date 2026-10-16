@@ -18,7 +18,8 @@ Rozhraní:
   GET    /api/files/{file_id}          → OrderFileModel
   GET    /api/files/{file_id}/download → StreamingResponse (originální CSV)
   GET    /api/files/{file_id}/xlsx     → XLSX celé zakázky (sestavený na serveru)
-  DELETE /api/files/{file_id}          → 204 / 403 (NAS nebo vzdálený přístup) / 404 / 503
+  DELETE /api/files/{file_id}          → 204 / 403 (NAS, vzdálený přístup, done_local či *_WIP.csv bez admin) / 404
+                                          / 409 (soubor drží jiný proces — Gateway) / 503
   POST   /api/files/batch-delete       → BatchDeleteResult (deleted, failed, errors[])
 
 Napojení:
@@ -141,16 +142,24 @@ async def delete_file(
     DatabaseGateway, ne pro přímé mazání přes HTTP. Proto 403 (ne 405 nebo 500).
     """
     reader: DataReader = request.app.state.csv_reader
+    is_admin = _may_delete_unsynced(session)
     try:
+        # Rozpracovanou zakázku (wip/) smí smazat jen admin+ — jen tady, jednotlivě (batch-delete ne)
         result = await run_io(location, reader.delete_file, file_id, location, file_type,
-                              _may_delete_unsynced(session), sync)
-    except (OSError, PermissionError) as exc:
+                              is_admin, sync, is_admin)
+    except PermissionError as exc:
+        # Soubor drží jiný proces i po opakování (typicky DatabaseGateway zapisuje kus / přesouvá) — zkusit znovu
+        log.warning("[API]   DELETE /api/files/%s — soubor se používá: %s", file_id, exc)
+        raise HTTPException(status_code=409, detail="Soubor právě používá jiný program (DatabaseGateway) — zkuste to znovu") from exc
+    except OSError as exc:
         log.error("[API]   DELETE /api/files/%s I/O chyba: %s", file_id, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
     if result == 'remote_forbidden':
         raise HTTPException(status_code=403, detail="Vzdálené soubory nelze smazat")
     if result == 'wip_forbidden':
-        raise HTTPException(status_code=409, detail="Rozpracovanou zakázku nelze smazat")
+        raise HTTPException(status_code=403, detail="Rozpracovanou zakázku smí smazat jen administrátor")
+    if result == 'ok' and file_id.endswith('_WIP.csv'):
+        log.warning("[API]   rozpracovaná zakázka smazána (%s): %s", session.get("username", "?"), file_id)
     if result == 'unsynced_forbidden':
         raise HTTPException(status_code=403, detail="Soubor ještě není na NAS — smazat ho smí jen administrátor")
     if result == 'not_found':

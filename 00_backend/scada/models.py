@@ -172,6 +172,9 @@ class DataResponse(BaseModel):
     # Údaje zakázky (receptura, šarže, testovací parametry, kategorie, limity) — jen blokový
     # PROD_ soubor z DatabaseGateway 2.3.0+, jinak None
     order_info:           OrderInfo | None      = None
+    # Počet kusů s NOK v každé oblasti (force / position / electric / times / process) za celý soubor;
+    # None = soubor sloupce NokCategory_* nemá (filtr NOK oblasti se v UI nezobrazí)
+    nok_counts:           dict[str, int] | None = None
 
 
 # ======================================================================

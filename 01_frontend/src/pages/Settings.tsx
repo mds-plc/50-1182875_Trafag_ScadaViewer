@@ -13,6 +13,7 @@ import { useStorage }  from '../context/StorageContext'
 import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
 import LoadingSpinner  from '../components/LoadingSpinner'
+import PageHelp        from '../components/PageHelp'
 import { apiFetch } from '../utils/apiFetch'
 import { formatBytes } from '../utils/formatting'
 
@@ -668,7 +669,7 @@ export default function Settings() {
 
       {/* Hlavička — nadpis vlevo, záložky s ikonkami vpravo */}
       <div className="db-header">
-        <h1 className="page-title">{t.settings.title}</h1>
+        <h1 className="page-title">{t.settings.title}<PageHelp page="settings" /></h1>
         <div className="db-tabs">
           <button
             className={`db-tab${activeTab === 'preferences' ? ' db-tab--active' : ''}`}

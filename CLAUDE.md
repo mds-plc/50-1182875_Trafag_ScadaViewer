@@ -65,7 +65,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── plc_ws.py          ← WebSocket /ws/plc
     │   ├── orders_ws.py       ← WebSocket /ws/orders (OrderWatcher live záznamy) — ⏸ odpojeno (2026-09-23)
     │   ├── files.py           ← GET /api/files (+ counts_pending) + GET /api/files/{id} + /download + /xlsx + DELETE + POST batch-delete
-    │   ├── data.py            ← GET /api/data (from/to, status ok|nok, category 1–6, per_page=0 strop 20 000) + GET /api/timeline
+    │   ├── data.py            ← GET /api/data (from/to, status ok|nok, category 1–6, nok = NOK oblasti + nok_counts, per_page=0 strop 20 000) + GET /api/timeline
     │   ├── status.py          ← GET /api/status → remote_available
     │   ├── health.py          ← GET /api/health → {status, version, checks}
     │   ├── auth.py            ← POST /api/auth/login + logout + change-password + plc-login
@@ -115,26 +115,31 @@ CLAUDE.md                  ← tento soubor
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
     │   ├── AppLogo.tsx        ← SVG logo 4 čtverce
     │   ├── DataTable.tsx      ← generická tabulka columns[] + rows[] (ChartView); memo — stabilní props
-    │   ├── RecordFilterBar.tsx ← filtr kusů v detailu zakázky: Řazení Nejstarší/Nejnovější + Stav Vše/OK/NOK + Kategorie Vše/1–6 (vše na serveru)
-    │   ├── DeleteModal.tsx    ← potvrzovací dialog mazání; soubor z done_local (není na NAS) = varování, smazat jen admin+
+    │   ├── RecordFilterBar.tsx ← filtr kusů v detailu zakázky: Řazení Nejstarší/Nejnovější + Stav Vše/OK/NOK + Kategorie Vše/1–6 + NOK oblast Force/Position/Electric/Times/Process s počty (vše na serveru)
+    │   ├── DeleteModal.tsx    ← potvrzovací dialog mazání; done_local (není na NAS) i rozpracovaná zakázka = varování, smazat jen admin+ (WIP navíc zaškrtnutí rizika)
     │   ├── ErrorBoundary.tsx  ← class component, getDerivedStateFromError
-    │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (skupiny, count tile, akce)
+    │   ├── FileTable.tsx      ← tabulka Database + ExpandedRow (CategoryChart compact, count tile, kusy); akce: detail · rozbalit · CSV · XLSX · smazat (In progress jen admin — canDeleteWip)
     │   ├── LoadingSpinner.tsx ← animovaný ring + "Načítám…" (i Suspense fallback)
     │   ├── LoginOverlay.tsx   ← přihlašovací overlay (PLC čekání + lokální formulář + „Relace vypršela"; vzdáleně jen formulář)
     │   ├── Pagination.tsx     ← [<] Stránka X z Y [>]
-    │   ├── RecordDiagram.tsx  ← detail záznamu: ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818, časy v měřítku) + ParamTable
+    │   ├── RecordDiagram.tsx  ← detail záznamu: diagramy (ParamDiagrams) + NOK panel + ParamTable
+    │   ├── ParamDiagrams.tsx  ← ForceTravelDiagram (SVG, screen 29) + TimeDiagram (U_NC/U_NO dle osciloskopu IMG_4818); `highlight` = zvýraznění parametru, PARAM_DIAGRAM
+    │   ├── ParamExplainModal.tsx ← grafická nápověda parametru: diagram se zvýrazněným parametrem + hodnota + popis (portál, Esc)
+    │   ├── PageHelp.tsx       ← nápověda stránky: ikona „?" vedle nadpisu → panel „k čemu stránka slouží / co na ní je" (texty i18n/help.*.ts)
     │   ├── PositionScaleNote.tsx ← poznámka u starších souborů: polohy na stupnici enkodéru
-    │   ├── ParamTable.tsx     ← sdílená tabulka parametrů (zkratka/název/hodnota+jednotka/„?" nápověda) — production detail záznamu + Testing detail
+    │   ├── ParamTable.tsx     ← sdílená tabulka parametrů (zkratka/název/hodnota+jednotka/„?" nápověda + tlačítko grafu) — production detail záznamu + Testing detail
     │   ├── SignalCharts.tsx   ← 5 záložek Signal Data dle referenčních grafů analýzy (05_user_data/20260921_103124/*.png)
     │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
     │   ├── NasStorageBar.tsx  ← ukazatel zaplnění NAS (kvóta sdílené složky / svazek) v hlavičce Database
-    │   ├── OrderInfoPanel.tsx ← údaje zakázky z blokového PROD_ souboru: Testovací parametry / Kategorie / Limity
+    │   ├── CategoryChart.tsx  ← sloupcový graf kategorií 1–6 (detail zakázky + rozbalený řádek, `compact`): pásy OK / NOK, rozmezí MD u OK kategorií (order_info)
+    │   ├── OrderInfoPanel.tsx ← údaje zakázky z blokového PROD_ souboru — rozbalovací řádky se souhrnem: Šarže / Testovací parametry / Kategorie / Limity
     │   ├── StorageBar.tsx     ← kompaktní ukazatel lokálního úložiště v hlavičce Database (vedle Lokální/Vzdálená) + dialog čištění; krok 2 = bez ověření s potvrzením rizika
     │   ├── OrderTimelineChart.tsx ← časový průběh zakázky: řada KPI (doba, průměr/medián, prodlevy, ks/h) + graf vyrobených kusů v čase
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(úložiště / NAS, jen warning/critical) + chip(user) + CS/EN + chip(datetime)
     ├── i18n/
-    │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en'
+    │   ├── types.ts           ← Translations interface + Lang = 'cs' | 'en' + HelpPageId / HelpPage
+    │   ├── help.cs.ts / help.en.ts ← texty nápovědy stránek (PageHelp) — při změně stránky upravit
     │   ├── cs.ts              ← České překlady (~360 klíčů, nested objekt)
     │   └── en.ts              ← Anglické překlady (~360 klíčů, nested objekt) — kontroluje test/i18n.test.ts
     ├── context/
@@ -162,7 +167,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── paramMeta.ts        ← PARAM_LABELS/TOOLTIPS/GROUPS/DESC(+_EN, paramDesc) + formatParam() — JEDINÉ formátování hodnot (mN, µm 0,1, µs, mΩ 0,1, ∞ nad 999,9; 0 u polohy/síly/odporu = „—“ (W5/W6); vstupy testu EXTRA_FORMAT)
     │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration;
     │   │                         normalizeClockShift (konec letního času 25. 10., zpětné posuny hodin)
-    │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() — jediná paleta boxů 1–6 (= .db-cat-badge v CSS)
+    │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() / categoryTextColor() — jediná paleta boxů 1–6 = barvy štítků třídicích krabic (= .db-cat-badge v CSS)
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
     │   ├── exportXlsx.ts       ← exportFileXlsx(): „Uložit jako" hned po kliknutí → GET /api/files/{id}/xlsx (sestaví server); xlsxBaseName()
@@ -201,6 +206,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_remote_access.py      ← vzdálený přístup: PLC login jen u stroje, zápisy 403, čtení OK, local_clients
 ├── test_signal_threshold.py   ← práh přepnutí U_NC jako Analyzing (klidové + (max − klidové) × 0,5)
 ├── test_data_filter.py        ← filtr a řazení kusů /api/data?status=&category=&order= (total_all, _idx, stránkování, 422)
+├── test_nok_filter.py         ← filtr NOK oblastí /api/data?nok= (OR uvnitř, AND se stavem / kategorií, nok_counts, starší soubor, blokový PROD_)
 ├── test_big_order.py          ← velké zakázky a archiv: index v paměti, XLSX, přehled z názvů, dopočet, SQLite cache,
 │                                 NAS výpis v paměti, dopočet jen pro stránku, lokální kopie, limity paměti, tabulka known
 ├── test_audit_20261010.py     ← regrese kompletního auditu K1–K42 (dopočet, WS, ADS STRING, signál po blocích, uživatelé, čištění, logy)
@@ -421,9 +427,9 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
 | `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) — čísla jako čísla, čas jako datum |
-| `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` → 409 |
-| `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů |
-| `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3` → `total_all`, záznamy s `_idx` + řazení `&order=asc\|desc` (pořadí výroby / od nejnovějšího, při `desc` vždy `_idx`); `per_page=0` = vše, strop 20 000; `order_info` (receptura, šarže, testovací parametry, kategorie, limity — blokový PROD_, ze stejného indexu); zakázka > 200 MB → 413 |
+| `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` (rozpracovaná zakázka) jen admin+, jednotlivě (batch ne), jinak 403 — Gateway smazaný WIP pozná a další kus odmítne |
+| `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů; rozpracovanou zakázku (`*_WIP.csv`) nemaže nikdy (`wip_forbidden`) |
+| `/api/data` | GET | CSV záznamy (`?file=&location=&type=&from=&to=&page=&per_page=`) + filtr kusů `&status=ok\|nok&category=1,3&nok=force,electric` (NOK oblasti — kus nevyhověl aspoň v jedné; filtry AND) → `total_all`, `nok_counts` (kusy s NOK v každé oblasti za celý soubor, null = soubor bez `NokCategory_*`), záznamy s `_idx` + řazení `&order=asc\|desc` (pořadí výroby / od nejnovějšího, při `desc` vždy `_idx`); `per_page=0` = vše, strop 20 000; `order_info` (receptura, šarže, testovací parametry, kategorie, limity — blokový PROD_, ze stejného indexu); zakázka > 200 MB → 413 |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data — `?file=&location=&type=&mode=&buckets=` (5 režimů) + `mode=range&t0=&t1=` (výřez [ms] pro přiblížený graf) |
 | `/api/timeline` | GET | Časový průběh zakázky — `?file=&location=&type=` → `{timestamps[], categories[]}` všech kusů (seřazeno — kromě konce letního času, pak pořadí výroby; jen production, jinak 404) |
@@ -552,8 +558,8 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
-| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ hledání zakázky (Production, lokální i vzdálená; server `?q=`, během hledání se datumový filtr neuplatní (celý archiv, 100 000 zakázek ~0,2 s), zpoždění 350 ms, text přežije návrat z detailu — sessionStorage) + přehled z názvů souborů (okamžitě i u 100 000 souborů), počet kusů „…" → dopočet na pozadí + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
-| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + **filtr kusů** (stav OK/NOK + kategorie) + klikací tabulka; velká zakázka (50 000 kusů) plynule (index v paměti, memo); Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage` | `FileTable`, `DeleteModal`, `Pagination`, `StorageBar` | ✅ ikona detailu zakázky v řádku (bez rozbalení) + smazání rozpracované zakázky adminem (s potvrzením rizika) + graf kategorií v rozbaleném řádku (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD) + hledání zakázky (Production, lokální i vzdálená; server `?q=`, během hledání se datumový filtr neuplatní (celý archiv, 100 000 zakázek ~0,2 s), zpoždění 350 ms, text přežije návrat z detailu — sessionStorage) + přehled z názvů souborů (okamžitě i u 100 000 souborů), počet kusů „…" → dopočet na pozadí + skupiny + CSV/XLSX download + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
+| ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + **filtr kusů** (stav OK/NOK + kategorie + NOK oblast s počty) + klikací tabulka; velká zakázka (50 000 kusů) plynule (index v paměti, memo); Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+) | ✅ 3 záložky: Předvolby + Připojení + Uživatelé (admin+) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
@@ -820,8 +826,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **425 testů** (regrese auditů `test_audit_20261010/11/15.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 22 souborů) — **157 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **437 testů** (regrese auditů `test_audit_20261010/11/15.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 24 souborů) — **187 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -832,7 +838,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
-| Hledání zakázky + formát Gateway 2.4.0 (Fáze 47, 2026-10-16) | ✅ | Database → Production (Lokální i Vzdálená): hledání části čísla / názvu zakázky na serveru (`/api/files?q=`, bez diakritiky a velikosti písmen, i `wip[]` / `hidden_by_filter`), během hledání se datumový filtr neuplatní, debounce 350 ms, sessionStorage; NAS: výpis 15 s v paměti, hledání v paměti (100 000 ≈ 0,2 s), dopočet jen stránky; TEST `[Metadata]` s Recipe + ID (SAP) v detailu testu; PROD `[TestingParameters]` nové názvy (generické); opravy revize E16–E20 — viz architecture.md fáze 47, návod `how_to_extend.md` § 13 |
+| Hledání zakázky + formát Gateway 2.4.0 (Fáze 47, 2026-10-16) | ✅ | Database → Production (Lokální i Vzdálená): hledání části čísla / názvu zakázky na serveru (`/api/files?q=`, bez diakritiky a velikosti písmen, i `wip[]` / `hidden_by_filter`), během hledání se datumový filtr neuplatní, debounce 350 ms, sessionStorage; NAS: výpis 15 s v paměti, hledání v paměti (100 000 ≈ 0,2 s), dopočet jen stránky; TEST `[Metadata]` s Recipe + ID (SAP) v detailu testu; PROD `[TestingParameters]` nové názvy (generické); opravy revize E16–E20 — + grafická nápověda parametru (tlačítko grafu vedle „?" → diagram se zvýrazněným parametrem, `ParamDiagrams` / `ParamExplainModal`) + nápověda každé stránky (`PageHelp`, ikona u nadpisu, hlídá hook + test) + Údaje zakázky jako rozbalovací řádky (50 šarží) + ikona detailu zakázky v přehledu + oprava přilepené hlavičky podtabulky + **smazání rozpracované zakázky adminem** (s potvrzením rizika; Gateway smazaný WIP pozná — nasazovat spolu) + **graf kategorií** `CategoryChart` (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD) + **paleta kategorií = barvy štítků krabic** (`groupColors.ts`) + kategorie 6 = „NOK Supplier" + **filtr kusů podle NOK oblasti** (Force / Position / Electric / Times / Process, `/api/data?nok=`, maska v `_OrderIndex.nok`, počty `nok_counts`) — viz architecture.md fáze 47, návod `how_to_extend.md` § 13 |
 | Hloubková analýza + opravy (Fáze 46, 2026-10-15) | ✅ | 38 nálezů Q1–Q38: NOK test podle masky NokCategory v [NokInfo], NasProbe (NAS pool), výpadek NAS ≠ prázdný archiv, cesty v Config.toml ověřené tomllib, mazání done_local jen admin+, řazení podle ID bez kaskády dopočtu, migrace cache 3→4 bez ztráty `known`, order_info jedním čtením + strop 200 MB, opakování PLC loginu, daemon pool (rychlé zastavení služby), jedno pravidlo OK/NOK (`recordOkState`); zaplnění NAS, údaje zakázky, sloupec ID mikrospínače — viz audit_log 2026-10-15 |
 | Blokový PROD_ soubor z Gateway 2.3.0 (Fáze 45, 2026-10-13) | ✅ | `[Metadata]` … `[Data]`: kusy z `[Data]`, Order/Recipe/Microswitch_ID/Name do záznamů (šarže v `order_info.lots` — Fáze 46), přehled = SAP číslo z názvu, XLSX jen data; `_prod_blocks_metadata()`; `test_prod_blocks.py` + `test_ecosystem_units.py` — viz audit_log 2026-10-13 |
 | Řazení kusů + nasazovací skript (Fáze 44, 2026-10-13) | ✅ | detail zakázky: Řazení Nejstarší / Nejnovější (první v liště filtru, server `order=asc\|desc`, podle pořadí výroby); `06_build/deploy/` — upgrade všech tří aplikací s kontrolami a zálohou, rollback; firewall „jen konkrétní PC“ v deployment.md — viz audit_log 2026-10-13 |
@@ -877,6 +883,9 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
     nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje
 12. A12 — rozdělit `csv_repository.py` (~1 470 ř.) na přehled / cache / index zakázky
 13. Smazat vzorové zakázky `VZOR-50K-*` (100 × 13 MB) z `12.Database/production/done_remote/` po testech
+14. Před vydáním 2.4.0: zvednout verze (ScadaViewer + DatabaseGateway — mazání WIP vyžaduje obě), `deploy.ps1` `$PlcNote`,
+    přegenerovat uživatelský manuál (`06_build/manual/` — nová ikona detailu, nápověda stránek, graf / barvy kategorií,
+    mazání In progress)
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.
@@ -926,7 +935,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 |--------|------|
 | `sibling-projects.md` | **KLÍČOVÉ** — vzory z Analyzing + DatabaseGateway, co odkud přebírat |
 | `fastapi-patterns.md` | Lifespan, routers, ADS→WebSocket asyncio bridge |
-| `frontend-patterns.md` | React hooks, Recharts, TypeScript vzory |
+| `frontend-patterns.md` | React hooks, Recharts, TypeScript vzory, nápověda stránek (PageHelp) |
+| `workflow.md` | checklist po každé úpravě: testy · dokumentace · **nápověda stránek** · architektura |
 
 ### Commands
 
@@ -934,7 +944,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 |--------|-----------|
 | `/run-dev` | Jak spustit backend + frontend v dev módu |
 | `/run-tests` | Spuštění pytest testů |
-| `/audit [kategorie]` | Audit kódu: `backend` \| `frontend` \| `ads` \| `security` \| `docs` \| (prázdné = vše) |
+| `/audit [kategorie]` | Audit kódu: `backend` \| `frontend` \| `ads` \| `security` \| `docs` (vč. nápovědy stránek) \| (prázdné = vše) |
+
+### Hooks (`.claude/settings.json`)
+
+| Hook | Kdy | Co dělá |
+|------|-----|---------|
+| `.claude/hooks/help_reminder.py` | PostToolUse Edit / Write / MultiEdit souboru v `01_frontend/src/pages/` nebo `components/` | připomene zkontrolovat nápovědu dotčené stránky (`i18n/help.cs.ts` + `help.en.ts`) — viz `.claude/rules/workflow.md` bod Nápověda; spouští se přes `/c/Windows/py.exe` (Git Bash bez Pythonu v PATH) |
 
 ### Agents
 

@@ -61,6 +61,12 @@ const fetchData = useCallback(async () => {
 událost `scada:unauthorized` → `AuthContext` odhlásí (lokální login) nebo obnoví PLC login.
 Holý `fetch` jen pro veřejné endpointy (`/api/health`, `/api/auth/login`).
 
+## Nápověda stránky — každá stránka
+
+Každá stránka má v `h1.page-title` komponentu `<PageHelp page="…" />` (ikona → panel „k čemu stránka
+slouží / co na ní je"). Texty v `i18n/help.cs.ts` + `help.en.ts` (stejné pořadí položek). **Změna stránky =
+upravit i její nápovědu**; nová stránka = nový `HelpPageId` v `i18n/types.ts`.
+
 ## Code-splitting
 
 Nová stránka (kromě hlavní Database) → `lazy(() => import('./pages/X'))` v `App.tsx`
@@ -77,7 +83,9 @@ uvnitř funkce.
 - Skryté tiskové tabulky vykreslovat až při tisku — `hooks/usePrintMode.ts` (`printNow` / `beforeprint`).
 - Přehled Databáze: `record_count` může být `null` (dopočítává se) — zobrazit „…", ptát se znovu, dokud
   `counts_pending` (`useDatabaseState`, `COUNTS_RETRY_MS`).
-- Filtr kusů zakázky jde přes server (`DataFilter.status` / `categories`) — stránkování a počty sedí.
+- Filtr kusů zakázky jde přes server (`DataFilter.status` / `categories` / `nok`) — stránkování a počty sedí.
+  Nový filtr kusů = předpočítaný sloupec v `_OrderIndex` (`_build_index`) + parametr `/api/data` + skupina v
+  `RecordFilterBar` (vzor: NOK oblast — maska `_OrderIndex.nok`, počty `nok_counts`, `test_nok_filter.py`).
 
 ## WebSocket — pattern s reconnect (PlcContext vzor)
 
@@ -129,6 +137,7 @@ Nový přeložitelný řetězec → přidat do `i18n/types.ts` (Translations int
 Terminologie (rozhodnutí uživatele 2026-09-25): odborné názvy parametrů, skupin, NOK kategorií a
 Production/Testing anglicky v obou jazycích; třídění 1–6 = „Kategorie" / „Category"; odznaky Sync
 anglicky (In progress / Local / Synced). Počty bez skloňování: „Souborů: 3", ne „3 souborů".
+Kategorie 5 / 6 = **„NOK Trafag" / „NOK Supplier"** v obou jazycích (2026-10-16; ne „NOK výrobce" / „Manufacturer").
 Class komponenty (ErrorBoundary) používají `LangContext.Consumer`, ne hook.
 
 ## Sidebar — aktivní stav pro vnořené cesty
@@ -202,13 +211,22 @@ const numericKeys = useMemo(() => {
   + `PARAM_DESC_EN` (anglická nápověda — hlídá `test/i18n.test.ts`); zobrazovat přes `paramDesc(key, lang)`
   + skupina v `PARAM_GROUPS` (nebo `EXTRA_FORMAT` pro vstupy testu).
 - **Tabulka parametrů** = `components/ParamTable.tsx` (production detail záznamu i Testing detail).
-- **Barvy boxů 1–6** = `CATEGORY_COLORS` / `categoryColor()` (`utils/groupColors.ts`) = `.db-cat-badge[data-cat]`.
+- **Barvy boxů 1–6** = `CATEGORY_COLORS` / `categoryColor()` (`utils/groupColors.ts`) = `.db-cat-badge[data-cat]`
+  = **barvy štítků fyzických třídicích krabic** (1 černá, 2 světle modrá, 3 magenta, 4 zelená, 5 žlutá NOK Trafag,
+  6 červeno-oranžová NOK Supplier). TS a CSS měnit jen společně (hlídá `paramMeta.test.ts`). Text na barvě kategorie
+  VŽDY `categoryTextColor()` (světle modrá a žlutá = tmavý text); černá potřebuje lem (tmavý režim).
+- **Graf rozložení kategorií** = `components/CategoryChart.tsx` (detail zakázky i rozbalený řádek `compact`) — nový
+  graf kategorií nepsat znovu; pásy OK / NOK Trafag / NOK Supplier, rozmezí MD z `order_info.sorting_categories`.
 - **Grafy Signal Data** vždy uvnitř `<ZoomPanel>` (zoom osy X, celá obrazovka); render funkce dostane
   `(domain, hiRows)` — řádky filtrovat `sliceRows()`, osy Y přes autoscale z viditelných dat.
 - **Recharts:** `XAxis type="number"` vždy (kategoriální osa = nevykreslené `ReferenceLine`);
   `ReferenceArea` s `ifOverflow="hidden"`; synchronizované grafy `syncMethod="value"`.
 - **Široký obsah v buňce tabulky** (rozbalený řádek): obal `width: 0; min-width: 100%` + `overflow-x: auto`
   — jinak roztáhne celou tabulku přes obrazovku.
+- **Přilepená hlavička** (`position: sticky` na `th`): buňce NIKDY nepřidávat `position: relative` (ani kvůli
+  tooltipu) — přebije sticky a hlavička při posunu odjede (screens/39); sticky je výchozím bodem i pro absolutní potomky.
+- **Mazání v Databázi:** done_local i rozpracovaná zakázka (`sync_status 'wip'`) jen admin+ (`canDeleteUnsynced` /
+  `canDeleteWip`), WIP jen jednotlivě přes `DeleteModal` se zaškrtnutím rizika — nikdy hromadně (výběr WIP nemá).
 - **Tisk:** styly v bloku „PROTOKOL" na konci `styles/chart.css`; obrazovkové prvky `cv-screen-only`,
   tiskové `cv-print-only`; ověřit PDF přes Playwright `page.pdf()` (testovací server s fiktivním ADS).
 

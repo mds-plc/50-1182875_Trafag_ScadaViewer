@@ -78,6 +78,157 @@
 
 ---
 
+## [2026-10-16] Nová funkce — filtr kusů podle NOK oblasti (detail zakázky)
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | V detailu zakázky filtrovat kusy podle NOK kategorií |
+| Řešení | Lišta filtru: skupina **NOK oblast** — Vše · Force · Position · Electric · Times · Process (sloupce `NokCategory_*`), u tlačítka počet kusů v zakázce, oblast s 0 kusy zakázaná, vybraná červená; víc oblastí = aspoň jedna (OR), se stavem / kategorií AND; „Zrušit filtr" ji vyprázdní |
+| Backend | `_OrderIndex.nok` — maska po řádcích z jediného čtení souboru (`NOK_CATEGORIES`); `read_records(nok=…)`; `stats['nok_counts']`; `GET /api/data?nok=` (422 pro neplatnou oblast); `DataResponse.nok_counts` (null = soubor bez sloupců → UI skupinu skryje) |
+| Frontend | `NokArea`, `NokCounts`, `DataFilter.nok` (`types`), `useData` → `nokCounts`, `RecordFilterBar` (`NOK_AREAS`, props `nok` / `onNok` / `nokCounts`), ChartView (`nokFilter`, `heroNokCounts`), i18n `chart.filterNok` / `filterNokHint`, CSS `.cv-rec-filter__btn--nokarea`, `.cv-rec-filter__count` |
+| Výkon | filtr i počty = celočíselné operace nad indexem v paměti — bez dalšího čtení souboru (50 000 kusů setiny sekundy) |
+| Nápověda | Detail zakázky → Řazení a filtr kusů (CS + EN) |
+| Ověření | pytest 437 (`test_nok_filter.py` — 8), Vitest 187 (`RecordFilterBar.test.tsx` +3), tsc 0, lint 0; vizuálně Playwright + Chrome (světlý / tmavý, `PROD_VZOR-SARZE-2026`: Force 1 → „Zobrazeno: 1 z 60") |
+
+---
+
+## [2026-10-16] Revize — kontrola všech změn fáze 47 (nezávislý průchod kódu) + dokumentace
+
+Kontrola všech necommitnutých změn dne (ScadaViewer + DatabaseGateway): mazání WIP, CategoryChart, paleta,
+NOK Supplier, PageHelp + hook, grafická nápověda, OrderInfoPanel, ikona detailu, přilepená hlavička.
+Bez HIGH nálezu (Gateway nikdy nevytvoří soubor bez hlavičky).
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| R1 | ⚠️ MEDIUM | Po návratu z detailu kusu se `OrderInfoPanel` připojil znovu se starým `lotsSignal > 0` → otevřel šarže a odroloval na ně (přebil obnovu pozice) | `OrderInfoPanel.tsx` | ✅ reaguje jen na změnu signálu (`useRef`), test |
+| R2 | ⚠️ MEDIUM | Gateway: smazání WIP mezi přečtením a `os.replace` při nové šarži → soubor „vzkříšen" (ScadaViewer hlásí smazáno, Gateway dál zapisuje) | Gateway `file_manager._append_with_new_lot` | ✅ před replace kontrola existence → Rejected, `.tmp` pryč; test |
+| R3 | LOW | Mazání souboru, který Gateway právě drží (WinError 32) → 503 + obecná chyba | `csv_repository.delete_file`, `api/files.py` | ✅ 5 pokusů / ~1 s, pak **409** + toast `db.deleteBusy` (warning); test |
+| R4 | LOW | Na starším Windows bez POSIX mazání (LTSC 2019 / 1809) může smazaný otevřený soubor zůstat „delete pending" → Gateway SAVE_FAILED místo Rejected | provoz | ⬜ ověřit verzi Windows na PC u stroje (`deployment.md`) |
+| R5 | LOW | `CategoryChart` memo porovnával `categories` referencí — `orderInfo` je po každém fetchi nový → překreslení při každé stránce | `CategoryChart.tsx` | ✅ porovnání obsahu |
+| R6 | LOW | EN: nadpis limitů „Manufacturer" vedle „NOK Supplier" | `en.ts` `oiLimitSupplier` | ⬜ ponecháno — rozhodne uživatel |
+| R7 | LOW | Černý odznak skupiny (kat. 1) bez lemu v tmavém režimu | `FileTable.tsx`, `database.css` | ✅ `data-cat` + lem |
+| R8 | LOW | Kurzor grafu `rgba(0,0,0,.04)` v tmavém režimu neviditelný | `CategoryChart.tsx` | ✅ šedý |
+| R9 | LOW | Esc v nápovědě stránky / parametru zavřel zároveň rozbalený řádek / zkratky stránky | `PageHelp.tsx`, `ParamExplainModal.tsx` | ✅ capture + `stopPropagation` |
+| R10 | LOW | Podíly v grafu: detail z počtu kusů, rozbalený řádek ze součtu kategorií → nesouhlasily | `FileTable.tsx` | ✅ oba z počtu kusů (`total`) |
+
+**Dokumentace doplněna:** `architecture.md` (fáze 47 — ikona detailu + sticky, mazání WIP, CategoryChart, paleta;
+katalog komponent, `FileTable` props, strom Databáze), `CLAUDE.md` (§ 2, 5, 7, 13, TODO 14 — vydání 2.4.0 a manuál),
+`how_to_extend.md` § 14 (barva / název kategorie), `acceptance_test.md` (role mazání, 2.2 graf a barvy, 3.17 smazání
+WIP během výroby), `deployment.md` (2.4.0 — pořadí nasazení Gateway ↔ ScadaViewer), `roadmap.md`; pro Claude:
+`.claude/rules/frontend-patterns.md` (paleta, CategoryChart, sticky, mazání, NOK Supplier), `fastapi-patterns.md`
+(pravidla mazání), `sibling-projects.md` (kontrakt mazání WIP), `commands/audit.md`, `agents/api-implementer.md`;
+DatabaseGateway `CLAUDE.md`, `architecture.md`, `deployment.md`, `troubleshooting.md`, hlavička `file_manager.py`.
+
+**Testy:** backend 429, frontend 184 (24 souborů), DatabaseGateway 96; `tsc` 0, lint 0.
+
+---
+
+## [2026-10-16] Úprava — paleta kategorií 1–6 = barvy štítků třídicích krabic
+
+| Oblast | Popis |
+|---|---|
+| Zadání | Krabice u stroje (Marquardt 1050, BG 01794): 1 černý (E01793, 18–30 µm) · 2 světle modrý (E01794, 30–60) · 3 magenta (E01795, 60–80) · 4 zelený (E01796, 80–100) · 5 žlutý — TRAFAG Ausschuss (E01832) · 6 červeno-oranžový — Ausschuss (E01833) |
+| Paleta | `CATEGORY_COLORS` = `#18181b` · `#38bdf8` · `#d946ef` · `#16a34a` · `#facc15` · `#ea580c` (`utils/groupColors.ts` = `.db-cat-badge[data-cat]` v `database.css`) |
+| Čitelnost | `categoryTextColor()` — světle modrá a žlutá s tmavým textem (štítky, aktivní tlačítko filtru `--cat-text`, odznak skupiny); černý box 1 má tenký lem (štítek, sloupec grafu `.cv-cat-bar--1`, tlačítko filtru) — viditelný v tmavém režimu; text NOK pásů v grafu tmavší odstín (`#ca8a04` / `#ea580c`) |
+| Dotčené | graf kategorií (detail zakázky + rozbalený řádek), štítky kategorií v tabulkách, Údaje zakázky, filtr kusů, odznak skupiny |
+| Nápověda | Detail zakázky → Rozložení kategorií (CS + EN): barvy = barvy štítků krabic |
+| Ověření | Vitest 183 (`paramMeta.test.ts` — paleta + barva textu), tsc 0, lint 0; vizuálně Playwright + Chrome (graf, filtr, tabulka; světlý i tmavý režim) |
+
+---
+
+## [2026-10-16] Úprava — graf rozložení kategorií: OK / NOK Trafag / NOK Supplier a rozmezí MD
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | Ve sloupcovém grafu zřetelněji odlišit OK a NOK a u OK kategorií ukázat rozmezí MD |
+| Řešení | Nová sdílená komponenta `components/CategoryChart.tsx` (detail zakázky + rozbalený řádek Databáze `compact`): podbarvené pásy OK (1–4) / NOK (5–6) se součtem a podílem, čárkovaná dělicí čára, pod číslem OK kategorie rozmezí třídicí veličiny („MD 18.0–30.0 µm") z `order_info.sorting_categories`, tooltip kategorie · OK/NOK · rozmezí · počet; osa Y s kulatými dílky (`niceCeil`) |
+| Data | `useFileRecords` nově vrací `orderInfo` (už ho server posílal v `/api/data`); starší soubory bez bloků → jen pásy OK / NOK bez rozmezí |
+| Refaktor | `paramKeyForLabel()` přesunut z `OrderInfoPanel` do `utils/paramMeta.ts`; graf přestěhován z `ChartView.tsx` (−70 ř.) a `FileTable.tsx` |
+| Recharts | `XAxis type="number"` (domain 0,5–6,5) kvůli `ReferenceArea` / `ReferenceLine` (pravidlo frontend-patterns) |
+| Doplnění — NOK Trafag × NOK Supplier | NOK část rozdělena na dva pásy: NOK Trafag (5, červený, plná dělicí čára od OK) a NOK Supplier (6, růžový, čárkovaná čára) — každý se štítkem, počtem a podílem; pod číslem plný název + důvod („mimo limity Trafag / výrobce"); KPI karty nahoře jen OK / NOK celkem (rozpad je v grafu — přání uživatele); tooltip s důvodem. Název kategorie 6 sjednocen na **NOK Supplier** v obou jazycích (dřív „NOK výrobce" / „NOK Manufacturer"; terminologie NOK kategorií anglicky — rozhodnutí 2026-09-25) — graf, Údaje zakázky, `categoryNote`, tooltip `sortingcategory`; zkratky `catNokTrafag` / `catNokMaker` nahrazeny `catNokTrafagHint` / `catNokSupplierHint` |
+| Nápověda | Detail zakázky → Rozložení kategorií (CS + EN) |
+| Ověření | Vitest 182 (`CategoryChart.test.tsx` — 10), tsc 0, lint 0; vizuálně Playwright + Chrome (světlý / tmavý režim, CS / EN, vzorová zakázka s mezemi i starší soubor bez nich, tooltip, rozbalený řádek) |
+
+---
+
+## [2026-10-16] Nová funkce — admin smí smazat rozpracovanou zakázku (In progress)
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | Smazat i zakázku In progress jako administrátor; varianta „vždy, s varováním" (i tu, kterou stroj právě vyrábí) |
+| Backend | `FileService.delete_file(allow_wip)` — `DELETE /api/files/{id}` povolí `*_WIP.csv` jen admin+ (jinak 403, dřív 409 pro všechny); `batch-delete` rozpracovanou zakázku nemaže nikdy (`wip_forbidden`); smazání WIP se loguje jako warning s uživatelem |
+| Frontend | `FileTable` prop `canDeleteWip` — koš v řádku In progress jen pro admina (bez zaškrtávátka); `DeleteModal` — varování (data nenávratně pryč, PLC další kus odmítne) + zaškrtnutí „Rozumím" před smazáním; toast 403 `deleteWipForbidden` |
+| DatabaseGateway | chybějící WIP soubor → zakázka vyřazena z indexu, Op2/Op3 Rejected, Op1 znovu povolen, zápis `"r+"` (nikdy soubor bez hlavičky) — viz Gateway audit_log 2026-10-16. **Nasazovat obě aplikace spolu** (ScadaViewer bez nové Gateway = riziko vadného souboru) |
+| Nápověda | Databáze → Mazání (CS + EN) |
+| Ověření | pytest 428, Vitest 172, tsc 0, lint 0; Gateway 95 |
+
+---
+
+## [2026-10-16] Úprava — ikona detailu zakázky v přehledu + oprava hlavičky rozbaleného řádku
+
+| Oblast | Popis |
+|---|---|
+| Požadavek 1 | Přejít na detail zakázky z přehledu Databáze bez rozbalení řádku |
+| Řešení 1 | `FileTable` — u production řádku nové tlačítko s ikonou grafu (`.db-icon-btn--detail`) před šipkou rozbalení → `/chart?file=…`; sloupec akcí 264 px; šipka má `aria-expanded` |
+| Požadavek 2 (screens/39) | V rozbalené zakázce se při posunu podtabulky ztratí horní řádek s názvy parametrů |
+| Příčina 2 | `.db-subtable__th--param { position: relative }` (kotva pro tooltip) přebilo `position: sticky` z `.db-subtable__th` → hlavičky parametrů odjely s obsahem, ostatní (# / čas / stav) zůstaly |
+| Řešení 2 | `position: relative` odstraněno (sticky je také výchozím bodem pro absolutní tooltip), `.db-subtable__th` dostal `z-index: 2` (nad odznaky / ikonami řádků) |
+| Nápověda | Databáze → Tabulka (CS + EN): ikona grafu otevře detail rovnou |
+| Ověření | Vitest 169 (nový test ikony detailu), tsc 0, lint 0; vizuálně Playwright + Chrome (podtabulka posunutá o 4 kusy, hlavička zůstává) |
+
+---
+
+## [2026-10-16] Úprava — Údaje zakázky jako rozbalovací řádky, šarže pro desítky položek
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | Jak se zobrazí seznam šarží (i 50); kategorie údajů zakázky jako rozbalovací řádky místo záložek; vzorový soubor podle protokolu |
+| Řešení | `OrderInfoPanel` — rozbalovací řádky se souhrnem (Šarže · Testovací parametry · Kategorie třídění · Limity třídění); šarže v očíslované mřížce; hlavička zakázky jen 3 šarže + „+N dalších" (otevře řádek) |
+| Vzorové soubory | `PROD_VZOR-SARZE-2026_…` (3 šarže, návrat šarže se neopakuje) a `PROD_VZOR-SARZE50-2026_…` (50 šarží) — zapsané skutečným `FileManager` Gateway; `05_user_data/` + `12.Database/production/done_remote/` |
+| Nápověda | detail zakázky (CS + EN): hlavička a Údaje zakázky (hook připomněl) |
+| Ověření | Vitest 168 (`OrderInfoPanel.test.tsx` přepsán — 7 testů), vizuálně Playwright + Chrome (50 šarží sbalené / rozbalené) |
+
+---
+
+## [2026-10-16] Automatické hlídání nápovědy stránek
+
+| Úroveň | Co | Ověřeno |
+|---|---|---|
+| Pravidlo | `.claude/rules/workflow.md` — checklist po každé úpravě: Testy · Dokumentace · **Nápověda** · Architektura; sekce „Nápověda stránek" (kdy a jak upravit) | — |
+| Hook | `.claude/settings.json` (nový, sdílený) — PostToolUse Edit / Write / MultiEdit → `.claude/hooks/help_reminder.py`: soubor v `01_frontend/src/pages/` nebo `components/` → připomínka, kterou nápovědu zkontrolovat; odpojené stránky, testy a backend nic; výstup ASCII JSON (cp1250 konzole) | pipe-test 5 případů + skutečná úprava `Info.tsx` vyvolala připomínku |
+| Test | `PageHelp.test.tsx` (+2) — každá napojená stránka s `h1.page-title` má `<PageHelp>`; množina `HelpPageId` = použité stránky = klíče CS = klíče EN | dočasné odebrání nápovědy z `Info.tsx` → test spadl s hláškou „Info.tsx: chybí <PageHelp …>" |
+| Audit | `.claude/commands/audit.md` — kategorie `docs` zahrnuje obsahovou kontrolu nápovědy proti obrazovkám | — |
+
+Frontend **166 passed** (23 souborů), `tsc` 0, lint 0.
+
+---
+
+## [2026-10-16] Nová funkce — nápověda ke každé stránce
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | Na každé stránce ikona s nápovědou: co se na stránce nachází a k čemu slouží |
+| Řešení | `components/PageHelp.tsx` — ikona „?" v kroužku vedle nadpisu → panel (úvod + části obrazovky → co dělají); 6 stránek: Databáze, Detail zakázky, Detail kusu, Detail měření, Nastavení, Info |
+| Texty | `i18n/help.cs.ts` / `help.en.ts` (typy `HelpPageId`, `HelpPage`); obsah ověřen proti skutečným prvkům stránek (záložky, filtry, tlačítka, pravidla mazání) |
+| Přístupnost | portál, `aria-haspopup` / `aria-modal` / `aria-labelledby`, Esc, zámek scrollu, 44 px; v tisku skryté |
+| Ověření | Vitest 164 (+3 `PageHelp.test.tsx`), vizuálně Playwright + Chrome (panel Databáze, CS) |
+| Pravidlo | `.claude/rules/frontend-patterns.md` + `how_to_extend.md` § 3 krok 3b — změna / nová stránka = upravit nápovědu |
+
+---
+
+## [2026-10-16] Nová funkce — grafická nápověda parametru
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | V detailu záznamu vedle „?" u parametru další tlačítko, které parametr graficky vysvětlí |
+| Řešení | tlačítko grafu (`ChartSpline`) u 24 analyzovaných parametrů → `ParamExplainModal`: diagram síla–dráha / časový diagram s hodnotami záznamu a **zvýrazněným parametrem** (+ body, ze kterých se počítá), hodnota, popis CS / EN |
+| Refaktoring | diagramy přesunuty do `components/ParamDiagrams.tsx` (prop `highlight`, `PARAM_DIAGRAM`, `RELATED`); `RecordDiagram.tsx` jen skládá stránku; diagram používá zkratky z `PARAM_LABELS` (OvT, RvT) |
+| Přístupnost | portál, `aria-modal`, `aria-labelledby`, Esc, zámek scrollu; „?" nově s `aria-label` a `type="button"`; tisk tlačítka i dialog skrývá |
+| Ověření | Vitest 161 (+4: mapa diagramů, otevření dialogu, zvýraznění síla–dráha a časů); vizuálně Playwright + systémový Chrome (bez zvýraznění, PT, RF, R NCo−, OpT, RevT) |
+| Dokumentace | `architecture.md` fáze 47, `CLAUDE.md` § 2 / § 13, `how_to_extend.md` § 5 krok 2b, `acceptance_test.md` 2.2 |
+
+---
+
 ## [2026-10-16] Nová funkce — hledání zakázky v přehledu Databáze
 
 | Oblast | Popis |

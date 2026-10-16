@@ -62,7 +62,10 @@ csv_encoding  = "utf-8-sig"
     └── done_remote/
 ```
 → `csv_repository.py` scanuje `done_local/`, `done_remote/` a `wip/` (rozpracovaná zakázka, mimo stránkování;
-  `*_WIP.csv` nelze smazat). Odpojený je jen živý Overview / `/ws/orders`.
+  `*_WIP.csv` smí smazat jen admin, jednotlivě). Odpojený je jen živý Overview / `/ws/orders`.
+  **Kontrakt mazání WIP (2026-10-16):** Gateway drží otevřené zakázky v paměti (`_wip_index`); smazaný WIP soubor
+  pozná přes `FileManager._wip_path()` / `_forget_wip()` → Op2 / Op3 Rejected, Op1 smí zakázku založit znovu, kus se
+  zapisuje `"r+"` (nikdy nový soubor bez hlavičky). Bez této Gateway ScadaViewer WIP mazat nesmí → nasazovat spolu.
 
 ### sync_state.json
 ScadaViewer tento soubor **nečte**. Stav synchronizace dedukuje ze složkové struktury:

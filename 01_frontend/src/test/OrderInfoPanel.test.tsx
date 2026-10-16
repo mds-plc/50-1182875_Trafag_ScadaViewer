@@ -1,11 +1,12 @@
 /**
  * @file OrderInfoPanel.test.tsx
- * @description Testy panelu údajů zakázky (bloky PROD_ souboru, Gateway 2.3.0+):
- *   - bez záložky Zakázka (ID receptury, ID / název mikrospínače, šarže jsou v hlavičce zakázky)
+ * @description Testy panelu údajů zakázky (bloky PROD_ souboru, Gateway 2.3.0+) — rozbalovací řádky:
+ *   - řádky Šarže / Testovací parametry / Kategorie / Limity, sbalené se souhrnem; klik rozbalí (aria-expanded)
+ *   - šarže: celý seznam v řádku (i desítky), souhrn první → … → poslední; lotsSignal řádek otevře
  *   - limity přes formatLimit: 1 000 000 mΩ je číslo (ne ∞), 0 je mez (ne „—"), prázdné = „—"
- *   - kategorie 1–4 bez mezí = „not used", 5 / 6 = NOK Trafag / NOK Manufacturer; záložky bez dat se nezobrazí
+ *   - kategorie 1–4 bez mezí = „not used", 5 / 6 = NOK Trafag / NOK Supplier; řádky bez dat se nezobrazí
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { LangProvider } from '../context/LangContext'
@@ -22,7 +23,7 @@ beforeEach(() => {
 const INFO: OrderInfo = {
   recipe: '1',
   lots: ['185974-598477', '185974-598478'],
-  testing_parameters: [{ key: 'actuation_speed', name: 'Actuation_Speed', unit: 'mm/s', value: '200' }],
+  testing_parameters: [{ key: 'velocity', name: 'Velocity', unit: 'mm/s', value: '0.2' }],
   sorting_categories: {
     grouping_value: 'MD', unit: 'um',
     groups: [{ group: 1, min: '18', max: '30' }, { group: 3, min: null, max: null },
@@ -36,6 +37,9 @@ const INFO: OrderInfo = {
   ],
 }
 
+const head = (name: RegExp) => screen.getByRole('button', { name })
+const section = (c: HTMLElement, id: string) => c.querySelector(`[data-section="${id}"]`) as HTMLElement
+
 describe('formatLimit', () => {
   it('formats limits without measured-value rules', () => {
     expect(formatLimit('r_no_operatingposition_neg', '1000000')).toBe('1000000.0')
@@ -47,31 +51,56 @@ describe('formatLimit', () => {
   })
 })
 
-describe('OrderInfoPanel', () => {
-  it('starts on testing parameters — order data are in the order header, not here', () => {
-    render(<OrderInfoPanel info={INFO} />, { wrapper: Wrapper })
-    expect(screen.getByRole('tab', { name: 'Testing parameters' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.queryByRole('tab', { name: 'Order' })).toBeNull()
-    expect(screen.queryByText('185974-598478')).toBeNull()                  // šarže jsou v hlavičce zakázky
-    expect(screen.getByText('Actuation Speed')).toBeInTheDocument()
+describe('OrderInfoPanel — rozbalovací řádky', () => {
+  it('all rows collapsed with a summary; click expands', () => {
+    const { container } = render(<OrderInfoPanel info={INFO} />, { wrapper: Wrapper })
+    for (const id of ['lots', 'testing', 'categories', 'limits']) {
+      expect(section(container, id).classList.contains('cv-oi__row--open'), id).toBe(false)
+    }
+    expect(head(/Supplier lots \(2\)/)).toHaveAttribute('aria-expanded', 'false')
+    expect(section(container, 'lots').textContent).toContain('185974-598477 · 185974-598478')   // souhrn
+    expect(section(container, 'testing').textContent).toContain('Velocity 0.2 mm/s')
+    fireEvent.click(head(/Testing parameters/))
+    expect(head(/Testing parameters/)).toHaveAttribute('aria-expanded', 'true')
+    expect(section(container, 'testing').classList.contains('cv-oi__row--open')).toBe(true)
   })
 
-  it('switches to limits and categories', () => {
+  it('many lots: summary first → … → last, full numbered list inside', () => {
+    const lots = Array.from({ length: 50 }, (_, i) => `LOT-${String(i + 1).padStart(3, '0')}`)
+    const { container } = render(<OrderInfoPanel info={{ ...INFO, lots }} />, { wrapper: Wrapper })
+    expect(section(container, 'lots').querySelector('.cv-oi__row-summary')?.textContent).toBe('LOT-001 → … → LOT-050')
+    expect(container.querySelectorAll('.cv-oi__lot')).toHaveLength(50)
+    expect(screen.getByText('#50')).toBeInTheDocument()
+  })
+
+  it('lotsSignal opens the lots row', () => {
+    const { container, rerender } = render(<OrderInfoPanel info={INFO} />, { wrapper: Wrapper })
+    rerender(<OrderInfoPanel info={INFO} lotsSignal={1} />)
+    expect(section(container, 'lots').classList.contains('cv-oi__row--open')).toBe(true)
+  })
+
+  it('remount with an old lotsSignal (back from piece detail) does not open / scroll to lots', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const { container } = render(<OrderInfoPanel info={INFO} lotsSignal={3} />, { wrapper: Wrapper })
+    expect(section(container, 'lots').classList.contains('cv-oi__row--open')).toBe(false)
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
+  it('limits and categories content', () => {
     const { container } = render(<OrderInfoPanel info={INFO} />, { wrapper: Wrapper })
-    fireEvent.click(screen.getByRole('tab', { name: 'Sorting limits' }))
-    const limits = container.querySelector('.cv-oi__section:not(.cv-oi__section--inactive) .cv-oi__limits')
+    const limits = section(container, 'limits').querySelector('.cv-oi__limits')
     expect(limits?.textContent).toContain('1000000.0')
     expect(limits?.textContent).not.toContain('∞')
-    fireEvent.click(screen.getByRole('tab', { name: 'Sorting categories' }))
     expect(screen.getAllByText('not used')).toHaveLength(1)                 // jen kategorie 3
     expect(screen.getByText('NOK Trafag')).toBeInTheDocument()
-    expect(screen.getByText('NOK Manufacturer')).toBeInTheDocument()
-    expect(screen.getByText('30.0')).toBeInTheDocument()
+    expect(screen.getByText('NOK Supplier')).toBeInTheDocument()
+    expect(section(container, 'categories').textContent).toContain('MD: 1 18.0–30.0')   // souhrn
   })
 
-  it('renders nothing without testing parameters, categories and limits', () => {
+  it('renders nothing without lots, testing parameters, categories and limits', () => {
     const { container } = render(
-      <OrderInfoPanel info={{ ...INFO, testing_parameters: [], sorting_categories: null, sorting_limits: [] }} />,
+      <OrderInfoPanel info={{ ...INFO, lots: [], testing_parameters: [], sorting_categories: null, sorting_limits: [] }} />,
       { wrapper: Wrapper })
     expect(container.querySelector('.cv-oi')).toBeNull()
   })
@@ -85,9 +114,8 @@ describe('OrderInfoPanel', () => {
         max: null, min: null, max_supplier: null, min_supplier: null },
     ] }
     const { container } = render(<OrderInfoPanel info={info} />, { wrapper: Wrapper })
-    fireEvent.click(screen.getByRole('tab', { name: 'Sorting limits' }))
-    expect(screen.getByText('Trafag 3 / 4')).toBeInTheDocument()
-    expect(screen.getByText('Manufacturer 1 / 4')).toBeInTheDocument()
+    expect(section(container, 'limits').querySelector('.cv-oi__row-summary')?.textContent)
+      .toBe('Active limits: Trafag 3 / 4 · Manufacturer 1 / 4')
     expect(container.querySelectorAll('.cv-oi__limits .cv-oi__chip--supplier')).toHaveLength(2)
     expect(container.querySelectorAll('.cv-oi__row--off')).toHaveLength(1)        // PT bez limitu
     fireEvent.click(screen.getByRole('button', { name: 'Active only' }))

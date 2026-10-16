@@ -165,6 +165,14 @@ result = await asyncio.wait_for(
   Jiné 401 (špatné heslo) hlavičku mít **nesmí**.
 - Ověření hesla s lockoutem: `_is_locked` / `_record_failure` / `_clear_failures` z `api/auth.py`
 
+## Mazání souborů — pravidla (nerozbíjet)
+
+- Jen lokální soubory a jen u stroje (`require_local`); NAS nikdy (403). Role technician+.
+- `done_local/` (ještě není na NAS = jediná kopie) jen admin+ (`allow_unsynced`, audit Q5).
+- Rozpracovaná zakázka `wip/*_WIP.csv` jen admin+ a **jen `DELETE /api/files/{id}`** (`allow_wip`), `batch-delete`
+  ji nemaže nikdy (`wip_forbidden`). Smazání WIP logovat (`log.warning` + uživatel). DatabaseGateway chybějící WIP
+  pozná (`FileManager._wip_path`) — změnu chování mazání WIP vždy sladit s Gateway a nasazovat obě aplikace spolu.
+
 ## Error responses
 
 ```python

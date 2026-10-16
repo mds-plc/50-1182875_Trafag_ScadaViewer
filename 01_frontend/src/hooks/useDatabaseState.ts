@@ -299,13 +299,15 @@ export function useDatabaseState() {
         addToast(t.db.deleteSuccess, 'success')
         fetchFiles()
       } else {
-        addToast(res.status === 403 && file.sync_status === 'done_local'
-          ? t.db.deleteUnsyncedForbidden : t.db.deleteError, 'danger')
+        addToast(res.status === 403 && file.sync_status === 'done_local' ? t.db.deleteUnsyncedForbidden
+          : res.status === 403 && file.sync_status === 'wip' ? t.db.deleteWipForbidden
+          : res.status === 409 ? t.db.deleteBusy        // soubor právě drží DatabaseGateway
+          : t.db.deleteError, res.status === 409 ? 'warning' : 'danger')
       }
     } catch {
       addToast(t.db.deleteError, 'danger')
     }
-  }, [addToast, fetchFiles, t.db.deleteError, t.db.deleteSuccess, t.db.deleteUnsyncedForbidden, token])
+  }, [addToast, fetchFiles, t.db.deleteBusy, t.db.deleteError, t.db.deleteSuccess, t.db.deleteUnsyncedForbidden, t.db.deleteWipForbidden, token])
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {

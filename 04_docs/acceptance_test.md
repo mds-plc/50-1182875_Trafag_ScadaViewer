@@ -50,6 +50,8 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 |------|:-:|:-:|:-:|:-:|:-:|
 | Prohlížení, export XLSX/CSV, tisk | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Mazání souboru / hromadné mazání | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Mazání souboru z `done_local` (není na NAS) | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Mazání rozpracované zakázky (In progress) — jen jednotlivě | ❌ | ❌ | ✅ | ✅ | ❌ |
 | „Vyčistit synchronizované" | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Nastavení cest a limitu úložiště | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Správa uživatelů | ❌ | ❌ | ✅ (jen nižší role) | ✅ | ❌ |
@@ -64,11 +66,17 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 - [ ] Database: nové soubory mají chvíli místo počtu záznamů „…" a doplní se samy (počet se dopočítává na pozadí)
 - [ ] Database → Production, Lokální i Vzdálená: „Hledat zakázku…" — část čísla bez diakritiky najde zakázku; pole data zešednou ("Hledá se ve všech datech") a najde se i zakázka starší než filtr; křížek / Esc vrátí filtr; detail → Zpět hledání zachová; nic nenalezeno = hláška; na záložce Testing pole není
 - [ ] Rozpracovaná zakázka (WIP) je nahoře a během výroby přibývají kusy bez ručního obnovení
+- [ ] Database → Production: ikona grafu v řádku otevře detail zakázky bez rozbalení; v rozbalené zakázce s mnoha kusy zůstane při posunu podtabulky řádek s názvy parametrů nahoře
+- [ ] Graf kategorií (detail zakázky i rozbalený řádek): zelený pás OK, žlutý NOK Trafag, oranžový NOK Supplier, každý se součtem; pod OK kategoriemi rozmezí MD (soubor s `[SortingCategories]`); barvy kategorií = štítky krabic u stroje (1 černá, 2 světle modrá, 3 magenta, 4 zelená, 5 žlutá, 6 červeno-oranžová), čísla na světle modré / žluté čitelná, černá viditelná i v tmavém režimu
 - [ ] Detail zakázky: Rozložení kategorií ↔ Časový průběh bez posunu obsahu; klik na záznam → detail → Zpět vrátí pozici
+- [ ] Detail zakázky: Údaje zakázky — rozbalovací řádky se souhrnem (Šarže, Testovací parametry, Kategorie, Limity); hlavička ukazuje 3 šarže + „+N dalších" → otevře seznam (ověřit na `PROD_VZOR-SARZE50-…`, 50 šarží); v tisku vše rozbalené
 - [ ] Detail zakázky: filtr Stav (Vše / OK / NOK) a Kategorie (Vše / 1–6), „Zobrazeno: X z Y", klik na vyfiltrovaný kus otevře správný detail
+- [ ] Detail zakázky: NOK oblast (Force / Position / Electric / Times / Process) — čísla u tlačítek = počet kusů v zakázce (porovnat se sloupci NOK F…PR v tabulce), oblast s 0 kusy zašedlá; dvě oblasti = kusy s aspoň jednou z nich; kombinace s kategorií 5 / 6; „Zrušit filtr" vrátí vše; starší soubor bez NOK sloupců skupinu nemá
+- [ ] Detail záznamu / Testing → Analyzed: tlačítko grafu vedle „?" u každého analyzovaného parametru otevře diagram se zvýrazněným parametrem a hodnotou; Esc / × zavře; u vstupů testu tlačítko není
 - [ ] XLSX: dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum
 - [ ] Testing detail: všech 5 záložek Signal Data, zoom kolečkem i dvěma prsty, dvojklik = reset, celá obrazovka
 - [ ] Tisk production i testing: zkontrolovat PDF (záhlaví, čísla stran, žádné prázdné stránky, všechny grafy)
+- [ ] Každá stránka: ikona „?" u nadpisu otevře nápovědu (k čemu stránka slouží, co na ní je) v CS i EN; Esc / × zavře; obsah odpovídá obrazovce
 - [ ] CS/EN přepnout na každé obrazovce, nesmí zůstat nepřeložený text
 - [ ] Světlý / tmavý režim: vše čitelné
 - [ ] Dotykové ovládání na monitoru u stroje: všechna tlačítka jdou trefit prstem, nic se nezasekne
@@ -96,6 +104,7 @@ U každého scénáře sleduj: aplikace nespadne, obsluha pozná, co se děje, a
 | 3.13 | NAS vypadne během výpisu | otevřít záložku Vzdálená a během načítání odpojit NAS | zůstane poslední známý seznam nebo chyba NAS — **nikdy prázdný archiv** |
 | 3.14 | Uzavření zakázky při otevřeném souboru | mít otevřený detail rozpracované zakázky (a stahovat její CSV) a v PLC zakázku uzavřít | Op3 Done, soubor jen v `done_local/` (žádná kopie ve `wip/`); po uploadu jen v `done_remote/` |
 | 3.15 | Diakritika z PLC | zakázka / typ spínače s „ř“, „č“ v názvu (Op1–Op3, Op5) | Gateway uloží bez SAVE_FAILED, název souboru i Database ukazují správné znaky (ověřuje kódování STRING cp1250) |
+| 3.17 | Smazání rozpracované zakázky během výroby (na kopii / testovací zakázce) | admin u stroje smaže zakázku In progress (dialog: zaškrtnout „Rozumím"), PLC dál posílá kusy, pak zakázku uzavře | další kus i uzavření = Rejected (PLC hlásí), ve `wip/` ani `done_local/` **nevznikne soubor bez hlavičky**; zakázku se stejným číslem jde hned založit znovu; log ScadaViewer i Gateway obsahuje varování. Vyžaduje ScadaViewer + DatabaseGateway ze stejného vydání |
 | 3.16 | Konec letního času | zakázka běžící přes 25. 10. 02:00–03:00 (nebo kopie CSV s opakovanou hodinou) | Časový průběh: kusy nepromíchané, doba zakázky o hodinu delší než rozdíl časů v souboru |
 
 ---

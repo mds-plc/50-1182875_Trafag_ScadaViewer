@@ -161,6 +161,19 @@ describe('FileTable', () => {
     expect(onExpandToggle).toHaveBeenCalledWith('MARQ_2026-07-01_DONE.csv')
   })
 
+  it('production: detail icon opens the order detail directly, without expanding the row', () => {
+    const onExpandToggle = vi.fn()
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} total={1} onExpandToggle={onExpandToggle} />
+      </Wrapper>
+    )
+    fireEvent.click(container.querySelector('.db-icon-btn--detail')!)
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/chart?file=MARQ_2026-07-01_DONE.csv'))
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('type=production'))
+    expect(onExpandToggle).not.toHaveBeenCalled()
+  })
+
   it('clicking testing row navigates to /chart with type=testing', () => {
     const { container } = render(
       <Wrapper>
@@ -274,6 +287,19 @@ describe('FileTable', () => {
     expect(row.querySelector('.db-icon-btn--danger')).toBeNull()
     fireEvent.click(row)
     expect(DEFAULT_PROPS.onExpandToggle).toHaveBeenCalledWith(WIP.file_id)
+  })
+
+  it('admin (canDeleteWip): WIP row has a delete button, still no checkbox (no batch delete)', () => {
+    const onDeleteRequest = vi.fn()
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} wip={[WIP]} canDeleteWip onDeleteRequest={onDeleteRequest} />
+      </Wrapper>
+    )
+    const row = container.querySelector('tr.db-row--wip')!
+    expect(row.querySelector('input[type="checkbox"]')).toBeNull()
+    fireEvent.click(row.querySelector('.db-icon-btn--danger')!)
+    expect(onDeleteRequest).toHaveBeenCalledWith(WIP)
   })
 
   it('WIP row keeps action buttons aligned with other rows (placeholder instead of delete)', () => {

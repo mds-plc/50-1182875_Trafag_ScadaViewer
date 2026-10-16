@@ -16,10 +16,12 @@ Zodpovědnost:
 Rozhraní:
   GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count,
                                 has_signal, total_all — počet bez filtru status/category,
-                                order_info — údaje zakázky z bloků PROD_ souboru, Gateway 2.3.0+)
+                                order_info — údaje zakázky z bloků PROD_ souboru, Gateway 2.3.0+,
+                                nok_counts — kusy s NOK v každé oblasti za celý soubor)
   GET /api/timeline → TimelineResponse (timestamps[], categories[]) — časový průběh zakázky
   Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše),
-             status (ok | nok), category (např. "1,3") — filtr detailu zakázky,
+             status (ok | nok), category (např. "1,3"), nok (např. "force,electric") — filtr detailu
+             zakázky (kombinace = A ZÁROVEŇ; v rámci nok = aspoň jedna oblast),
              order (asc | desc) — řazení kusů od nejstaršího / nejnovějšího
   Vyžaduje autentizaci: Depends(require_auth)
 
@@ -41,6 +43,7 @@ from scada.api.dependencies import require_auth
 from scada.models import DataResponse, TimelineResponse
 from scada.services.io_pool import NasBusyError, run_io
 from scada.services.protocols import DataReader
+from scada.services.repositories.csv_repository import NOK_CATEGORIES
 from scada.services.signal_reader import prepare_signal_response
 from scada.services.units import position_scale
 
@@ -88,6 +91,8 @@ async def get_data(
     status:    str | None = Query(None, pattern="^(ok|nok)$", description="Filtr stavu: ok (kategorie 1–4) | nok (5–6)"),
     category:  str | None = Query(None, max_length=20,       description="Filtr kategorií, čárkami: např. 1,3,5"),
     order:     str        = Query('asc', pattern="^(asc|desc)$", description="Řazení kusů: asc = od nejstaršího, desc = od nejnovějšího"),
+    nok:       str | None = Query(None, max_length=60,
+                                  description="Filtr NOK oblastí, čárkami: force,position,electric,times,process (kus nevyhověl aspoň v jedné)"),
 ) -> DataResponse:
     """
     Vrátí záznamy z CSV souboru s volitelným filtrováním a stránkováním.
@@ -132,7 +137,14 @@ async def get_data(
         if not parts or not parts <= {'1', '2', '3', '4', '5', '6'}:
             raise HTTPException(status_code=422, detail=f"Neplatný parametr 'category' (1–6): {category!r}")
         categories = parts
-    filtering = categories is not None or status is not None
+    nok_areas: frozenset[str] | None = None
+    if nok:
+        parts = frozenset(c.strip().lower() for c in nok.split(',') if c.strip())
+        if not parts or not parts <= set(NOK_CATEGORIES):
+            raise HTTPException(status_code=422,
+                                detail=f"Neplatný parametr 'nok' ({', '.join(NOK_CATEGORIES)}): {nok!r}")
+        nok_areas = parts
+    filtering = categories is not None or status is not None or nok_areas is not None
     stats: dict[str, Any] = {}       # total_all + order_info ze stejného indexu (jedno čtení, audit Q7)
     # per_page=0 = všechny záznamy najednou. Strop 20 000 řádků (~100 MB dočasně v paměti) chrání
     # server před vyčerpáním paměti — celé velké zakázky jdou přes XLSX / CSV (bez dictů po řádcích).
@@ -150,7 +162,7 @@ async def get_data(
                 file_id=file, location=location, file_type=file_type,
                 from_date=from_date, to_date=to_date,
                 page=page, per_page=effective_per_page,
-                categories=categories, status=status, stats=stats, order=order,
+                categories=categories, status=status, stats=stats, order=order, nok=nok_areas,
             ),
             timeout=timeout,
         )
@@ -188,6 +200,7 @@ async def get_data(
         total_all=stats.get('total_all') if filtering else None,
         position_scale=_position_scale(records),
         order_info=stats.get('order_info') if file_type == 'production' else None,
+        nok_counts=stats.get('nok_counts') if file_type == 'production' else None,
     )
 
 

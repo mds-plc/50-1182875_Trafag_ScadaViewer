@@ -222,7 +222,7 @@
 
 .db-th--num     { width: 48px; text-align: right; }
 .db-th--center  { text-align: center; }
-.db-th--actions { width: 220px; }
+.db-th--actions { width: 264px; }   /* detail · rozbalit · CSV · XLSX · smazat */
 
 .db-th--sortable { cursor: pointer; user-select: none; }
 .db-th--sortable:hover { background: var(--color-surface-2); }
@@ -444,6 +444,7 @@
 .db-subtable__th {
   position: sticky;
   top: 0;
+  z-index: 2;                 /* nad odznaky / ikonami řádků při posunu */
   padding: var(--space-2) var(--space-3);
   text-align: left;
   font-size: var(--font-size-xs);
@@ -459,8 +460,9 @@
 .db-subtable__th--num     { width: 40px; text-align: right; }
 .db-subtable__th--center  { text-align: center; }
 .db-subtable__th--actions { width: 52px; }
+/* Pozor: žádné position: relative — přebilo by sticky z .db-subtable__th a hlavičky parametrů by
+   při posunu odjely (screens/39). Sticky je i výchozím bodem pro absolutní .db-param-tooltip. */
 .db-subtable__th--param {
-  position: relative;
   text-align: right;
   min-width: 42px;
   padding: var(--space-1) var(--space-2);
@@ -755,6 +757,25 @@
   line-height: 1.5;
 }
 
+/* Potvrzení rizika (smazání rozpracované zakázky) — dotykový cíl ≥ 44 px */
+.db-modal__ack {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.db-modal__ack input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 /* Seznam mazaných souborů v dialogu hromadného smazání */
 .db-modal__list {
   margin: var(--space-2) 0 0;
@@ -865,6 +886,8 @@
   color: #fff;
   font-family: var(--font-mono);
 }
+/* Box 1 = černý štítek — lem jako .db-cat-badge, jinak v tmavém režimu splyne */
+.db-group-badge[data-cat="1"] { box-shadow: 0 0 0 1px var(--color-text-muted); }
 
 /* STATUS BADGE — OK / NOK výsledek měření */
 .db-status-badge {
@@ -897,13 +920,14 @@
   color: #fff;
   background: var(--color-accent);
 }
-/* = CATEGORY_COLORS v utils/groupColors.ts — měnit jen společně */
-.db-cat-badge[data-cat="1"] { background: #3b82f6; }
-.db-cat-badge[data-cat="2"] { background: #10b981; }
-.db-cat-badge[data-cat="3"] { background: #f59e0b; }
-.db-cat-badge[data-cat="4"] { background: #8b5cf6; }
-.db-cat-badge[data-cat="5"] { background: #ef4444; }
-.db-cat-badge[data-cat="6"] { background: #ec4899; }
+/* = CATEGORY_COLORS v utils/groupColors.ts (barvy štítků třídicích krabic) — měnit jen společně;
+   světle modrá a žlutá s tmavým textem (categoryTextColor), černá se světlým lemem (tmavý režim) */
+.db-cat-badge[data-cat="1"] { background: #18181b; box-shadow: 0 0 0 1px var(--color-text-muted); }
+.db-cat-badge[data-cat="2"] { background: #38bdf8; color: #111827; }
+.db-cat-badge[data-cat="3"] { background: #d946ef; }
+.db-cat-badge[data-cat="4"] { background: #16a34a; }
+.db-cat-badge[data-cat="5"] { background: #facc15; color: #111827; }
+.db-cat-badge[data-cat="6"] { background: #ea580c; }
 
 /* Prázdná tabulka kvůli datumovému filtru — vysvětlení + „Zobrazit vše" */
 .db-empty__filtered {

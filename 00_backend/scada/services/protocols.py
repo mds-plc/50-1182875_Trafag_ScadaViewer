@@ -77,6 +77,7 @@ class DataReader(Protocol):
         file_type: str = 'production',
         allow_unsynced: bool = False,
         sync: str | None = None,
+        allow_wip: bool = False,
     ) -> str: ...
 
     def read_records(
@@ -92,6 +93,7 @@ class DataReader(Protocol):
         status:     str | None = None,
         stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
+        nok:        frozenset[str] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]: ...
 
     def read_order_info(

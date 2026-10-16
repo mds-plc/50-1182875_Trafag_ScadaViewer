@@ -6,8 +6,11 @@ Kategorie:
 - `backend`    — FastAPI vzory, lifespan, routers, services
 - `frontend`   — React hooks, typy, komponenty
 - `ads`        — ADS notifikace, asyncio bridge, thread safety
-- `security`   — CORS, WebSocket origin, path traversal v CSV čtení
-- `docs`       — CLAUDE.md, architecture.md aktuálnost
+- `security`   — CORS, WebSocket origin, path traversal v CSV čtení, pravidla mazání (role × `done_local` × rozpracovaná
+                 zakázka `*_WIP.csv`, batch nikdy WIP) a jejich kontrakt s DatabaseGateway (`FileManager._wip_path`)
+- `docs`       — CLAUDE.md, architecture.md aktuálnost **+ nápověda stránek** (`01_frontend/src/i18n/help.cs.ts`
+                 / `help.en.ts`): projít každou stránku a ověřit, že nápověda popisuje skutečné prvky obrazovky
+                 (záložky, filtry, tlačítka, sloupce, pravidla mazání / rolí) a nic, co na stránce není
 - (prázdné)    — vše výše
 
 ## Výstup

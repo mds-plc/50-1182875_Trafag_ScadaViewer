@@ -222,6 +222,19 @@
   font-size: var(--font-size-sm);
 }
 .order-hero__lot span { margin-right: var(--space-2); color: #64748b; }
+/* „+N dalších" — otevře celý seznam v Údajích zakázky */
+.order-hero__lot-more {
+  min-height: 32px;
+  padding: 2px var(--space-3);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #93c5fd;
+  font-family: var(--font-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+.order-hero__lot-more:hover { background: rgba(255, 255, 255, 0.08); }
 
 .order-hero__groups {
   display: flex;
@@ -513,17 +526,40 @@
 .cv-rec-filter__btn--ok.cv-rec-filter__btn--active  { background: var(--color-success); }
 .cv-rec-filter__btn--nok.cv-rec-filter__btn--active { background: var(--color-danger); }
 
+/* NOK oblast (Force / Position / …) — název + počet kusů v zakázce; vybraná = červená, 0 kusů = zakázaná */
+.cv-rec-filter__btn--nokarea {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cv-rec-filter__btn--nokarea.cv-rec-filter__btn--active { background: var(--color-danger); color: #fff; }
+.cv-rec-filter__btn:disabled { opacity: 0.4; cursor: default; }
+.cv-rec-filter__count {
+  min-width: 20px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+  text-align: center;
+}
+.cv-rec-filter__btn--active .cv-rec-filter__count { background: rgba(255, 255, 255, 0.25); color: #fff; }
+
 .cv-rec-filter__cats {
   display: flex;
   gap: var(--space-1);
 }
 
-/* --cat-color = barva boxu (CATEGORY_COLORS) — nastavuje RecordFilterBar */
+/* --cat-color = barva boxu (CATEGORY_COLORS), --cat-text = text na ní (categoryTextColor) — nastavuje RecordFilterBar.
+   Lem 2 px barvou boxu + tenký vnější lem tokenu: černý box 1 je vidět i v tmavém režimu. */
 .cv-rec-filter__cat {
   width: 44px;
   height: 44px;
   border-radius: var(--radius-md);
   border: 2px solid var(--cat-color);
+  box-shadow: 0 0 0 1px var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-primary);
   font-family: var(--font-mono);
@@ -535,7 +571,7 @@
 .cv-rec-filter__cat:hover { background: var(--color-surface-2); }
 
 .cv-rec-filter__cat--active,
-.cv-rec-filter__cat--active:hover { background: var(--cat-color); color: #fff; }
+.cv-rec-filter__cat--active:hover { background: var(--cat-color); color: var(--cat-text, #fff); }
 
 .cv-rec-filter__info {
   display: flex;
@@ -624,6 +660,34 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
+}
+
+/* Graf (CategoryChart): popisky sloupců, rozmezí OK kategorií pod osou, tooltip — barvy z tokenů (dark mode) */
+.cv-cat-chart--compact { padding: 0; }
+.cv-cat-label               { fill: var(--color-text-primary); }
+.cv-cat-label--muted        { fill: var(--color-text-muted); }
+.cv-cat-range               { fill: var(--color-text-secondary); font-family: var(--font-mono); }
+/* Box 1 = černý štítek — tenký lem, aby sloupec nesplynul s tmavým pozadím */
+.cv-cat-bar--1              { stroke: var(--color-text-muted); stroke-width: 1px; }
+
+.cv-cat-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.cv-cat-tip__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ČASOVÝ PRŮBĚH ZAKÁZKY (OrderTimelineChart)
@@ -825,6 +889,76 @@
   border-color: var(--color-accent);
 }
 
+/* „?" + graf vedle sebe (dotykové cíle 44 px) */
+.rd-pt__help-btns {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* ── Grafická nápověda parametru (ParamExplainModal) ── */
+.pe-modal .rd-modal-content { max-width: 1100px; }
+
+.pe-modal__abbr {
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}
+
+.pe-modal__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pe-modal__body .rd-svg { max-height: calc(92vh - 220px); }
+
+.pe-modal__info {
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.pe-modal__value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.pe-modal__label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pe-modal__num {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.pe-modal__desc {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.pe-modal__hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 /* Expandovaný popis */
 .rd-pt__desc-row {
   background: var(--color-accent-muted);
@@ -1024,10 +1158,66 @@
   color: var(--color-text-primary);
 }
 
-/* ── Údaje zakázky (OrderInfoPanel — bloky PROD_ souboru, Gateway 2.3.0+) ── */
-.cv-oi__section { padding: var(--space-3) var(--space-4) var(--space-4); }
-.cv-oi__section--inactive { display: none; }
-.cv-oi__print-title { display: none; }
+/* ── Údaje zakázky (OrderInfoPanel — bloky PROD_ souboru, Gateway 2.3.0+) — rozbalovací řádky ── */
+.cv-oi__row { border-top: 1px solid var(--color-border); }
+
+.cv-oi__row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;                         /* dotyk */
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.cv-oi__row-head:hover { background: var(--color-surface-2); }
+
+.cv-oi__chevron { flex-shrink: 0; color: var(--color-text-muted); transition: transform var(--transition-fast); }
+.cv-oi__row--open .cv-oi__chevron { transform: rotate(90deg); color: var(--color-accent); }
+
+.cv-oi__row-title {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* Souhrn sbaleného řádku — jeden řádek, zbytek … */
+.cv-oi__row-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+.cv-oi__row--open .cv-oi__row-summary { visibility: hidden; }
+
+.cv-oi__row-body { display: none; padding: 0 var(--space-4) var(--space-4) calc(var(--space-4) + 18px + var(--space-3)); }
+.cv-oi__row--open .cv-oi__row-body { display: block; }
+
+/* Šarže — očíslovaná mřížka ve více sloupcích (i desítky šarží na pár řádcích) */
+.cv-oi__lots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cv-oi__lot {
+  display: flex;
+  gap: var(--space-2);
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+.cv-oi__lot-n { min-width: 2.6em; color: var(--color-text-muted); }
 
 
 .cv-oi__lead { margin: 0 0 var(--space-2); font-size: var(--font-size-sm); color: var(--color-text-secondary); }
@@ -1092,9 +1282,12 @@
   .rd-pt__help-cell,
   .rd-modal-overlay { display: none !important; }
 
-  /* Údaje zakázky — v tisku všechny sekce pod sebou (záložky jsou skryté) */
-  .cv-oi__section--inactive { display: block !important; }
-  .cv-oi__print-title { display: block !important; margin: 8px 0 4px; font-size: 12px; }
+  /* Údaje zakázky — v tisku všechny řádky rozbalené, hlavička řádku = nadpis sekce */
+  .cv-oi__row-body { display: block !important; padding-left: 0 !important; }
+  .cv-oi__chevron,
+  .cv-oi__row-summary { display: none !important; }
+  .cv-oi__row-head { min-height: 0; padding: 8px 0 4px; }
+  .cv-oi__lots { grid-template-columns: repeat(4, 1fr); }
   .cv-oi__scroll { width: auto; overflow: visible; }
   /* Limity v tisku: název parametru čitelně na jeden řádek, hodnoty úzké, souhrn neosiřet */
   .cv-oi__limits { min-width: 0 !important; max-width: none !important; width: 100% !important; }

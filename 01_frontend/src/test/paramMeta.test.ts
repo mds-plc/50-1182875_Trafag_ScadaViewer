@@ -9,7 +9,7 @@ import {
   formatParam, hasMeasuredValue, paramUnit, positionScaleOf, ALL_PARAM_KEYS, PARAM_GROUPS,
   PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS, testingNokState, recordOkState,
 } from '../utils/paramMeta'
-import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
+import { CATEGORY_COLORS, categoryColor, categoryTextColor } from '../utils/groupColors'
 
 describe('formatParam', () => {
   // Hodnoty už v jednotkách zákazníka (backend převádí podle hlavičky CSV — audit X1, požadavek 9.3)
@@ -103,11 +103,17 @@ describe('metadata consistency', () => {
 })
 
 describe('category colors', () => {
-  it('six distinct box colors, OK boxes 1–4 without red', () => {
+  it('six distinct colors = labels of the sorting boxes (black, light blue, magenta, green, yellow, red-orange)', () => {
     expect(new Set(CATEGORY_COLORS).size).toBe(6)
-    expect(CATEGORY_COLORS.slice(0, 4)).not.toContain('#ef4444')
-    expect(categoryColor(5)).toBe('#ef4444')
+    expect(CATEGORY_COLORS).toEqual(['#18181b', '#38bdf8', '#d946ef', '#16a34a', '#facc15', '#ea580c'])
+    expect(categoryColor(5)).toBe('#facc15')     // NOK Trafag — žlutý štítek
     expect(categoryColor('9')).toBe('#9ca3af')   // neznámá kategorie
+  })
+
+  it('light colors (light blue, yellow) get dark text, others white', () => {
+    expect(categoryTextColor(2)).toBe('#111827')
+    expect(categoryTextColor('5')).toBe('#111827')
+    expect([1, 3, 4, 6].map(categoryTextColor)).toEqual(['#fff', '#fff', '#fff', '#fff'])
   })
 })
 

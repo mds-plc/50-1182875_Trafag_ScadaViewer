@@ -173,7 +173,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   timestamp:        'Measurement Timestamp',
   microswitch_id:   'Microswitch ID',
   microswitch_name: 'Microswitch Type',
-  sortingcategory:  'Sorting Category / box (1–4 OK · 5 NOK Trafag · 6 NOK Manufacturer)',
+  sortingcategory:  'Sorting Category / box (1–4 OK · 5 NOK Trafag · 6 NOK Supplier)',
   status:           'Status (2 = OK · 5 = NOK)',
   // Forces
   of_operatingforce:           'Operating Force [mN]',
@@ -325,6 +325,12 @@ export function displayUnit(unit: string): string {
   return unit
     .replace(/^um$/i, 'µm').replace(/^us$/i, 'µs').replace(/mOhm/i, 'mΩ').replace(/Ohm/i, 'Ω')
     .replace(/s2$/, 's²').replace(/s3$/, 's³')
+}
+
+/** Klíč parametru podle zkratky (MD → md_movementdifferential) — pro formátování mezí kategorií. */
+export function paramKeyForLabel(label: string | null | undefined): string {
+  if (!label) return ''
+  return Object.keys(PARAM_LABELS).find(k => PARAM_LABELS[k] === label) ?? ''
 }
 
 /**

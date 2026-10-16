@@ -25,7 +25,7 @@ Specializovaný agent pro implementaci REST/WebSocket endpointů a napojení na 
 
 - **Stav synchronizace** se dedukuje ze složkové struktury (`done_local/` / `done_remote/`),
   ScadaViewer **nečte** žádný `sync_state.json`
-- **file_id** je název souboru `*_DONE.csv` (rozpracovaná zakázka `*_WIP.csv` — nelze smazat) — validuje `CsvRepository.validate_params()`
+- **file_id** je název souboru `*_DONE.csv` (rozpracovaná zakázka `*_WIP.csv` — smazat smí jen admin přes `DELETE /api/files/{id}`, `allow_wip`; batch nikdy — viz `fastapi-patterns.md` „Mazání souborů") — validuje `CsvRepository.validate_params()`
   (odmítá `/`, `\`, `..`, `:`, NUL, > 255 znaků)
 - Souborové I/O přes `run_io(location, …)` z `services/io_pool.py` (NAS ve vlastním poolu), viz fastapi-patterns.md
 - Chráněný endpoint = `Depends(require_auth)` / `require_role(...)`; frontend volá přes `apiFetch`

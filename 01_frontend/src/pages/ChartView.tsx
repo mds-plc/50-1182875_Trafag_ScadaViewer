@@ -7,12 +7,9 @@
  *   (OrderTimelineChart — načte /api/timeline až po prvním přepnutí; volba se pamatuje v localStorage).
  *   Obě zobrazení leží v jedné buňce gridu (neaktivní visibility:hidden) — přepnutí nemění výšku.
  */
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Download, ArrowLeft, Printer } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, LabelList,
-} from 'recharts'
 import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
@@ -36,8 +33,11 @@ import OrderTimelineChart from '../components/OrderTimelineChart'
 import { usePrintMode } from '../hooks/usePrintMode'
 import RecordFilterBar from '../components/RecordFilterBar'
 import OrderInfoPanel from '../components/OrderInfoPanel'
+import CategoryChart from '../components/CategoryChart'
+import PageHelp from '../components/PageHelp'
 import type { SortOrder, StatusFilter } from '../components/RecordFilterBar'
-import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
+import type { NokArea } from '../types'
+import { categoryColor } from '../utils/groupColors'
 
 /** Pevné sloupce — vždy zobrazeny vlevo bez ohledu na aktivní záložku.
  *  NOK sloupce jsou pevné — pokud CSV je neobsahuje, existingKeys.has() je automaticky skryje. */
@@ -64,98 +64,6 @@ function loadOrderChartView(): OrderChartView {
 /** Sekce testovacího CSV souboru — hlavní úroveň záložek (metadata jsou v hero). */
 type SectionId = 'testing_params' | 'measured_info' | 'analyzed' | 'nok_info' | 'signal'
 
-/** Custom X-axis tick — barevné rozlišení OK (zelená) / NOK (červená). */
-interface CatAxisTickProps { x?: number; y?: number; payload?: { value: number } }
-const CatAxisTick = (props: CatAxisTickProps) => {
-  const { x = 0, y = 0, payload } = props
-  const idx   = (payload?.value ?? 1) - 1
-  const isNok = idx >= 4
-  const nums  = ['1', '2', '3', '4', '5', '6']
-  const { t } = useLang()
-  const descs = ['OK', 'OK', 'OK', 'OK', t.chart.catNokTrafag, t.chart.catNokMaker]
-  const color = isNok ? '#dc2626' : '#16a34a'
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <text textAnchor="middle" y={12} fontSize={13} fontWeight="700" fill={color}>{nums[idx]}</text>
-      <text textAnchor="middle" y={26} fontSize={9}  fill={color}>{descs[idx]}</text>
-    </g>
-  )
-}
-
-/** Sloupcový graf rozložení kategorií 1–6 s počty OK/NOK. */
-function CategoryChart({ groupCounts, total }: { groupCounts: Record<string, number>, total: number }) {
-  const { t } = useLang()
-  const catData = [1, 2, 3, 4, 5, 6].map((g, i) => ({
-    g,
-    count: groupCounts[String(g)] ?? 0,
-    color: CATEGORY_COLORS[i],
-  }))
-
-  const countOk  = catData.slice(0, 4).reduce((s, d) => s + d.count, 0)
-  const countNok = catData.slice(4).reduce((s, d) => s + d.count, 0)
-
-  if (total === 0) return null
-
-  // Custom bar label: počet (velký) + procento (malé)
-  interface BarLabelProps { x?: number | string; y?: number | string; width?: number | string; value?: number | string }
-  const renderLabel = (props: BarLabelProps) => {
-    const x = Number(props.x ?? 0)
-    const y = Number(props.y ?? 0)
-    const width = Number(props.width ?? 0)
-    const value = Number(props.value ?? 0)
-    if (!value) return null
-    const pct = total > 0 ? Math.round((value / total) * 100) : 0
-    return (
-      <g>
-        <text x={x + width / 2} y={y - 18} textAnchor="middle" fontSize={15} fontWeight="700" fill="#374151">
-          {value}
-        </text>
-        <text x={x + width / 2} y={y - 4} textAnchor="middle" fontSize={10} fill="#9ca3af">
-          {pct > 0 ? `${pct} %` : ''}
-        </text>
-      </g>
-    )
-  }
-
-  return (
-    <div className="cv-cat-chart">
-      <div className="cv-cat-chart__summary">
-        <div className="cv-cat-kpi cv-cat-kpi--ok">
-          <span className="cv-cat-kpi__val">{countOk}</span>
-          <span className="cv-cat-kpi__label">OK</span>
-          {total > 0 && <span className="cv-cat-kpi__pct">{Math.round(countOk / total * 100)} %</span>}
-        </div>
-        <div className="cv-cat-kpi cv-cat-kpi--nok">
-          <span className="cv-cat-kpi__val">{countNok}</span>
-          <span className="cv-cat-kpi__label">NOK</span>
-          {total > 0 && <span className="cv-cat-kpi__pct">{Math.round(countNok / total * 100)} %</span>}
-        </div>
-        <span className="cv-cat-chart__note">{t.chart.categoryNote}</span>
-      </div>
-      <ResponsiveContainer width="100%" height={270}>
-        <BarChart data={catData} margin={{ top: 36, right: 16, bottom: 28, left: -16 }}>
-          <XAxis dataKey="g" tick={<CatAxisTick />} tickLine={false} axisLine={false} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v: number) => [v, t.chart.unitPcs]} />
-          <Bar dataKey="count" radius={[5, 5, 0, 0]}>
-            <LabelList dataKey="count" content={renderLabel} />
-            {catData.map((d, i) => (
-              <Cell key={i} fill={d.color} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-/** Graf kategorií se překreslí jen při změně počtů (ne při každé stránce / filtru tabulky). */
-const sameCounts = (a: Record<string, number>, b: Record<string, number>) => {
-  const ka = Object.keys(a)
-  return ka.length === Object.keys(b).length && ka.every(k => a[k] === b[k])
-}
-const CategoryChartMemo = memo(CategoryChart, (p, n) => p.total === n.total && sameCounts(p.groupCounts, n.groupCounts))
-
 // ── Metrické komponenty ───────────────────────────────────────────────────────
 
 interface MetricsProps {
@@ -166,7 +74,12 @@ interface MetricsProps {
 
 // ── OrderHero — bohatá hlavička zakázky ──────────────────────────────────────
 
-function OrderHero({ records, total: totalProp, lots, t }: MetricsProps & { lots?: string[] }) {
+/** Šarží v hlavičce zakázky nejvýš tolik — zbytek v Údajích zakázky (tlačítko „+N dalších") */
+const HERO_LOTS = 3
+
+function OrderHero({ records, total: totalProp, lots, onShowAllLots, t }: MetricsProps & {
+  lots?: string[]; onShowAllLots?: () => void
+}) {
   const first        = records[0] ?? {}
   const displayTotal = totalProp ?? records.length   // použij API total, ne délku stránky
 
@@ -228,12 +141,22 @@ function OrderHero({ records, total: totalProp, lots, t }: MetricsProps & { lots
         {first.recipe != null && (
           <div className="order-hero__switch-id">{t.chart.oiRecipe}: {String(first.recipe)}</div>
         )}
-        {/* Šarže výrobce (Gateway 2.3.0+) — seznam za celou zakázku v pořadí výskytu */}
+        {/* Šarže výrobce (Gateway 2.3.0+) — v hlavičce jen počet + první HERO_LOTS; celý seznam
+            (i desítky šarží) v Údajích zakázky, tlačítko „+N dalších" ho otevře */}
         {lots && lots.length > 0 && (
           <div className="order-hero__lots" title={t.chart.oiLotsNote}>
             <span className="order-hero__switch-label">{t.chart.oiLots} ({lots.length})</span>
             <ul className="order-hero__lot-list">
-              {lots.map((lot, i) => <li key={lot} className="order-hero__lot"><span>#{i + 1}</span>{lot}</li>)}
+              {lots.slice(0, HERO_LOTS).map((lot, i) => (
+                <li key={`${lot}-${i}`} className="order-hero__lot"><span>#{i + 1}</span>{lot}</li>
+              ))}
+              {lots.length > HERO_LOTS && (
+                <li>
+                  <button type="button" className="order-hero__lot-more cv-screen-only" onClick={onShowAllLots}>
+                    {t.chart.oiLotsMore.replace('{count}', String(lots.length - HERO_LOTS))}
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         )}
@@ -370,7 +293,7 @@ export default function ChartView() {
   const recordParam = searchParams.get('record')
   const recordIdx   = recordParam !== null ? Number(recordParam) : null
 
-  const { records, total, pages, groupCounts, totalAll, orderInfo, loading, error, fetchData } = useData()
+  const { records, total, pages, groupCounts, totalAll, orderInfo, nokCounts, loading, error, fetchData } = useData()
   const { t, lang } = useLang()
   const { printing, printNow } = usePrintMode()   // tiskové tabulky zakázky jen při tisku
   const { token } = useAuth()
@@ -401,10 +324,13 @@ export default function ChartView() {
   // Filtr kusů v detailu zakázky (production) — filtruje server, viz RecordFilterBar
   const [statusFilter, setStatusFilterRaw] = useState<StatusFilter>('all')
   const [catFilter,    setCatFilterRaw]    = useState<string[]>([])
+  const [nokFilter,    setNokFilterRaw]    = useState<NokArea[]>([])
   const catKey       = catFilter.join(',')
-  const filterActive = statusFilter !== 'all' || catFilter.length > 0
+  const nokKey       = nokFilter.join(',')
+  const filterActive = statusFilter !== 'all' || catFilter.length > 0 || nokFilter.length > 0
   const setStatusFilter = (v: StatusFilter) => { setStatusFilterRaw(v); setTablePage(1) }
   const setCatFilter    = (v: string[])     => { setCatFilterRaw(v);    setTablePage(1) }
+  const setNokFilter    = (v: NokArea[])    => { setNokFilterRaw(v);    setTablePage(1) }
   // Řazení kusů podle času (server) — nejstarší = pořadí výroby, nejnovější = od konce
   const [sortOrder, setSortOrderRaw] = useState<SortOrder>('asc')
   const setSortOrder = (v: SortOrder) => { setSortOrderRaw(v); setTablePage(1) }
@@ -414,8 +340,15 @@ export default function ChartView() {
   // Údaje zakázky (bloky PROD_ souboru) — stejné pro všechny stránky / filtry, drží se poslední známé
   const [heroInfo, setHeroInfo] = useState<typeof orderInfo>(null)
   useEffect(() => { if (orderInfo) setHeroInfo(orderInfo) }, [orderInfo])
+  // Počty NOK oblastí (za celou zakázku) — drží se poslední známé, aby lišta filtru nezmizela při 0 výsledcích
+  const [heroNokCounts, setHeroNokCounts] = useState<typeof nokCounts>(null)
+  useEffect(() => { if (nokCounts) setHeroNokCounts(nokCounts) }, [nokCounts])
+  // „+N dalších" šarží v hlavičce → otevřít řádek šarží v Údajích zakázky
+  const [lotsSignal, setLotsSignal] = useState(0)
+  const showAllLots = useCallback(() => setLotsSignal(n => n + 1), [])
   useEffect(() => {
-    setStatusFilterRaw('all'); setCatFilterRaw([]); setSortOrderRaw('asc'); setHeroRecords([]); setHeroInfo(null)
+    setStatusFilterRaw('all'); setCatFilterRaw([]); setNokFilterRaw([]); setSortOrderRaw('asc')
+    setHeroRecords([]); setHeroInfo(null); setHeroNokCounts(null)
   }, [fileId, location, fileType])
 
   // Resetovat stránku při změně souboru nebo cíle záznamu
@@ -449,11 +382,12 @@ export default function ChartView() {
       ? {
           status:     statusFilter === 'all' ? undefined : statusFilter,
           categories: catKey ? catKey.split(',') : undefined,
+          nok:        nokKey ? nokKey.split(',') as NokArea[] : undefined,
           order:      sortOrder,
         }
       : {}
     fetchData({ file: fileId, location, type: fileType, page: tablePage, perPage: RECORDS_PER_PAGE, ...filter })
-  }, [fileId, location, fileType, tablePage, fetchData, isRecordView, statusFilter, catKey, sortOrder])
+  }, [fileId, location, fileType, tablePage, fetchData, isRecordView, statusFilter, catKey, nokKey, sortOrder])
 
   const tableColumns = useMemo(() => {
     if (records.length === 0) return FIXED_COLS
@@ -507,6 +441,7 @@ export default function ChartView() {
           <h1 className="page-title">
             {t.chart.recordDetail} — {fileId}
             {record && <span className="chart-header__sub">({recordIdx + 1} / {total})</span>}
+            <PageHelp page="record" />
           </h1>
           <PrintMeta />
           {record && (
@@ -562,7 +497,7 @@ export default function ChartView() {
       <div>
         <div className="chart-header">
           {backBtn}
-          <h1 className="page-title">{t.db.orderDetail} — {fileId}</h1>
+          <h1 className="page-title">{t.db.orderDetail} — {fileId}<PageHelp page="order" /></h1>
           <PrintMeta />
         </div>
 
@@ -573,9 +508,9 @@ export default function ChartView() {
 
         {!error && (!loading || heroRecords.length > 0) && (
           <>
-            {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} lots={heroInfo?.lots} t={t} />}
+            {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} lots={heroInfo?.lots} onShowAllLots={showAllLots} t={t} />}
             <PositionScaleNote records={heroRecords} />
-            {heroInfo && <OrderInfoPanel info={heroInfo} />}
+            {heroInfo && <OrderInfoPanel info={heroInfo} lotsSignal={lotsSignal} />}
 
             <div className="tile tile--12 mb-4">
               <div className="tile__header">
@@ -604,7 +539,7 @@ export default function ChartView() {
               <div className="cv-order-chart">
                 <div className={`cv-order-chart__view${orderChart === 'categories' ? '' : ' cv-order-chart__view--hidden'}`}
                      aria-hidden={orderChart !== 'categories'}>
-                  <CategoryChartMemo groupCounts={groupCounts} total={totalAll ?? total} />
+                  <CategoryChart groupCounts={groupCounts} total={totalAll ?? total} categories={orderInfo?.sorting_categories} />
                 </div>
                 {timelineUsed && (
                   <div className={`cv-order-chart__view${orderChart === 'timeline' ? '' : ' cv-order-chart__view--hidden'}`}
@@ -667,6 +602,9 @@ export default function ChartView() {
                   categories={catFilter}
                   onStatus={setStatusFilter}
                   onCategories={setCatFilter}
+                  nok={nokFilter}
+                  onNok={setNokFilter}
+                  nokCounts={heroNokCounts}
                   order={sortOrder}
                   onOrder={setSortOrder}
                   shown={total}
@@ -817,7 +755,7 @@ export default function ChartView() {
       <TestingPrintShortcut enabled={hasSignal && !signalPrintReady} onPrint={handleTestingPrint} />
       <div className="chart-header">
         {backBtn}
-        <h1 className="page-title">{t.chart.testingDetail} — {fileId}</h1>
+        <h1 className="page-title">{t.chart.testingDetail} — {fileId}<PageHelp page="testing" /></h1>
         <PrintMeta />
       </div>
 

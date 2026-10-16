@@ -5,7 +5,21 @@
 
 export type Lang = 'cs' | 'en'
 
+/** Nápověda stránky (ikona vedle nadpisu — components/PageHelp.tsx) */
+export type HelpPageId = 'database' | 'order' | 'record' | 'testing' | 'settings' | 'info'
+export interface HelpPage {
+  title: string
+  /** K čemu stránka slouží — jedna až dvě věty */
+  intro: string
+  /** Co na stránce je: část obrazovky → co dělá */
+  items: { title: string; text: string }[]
+}
+
 export interface Translations {
+  help: {
+    button: string
+    pages:  Record<HelpPageId, HelpPage>
+  }
   common: {
     loading: string
     noData: string
@@ -76,6 +90,10 @@ export interface Translations {
     deleteUnsyncedWarning: string
     deleteUnsyncedAdminOnly: string
     deleteUnsyncedForbidden: string
+    deleteWipWarning: string
+    deleteWipConfirm: string
+    deleteWipForbidden: string
+    deleteBusy: string
     batchUnsyncedCount: string
     rangeRecords: string
     clearFilter: string
@@ -104,6 +122,10 @@ export interface Translations {
     diagramForceTravel: string
     diagramSwitchingTimes: string
     openContact: string
+    /** Tabulka parametrů: tlačítko „?" (popis) a tlačítko grafu (parametr zvýrazněný v diagramu) */
+    paramHelp: string
+    paramGraph: string
+    paramGraphHint: string
     positionScaleEncoder: string
     colCategory: string
     unitPcs: string
@@ -112,10 +134,14 @@ export interface Translations {
     recordDetail: string
     categoryDistribution: string
     categoryNote: string
+    catRange: string
+    catRangeNote: string
     timelineView: string
     filterStatus: string
     filterAll: string
     filterCategory: string
+    filterNok: string
+    filterNokHint: string
     filterShown: string
     filterClear: string
     filterEmpty: string
@@ -130,6 +156,9 @@ export interface Translations {
     oiRecipe: string
     oiLots: string
     oiLotsNote: string
+    oiLotsMore: string
+    oiMin: string
+    oiMax: string
     oiGroupingBy: string
     oiUnused: string
     oiCatNokTrafag: string
@@ -195,8 +224,8 @@ export interface Translations {
     sigTime: string
     sigOpenContact: string
     sigPositionRef: string
-    catNokTrafag: string
-    catNokMaker: string
+    catNokTrafagHint: string
+    catNokSupplierHint: string
     nokCategories: string
     forceTravelAria: string
     switchTimesAria: string

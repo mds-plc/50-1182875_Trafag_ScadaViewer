@@ -29,7 +29,7 @@
  *   Používáno: hooks/useDatabaseState.ts, pages/ChartView.tsx
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { CsvRecord, DataFilter, OrderFile, OrderInfo } from '../types'
+import type { CsvRecord, DataFilter, NokCounts, OrderFile, OrderInfo } from '../types'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../utils/apiFetch'
@@ -172,6 +172,8 @@ function useDataFetch() {
   const [totalAll,          setTotalAll]          = useState<number | null>(null)
   // Údaje zakázky z bloků PROD_ souboru (Gateway 2.3.0+); null = starší formát / testing
   const [orderInfo,         setOrderInfo]         = useState<OrderInfo | null>(null)
+  // Kusy s NOK v každé oblasti (filtr NOK oblastí); null = soubor sloupce NokCategory_* nemá
+  const [nokCounts,         setNokCounts]         = useState<NokCounts | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -194,6 +196,7 @@ function useDataFetch() {
       if (filter.status)             params.set('status',   filter.status)
       if (filter.categories?.length) params.set('category', filter.categories.join(','))
       if (filter.order === 'desc')   params.set('order',    'desc')
+      if (filter.nok?.length)        params.set('nok',      filter.nok.join(','))
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
       const res = await apiFetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
       if (res.status === 413) throw new Error(tRef.current.common.errorFileTooLarge)
@@ -207,6 +210,7 @@ function useDataFetch() {
       setFileExpectedCount(json.file_expected_count ?? null)
       setTotalAll(typeof json.total_all === 'number' ? json.total_all : null)
       setOrderInfo(normalizeOrderInfo(json.order_info))
+      setNokCounts(json.nok_counts && typeof json.nok_counts === 'object' ? json.nok_counts as NokCounts : null)
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return
@@ -215,7 +219,7 @@ function useDataFetch() {
     }
   }, [token])
 
-  return { records, total, pages, groupCounts, fileExpectedCount, totalAll, orderInfo, loading, error, fetchData }
+  return { records, total, pages, groupCounts, fileExpectedCount, totalAll, orderInfo, nokCounts, loading, error, fetchData }
 }
 
 // ---
@@ -229,7 +233,7 @@ function useDataFetch() {
  *          a `fetchRecords(fileId, location, fileType, page?)` pro spuštění dotazu.
  */
 export function useFileRecords() {
-  const { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchData } = useDataFetch()
+  const { records, total, pages, groupCounts, fileExpectedCount, orderInfo, loading, error, fetchData } = useDataFetch()
 
   const fetchRecords = useCallback((
     fileId:   string,
@@ -241,7 +245,8 @@ export function useFileRecords() {
     page, perPage: RECORDS_PER_PAGE,
   }), [fetchData])
 
-  return { records, total, pages, groupCounts, fileExpectedCount, loading, error, fetchRecords }
+  // orderInfo — meze kategorií pro graf rozložení (CategoryChart compact)
+  return { records, total, pages, groupCounts, fileExpectedCount, orderInfo, loading, error, fetchRecords }
 }
 
 // ---

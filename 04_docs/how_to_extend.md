@@ -20,6 +20,7 @@
 11. [Pracovat s velkými soubory (index, export, paměť)](#11-pracovat-s-velkými-soubory-index-export-paměť)
 12. [Změnit formát názvu souboru nebo složky na NAS](#12-změnit-formát-názvu-souboru-nebo-složky-na-nas)
 13. [Přidat filtr do přehledu Databáze](#13-přidat-filtr-do-přehledu-databáze)
+14. [Změnit barvu nebo název kategorie (třídicí krabice)](#14-změnit-barvu-nebo-název-kategorie-třídicí-krabice)
 
 ---
 
@@ -245,6 +246,11 @@ function preloadPages(): void {
 
 Ikony: viz [lucide.dev](https://lucide.dev) — importovat z `lucide-react`.
 
+### Krok 3b — Nápověda stránky
+
+Do `h1.page-title` přidat `<PageHelp page="newpage" />`, v `i18n/types.ts` rozšířit `HelpPageId`
+a do `i18n/help.cs.ts` + `help.en.ts` doplnit `title`, `intro` a `items` (části stránky → co dělají).
+
 ### Krok 4 — Přidat překlady
 
 Viz [sekce 4 tohoto průvodce](#4-přidat-přeložitelný-řetězec).
@@ -394,6 +400,12 @@ v Database, záložky tabulky ChartView (`TABLE_TABS`) i sdílené `components/P
 Vstupní parametry testu (mimo `PARAM_GROUPS`) mají jednotku a desetinná místa v `EXTRA_FORMAT`.
 Formátování (počet desetinných míst, jednotka, převody) řeší **jen** `formatParam()` v `paramMeta.ts`
 (`GROUP_DECIMALS`) — v komponentách hodnoty nikdy neformátovat ručně (`toFixed`).
+
+### Krok 2b — (Volitelně) Graf v nápovědě
+
+Analyzovaný parametr, který jde ukázat v diagramu síla–dráha nebo v časovém diagramu: klíč do
+`PARAM_DIAGRAM` (`components/ParamDiagrams.tsx`), jeho kótu / bod obalit `h.op(klíč)` a body, ze kterých
+se počítá, přidat do `RELATED`. V tabulce parametrů se pak vedle „?" objeví tlačítko grafu.
 
 ### Krok 3 — (Volitelně) Typ
 
@@ -678,6 +690,35 @@ pak sedí. Prohlížeč má jen jednu stránku.
 - [ ] Test: `02_tests/test_order_search.py` (vzor — local, remote, stránkování, wip, hidden_by_filter, 422, výkon 100 000)
 - [ ] Test: `01_frontend/src/test/Database.test.tsx` (mock `useDatabaseState` doplnit o nová pole)
 - [ ] Dokumentace: `CLAUDE.md` § 5 (API) + § 7, `architecture.md`, `acceptance_test.md` 2.2
+
+---
+
+## 14. Změnit barvu nebo název kategorie (třídicí krabice)
+
+**Kdy:** u stroje se změní štítky krabic (jiná barva, jiný typ dílu) nebo zákazník přejmenuje NOK kategorii.
+
+Barvy kategorií 1–6 = barvy štítků fyzických krabic (zadání 2026-10-16, Marquardt 1050). Jsou na **dvou místech,
+která musí sedět**:
+
+1. `01_frontend/src/utils/groupColors.ts` — `CATEGORY_COLORS` (grafy, filtr kusů, odznaky skupin) a `DARK_TEXT`
+   (kategorie se světlou barvou → tmavý text přes `categoryTextColor()`);
+2. `01_frontend/src/styles/database.css` — `.db-cat-badge[data-cat="N"]` (kulaté štítky v tabulkách) — stejná barva,
+   u světlé barvy `color: #111827`.
+
+Dál podle potřeby:
+- `components/CategoryChart.tsx` — `NOK_TRAFAG_COLOR` / `NOK_SUPPLIER_COLOR` = tmavší odstín barvy boxu 5 / 6 pro
+  texty a čáry pásů (žlutý text na světlém pozadí není čitelný);
+- černá / velmi tmavá barva: lem `.cv-cat-bar--N` (`chart.css`) a `box-shadow` u `.db-cat-badge` — jinak zmizí
+  v tmavém režimu;
+- název NOK kategorie: `chart.oiCatNokTrafag` / `oiCatNokSupplier`, `chart.categoryNote`, `chart.catNok*Hint`
+  (`i18n/types.ts` + `cs.ts` + `en.ts` — anglicky v obou jazycích), tooltip `sortingcategory` v `utils/paramMeta.ts`.
+
+### Checklist
+- [ ] `groupColors.ts` = `database.css` (test `paramMeta.test.ts` — „category colors" — upravit očekávané hodnoty)
+- [ ] Kontrast: číslo na štítku i aktivním tlačítku filtru čitelné ve světlém i tmavém režimu
+- [ ] Vizuálně: detail zakázky (graf, tabulka kusů, filtr), rozbalený řádek Databáze, Údaje zakázky → Kategorie
+- [ ] Nápověda detailu zakázky (`help.cs.ts` / `help.en.ts`, „Rozložení kategorií") zmiňuje barvy pásů
+- [ ] `npm run build` (uživatel jede přes port 8080)
 
 ---
 

@@ -292,6 +292,7 @@ class FileService:
         file_type: str = 'production',
         allow_unsynced: bool = False,
         sync: str | None = None,
+        allow_wip: bool = False,
     ) -> str:
         """
         Smaže soubor z lokálního úložiště.
@@ -300,17 +301,20 @@ class FileService:
                         dat)? Jen admin+ (rozhodnutí uživatele 2026-10-15, audit Q5).
         sync:           'done_local' / 'done_remote' — kterou kopii smazat, leží-li soubor v obou
                         složkách (řádek v UI). Bez něj platí done_local (bezpečnější — chráněná).
+        allow_wip:      smí se smazat rozpracovaná zakázka (wip/)? Jen admin+, jednotlivě, po potvrzení
+                        rizika v UI (rozhodnutí uživatele 2026-10-16). DatabaseGateway chybějící WIP
+                        soubor pozná a další kus zakázky odmítne (Rejected) — soubor nezaloží znovu.
 
         Returns:
           'ok'                 — soubor smazán
           'not_found'          — soubor neexistuje
           'remote_forbidden'   — remote soubory nelze smazat
-          'wip_forbidden'      — rozpracovanou zakázku nelze smazat (DatabaseGateway do ní zapisuje)
+          'wip_forbidden'      — rozpracovanou zakázku smí smazat jen admin (DatabaseGateway do ní zapisuje)
           'unsynced_forbidden' — soubor ještě není na NAS a volající nemá právo ho smazat
         """
         if location != 'local':
             return 'remote_forbidden'
-        if file_id.endswith('_WIP.csv'):
+        if file_id.endswith('_WIP.csv') and not allow_wip:
             return 'wip_forbidden'
         path = self._repo.resolve_path(file_id, location, file_type)
         if path is None or not path.exists():
@@ -393,17 +397,18 @@ class FileService:
         status:     str | None = None,
         stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
+        nok:        frozenset[str] | None = None,
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """Načte záznamy z daného souboru — deleguje na repozitář.
         Vrátí (records, total, group_counts, file_expected_count).
-        categories / status / stats / order — filtr a řazení detailu zakázky, viz CsvRepository.read_records."""
+        categories / status / nok / stats / order — filtr a řazení detailu zakázky, viz CsvRepository.read_records."""
         path = self._read_path(file_id, location, file_type)
         if path is None or not path.exists():
             log.warning("[SVC]   soubor nenalezen: %s (%s/%s)", file_id, location, file_type)
             return [], 0, {}, None
         records, total, group_counts, file_expected_count = self._repo.read_records(
             path, from_date, to_date, page=page, per_page=per_page,
-            categories=categories, status=status, stats=stats, order=order,
+            categories=categories, status=status, stats=stats, order=order, nok=nok,
         )
         log.debug("[SVC]   read_records %s → %d/%d záznamů (str. %d)", file_id, len(records), total, page)
         return records, total, group_counts, file_expected_count

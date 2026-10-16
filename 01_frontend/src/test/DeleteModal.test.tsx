@@ -49,3 +49,23 @@ describe('DeleteModal — nesynchronizovaný soubor (Q5)', () => {
     expect(onConfirm).toHaveBeenCalled()
   })
 })
+
+describe('DeleteModal — rozpracovaná zakázka (2026-10-16)', () => {
+  it('wip bez práva: varování, tlačítko zakázané, bez potvrzení rizika', () => {
+    const onConfirm = renderModal(file('wip'), false)
+    expect(screen.getByRole('alert').textContent).toMatch(/Rejected/)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(deleteBtn()).toBeDisabled()
+    fireEvent.click(deleteBtn())
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('wip jako admin: smazat až po zaškrtnutí „Rozumím"', () => {
+    const onConfirm = renderModal(file('wip'), true)
+    expect(deleteBtn()).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(deleteBtn()).toBeEnabled()
+    fireEvent.click(deleteBtn())
+    expect(onConfirm).toHaveBeenCalled()
+  })
+})

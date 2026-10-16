@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Building2, FileText, ExternalLink } from 'lucide-react'
 import { useLang }    from '../context/LangContext'
+import PageHelp       from '../components/PageHelp'
 
 type Tab = 'project' | 'docs'
 
@@ -42,7 +43,7 @@ export default function Info() {
 
       {/* Hlavička */}
       <div className="db-header">
-        <h1 className="page-title">{t.info.title}</h1>
+        <h1 className="page-title">{t.info.title}<PageHelp page="info" /></h1>
         <div className="db-tabs">
           <button
             className={`db-tab${activeTab === 'project' ? ' db-tab--active' : ''}`}

@@ -3,7 +3,7 @@ Testy: rozpracovaná zakázka (wip/) v Database + automatická aktualizace (File
 
 POKRYTÍ:
   - /api/files vrací WIP zakázky zvlášť (`wip`), mimo stránkování; i prázdný WIP soubor
-  - /api/data a /download pro *_WIP.csv; DELETE WIP → 409; WIP na remote → odmítnuto
+  - /api/data a /download pro *_WIP.csv; DELETE WIP jen admin (batch ne); WIP na remote → odmítnuto
   - folder_fingerprint se mění při zápisu záznamu i při uzavření zakázky (WIP → DONE)
   - FilesWatcher broadcastuje {"type": "files_changed"} jen pro změněný typ dat
 """
@@ -86,13 +86,62 @@ class TestWipInFiles:
         assert c.get(f"/api/files/{WIP_NAME}/download").status_code == 200
         assert c.get(f"/api/files/{WIP_NAME}").json()["sync_status"] == "wip"
 
-    def test_wip_cannot_be_deleted(self, wip_client) -> None:
+    def test_wip_not_in_batch_delete(self, wip_client) -> None:
+        """Hromadně rozpracovanou zakázku nesmaže ani admin — jen jednotlivě po potvrzení rizika."""
         c, cfg = wip_client
         f = _write_wip(cfg.data.local_path / "production" / "wip", WIP_NAME, rows=1)
-        assert c.delete(f"/api/files/{WIP_NAME}").status_code == 409
         r = c.post("/api/files/batch-delete",
                    json={"file_ids": [WIP_NAME], "location": "local", "type": "production"})
         assert r.json()["deleted"] == 0
+        assert r.json()["errors"] == [{"file_id": WIP_NAME, "error": "wip_forbidden"}]
+        assert f.exists()
+
+    def test_admin_can_delete_wip(self, wip_client) -> None:
+        c, cfg = wip_client                                     # testovací session = admin
+        f = _write_wip(cfg.data.local_path / "production" / "wip", WIP_NAME, rows=1)
+        assert c.delete(f"/api/files/{WIP_NAME}").status_code == 204
+        assert not f.exists()
+        assert c.get("/api/files").json()["wip"] == []
+
+    def test_delete_locked_file_retries_then_409(self, wip_client, monkeypatch) -> None:
+        """Soubor drží Gateway (WinError 32) → krátké opakování; trvale zamčený → 409 (ne obecné 503)."""
+        import scada.services.repositories.csv_repository as repo_mod
+        c, cfg = wip_client
+        f = _write_wip(cfg.data.local_path / "production" / "wip", WIP_NAME, rows=1)
+        monkeypatch.setattr(repo_mod, "_DELETE_DELAY_S", 0.0)
+        calls = {"n": 0}
+        real_unlink = Path.unlink
+
+        def locked(self, *a, **kw):
+            if self.name == WIP_NAME:
+                calls["n"] += 1
+                raise PermissionError(32, "used by another process")
+            return real_unlink(self, *a, **kw)
+        monkeypatch.setattr(Path, "unlink", locked)
+        r = c.delete(f"/api/files/{WIP_NAME}")
+        assert r.status_code == 409 and "DatabaseGateway" in r.json()["detail"]
+        assert calls["n"] == repo_mod._DELETE_ATTEMPTS
+        assert f.exists()
+
+        # zámek povolí po 2. pokusu → smazáno
+        calls["n"] = 0
+        def locked_twice(self, *a, **kw):
+            if self.name == WIP_NAME and calls["n"] < 2:
+                calls["n"] += 1
+                raise PermissionError(32, "used by another process")
+            return real_unlink(self, *a, **kw)
+        monkeypatch.setattr(Path, "unlink", locked_twice)
+        assert c.delete(f"/api/files/{WIP_NAME}").status_code == 204
+        assert not f.exists()
+
+    @pytest.mark.parametrize("role", ["operator", "technician"])
+    def test_non_admin_cannot_delete_wip(self, wip_client, role: str) -> None:
+        c, cfg = wip_client
+        _inject_session(c.app, "tok-" + role, {"username": "u", "role": role, "display_name": "U",
+                                               "created_at": time.time()})
+        f = _write_wip(cfg.data.local_path / "production" / "wip", WIP_NAME, rows=1)
+        r = c.delete(f"/api/files/{WIP_NAME}", headers={"Authorization": f"Bearer tok-{role}"})
+        assert r.status_code == 403
         assert f.exists()
 
     def test_wip_rejected_for_remote_location(self, tmp_path: Path) -> None:

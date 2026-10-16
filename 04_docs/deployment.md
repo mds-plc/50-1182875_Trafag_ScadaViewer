@@ -55,6 +55,8 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 | TEST `[Metadata]` = `Timestamp;Recipe;Microswitch_ID;Microswitch_Name` (ID = SAP číslo) | detail testu ukazuje ID a recepturu |
 | PROD `[TestingParameters]`: `Velocity`, `Acceleration`, `Deceleration`, `Jerk` (dřív `Actuation_Speed`, `Jerk_Up`, `Jerk_Down`) | názvy bere z hlavičky — `OrderInfoPanel` zobrazí obojí |
 | — | nové: hledání zakázky v Database (Production, Lokální i Vzdálená) — informovat obsluhu, aktualizovat manuál |
+| Chybějící WIP soubor = zakázka vyřazena (`FileManager._wip_path`), kus `"r+"` | nové: **admin smí smazat rozpracovanou zakázku** (In progress, s potvrzením rizika) — vyžaduje tuto Gateway |
+| — | nové: ikona detailu zakázky v přehledu, nápověda každé stránky, grafická nápověda parametru, graf kategorií s pásy OK / NOK Trafag / NOK Supplier a rozmezím MD, **barvy kategorií = barvy štítků krabic** (1 černá … 6 červeno-oranžová), kategorie 6 přejmenována na „NOK Supplier", filtr kusů podle NOK oblasti (Force / Position / Electric / Times / Process) — informovat obsluhu, přegenerovat manuál |
 
 - **Nasazovat s DatabaseGateway, který nezapisuje `NokReason`** (necommitnuto 2026-10-15) — ScadaViewer čte
   starý i nový formát (výsledek testu z masky `NokCategory_*`, u starších souborů i `NokReason`),
@@ -64,6 +66,12 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
   počty kusů NAS archivu zůstanou, lokální soubory se jednou znovu přečtou (sekundy). Nic mazat není potřeba.
 - **Mazání nesynchronizovaných zakázek** (`done_local`, ještě nejsou na NAS) smí jen admin — technik maže jen
   synchronizované. Informovat obsluhu.
+- **Mazání rozpracované zakázky** (In progress) smí jen admin u stroje, jednotlivě, po zaškrtnutí rizika. **Pořadí
+  nasazení NENÍ libovolné:** nejdřív (nebo současně) DatabaseGateway 2.4.0 — stará Gateway by po smazání WIP souboru
+  založila u dalšího kusu soubor bez hlavičky. ScadaViewer 2.4.0 se starou Gateway nenasazovat.
+  **Ověřit verzi Windows na PC u stroje** (`winver`): na starších buildech bez POSIX mazání (Windows 10 / Server
+  LTSC 2019, build 17763) může smazaný soubor, který zrovna drží Gateway, zůstat „delete pending" → Gateway pak
+  hlásí SAVE_FAILED místo Rejected (data se nepoškodí, PLC Error se resetuje). Windows 10 1903+ / 11 v pořádku.
 - **Zaplnění NAS** (Database + čip v topbaru) = `shutil.disk_usage` na `remote_path` pod účtem služby: se
   kvótou sdílené složky na Synology ukazuje kvótu, bez kvóty celý svazek. Při převzetí ověřit, že hodnota
   odpovídá (DSM → Ovládací panel → Sdílená složka → Kvóta).

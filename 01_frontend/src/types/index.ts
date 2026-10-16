@@ -49,7 +49,15 @@ export interface DataFilter {
   categories?: string[]
   /** Řazení kusů — 'asc' od nejstaršího (výchozí), 'desc' od nejnovějšího (záznamy pak nesou `_idx`) */
   order?:      'asc' | 'desc'
+  /** Filtr NOK oblastí — kus nevyhověl aspoň v jedné z vybraných; prázdné = bez filtru */
+  nok?:        NokArea[]
 }
+
+/** NOK oblast kusu = sloupec NokCategory_* (Gateway) — pořadí jako NOK_CATEGORIES v csv_repository.py */
+export type NokArea = 'force' | 'position' | 'electric' | 'times' | 'process'
+
+/** Počet kusů s NOK v každé oblasti za celou zakázku (`nok_counts` z /api/data) */
+export type NokCounts = Record<NokArea, number>
 
 /** Zaplnění lokálního úložiště — GET /api/storage */
 export interface StorageStatus {

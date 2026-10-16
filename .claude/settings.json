@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Windows/py.exe -3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/help_reminder.py\" 2>/dev/null || true",
+            "timeout": 10,
+            "statusMessage": "Kontrola nápovědy stránky"
+          }
+        ]
+      }
+    ]
+  }
+}

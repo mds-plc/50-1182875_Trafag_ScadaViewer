@@ -490,7 +490,8 @@ odhlásí (lokální login: hláška „Relace vypršela") nebo tiše obnoví PL
   záznamy, Op3 přejmenuje na `_DONE.csv` a přesune do `done_local/`). `/api/files` ji vrací v poli
   `wip` (jen local, mimo stránkování, datum filtr i řazení; i bez záznamů — `record_count 0`).
   Tabulka ji zobrazí jako první řádek na 1. stránce: podbarvení, pulzující tečka, štítek
-  „Rozpracováno", bez checkboxu a mazání (backend DELETE → 409). `_WIP.csv` je povolený `file_id`
+  „Rozpracováno", bez checkboxu a mazání (backend DELETE → 409; od fáze 47 smí jednotlivě smazat admin — 403
+  pro ostatní). `_WIP.csv` je povolený `file_id`
   jen pro `location=local`.
 - **Automatická aktualizace:** `services/files_watcher.py` — každé 2 s `os.scandir` otisk
   `{production,testing}/{wip,done_local,done_remote}` (název + mtime + velikost). Při změně
@@ -806,6 +807,7 @@ formát CSV, názvy / jednotky / vzorce parametrů, kategorie, NAS). Shoda ve v�
   detail (`?record=N`). Detail záznamu čte vždy nefiltrovaný soubor; filtr zůstane po návratu.
 - OK/NOK: kategorie 1–4 = OK, 5–6 = NOK; bez kategorie podle sloupce Status (2 = OK, 5/6 = NOK) —
   `_record_matches()` v `csv_repository.py`, stejně jako frontend.
+- *(fáze 47)* třetí část filtru **NOK oblast** (Force / Position / Electric / Times / Process, `?nok=`) — viz fáze 47.
 - Graf kategorií a hlavička zakázky při filtru dál za celou zakázku (`totalAll ?? total`);
   hlavička z posledních neprázdných dat (`heroRecords`) — nezmizí, když filtr nic nenajde.
 - **Measuring_BasePeriod v µs** (perioda PLC cyklu, 500 = 500 µs; Analyzing `base_period_us`).
@@ -1113,7 +1115,7 @@ Gateway 2.3.0 (s novým PLC DUT `ST_APP_Dataset_Production`) zapisuje production
 
 **Stav testů po fázi 46:** Backend **418/418**, Frontend **154/154** (22 souborů); `tsc` 0, lint 0.
 
-### Fáze 47 — hledání zakázky, sjednocený formát Gateway, kontrola ekosystému (2026-10-16)
+### Fáze 47 — hledání zakázky, formát Gateway, nápovědy, mazání WIP, graf a paleta kategorií (2026-10-16)
 
 #### Hledání zakázky v přehledu Databáze
 
@@ -1191,7 +1193,153 @@ Vydání: společné **2.4.0** s Gateway (zatím nenasazovat — rozhodnutí 202
 - `list_remote`: WinError 53 / 64 / 67 → rovnou 503 bez dalšího síťového volání.
 - Zrušený pokus PLC loginu odhlásí získaný token (žádná osiřelá session).
 
-**Stav testů po fázi 47:** Backend **425/425**, Frontend **157/157** (22 souborů); DatabaseGateway 90,
+#### Grafická nápověda parametru (tlačítko grafu v tabulce parametrů)
+
+V tabulce parametrů (detail produkčního záznamu i Testing → Analyzed) je vedle „?" (textový popis) u každého
+z 24 analyzovaných parametrů tlačítko grafu. Otevře dialog s diagramem, ve kterém je **parametr zvýrazněný**
+na hodnotách konkrétního záznamu, pod ním naměřená hodnota, popis (CS / EN) a poznámka, že diagram je schematický.
+
+| Část | Řešení |
+|---|---|
+| Diagramy | `components/ParamDiagrams.tsx` — `ForceTravelDiagram` a `TimeDiagram` přesunuté z `RecordDiagram.tsx` (sdílí je detail záznamu i dialog; bez kruhového importu ParamTable ↔ RecordDiagram) |
+| Zvýraznění | prop `highlight?: string`; `useHighlight()` — parametr + body, ze kterých se počítá (`RELATED`: PT → FP, OP; MD → RP, OP; OF → OP; R NCo− → OP; OpT → UT, RevT, BT …) plně a zesíleně, ostatní kóty `opacity 0.12`, smyčka / průběhy jako kontext `0.45`; bez `highlight` beze změny |
+| Který diagram | `PARAM_DIAGRAM` — síly, polohy, dráhy, odpory → síla–dráha; časy → časový diagram; vstupy testu (pohon, měření) graf nemají (tlačítko se nezobrazí) |
+| Dialog | `components/ParamExplainModal.tsx` — portál do `body`, Esc / klik mimo / ×, zámek scrollu, `aria-modal`, `aria-labelledby`, fokus na zavírací tlačítko; vzhled `.rd-modal-*` + `.pe-modal*` (`chart.css`) |
+| Tabulka | `ParamTable.tsx` — `.rd-pt__help-btns` („?" + `.rd-pt__graph-btn`, ikona `ChartSpline`), oba s `aria-label` (doplněno i u „?"); tisk tlačítka i dialog skrývá |
+| Zkratky | diagram síla–dráha používá `PARAM_LABELS` (OvT, RvT místo OT, RT) — zvýrazněná kóta má stejnou zkratku jako řádek tabulky |
+| i18n | `chart.paramHelp`, `chart.paramGraph`, `chart.paramGraphHint` |
+| Testy | `RecordDiagram.test.tsx` — všech 24 parametrů má diagram, vstupy testu ne; otevření dialogu tlačítkem, hodnota, Esc; zvýraznění PT (TT ztlumené); OpT rozsvítí UT / RevT / BT |
+
+Nový parametr s grafem: klíč do `PARAM_DIAGRAM`, prvek v diagramu obalit `h.op(klíč)` / `h.on(klíč)`
+a případné body do `RELATED` (`ParamDiagrams.tsx`).
+
+#### Nápověda stránky (ikona vedle nadpisu)
+
+Každá stránka má vedle nadpisu ikonu „?" v kroužku (`components/PageHelp.tsx`). Otevře panel: **k čemu stránka
+slouží** (úvod) a **co na ní je** (části obrazovky → co dělají). Stránky: Databáze, Detail zakázky, Detail kusu,
+Detail měření (Testing), Nastavení, Info.
+
+| Část | Řešení |
+|---|---|
+| Texty | `i18n/help.cs.ts`, `i18n/help.en.ts` → `t.help.pages[page]` (`HelpPageId`, `HelpPage { title, intro, items[] }` v `types.ts`); stejné pořadí položek v obou jazycích |
+| Komponenta | `<PageHelp page="…" />` uvnitř `h1.page-title`; portál, Esc / klik mimo / ×, zámek scrollu, `aria-haspopup`, `aria-modal`, `aria-labelledby`, fokus na zavírací tlačítko; 44 px |
+| Styl | `styles/components.css` — `.ph-btn`, `.ph-overlay`, `.ph-panel*` (design tokeny); v tisku skryté |
+| Testy | `PageHelp.test.tsx` — otevření, obsah, Esc / ×, obnova scrollu, všechny stránky v CS i EN se stejným počtem položek; `i18n.test.ts` hlídá prázdné texty a diakritiku v EN |
+
+Při změně stránky upravit i její nápovědu (`help.cs.ts` + `help.en.ts`); nová stránka = nový `HelpPageId`.
+
+**Hlídání aktuálnosti (stejně jako dokumentace):**
+1. `.claude/rules/workflow.md` — checklist po každé úpravě má bod **Nápověda**;
+2. hook `.claude/settings.json` → `.claude/hooks/help_reminder.py` — po úpravě souboru v `pages/` / `components/`
+   připomene, kterou nápovědu zkontrolovat (mapování stránka → `HelpPageId`);
+3. `PageHelp.test.tsx` — každá napojená stránka s nadpisem má `<PageHelp>`, každé `HelpPageId` je použité a má
+   texty v CS i EN (testy spadnou, když nápověda chybí); obsah textu ověřuje člověk / `/audit docs`.
+
+#### Údaje zakázky jako rozbalovací řádky, šarže pro desítky položek
+
+`OrderInfoPanel` už nemá záložky — každá část je **rozbalovací řádek** se souhrnem (výchozí sbalené):
+
+| Řádek | Souhrn ve sbaleném stavu | Obsah |
+|---|---|---|
+| Šarže výrobce (N) | do 3 šarží všechny, jinak `první → … → poslední` | očíslovaná mřížka `#n LOT` (CSS grid, auto-fill 200 px) — 50 šarží = 10 řádků po 5 |
+| Testovací parametry (N) | první 3 `název hodnota jednotka` + … | tabulka |
+| Kategorie třídění (N) | `Třídění podle MD: 1 18–30 · 2 30,1–60 …` | tabulka mezí + NOK 5 / 6 |
+| Limity třídění | `Aktivní limity: Trafag a / n · Výrobce b / n` | tabulka limitů, Vše / Jen aktivní |
+
+- Hlavička zakázky (`OrderHero`) ukazuje jen počet šarží a první 3 (`HERO_LOTS`); tlačítko **„+N dalších"** zvýší
+  `lotsSignal` → panel otevře řádek šarží a posune na něj.
+- Obsah řádků je vždy vykreslený, sbalení jen třídou `cv-oi__row--open` → **tisk má všechny řádky rozbalené**
+  (hlavička řádku slouží jako nadpis, šarže ve 4 sloupcích).
+- Přístupnost: hlavička řádku = `button` s `aria-expanded` / `aria-controls`, obsah `role="region"`; 48 px.
+- „Min" / „Max" v tabulkách přeloženo (`chart.oiMin` / `oiMax`), nový klíč `chart.oiLotsMore`.
+- Vzorové soubory podle protokolu (zapsané skutečným `FileManager` Gateway: Op1 → Op2 … → Op3):
+  `05_user_data/PROD_VZOR-SARZE-2026_…` (60 kusů, 3 šarže, návrat šarže se v seznamu neopakuje) a
+  `PROD_VZOR-SARZE50-2026_…` (100 kusů, 50 šarží); kopie v `12.Database/production/done_remote/` (ne `done_local` —
+  odtud by je Gateway nahrála na NAS). Testy: `OrderInfoPanel.test.tsx` (sbalení / rozbalení, 50 šarží, `lotsSignal`).
+
+#### Přehled Databáze — ikona detailu zakázky + přilepená hlavička rozbaleného řádku
+
+- Production řádek má před šipkou rozbalení tlačítko **detailu zakázky** (`.db-icon-btn--detail`, ikona `BarChart2`)
+  → `/chart?file=…` rovnou, bez rozbalení. Šipka má `aria-expanded`. Sloupec akcí 264 px.
+- Oprava (screens/39): `.db-subtable__th--param { position: relative }` (kotva tooltipu) přebíjelo `position: sticky`
+  z `.db-subtable__th` → názvy parametrů při posunu podtabulky odjely. `relative` odstraněno (sticky je výchozím bodem
+  i pro absolutní tooltip), `.db-subtable__th` má `z-index: 2` (nad odznaky řádků). **Pravidlo:** buňce hlavičky se
+  `sticky` nikdy nepřidávat `position: relative`.
+
+#### Smazání rozpracované zakázky (In progress) administrátorem
+
+Rozhodnutí uživatele 2026-10-16: admin smí smazat **i zakázku, kterou stroj právě vyrábí** — vždy s varováním.
+
+| Vrstva | Řešení |
+|---|---|
+| API | `DELETE /api/files/{id}` — `*_WIP.csv` jen admin+ (`allow_wip = _may_delete_unsynced(session)`), jinak **403** (dřív 409 pro všechny); `POST /api/files/batch-delete` rozpracovanou zakázku nemaže nikdy (`wip_forbidden`); smazání WIP = `log.warning` s uživatelem; jen u stroje (`require_local`) |
+| Service | `FileService.delete_file(…, allow_wip=False)` (+ `DataReader` protokol) |
+| UI | `FileTable` prop `canDeleteWip` (= `canDeleteUnsynced`, admin+) — koš v řádku In progress, bez zaškrtávátka; `DeleteModal` — varování `db.deleteWipWarning` (data nenávratně pryč, PLC další kus odmítne) + zaškrtnutí `db.deleteWipConfirm` před smazáním; toast 403 `db.deleteWipForbidden` |
+| DatabaseGateway | `FileManager._wip_path()` ověří existenci WIP souboru, chybí-li → `_forget_wip()` (vyřadí z `_wip_index`, warning). Op2 / Op3 → **Rejected**, Op4 → neexistuje, Op1 smí zakázku založit znovu. Zápis kusu `"r+"` + seek na konec (ne `"a"` — smazaný soubor se nezaloží znovu **bez hlavičky**); nová šarže (přepis přes `.tmp`) a přesun Op3 chytají `FileNotFoundError` |
+
+> **Nasazovat ScadaViewer a DatabaseGateway spolu.** Nový ScadaViewer se starou Gateway: po smazání by další kus
+> založil soubor bez hlavičky a metadat a Op3 by ho poslal do `done_local` / na NAS.
+
+Souběh: drží-li soubor právě Gateway (WinError 32), `CsvRepository.delete_file` zkusí 5× po 0,2 s, pak API vrátí
+**409** a UI toast `db.deleteBusy` („zkuste znovu"); smazání mezi přečtením a přepisem nové šarže Gateway pozná
+(kontrola existence před `os.replace` — soubor se „nevzkřísí").
+
+Testy: `test_wip_live.py` (admin 204, operator / technician 403, batch `wip_forbidden`, zamčený soubor → 409), `FileTable.test.tsx`,
+`DeleteModal.test.tsx`; Gateway `test_gateway.py` (6 testů smazaného WIP).
+
+#### Graf rozložení kategorií — OK / NOK Trafag / NOK Supplier, rozmezí MD
+
+Sdílená komponenta `components/CategoryChart.tsx` (detail zakázky; rozbalený řádek Databáze s `compact`):
+
+| Prvek | Řešení |
+|---|---|
+| Pásy | `ReferenceArea` 0,5–4,5 OK (zelený), 4,5–5,5 **NOK Trafag** (barva boxu 5), 5,5–6,5 **NOK Supplier** (barva boxu 6) — každý se štítkem „název · počet (podíl)"; plná čára OK \| NOK, čárkovaná Trafag \| Supplier. `XAxis type="number"` (domain 0,5–6,5, `ticks` 1–6) — na kategoriální ose by se `ReferenceArea` / `ReferenceLine` nevykreslily |
+| Osa X (3 řádky) | číslo kategorie · OK / plný název NOK · u OK rozmezí třídicí veličiny („MD 18.0–30.0 µm"), u NOK důvod (`chart.catNokTrafagHint` / `catNokSupplierHint` — mimo limity Trafag / výrobce) |
+| Rozmezí | `categoryRanges(order_info.sorting_categories)` — `formatLimit` + `displayUnit`, klíč přes `paramKeyForLabel()` (`utils/paramMeta.ts`, sdílí `OrderInfoPanel`); nepoužitá a NOK kategorie bez rozmezí; starší soubory bez bloků → jen pásy |
+| Osa Y | `niceCeil()` — horní mez = 4 celé kulaté dílky s rezervou na popisky sloupců |
+| KPI | karty jen OK / NOK celkem (rozpad je v grafu — přání uživatele) |
+| Tooltip / tisk | vlastní `renderTooltip` (kategorie · název · rozmezí / důvod · počet); v tisku graf skrytý (KPI zůstávají) |
+| Data | `useFileRecords` vrací i `orderInfo` (už bylo v `/api/data`) |
+| Výkon | `memo` — překreslí se jen při změně počtů / mezí / `compact` |
+
+Testy: `CategoryChart.test.tsx` (`categoryRanges`, `niceCeil`); SVG vizuálně Playwright + Chrome.
+
+#### Paleta kategorií 1–6 = barvy štítků třídicích krabic; název NOK Supplier
+
+| Kat. | Krabice (Marquardt 1050, BG 01794) | Barva |
+|---|---|---|
+| 1 | černý štítek, E01793, 18–30 µm | `#18181b` |
+| 2 | světle modrý, E01794, 30–60 µm | `#38bdf8` (tmavý text) |
+| 3 | magenta, E01795, 60–80 µm | `#d946ef` |
+| 4 | zelený, E01796, 80–100 µm | `#16a34a` |
+| 5 | žlutý, E01832, TRAFAG Ausschuss → **NOK Trafag** | `#facc15` (tmavý text) |
+| 6 | červeno-oranžový, E01833, Ausschuss → **NOK Supplier** | `#ea580c` |
+
+- Jediná paleta: `CATEGORY_COLORS` + `categoryTextColor()` (`utils/groupColors.ts`) = `.db-cat-badge[data-cat]`
+  (`database.css`) — **měnit jen společně** (test `paramMeta.test.ts` hlídá hodnoty).
+- Čitelnost: světlé barvy s tmavým textem (štítky, aktivní filtr `--cat-text`, odznak skupiny); černý box 1 má tenký
+  lem (štítek, `.cv-cat-bar--1`, tlačítko filtru) — tmavý režim; texty NOK pásů tmavší odstín (`#ca8a04`, `#ea580c`).
+- Kategorie 6 = **„NOK Supplier"** v obou jazycích (dřív „NOK výrobce" / „NOK Manufacturer"; NOK kategorie anglicky —
+  terminologie 2026-09-25): `chart.oiCatNokSupplier`, `chart.categoryNote`, tooltip sloupce `sortingcategory`.
+  Nadpis sloupce limitů „Výrobce" / „Manufacturer" v Údajích zakázky zůstal.
+
+#### Filtr kusů podle NOK oblasti (detail zakázky)
+
+Lišta filtru (`RecordFilterBar`) má skupinu **NOK oblast**: Vše · Force · Position · Electric · Times · Process —
+odpovídá sloupcům `NokCategory_*` z Gateway (důvod, proč kus nevyhověl). U tlačítka počet kusů za celou zakázku.
+
+| Vrstva | Řešení |
+|---|---|
+| Index | `_OrderIndex.nok` — maska po řádcích (bit podle `NOK_CATEGORIES` v `csv_repository.py`: force, position, electric, times, process; buňka `1` = NOK), počítá se při jediném čtení souboru v `_build_index` (sloupce i s jednotkou `[-]`); `None` = soubor sloupce nemá |
+| Filtr | `read_records(nok=…)` — kus projde, má-li `mask & vybrané ≠ 0` (OR uvnitř NOK oblastí), kombinuje se se stavem / kategorií (AND); stránkování, `total`, `_idx` po filtru, i s `order=desc`; 50 000 kusů = setiny sekundy (jen celočíselné operace nad indexem) |
+| Počty | `stats['nok_counts']` — za celý soubor po filtru data (jako `group_counts`), nezávisle na filtru kusů → `DataResponse.nok_counts` |
+| API | `GET /api/data?nok=force,electric` (velikost písmen nevadí, neplatná oblast → 422) |
+| UI | `DataFilter.nok: NokArea[]`, `useData` → `nokCounts`; ChartView drží poslední známé počty (`heroNokCounts`), aby lišta nezmizela při 0 výsledcích; oblast s 0 kusy je zakázaná; vybraná červená; skupina se nezobrazí u souborů bez sloupců (`nokCounts` null); „Zrušit filtr" vyprázdní i NOK oblasti; reset při změně zakázky |
+| Názvy | Force / Position / Electric / Times / Process anglicky v obou jazycích (odborné názvy NOK kategorií — terminologie); popisek skupiny `chart.filterNok`, nápověda `chart.filterNokHint` |
+
+Testy: `02_tests/test_nok_filter.py` (8), `RecordFilterBar.test.tsx` (+3); vizuálně Playwright + Chrome.
+
+**Stav testů po fázi 47:** Backend **437/437**, Frontend **187/187** (24 souborů); DatabaseGateway 96,
 Analyzing 69; `tsc` 0, lint 0.
 
 ---
@@ -1372,14 +1520,19 @@ Query parametry stránkování: `?page=1&per_page=50` (výchozí; per_page max 2
   "group_counts": {"1": 3, "2": 9},  ← kategorie za celý soubor (i při filtru)
   "file_expected_count": null,
   "has_signal": false,
-  "total_all": null,                 ← jen při filtru status/category: počet kusů bez filtru
-  "position_scale": "customer"       ← "customer" (P = C − x) | "encoder" (starší soubory) | null
+  "total_all": null,                 ← jen při filtru status/category/nok: počet kusů bez filtru
+  "position_scale": "customer",      ← "customer" (P = C − x) | "encoder" (starší soubory) | null
+  "order_info": { … },               ← blokový PROD_ (receptura, šarže, testovací parametry, kategorie, limity)
+  "nok_counts": {"force": 2, "position": 0, "electric": 1, "times": 0, "process": 0}
+                                     ← kusy s NOK v oblasti za celý soubor; null = soubor bez NokCategory_*
 }
 ```
 
 Hodnoty parametrů jsou v jednotkách zákazníka (mN, µm, mΩ, µs) — převedené podle hlavičky CSV.
 
-Při filtru `status` / `category` nese každý záznam `_idx` (pořadí v nefiltrovaném souboru).
+Při filtru `status` / `category` / `nok` nese každý záznam `_idx` (pořadí v nefiltrovaném souboru).
+`nok=force,electric` = kus nevyhověl **aspoň v jedné** z oblastí; s ostatními filtry se kombinuje A ZÁROVEŇ;
+neplatná oblast → 422.
 
 Filtry `?from=2026-07-01&to=2026-07-18` jsou aplikovány jako `datetime.date` porovnání na `timestamp[:10]` — robustní pro všechny ISO 8601 varianty (timezone, milisekundy).
 
@@ -1471,13 +1624,21 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 | `AppLogo` | `AppLogo.tsx` | SVG logo 4 čtverce | — |
 | `AdsStatus` | `AdsStatus.tsx` | Pulsující dot (zelený/červený) dle `connected` | — (čte z PlcContext) |
 | `DataTable` | `DataTable.tsx` | Generická tabulka; content-based React key (ne index) | `columns`, `rows`, `onRowClick?` |
-| `DeleteModal` | `DeleteModal.tsx` | Potvrzovací dialog mazání souboru | `target`, `onCancel`, `onConfirm` |
+| `CategoryChart` | `CategoryChart.tsx` | Sloupcový graf kategorií 1–6: pásy OK / NOK Trafag / NOK Supplier, rozmezí MD u OK, KPI OK / NOK; `memo` | `groupCounts`, `total`, `categories?`, `compact?` |
+| `DeleteModal` | `DeleteModal.tsx` | Potvrzovací dialog mazání; done_local a rozpracovaná zakázka s varováním (jen admin+), WIP navíc zaškrtnutí rizika | `target`, `canDeleteUnsynced`, `onCancel`, `onConfirm` |
+| `OrderInfoPanel` | `OrderInfoPanel.tsx` | Údaje zakázky (blokový PROD_) — rozbalovací řádky Šarže / Testovací parametry / Kategorie / Limity | `info`, `lotsSignal?` |
+| `PageHelp` | `PageHelp.tsx` | Ikona „?" u nadpisu → panel nápovědy stránky (texty `i18n/help.*.ts`) | `page: HelpPageId` |
+| `ParamDiagrams` | `ParamDiagrams.tsx` | `ForceTravelDiagram` + `TimeDiagram` (SVG) se zvýrazněním parametru (`highlight`), `PARAM_DIAGRAM` | `record`, `highlight?` |
+| `ParamExplainModal` | `ParamExplainModal.tsx` | Grafická nápověda parametru — diagram se zvýrazněným parametrem + hodnota + popis | `paramKey`, `record`, `onClose` |
+| `ParamTable` | `ParamTable.tsx` | Sdílená tabulka parametrů (zkratka · název · hodnota · „?" + graf) | `record`, `groups` |
+| `RecordFilterBar` | `RecordFilterBar.tsx` | Řazení + filtr Stav / Kategorie kusů (server); barvy kategorií `--cat-color` / `--cat-text` | viz soubor |
+| `NasStorageBar` | `NasStorageBar.tsx` | Ukazatel zaplnění NAS v hlavičce Database | — |
 | `ErrorBoundary` | `ErrorBoundary.tsx` | Class component; `getDerivedStateFromError` + `componentDidCatch`; Consumer (ne hook) | children |
 | `FileTable` | `FileTable.tsx` | Hlavní tabulka DB stránky + `ExpandedRow`; Production expand vs Testing přímý navigate | viz níže |
 | `LoadingSpinner` | `LoadingSpinner.tsx` | Animovaný ring + `t.common.loading` | — |
 | `LoginOverlay` | `LoginOverlay.tsx` | PLC waiting state + lokální formulář | — (čte z AuthContext) |
 | `Pagination` | `Pagination.tsx` | `[<] Stránka X z Y [>]`; skryta pokud `pages <= 1` | `page`, `pages`, `onPage` |
-| `RecordDiagram` | `RecordDiagram.tsx` | Detail záznamu: ForceTravelDiagram + TimeDiagram (SVG) + ParamTable; maximize modal | `record: CsvRecord` |
+| `RecordDiagram` | `RecordDiagram.tsx` | Detail záznamu: diagramy z `ParamDiagrams` + NOK panel + ParamTable; maximize modal | `record: CsvRecord` |
 | `SignalCharts` | `SignalCharts.tsx` | 5 záložek signálových grafů (Recharts); data z `/api/signal` přes `useSignalData` | `fileId`, `location`, `fileType` |
 | `StorageBar` | `StorageBar.tsx` | Kompaktní ukazatel lokálního úložiště v hlavičce Database (záložka Lokální) + dialog čištění; krok 2 = smazání bez ověření s potvrzením rizika | — (čte ze StorageContext) |
 | `OrderTimelineChart` | `OrderTimelineChart.tsx` | Časový průběh zakázky — řada KPI + graf vyrobených kusů v čase (přepínač v detailu zakázky) | `fileId`, `location`, `fileType`, `enabled` |
@@ -1490,21 +1651,31 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 
 ```tsx
 interface Props {
-  files:           OrderFile[]
-  loading:         boolean
-  error:           string | null
-  dataType:        'production' | 'testing'
-  location:        'local' | 'remote'
-  showSync:        boolean          // true jen pro location=local
-  page:            number
-  pages:           number
-  total:           number           // celkový počet souborů (bez stránkování)
-  totalRecords:    number           // součet record_count přes všechny soubory
-  expandedId:      string | null
-  onExpandToggle:  (fileId: string) => void
-  onDeleteRequest: (file: OrderFile) => void
-  onDownload:      (file: OrderFile) => void
-  onPageChange:    (page: number) => void
+  files:            OrderFile[]
+  wip?:             OrderFile[]      // rozpracované zakázky — nahoře, bez výběru
+  hiddenByFilter?:  number           // datumový filtr skryl vše: kolik souborů je mimo
+  latestCreatedAt?: string | null    // nejnovější soubor mimo filtr
+  onShowLatestDay?: (day: string) => void
+  searchQuery?:     string           // aktivní hledání zakázky (prázdný stav „nic neodpovídá")
+  loading:          boolean
+  error:            string | null
+  dataType:         'production' | 'testing'
+  location:         'local' | 'remote'
+  showSync:         boolean          // true jen pro location=local
+  page:             number
+  pages:            number
+  total:            number           // celkový počet souborů (bez stránkování)
+  totalRecords:     number | null    // null = počty se dopočítávají
+  expandedId:       string | null
+  onExpandToggle:   (fileId: string) => void
+  onDeleteRequest:  (file: OrderFile) => void
+  onDownload:       (file: OrderFile) => void
+  onDownloadXlsx:   (file: OrderFile) => void
+  onPageChange:     (page: number) => void
+  sortBy: string; sortDir: 'asc' | 'desc'; onSort: (col: string) => void
+  selectedIds: Set<string>; onToggleSelect, onSelectAll, onClearSelect, onBatchDelete
+  readOnly?:        boolean          // vzdálený přístup — bez výběru a mazání
+  canDeleteWip?:    boolean          // admin+ — koš i u rozpracované zakázky (jednotlivě)
 }
 ```
 
@@ -1584,18 +1755,21 @@ Overview.tsx
 Database.tsx
 │  volá useDatabaseState() — veškerý stav a logika
 │
-├── záložky [Local/Remote] × [Production/Testing]
+├── h1 + <PageHelp page="database">
+├── záložky [Local/Remote] × [Production/Testing] + StorageBar (lokální) / NasStorageBar
 ├── NAS banner (pokud remote a remoteAvailable=false)
 ├── <tile>
-│   ├── toolbar (date filter + clear button)
+│   ├── toolbar (hledání zakázky — Production; datumový filtr od–do; hromadné akce)
 │   └── <FileTable>
-│       ├── hlavní tabulka (OrderFile[])
-│       │   ├── Production řádek: [#][Created][Order][Switch][Records][Sync?][ChevronDown][Download][Trash]
-│       │   └── Testing řádek:    [#][Created][Switch][Records][Sync?][BarChart2][Download][Trash]
+│       ├── hlavní tabulka (wip[] nahoře + OrderFile[])
+│       │   ├── Production řádek: [☐][#][Created][Order][ID][Switch][Records][Sync?]
+│       │   │                     [Detail BarChart2][ChevronDown][CSV][XLSX][Trash]
+│       │   │                     In progress: bez ☐, Trash jen admin (canDeleteWip)
+│       │   └── Testing řádek:    [☐][#][Created][Switch][Sync?][BarChart2][CSV][XLSX][Trash]
 │       └── ExpandedRow (jen production, jen expandedId === file.file_id)
-│           ├── Recharts BarChart skupin (group distribution)
+│           ├── <CategoryChart compact> (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD)
 │           ├── db-count-tile (total/expected + progress bar)
-│           └── subtabulka záznamů [#][Timestamp][Group?][BarChart2]
+│           └── subtabulka kusů (přilepená hlavička) — stav, kategorie, NOK, parametry
 │               per-řádek → /chart?...&record=N
 │               footer → /chart?...
 └── <DeleteModal> (podmíněně, pokud deleteTarget != null)
@@ -1610,7 +1784,8 @@ useEffect([fetchFiles]) → GET /api/files → files[]
 Expand (production): useFileRecords → GET /api/data?file=...
 Download CSV:  downloadCsv → GET /api/files/{id}/download → originální soubor (downloadOriginal.ts)
 Download XLSX: downloadXlsx → exportFileXlsx() → „Uložit jako" → GET /api/files/{id}/xlsx (sestaví server, celý soubor)
-Delete: deleteFile → DELETE /api/files/{id}?location=&type= → toast + fetchFiles()
+Delete: deleteFile → DELETE /api/files/{id}?location=&type=&sync= → toast + fetchFiles()
+        (done_local i *_WIP.csv jen admin+ — jinak 403 a toast deleteUnsyncedForbidden / deleteWipForbidden)
 ```
 
 **`useDatabaseState` — co drží v lokálním stavu:**
@@ -1619,7 +1794,7 @@ Delete: deleteFile → DELETE /api/files/{id}?location=&type= → toast + fetchF
 |-------|-----|---------|
 | `location` | `'local' \| 'remote'` | `'local'` |
 | `dataType` | `'production' \| 'testing'` | `'production'` |
-| `dateFrom` | `string` | dnes - 5 dní |
+| `dateFrom` | `string` | dnes − 2 dny (neukládá se) |
 | `dateTo` | `string` | dnes |
 | `page` | `number` | `1` |
 | `expandedId` | `string \| null` | `null` |

@@ -11,6 +11,7 @@ import { useLang } from '../context/LangContext'
 import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
 import DeleteModal from '../components/DeleteModal'
+import PageHelp from '../components/PageHelp'
 import StorageBar  from '../components/StorageBar'
 import NasStorageBar from '../components/NasStorageBar'
 
@@ -43,7 +44,7 @@ export default function Database() {
 
       {/* Hlavička + přepínače */}
       <div className="db-header">
-        <h1 className="page-title">{t.db.title}</h1>
+        <h1 className="page-title">{t.db.title}<PageHelp page="database" /></h1>
         <div className="db-controls">
 
           {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných (obě záložky) */}
@@ -198,6 +199,7 @@ export default function Database() {
           onClearSelect={clearSelect}
           onBatchDelete={() => setBatchConfirm(true)}
           readOnly={readOnly}
+          canDeleteWip={canDeleteUnsynced}
         />
       </div>
 
