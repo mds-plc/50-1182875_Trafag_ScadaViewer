@@ -202,6 +202,27 @@
   margin-top: var(--space-1);
 }
 
+/* Šarže výrobce v hlavičce zakázky */
+.order-hero__lots { margin-top: var(--space-3); }
+.order-hero__lot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.order-hero__lot {
+  padding: 2px var(--space-2);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+.order-hero__lot span { margin-right: var(--space-2); color: #64748b; }
+
 .order-hero__groups {
   display: flex;
   gap: var(--space-2);
@@ -540,6 +561,14 @@
 
 /* Tabulka kusů během načítání jiné stránky / filtru — obsah zůstane, jen zešedne */
 .cv-table--loading .data-table-scroll { opacity: 0.55; transition: opacity 0.15s; }
+
+/* Tabulka kusů zakázky — vlastní posuvná oblast (výška obrazovky), aby hlavička sloupců zůstala
+   připnutá i při posunu dolů (sticky uvnitř obalu s vodorovným posuvníkem, components.css) */
+.cv-table-scroll .data-table-scroll {
+  max-height: calc(100vh - var(--topbar-height) - 140px);
+  min-height: 240px;
+  overflow: auto;
+}
 
 /* CATEGORY CHART — sloupcový přehled kategorií v detailu zakázky */
 
@@ -995,6 +1024,55 @@
   color: var(--color-text-primary);
 }
 
+/* ── Údaje zakázky (OrderInfoPanel — bloky PROD_ souboru, Gateway 2.3.0+) ── */
+.cv-oi__section { padding: var(--space-3) var(--space-4) var(--space-4); }
+.cv-oi__section--inactive { display: none; }
+.cv-oi__print-title { display: none; }
+
+
+.cv-oi__lead { margin: 0 0 var(--space-2); font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.cv-oi__note { margin: var(--space-3) 0 0; font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.cv-oi__table { max-width: 640px; }
+.cv-oi__limits { max-width: 960px; min-width: 640px; }
+.cv-oi__scroll { width: 0; min-width: 100%; overflow-x: auto; }
+.cv-oi__th-group { text-align: center; }
+.cv-oi__unused { color: var(--color-text-muted); font-style: italic; }
+.cv-oi__limits-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.cv-oi__limits-sum {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+/* Aktivní limit — štítek; rámeček kvůli tisku (pozadí tiskárna často vynechá) */
+.cv-oi__chip {
+  display: inline-block;
+  padding: 1px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.cv-oi__chip--trafag   { background: var(--color-accent-muted);  border-color: var(--color-accent);  color: var(--color-accent-hover); }
+.cv-oi__chip--supplier { background: var(--color-warning-muted); border-color: var(--color-warning); color: var(--color-warning); }
+.cv-oi__off { color: var(--color-text-muted); }
+.cv-oi__row--off td { opacity: 0.45; }
+.cv-oi__nok {
+  margin-left: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-danger);
+}
+
 /* ── PRINT ─────────────────────────────────────────────────────────────── */
 
 @media print {
@@ -1014,6 +1092,19 @@
   .rd-pt__help-cell,
   .rd-modal-overlay { display: none !important; }
 
+  /* Údaje zakázky — v tisku všechny sekce pod sebou (záložky jsou skryté) */
+  .cv-oi__section--inactive { display: block !important; }
+  .cv-oi__print-title { display: block !important; margin: 8px 0 4px; font-size: 12px; }
+  .cv-oi__scroll { width: auto; overflow: visible; }
+  /* Limity v tisku: název parametru čitelně na jeden řádek, hodnoty úzké, souhrn neosiřet */
+  .cv-oi__limits { min-width: 0 !important; max-width: none !important; width: 100% !important; }
+  .cv-oi__limits .rd-pt__th--abbr, .cv-oi__limits .rd-pt__abbr { width: 9%; }
+  .cv-oi__limits .rd-pt__name { width: 43%; white-space: nowrap; }
+  .cv-oi__limits .rd-pt__th--val, .cv-oi__limits .rd-pt__val { width: 12%; }
+  .cv-oi__limits .rd-pt__row td { padding-top: 3px !important; padding-bottom: 3px !important; }
+  .cv-oi__chip { padding: 0 4px; font-size: 10px; }
+  .cv-oi__limits-bar { break-after: avoid; page-break-after: avoid; }
+
   /* OrderHero — světlé barvy pro tisk, kompaktnější */
   .order-hero {
     background: #f8f9fa !important;
@@ -1032,6 +1123,7 @@
   .order-hero__switch-id,
   .order-hero__progress-pct { color: #4b5563 !important; }
   .order-hero__divider { background: #d1d5db !important; }
+  .order-hero__lot { color: #111827 !important; background: none !important; border-color: #d1d5db !important; }
   .order-hero__progress { background: #e5e7eb !important; }
   .order-hero__progress-fill { background: #3b82f6 !important; }
 
@@ -1048,7 +1140,8 @@
   }
 
   /* Tabulka — zrušit horizontální scroll, menší font */
-  .data-table-scroll { overflow-x: visible !important; }
+  .data-table-scroll { overflow-x: visible !important; max-height: none !important; overflow-y: visible !important; }
+  .data-table-scroll .data-table__th { position: static !important; box-shadow: none !important; }
   .data-table {
     font-size: 11px !important;
     width: 100% !important;

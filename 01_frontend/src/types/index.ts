@@ -16,7 +16,9 @@ export interface OrderFile extends Record<string, unknown> {
   type:         'production' | 'testing'
   location:     'local' | 'remote'
   order_id:     string | null   // null pro testovací soubory
-  switch_name:  string
+  switch_name:  string          // název mikrospínače (Microswitch_Name)
+  /** ID mikrospínače (Microswitch_ID = SAP číslo) — jen soubory z Gateway 2.3.0+, jinak '' */
+  switch_id?:   string
   created_at:   string          // ISO datetime z prvního záznamu
   record_count: number | null   // null = počet kusů se ještě dopočítává (přehled jde z názvů souborů)
   sync_status?: 'wip' | 'done_local' | 'done_remote'  // jen pro lokální soubory; 'wip' = rozpracovaná zakázka
@@ -61,6 +63,18 @@ export interface StorageStatus {
   disk_total_bytes: number | null
   disk_free_bytes:  number | null
   disk_low:         boolean                         // na disku zbývá < 10 %
+  /** Zaplnění NAS (sdílená složka; s kvótou na Synology = kvóta). null = NAS není nastavený */
+  nas?:             NasStorage | null
+}
+
+/** Zaplnění sdílené složky NAS — GET /api/storage → nas */
+export interface NasStorage {
+  available:   boolean
+  total_bytes: number | null
+  used_bytes:  number | null
+  free_bytes:  number | null
+  percent:     number | null
+  level:       'ok' | 'warning' | 'critical' | null
 }
 
 /** Výsledek POST /api/storage/cleanup */
@@ -75,4 +89,41 @@ export interface CleanupResult {
 export interface OrderTimeline {
   timestamps: string[]            // ISO 8601
   categories: (number | null)[]   // kategorie 1–6 ke každé časové značce
+}
+
+// ── Údaje zakázky (blokový PROD_ soubor, DatabaseGateway 2.3.0+) — /api/data order_info ──
+
+/** Hodnota z [TestingParameters] — název a jednotka z hlavičky CSV */
+export interface OrderParam {
+  key:   string
+  name:  string
+  unit:  string
+  value: string | null
+}
+
+/** Mez kategorie třídění 1–6; min / max null = kategorie se nepoužívá */
+export interface SortingGroup {
+  group: number
+  min:   string | null
+  max:   string | null
+}
+
+/** Limit parametru — Trafag (min / max) a výrobce (min_supplier / max_supplier); null = neaktivní */
+export interface SortingLimit {
+  key:          string
+  name:         string
+  unit:         string
+  max:          string | null
+  min:          string | null
+  max_supplier: string | null
+  min_supplier: string | null
+}
+
+export interface OrderInfo {
+  recipe:             string | null
+  /** Šarže výrobce v pořadí výskytu (seznam za zakázku, bez vazby na kus) */
+  lots:               string[]
+  testing_parameters: OrderParam[]
+  sorting_categories: { grouping_value: string | null; unit: string; groups: SortingGroup[] } | null
+  sorting_limits:     SortingLimit[]
 }

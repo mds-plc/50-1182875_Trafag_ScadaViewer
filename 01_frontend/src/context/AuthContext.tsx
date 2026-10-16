@@ -102,6 +102,12 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
   const [sessionExpired, setSessionExpired] = useState(false)
 
   const plcLoginInFlightRef = useRef(false)
+  // Opakování PLC loginu po neúspěchu (429 / 5xx / síť) — jinak by kiosk zůstal na LoginOverlay,
+  // dokud se PLC příznak nezmění (audit Q11). Backoff 2 → 30 s, reset po úspěchu.
+  const [plcRetry, setPlcRetry] = useState(0)
+  const plcAttemptRef  = useRef(0)
+  const plcRetryTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (plcRetryTimer.current) clearTimeout(plcRetryTimer.current) }, [])
 
   // Aktuální tokeny pro event listener (bez re-registrace při každé změně)
   const tokensRef = useRef({ localToken, plcToken })
@@ -131,20 +137,41 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
     // PLC auto-login jen na PC u stroje (vzdáleně ho server odmítne — nezkoušet vůbec)
     if (plcLoggedIn && clientLocal === true && !localLogin && !plcToken && !plcLoginInFlightRef.current) {
       let cancelled = false
+      let ok = false
       plcLoginInFlightRef.current = true
 
       fetch('/api/auth/plc-login', { method: 'POST' })
         .then(r => r.ok ? r.json() : null)
         .then((data: unknown) => {
-          if (cancelled) return
+          if (cancelled) {
+            // Efekt zrušen během požadavku (StrictMode, změna podmínek) — získaný token nepoužijeme,
+            // tak ho na serveru zneplatnit (jinak osiřelá session do TTL 8 h); pokus se zopakuje níže
+            if (isLoginResponse(data)) {
+              void fetch('/api/auth/logout', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: data.token }),
+              }).catch(() => {})
+            }
+            return
+          }
           if (isLoginResponse(data) && VALID_ROLES.has(data.role)) {
+            ok = true
+            plcAttemptRef.current = 0
             setPlcToken(data.token)
             setPlcRole(data.role)
             setPlcDisplayName(data.display_name)
           }
         })
-        .catch(() => { /* tiché selhání — LoginOverlay zůstane zobrazena */ })
-        .finally(() => { plcLoginInFlightRef.current = false })
+        .catch(() => { /* LoginOverlay zůstane zobrazena — pokus se zopakuje níže */ })
+        .finally(() => {
+          plcLoginInFlightRef.current = false
+          if (ok) return
+          // Neúspěch (i zrušený pokus) → zkusit znovu; efekt podmínky ověří znovu
+          const delay = Math.min(2000 * 2 ** plcAttemptRef.current, 30_000)
+          plcAttemptRef.current += 1
+          if (plcRetryTimer.current) clearTimeout(plcRetryTimer.current)
+          plcRetryTimer.current = setTimeout(() => setPlcRetry(n => n + 1), delay)
+        })
 
       return () => { cancelled = true }
     }
@@ -162,7 +189,7 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
         body:    JSON.stringify({ token: t }),
       }).catch(() => {})
     }
-  }, [plcLoggedIn, clientLocal, localLogin, plcToken])
+  }, [plcLoggedIn, clientLocal, localLogin, plcToken, plcRetry])
 
   async function login(user: string, password: string): Promise<LoginResult> {
     if (!user.trim() || !password.trim()) return 'invalid'

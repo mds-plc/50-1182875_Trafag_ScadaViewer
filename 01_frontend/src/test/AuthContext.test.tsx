@@ -318,6 +318,29 @@ describe('AuthContext', () => {
     expect(result.current.isLoggedIn).toBe(false)
   })
 
+  it('plc-login fails once → retried with backoff, kiosk logs in (Q11)', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) } as Response)
+      mockLoginSuccess('plc-retry-token', 'operator', 'PLC')
+
+      const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper(true) })
+      await act(async () => { await Promise.resolve(); await Promise.resolve() })
+      expect(result.current.isLoggedIn).toBe(false)
+      expect(fetch).toHaveBeenCalledTimes(1)
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000) })   // 1. opakování po 2 s
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(result.current.token).toBe('plc-retry-token')
+      expect(result.current.isLoggedIn).toBe(true)
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })  // po úspěchu žádné další pokusy
+      expect(fetch).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('unauthorized event for local token → logged out, sessionExpired=true', async () => {
     mockLoginSuccess('expired-local')
     const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() })

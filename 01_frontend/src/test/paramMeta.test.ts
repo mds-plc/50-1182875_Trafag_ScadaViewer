@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatParam, hasMeasuredValue, paramUnit, positionScaleOf, ALL_PARAM_KEYS, PARAM_GROUPS,
-  PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS,
+  PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS, testingNokState, recordOkState,
 } from '../utils/paramMeta'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
@@ -128,5 +128,48 @@ describe('testing input parameters', () => {
 
   it('every analyzed parameter has Czech help', () => {
     for (const k of ALL_PARAM_KEYS) expect(PARAM_DESC[k]).toBeTruthy()
+  })
+})
+
+describe('testingNokState — výsledek testu z [NokInfo] (audit Q1)', () => {
+  const mask = (m: string) => Object.fromEntries(
+    ['force', 'position', 'electric', 'times', 'process'].map((c, i) => [`nokcategory_${c}`, m[i]]))
+
+  it('Gateway od 2026-10-15: rozhoduje Status (2 OK, 5 NOK)', () => {
+    expect(testingNokState({ status: '5', ...mask('00000') })).toEqual({ hasInfo: true, isNok: true, reason: null })
+    expect(testingNokState({ status: '2', ...mask('00000') })).toEqual({ hasInfo: true, isNok: false, reason: null })
+    expect(testingNokState({ status: '2', ...mask('01000') }).isNok).toBe(false)   // verdikt PLC má přednost
+  })
+
+  it('Status neznámý (0) → záloha podle masky', () => {
+    expect(testingNokState({ status: '0', ...mask('00010') }).isNok).toBe(true)
+  })
+
+  it('bez Status i NokReason: NOK podle masky', () => {
+    expect(testingNokState(mask('00100'))).toEqual({ hasInfo: true, isNok: true, reason: null })
+    expect(testingNokState(mask('00000'))).toEqual({ hasInfo: true, isNok: false, reason: null })
+  })
+
+  it('starší formát: NokReason ≠ 0 je NOK i s nulovou maskou', () => {
+    expect(testingNokState({ ...mask('00000'), nokreason: '12' }).isNok).toBe(true)
+    expect(testingNokState({ ...mask('00000'), nokreason: '0' }).isNok).toBe(false)
+  })
+
+  it('bez bloku [NokInfo] výsledek neznáme', () => {
+    expect(testingNokState({ timestamp: '2026-10-15T10:00:00' }).hasInfo).toBe(false)
+  })
+})
+
+describe('recordOkState — stejné pravidlo jako backend _record_matches (audit Q10)', () => {
+  it('kategorie 1–4 OK, 5–6 NOK (sortingcategory i starší group)', () => {
+    expect(recordOkState({ sortingcategory: '4', status: '5' })).toBe('ok')    // kategorie má přednost
+    expect(recordOkState({ sortingcategory: '5' })).toBe('nok')
+    expect(recordOkState({ group: '6', sortingcategory: '' })).toBe('nok')
+  })
+
+  it('kategorie mimo 1–6 → rozhoduje Status (dřív frontend bral 7+ jako NOK)', () => {
+    expect(recordOkState({ sortingcategory: '7', status: '2' })).toBe('ok')
+    expect(recordOkState({ sortingcategory: '0', status: '5' })).toBe('nok')
+    expect(recordOkState({ status: '3' })).toBeNull()
   })
 })

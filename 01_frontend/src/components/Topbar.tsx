@@ -2,12 +2,12 @@
  * @file Topbar.tsx
  * @description Horní lišta aplikace — název aplikace, indikátor PLC stavu,
  *   přepínač jazyka CS/EN, chip s přihlášením operátora (lokální přístup + odhlášení),
- *   chip zaplnění lokálního úložiště (jen při varování / kritickém stavu → klik = Database),
+ *   chip zaplnění lokálního úložiště a chip zaplnění NAS (jen při varování / kritickém stavu → klik = Database),
  *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje),
  *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
  */
 import { useState, useEffect } from 'react'
-import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe } from 'lucide-react'
+import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe, Server } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import AdsStatus from './AdsStatus'
 import { usePlcConnection } from '../context/PlcContext'
@@ -77,6 +77,17 @@ export default function Topbar() {
             >
               <HardDrive size={14} />
               <span>{Math.round(storage.percent)} %</span>
+            </button>
+          )}
+
+          {storage?.nas?.available && storage.nas.level && storage.nas.level !== 'ok' && (
+            <button
+              className={`topbar__chip topbar__chip--storage topbar__chip--${storage.nas.level}`}
+              onClick={() => navigate('/database')}
+              title={t.storage.nasChipTitle}
+            >
+              <Server size={14} />
+              <span>NAS {Math.round(storage.nas.percent ?? 0)} %</span>
             </button>
           )}
 

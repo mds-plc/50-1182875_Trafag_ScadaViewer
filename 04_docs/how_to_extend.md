@@ -7,7 +7,7 @@
 
 ## Obsah
 
-1. [Přidat nový ADS symbol (PLC → Overview)](#1-přidat-nový-ads-symbol)
+1. [Přidat nový ADS symbol (PLC → WebSocket; živý Overview je odpojený)](#1-přidat-nový-ads-symbol)
 2. [Přidat nový REST endpoint (backend)](#2-přidat-nový-rest-endpoint)
 3. [Přidat novou stránku (frontend)](#3-přidat-novou-stránku)
 4. [Přidat přeložitelný řetězec (i18n)](#4-přidat-přeložitelný-řetězec)
@@ -372,7 +372,7 @@ Pro texty s proměnnými (např. "Soubor: ORDER_001.csv"):
 ### Krok 1 — Backend: nic
 
 `CsvRecordModel` má `extra='allow'` — nový sloupec projde API automaticky
-(ve všech 3 formátech CSV: jednodílný, dvoudílný, sekční).
+(ve všech 4 formátech CSV: jednodílný, dvoudílný, blokový PROD_ (Gateway 2.3.0+), sekční TEST).
 
 ### Krok 2 — Zařadit parametr do skupiny
 

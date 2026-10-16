@@ -10,8 +10,8 @@ výrobních dat uložených v CSV souborech. Je součástí ekosystému tří ap
 - **Analyzing** — analytická pipeline nad CSV daty
 - **ScadaViewer** (tento projekt) — webová vizualizace, čtení CSV, live WebSocket
 
-Data do CSV **zapisuje DatabaseGateway**. ScadaViewer je **pouze čte** —
-nikdy nezasahuje do dat ani do PLC.
+Data do CSV **zapisuje DatabaseGateway**. ScadaViewer je čte; maže jen **lokální** soubory
+(jednotlivě / hromadně, čištění synchronizovaných) a do PLC zapisuje jen heartbeat / ready.
 
 Datový tok
 ----------
@@ -52,7 +52,7 @@ Moduly
 ------
 :mod:`scada.app`
     FastAPI factory :func:`~scada.app.create_app`, lifespan (startup/shutdown),
-    middleware stack (CORS, SecurityHeaders, RateLimit).
+    middleware stack (GZip, SecurityHeaders, RateLimit; HTTP API bez CORS — audit Z1).
 
 :mod:`scada.config`
     Načítá ``Config.toml`` do dataclassů :class:`~scada.config.AppConfig`.
@@ -63,8 +63,8 @@ Moduly
     a generují Swagger UI schéma automaticky.
 
 :mod:`scada.constants`
-    ADS symboly pro GVL ``GV_IO_ADS_API.ScadaViewerApp`` (23 symbolů:
-    mode, order_*, box_1–6_*, heartbeat, ready).
+    ADS symboly pro GVL ``GV_IO_ADS_API.ScadaViewerApp`` (24 Out symbolů:
+    mode, order_*, plc_operator_login, box_1–6_*; + 2 In: heartbeat, ready).
 
 :mod:`scada.api`
     FastAPI routers — HTTP endpointy a WebSocket handlery.

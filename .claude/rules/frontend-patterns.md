@@ -151,16 +151,17 @@ const NAV_ITEMS = [
 >
 ```
 
-## Routing — react-router-dom v6
+## Routing — react-router-dom v7
 
 ```tsx
 // App.tsx
 <Routes>
-  <Route path="/"         element={<Overview />} />
+  <Route path="/"         element={<Navigate to="/database" replace />} />   {/* Overview odpojen */}
   <Route path="/database" element={<Database />} />
   <Route path="/chart"    element={<ChartView />} />
   <Route path="/settings" element={<Settings />} />
   <Route path="/info"     element={<Info />} />
+  <Route path="*"        element={<Navigate to="/database" replace />} />
 </Routes>
 
 // Navigace programaticky:

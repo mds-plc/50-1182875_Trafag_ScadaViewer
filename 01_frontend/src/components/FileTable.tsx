@@ -16,7 +16,7 @@ import { formatDate, formatDateTime } from '../utils/formatting'
 import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
-import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit } from '../utils/paramMeta'
+import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit, recordOkState } from '../utils/paramMeta'
 import PositionScaleNote from './PositionScaleNote'
 
 /** NOK kategorie — sloupce se zobrazí jen pokud je CSV obsahuje. */
@@ -240,17 +240,10 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                     {hasStatusCol && (
                       <td className="db-subtable__td db-subtable__td--center">
                         {(() => {
-                          // OK/NOK primárně z sortingcategory (1–4 OK, 5–6 NOK),
-                          // fallback na status pole pokud sortingcategory chybí.
-                          const cat = Number(r.sortingcategory ?? 0)
-                          if (cat >= 1) {
-                            const isNok = cat >= 5
-                            return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
-                          }
-                          const st = String(r.status ?? '')
-                          if (st === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
-                          if (st === '5' || st === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
-                          return <span className="db-status-badge">{st || '—'}</span>
+                          // stejné pravidlo jako server (recordOkState, audit Q10)
+                          const s = recordOkState(r)
+                          if (s) return <span className={`db-status-badge db-status-badge--${s}`}>{s.toUpperCase()}</span>
+                          return <span className="db-status-badge">{String(r.status ?? '') || '—'}</span>
                         })()}
                       </td>
                     )}
@@ -378,7 +371,7 @@ export default function FileTable({
 
   // colspan: checkbox + # + created + [order] + switch + [records] + [sync] + actions
   const showRecords = dataType === 'production'
-  const colSpan = 4 + (dataType === 'production' ? 1 : 0) + (showRecords ? 1 : 0) + (showSync ? 1 : 0) + 2
+  const colSpan = 4 + (dataType === 'production' ? 2 : 0) + (showRecords ? 1 : 0) + (showSync ? 1 : 0) + 2
 
   /** Sortovatelný záhlaví sloupce */
   function SortTh({ col, children, className }: { col: string; children: React.ReactNode; className?: string }) {
@@ -396,6 +389,7 @@ export default function FileTable({
 
   /** Jeden řádek tabulky (+ rozbalený detail). isWip = rozpracovaná zakázka (zvýrazněná, bez mazání). */
   function renderRow(file: OrderFile, index: number, isWip: boolean) {
+    const pendingMeta = dataType === 'production' && file.record_count == null
     return (
       <Fragment key={file.file_id}>
         <tr
@@ -422,7 +416,16 @@ export default function FileTable({
           {dataType === 'production' && (
             <td className="db-td db-td--mono">{file.order_id ?? '—'}</td>
           )}
-          <td className="db-td">{file.switch_name}</td>
+          {/* ID a název mikrospínače — dva různé údaje. Dokud se zakázka nepřečte (počet „…"), je
+              v přehledu jen druhé pole názvu souboru: u nových souborů ID, u starších název → „…" */}
+          {dataType === 'production' && (
+            <td className="db-td db-td--mono">
+              {pendingMeta ? <span className="db-pending" title={t.db.countPending}>…</span> : (file.switch_id || '—')}
+            </td>
+          )}
+          <td className="db-td">
+            {pendingMeta ? <span className="db-pending" title={t.db.countPending}>…</span> : (file.switch_name || '—')}
+          </td>
           {showRecords && (
             <td className="db-td db-td--center">
               {file.record_count != null
@@ -538,7 +541,8 @@ export default function FileTable({
                 <th className="db-th db-th--num">#</th>
                 <SortTh col="created_at">{t.db.colCreated}</SortTh>
                 {dataType === 'production' && <SortTh col="order_id">{t.db.colOrder}</SortTh>}
-                <SortTh col="switch_name">{t.db.colSwitchType}</SortTh>
+                {dataType === 'production' && <SortTh col="switch_id">{t.db.colId}</SortTh>}
+                <SortTh col="switch_name">{t.db.colSwitch}</SortTh>
                 {showRecords && <SortTh col="record_count" className="db-th--center">{t.db.colRecords}</SortTh>}
                 {showSync && <th className="db-th db-th--center">{t.db.colSync}</th>}
                 <th className="db-th db-th--actions"></th>

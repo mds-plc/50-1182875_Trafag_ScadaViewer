@@ -14,9 +14,13 @@ Zodpovědnost:
     NasUnavailableError (nic se nesmaže). done_local/ a wip/ se nikdy nemažou.
   - cleanup_synced(verify=False): smaže VŠE z done_remote/ bez kontroly NAS (NAS se vůbec
     nekontaktuje) — jen po výslovném potvrzení rizika uživatelem ve frontendu.
+  - nas_usage(): zaplnění sdílené složky NAS (remote_path) — jeden dotaz na volné / celkové místo
+    (GetDiskFreeSpaceEx, jako Průzkumník). Má-li složka na Synology kvótu, „celkem" = kvóta;
+    bez kvóty celý svazek NAS. Úrovně jako lokální úložiště (≥ 80 % varování, ≥ 95 % kritické).
 
 Rozhraní:
   storage_usage(cfg: DataConfig) → dict              # blokující I/O — volat přes asyncio.to_thread
+  nas_usage(cfg: DataConfig) → dict | None           # NAS I/O — volat přes run_io("remote"); None = bez NAS
   cleanup_synced(cfg: DataConfig, verify=True) → dict  # verify: run_io("remote", …); bez verify: asyncio.to_thread
   NasUnavailableError, CleanupBusyError
 
@@ -113,6 +117,33 @@ def storage_usage(cfg: DataConfig) -> dict:
         "disk_total_bytes": disk_total,
         "disk_free_bytes":  disk_free,
         "disk_low":         disk_free_pct is not None and disk_free_pct < DISK_WARNING_FREE_PCT,
+    }
+
+
+def nas_usage(cfg: DataConfig) -> dict | None:
+    """Zaplnění sdílené složky NAS. None = remote_path není nastavený (bez NAS).
+
+    Nedostupný NAS → {"available": False}. Jen jeden dotaz (žádný výpis souborů), ale po síti —
+    volat přes run_io("remote") s časovým limitem; výsledek drží api/storage v cache.
+    """
+    if not cfg.remote_path:
+        return None
+    try:
+        du = shutil.disk_usage(cfg.remote_path)
+    except OSError as exc:
+        log.debug("[SVC]   NAS zaplnění nelze zjistit: %s", exc)
+        return {"available": False}
+    if du.total <= 0:
+        return {"available": False}
+    used    = du.total - du.free
+    percent = used / du.total * 100
+    return {
+        "available":   True,
+        "total_bytes": du.total,
+        "used_bytes":  used,
+        "free_bytes":  du.free,
+        "percent":     round(percent, 1),
+        "level":       _level(percent, None),
     }
 
 

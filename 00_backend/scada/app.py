@@ -134,7 +134,7 @@ from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
 from scada.services.files_watcher import FilesWatcher
 from scada.services.io_pool import NasBusyError
-from scada.services.repositories.csv_repository import CsvRepository
+from scada.services.repositories.csv_repository import CsvRepository, FileTooLargeError
 from scada.services.ws_manager import manager
 
 log = logging.getLogger(__name__)
@@ -341,6 +341,13 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         # Všechna NAS vlákna visí na nedostupném NAS → okamžitě 503, žádné čekání
         log.warning("[APP]   %s", exc)
         return JSONResponse(status_code=503, content={"detail": "Vzdálené úložiště (NAS) nereaguje — zkuste později."})
+
+    @app.exception_handler(FileTooLargeError)
+    async def _too_large(_request: Request, exc: FileTooLargeError) -> JSONResponse:
+        # Zakázka nad strop velikosti (poškozený / cizí soubor) — nezahlcovat paměť (audit Q7)
+        log.warning("[APP]   %s", exc)
+        return JSONResponse(status_code=413, content={
+            "detail": f"Soubor je příliš velký pro zobrazení v aplikaci ({exc}) — stáhněte originální CSV."})
 
     app.include_router(plc_ws.router,     prefix="/ws",  tags=["plc"])
     app.include_router(health.router,     prefix="/api", tags=["health"])

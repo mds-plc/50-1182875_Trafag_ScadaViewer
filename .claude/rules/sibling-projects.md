@@ -28,7 +28,7 @@ def load_config(path) → AppConfig  # tomllib / tomli fallback
 ### ADS konstanty
 ```python
 # Soubor: 00_src/db_gateway/constants.py
-GVL_BASE = "GV_IO_ADS_API.DatabaseGateway"
+GVL_BASE = "GV_IO_ADS_API.DatabaseGatewayApp"
 SYM: dict[str, str] = { "in_ready": f"{GVL_BASE}.In.Status.Ready", ... }
 ```
 → ScadaViewer `constants.py` přebírá **vzor** (`GVL_… + SYM dict`), ale má **vlastní GVL**
@@ -40,25 +40,29 @@ SYM: dict[str, str] = { "in_ready": f"{GVL_BASE}.In.Status.Ready", ... }
 # Soubor: DatabaseGateway/Config.toml
 csv_separator = ";"
 csv_encoding  = "utf-8-sig"
-# Sloupce (production): Timestamp;Order;Microswitch_ID;Microswitch_Name
+# Sloupce (production, ≤ 2.2.0): Timestamp;Order;Microswitch_ID;Microswitch_Name
+# Production 2.3.0+: bloky [Metadata] [TestingParameters] [SortingCategories] [SortingLimits] [Data]
 # Sloupce (testing):    Timestamp;Microswitch_ID;Microswitch_Name
 # Klíče normalizovány v CsvRepository (_normalize_key: lowercase + bez [jednotky])
 ```
-→ `services/repositories/csv_repository.py` čte **3 formáty**: jednodílný, dvoudílný (production)
-  a sekční (testing — `[Metadata]`, `[AnalyzedParameters]`, …, `[SignalData]`).
+→ `services/repositories/csv_repository.py` čte **4 formáty**: jednodílný, dvoudílný, blokový (production, Gateway 2.3.0+)
+  a sekční (testing — `[Metadata]`, `[AnalyzedParameters]`, `[NokInfo]`, …, `[SignalData]`).
+  Kontrakt hlídají `02_tests/test_gateway_prod_format.py` + `test_ecosystem_units.py` proti kódu Gateway.
+  Gateway od 2026-10-15 nezapisuje `NokReason`: PROD `[Data]` 32 sloupců, TEST `[NokInfo]` = jen `NokCategory_*` (výsledek = maska; `Status` u testu není).
 
 ### Složková struktura výstupů DatabaseGateway
 ```
 [sdílená složka]/         ← mimo oba projekty (local_path v Config.toml)
 ├── production/
-│   ├── wip/              ← aktuálně otevřená zakázka (ScadaViewer nečte)
+│   ├── wip/              ← aktuálně otevřená zakázka (Database ji ukazuje nahoře — `list_wip`)
 │   ├── done_local/       ← uzavřená, čeká na sync na NAS
 │   └── done_remote/      ← synchronizována na NAS
 └── testing/
     ├── done_local/
     └── done_remote/
 ```
-→ `csv_repository.py` scanuje `done_local/` a `done_remote/` (ne `wip/` — Overview/WIP je odpojený).
+→ `csv_repository.py` scanuje `done_local/`, `done_remote/` a `wip/` (rozpracovaná zakázka, mimo stránkování;
+  `*_WIP.csv` nelze smazat). Odpojený je jen živý Overview / `/ws/orders`.
 
 ### sync_state.json
 ScadaViewer tento soubor **nečte**. Stav synchronizace dedukuje ze složkové struktury:

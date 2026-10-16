@@ -44,6 +44,20 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Další vydání (po 2.3.0) — zaplnění NAS, údaje zakázky, opravy auditu 2026-10-15
+
+- **Nasazovat s DatabaseGateway, který nezapisuje `NokReason`** (necommitnuto 2026-10-15) — ScadaViewer čte
+  starý i nový formát (výsledek testu z masky `NokCategory_*`, u starších souborů i `NokReason`),
+  pořadí nasazení je tedy libovolné. PLC DUT se kvůli tomu nemění (`Status` u testu se nečte);
+  ověřit jen `NokCategory` v Testing DUT = `ARRAY[1..5]` (export má `[1..4]`).
+- **Cache metadat** (`03_output/cache/file_meta.sqlite`) se při prvním startu převede ze schématu 3 na 4:
+  počty kusů NAS archivu zůstanou, lokální soubory se jednou znovu přečtou (sekundy). Nic mazat není potřeba.
+- **Mazání nesynchronizovaných zakázek** (`done_local`, ještě nejsou na NAS) smí jen admin — technik maže jen
+  synchronizované. Informovat obsluhu.
+- **Zaplnění NAS** (Database + čip v topbaru) = `shutil.disk_usage` na `remote_path` pod účtem služby: se
+  kvótou sdílené složky na Synology ukazuje kvótu, bez kvóty celý svazek. Při převzetí ověřit, že hodnota
+  odpovídá (DSM → Ovládací panel → Sdílená složka → Kvóta).
+
 ## Release 2.3.0 (2026-10-13) — blokový PROD_ soubor, SAP číslo, řazení kusů
 
 **DatabaseGateway 2.3.0 + nový PLC program (DUT `ST_APP_Dataset_Production`) + ScadaViewer 2.3.0 se nasazují
@@ -664,6 +678,8 @@ nssm start   Caddy
 - [ ] Database → záložka Vzdálená zobrazí soubory z NAS (i po restartu PC — služby pod servisním účtem)
 - [ ] Ukazatel „Lokální úložiště" v hlavičce Database odpovídá `local_max_gb` (nastavit dle disku)
 - [ ] „Vyčistit synchronizované" smaže jen soubory ověřené na NAS
+- [ ] Ukazatel zaplnění NAS odpovídá kvótě sdílené složky (nebo svazku) v DSM
+- [ ] Technik nemůže smazat zakázku z `done_local` (dialog varuje „není na NAS“), admin ano
 
 ### Vzdálený přístup (z PC v kanceláři)
 

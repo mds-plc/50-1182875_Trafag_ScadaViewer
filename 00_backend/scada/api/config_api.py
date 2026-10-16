@@ -14,6 +14,11 @@ import os
 import re
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada import __version__
@@ -68,28 +73,49 @@ def _atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def _clean_path(raw: str) -> str:
+    """Cesta z formuláře: bez okrajových mezer a uvozovek (Průzkumník → „Kopírovat jako cestu"
+    vkládá "…"). Uvozovky uvnitř a řídicí znaky ve Windows cestě nejsou → ValueError (audit Q4)."""
+    s = raw.strip()
+    while len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        s = s[1:-1].strip()
+    if '"' in s or any(c < " " or c == "\x7f" for c in s):
+        raise ValueError("cesta obsahuje uvozovky nebo řídicí znaky")
+    return s
+
+
+def _toml_value(key: str) -> str:
+    """Regex hodnoty klíče na začátku řádku — basic string s escapy ("…\\"…") i literal ('…')."""
+    return rf'(?m)^[ \t]*{key}[ \t]*=[ \t]*(?:"(?:[^"\\\n]|\\.)*"|\'[^\'\n]*\')'
+
+
 def _write_paths(config_path: Path, local_path: str, remote_path: str) -> None:
-    """Přepíše local_path a remote_path v Config.toml (regex replace)."""
+    """Přepíše local_path a remote_path v Config.toml (regex replace).
+
+    Výsledek se před zápisem ověří parserem TOML — nevalidní Config.toml by po restartu PC
+    nenechal službu nastartovat (NSSM by ji jen dokola restartovala; audit Q4).
+    """
     text = config_path.read_text(encoding="utf-8")
-    # TOML basic string: escape backslash (\ → \\).
-    # Ostatní speciální znaky (\t, \n, \r, …) by způsobily neočekávané escape sekvence
-    # při manuální editaci → odstraníme je.
+
     def _toml_str(s: str) -> str:
         s = s.replace("\\", "\\\\")          # \ → \\ (musí být první!)
-        s = s.replace('"', '\\"')            # " → \" (prevence TOML injection)
-        s = "".join(c for c in s if c >= " ")  # odstraní control chars (TAB, LF, …)
+        s = s.replace('"', '\\"')            # " → \" (pojistka; _clean_path je odmítá)
+        s = "".join(c for c in s if c >= " " and c != "\x7f")  # control chars pryč
         return s
 
     local_toml  = _toml_str(local_path)
     remote_toml = _toml_str(remote_path)
     # Lambda jako replacement — re.subn by jinak interpretoval "\\" v řetězci jako escape
     # a zapsal zpět jediný "\" (→ nevalidní TOML, server by po restartu nenastartoval).
-    text, n1 = re.subn(r'local_path\s*=\s*"[^"]*"',  lambda _m: f'local_path = "{local_toml}"',  text)
-    text, n2 = re.subn(r'remote_path\s*=\s*"[^"]*"', lambda _m: f'remote_path = "{remote_toml}"', text)
+    text, n1 = re.subn(_toml_value("local_path"),  lambda _m: f'local_path = "{local_toml}"',  text)
+    text, n2 = re.subn(_toml_value("remote_path"), lambda _m: f'remote_path = "{remote_toml}"', text)
     if n1 == 0:
         log.warning("[API]   _write_paths: klíč local_path nenalezen v %s", config_path)
     if n2 == 0:
         log.warning("[API]   _write_paths: klíč remote_path nenalezen v %s", config_path)
+    data = tomllib.loads(text)["data"]                      # TOMLDecodeError → nic se nezapíše
+    if data.get("local_path") != local_path or data.get("remote_path", remote_path) != remote_path:
+        raise ValueError("cesty se v Config.toml nezapsaly správně")
     _atomic_write_text(config_path, text)
 
 
@@ -105,8 +131,12 @@ async def update_paths(body: UpdatePathsRequest, request: Request) -> None:
 
     # Normalizace: forward slash → backslash, přebytečné backslashe → jeden
     # Akceptuje C:/foo, C:\foo i C:\\foo (uživatel může zadat jakkoliv)
-    local  = str(Path(body.local_path.strip()))  if body.local_path.strip()  else ""
-    remote = str(Path(body.remote_path.strip())) if body.remote_path.strip() else ""
+    try:
+        local_raw, remote_raw = _clean_path(body.local_path), _clean_path(body.remote_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Neplatná cesta: {exc}") from None
+    local  = str(Path(local_raw))  if local_raw  else ""
+    remote = str(Path(remote_raw)) if remote_raw else ""
 
     if not local:
         raise HTTPException(status_code=400, detail="local_path nesmí být prázdný")

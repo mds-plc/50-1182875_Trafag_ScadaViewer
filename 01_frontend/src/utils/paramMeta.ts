@@ -119,9 +119,45 @@ export const TESTING_INPUT_GROUPS: { id: string; label: string; unit: string; co
 /** Metadata sekce — klíče z [Metadata] bloku CSV. */
 export const METADATA_KEYS = ['timestamp', 'microswitch_id', 'microswitch_name']
 
-/** NokInfo sekce — klíče z [NokInfo] bloku CSV. */
-export const NOKINFO_KEYS = ['nokreason', 'nokcategory_force', 'nokcategory_position',
+/** Maska NokCategory[1..5] — Force, Position, Electric, Times, Process ('1' = selhalo). */
+export const NOKCATEGORY_KEYS = ['nokcategory_force', 'nokcategory_position',
   'nokcategory_electric', 'nokcategory_times', 'nokcategory_process']
+
+/** NokInfo sekce — klíče z [NokInfo] bloku CSV: maska NokCategory (Gateway od 2026-10-16 jen ta),
+ *  `nokreason` (starší soubory), `status` (jen pojistka — Gateway ho u testu nezapisuje). */
+export const NOKINFO_KEYS = ['status', 'nokreason', ...NOKCATEGORY_KEYS]
+
+/** OK / NOK kusu zakázky (production) — STEJNÉ pravidlo jako backend `_record_matches`
+ *  (filtr stavu na serveru), audit Q10: kategorie 1–6 (`group` u starších souborů, jinak
+ *  `sortingcategory`) — 1–4 OK, 5–6 NOK; bez platné kategorie sloupec Status (2 OK, 5 / 6 NOK).
+ *  null = neznámé. */
+export function recordOkState(rec: Record<string, unknown>): 'ok' | 'nok' | null {
+  const grp = String(rec.group ?? '').trim() || String(rec.sortingcategory ?? '').trim()
+  const cat = Number(grp)
+  if (Number.isInteger(cat) && cat >= 1 && cat <= 6) return cat <= 4 ? 'ok' : 'nok'
+  const st = String(rec.status ?? '').trim()
+  if (st === '2') return 'ok'
+  if (st === '5' || st === '6') return 'nok'
+  return null
+}
+
+/** Výsledek testu z bloku [NokInfo] (audit Q1). Gateway zapisuje jen masku NokCategory[1..5]
+ *  (Status u testu se nepoužívá — rozhodnutí 2026-10-16; NokReason zrušen 2026-10-15):
+ *  1. kdyby soubor nesl `Status` (2 = OK, 5 / 6 = NOK), rozhoduje — pojistka pro budoucí formát;
+ *  2. jinak NOK = některá NokCategory_* = 1, u starších souborů i NokReason ≠ 0.
+ *  `hasInfo` = soubor blok [NokInfo] má; `reason` = kód NokReason (jen starší soubory). */
+export function testingNokState(rec: Record<string, unknown>): {
+  hasInfo: boolean; isNok: boolean; reason: number | null
+} {
+  const hasInfo = NOKINFO_KEYS.some(k => rec[k] != null && rec[k] !== '')
+  const raw = rec.nokreason
+  const reason = raw != null && raw !== '' && Number.isFinite(Number(raw)) ? Number(raw) : null
+  const st = String(rec.status ?? '').trim()
+  if (st === '2') return { hasInfo, isNok: false, reason }
+  if (st === '5' || st === '6') return { hasInfo, isNok: true, reason }
+  const anyCat = NOKCATEGORY_KEYS.some(k => String(rec[k] ?? '0').trim() === '1')
+  return { hasInfo, isNok: anyCat || (reason != null && reason !== 0), reason }
+}
 
 /** MeasuredInfo sekce — klíče z [MeasuredInfo] bloku CSV. */
 export const MEASUREDINFO_KEYS = ['measuretime', 'meas_ts']
@@ -281,6 +317,26 @@ export function formatParam(key: string, raw: unknown): FormattedParam {
   // nestanovil (varování W5 = bez dotyku, W6 = bez přepnutí). Zobrazit jako chybějící, ne „0".
   if (n === 0 && UNDETERMINED_IF_ZERO.has(group)) return { text: '—', open: false }
   return { text: toFixedNoNegZero(n, GROUP_DECIMALS[group] ?? 2), open: false }
+}
+
+/** Jednotka z hlavičky CSV → zobrazovací (um → µm, mOhm → mΩ, us → µs, mm/s2 → mm/s²). */
+export function displayUnit(unit: string): string {
+  return unit
+    .replace(/^um$/i, 'µm').replace(/^us$/i, 'µs').replace(/mOhm/i, 'mΩ').replace(/Ohm/i, 'Ω')
+    .replace(/s2$/, 's²').replace(/s3$/, 's³')
+}
+
+/**
+ * Limit třídění / mez kategorie — číslo na rozlišení skupiny parametru (mN celá, µm 0,1, µs celá,
+ * mΩ 0,1), ale BEZ pravidel naměřených hodnot: 1 000 000 mΩ je limit, ne rozepnutý kontakt (∞),
+ * a 0 je platná mez (ne „nestanoveno"). Prázdné = '—'; neznámý klíč = text beze změny.
+ */
+export function formatLimit(key: string, raw: string | null | undefined): string {
+  if (raw == null || raw.trim() === '') return '—'
+  const n = Number(raw)
+  const group = KEY_GROUP[key]
+  if (!group || isNaN(n)) return raw
+  return toFixedNoNegZero(n, GROUP_DECIMALS[group] ?? 2)
 }
 
 /** true pokud má parametr aspoň v jednom záznamu měřenou hodnotu (ne prázdnou, ne ∞). */

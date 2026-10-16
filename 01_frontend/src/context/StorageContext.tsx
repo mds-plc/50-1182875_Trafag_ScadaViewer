@@ -7,7 +7,8 @@
  * Zodpovědnost:
  *   - GET /api/storage po přihlášení, pak každých POLL_MS a po změně složek
  *     (FILES_CHANGED_EVENT z FilesWatcheru — debounce, ať série změn = 1 dotaz).
- *   - Toast při zhoršení úrovně (ok → warning, → critical) — jednou, ne při každém dotazu.
+ *   - Toast při zhoršení úrovně (ok → warning, → critical) — jednou, ne při každém dotazu;
+ *     zvlášť pro lokální úložiště a pro NAS (storage.nas).
  *   - cleanup(force): POST /api/storage/cleanup[?force=true] + toasty s výsledkem + nové načtení stavu.
  *     force = smazat i neověřené na NAS — volat jen po potvrzení rizika (StorageBar).
  *
@@ -53,6 +54,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   const tRef       = useRef(t)
   tRef.current     = t
   const lastLevel  = useRef<StorageStatus['level']>('ok')
+  const lastNas    = useRef<StorageStatus['level']>('ok')
   const abortRef   = useRef<AbortController | null>(null)
 
   const authHeaders = useCallback((): HeadersInit => (token ? { Authorization: `Bearer ${token}` } : {}), [token])
@@ -73,6 +75,16 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         else                           addToast(tRef.current.storage.toastWarning.replace('{pct}', pct), 'warning')
       }
       lastLevel.current = data.level
+      // NAS — stejné úrovně (≥ 80 % / ≥ 95 %); nedostupný NAS úroveň nemění
+      const nasLevel = data.nas?.available ? (data.nas.level ?? 'ok') : null
+      if (nasLevel !== null) {
+        if (LEVEL_RANK[nasLevel] > LEVEL_RANK[lastNas.current]) {
+          const pct = String(Math.round(data.nas?.percent ?? 0))
+          if (nasLevel === 'critical') addToast(tRef.current.storage.nasToastCritical.replace('{pct}', pct), 'danger')
+          else                         addToast(tRef.current.storage.nasToastWarning.replace('{pct}', pct), 'warning')
+        }
+        lastNas.current = nasLevel
+      }
     } catch {
       // síťová chyba / abort — ponechat poslední známý stav (offline banner řeší useBackendOnline)
     }
@@ -80,7 +92,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
 
   // Polling po přihlášení
   useEffect(() => {
-    if (!isLoggedIn) { setStorage(null); lastLevel.current = 'ok'; return }
+    if (!isLoggedIn) { setStorage(null); lastLevel.current = 'ok'; lastNas.current = 'ok'; return }
     void refresh()
     const id = setInterval(() => { void refresh() }, POLL_MS)
     return () => { clearInterval(id); abortRef.current?.abort() }

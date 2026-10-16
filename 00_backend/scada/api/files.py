@@ -41,7 +41,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from scada.services.io_pool import NasBusyError, run_io
-from scada.api.dependencies import require_auth, require_local, require_role
+from scada.api.dependencies import ROLE_LEVELS, require_auth, require_local, require_role
 from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
 from scada.services.protocols import DataReader
 from scada.services.shared_open import open_shared
@@ -59,7 +59,7 @@ async def list_files(
     per_page:  int      = Query(50,  ge=1, le=200, description="Položek na stránku (max 200)"),
     from_date: str|None = Query(None, alias="from", description="Filtr od (YYYY-MM-DD inclusive)"),
     to_date:   str|None = Query(None, alias="to",   description="Filtr do (YYYY-MM-DD inclusive)"),
-    sort_by:   str      = Query('created_at', pattern=r'^(created_at|switch_name|record_count|order_id)$', description="Sloupec řazení"),
+    sort_by:   str      = Query('created_at', pattern=r'^(created_at|switch_name|switch_id|record_count|order_id)$', description="Sloupec řazení"),
     sort_dir:  str      = Query('desc',       pattern=r'^(asc|desc)$',                                    description="Směr řazení"),
 ) -> FilesResponse:
     """Stránkovaný výpis zakázek.
@@ -116,13 +116,20 @@ async def list_files(
     )
 
 
-@router.delete("/files/{file_id}", status_code=204,
-               dependencies=[Depends(require_role("technician")), Depends(require_local)])
+def _may_delete_unsynced(session: dict) -> bool:
+    """Soubor z done_local/ (ještě není na NAS) smí smazat jen admin+ (audit Q5)."""
+    return ROLE_LEVELS.get(session.get("role", ""), -1) >= ROLE_LEVELS["admin"]
+
+
+@router.delete("/files/{file_id}", status_code=204, dependencies=[Depends(require_local)])
 async def delete_file(
     file_id:   str,
     request:   Request,
     location:  str = Query('local',      alias="location"),
     file_type: str = Query('production', alias="type"),
+    sync:      str | None = Query(None, pattern="^(done_local|done_remote)$",
+                                  description="Kterou kopii smazat, leží-li soubor v obou složkách (řádek v UI)"),
+    session:   dict = Depends(require_role("technician")),
 ) -> None:
     """
     Smaže lokální CSV soubor zakázky.
@@ -132,7 +139,8 @@ async def delete_file(
     """
     reader: DataReader = request.app.state.csv_reader
     try:
-        result = await run_io(location, reader.delete_file, file_id, location, file_type)
+        result = await run_io(location, reader.delete_file, file_id, location, file_type,
+                              _may_delete_unsynced(session), sync)
     except (OSError, PermissionError) as exc:
         log.error("[API]   DELETE /api/files/%s I/O chyba: %s", file_id, exc)
         raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
@@ -140,6 +148,8 @@ async def delete_file(
         raise HTTPException(status_code=403, detail="Vzdálené soubory nelze smazat")
     if result == 'wip_forbidden':
         raise HTTPException(status_code=409, detail="Rozpracovanou zakázku nelze smazat")
+    if result == 'unsynced_forbidden':
+        raise HTTPException(status_code=403, detail="Soubor ještě není na NAS — smazat ho smí jen administrátor")
     if result == 'not_found':
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
 
@@ -158,10 +168,12 @@ async def batch_delete_files(
     zůstanou smazány i při částečném selhání a caller vidí přesně co se povedlo.
     """
     reader: DataReader = request.app.state.csv_reader
+    allow_unsynced = _may_delete_unsynced(session)
     deleted, failed, errors = 0, 0, []
     for fid in body.file_ids:
         try:
-            result = await run_io(body.location, reader.delete_file, fid, body.location, body.file_type)
+            result = await run_io(body.location, reader.delete_file, fid, body.location, body.file_type,
+                                  allow_unsynced)
         except (OSError, PermissionError) as exc:
             log.error("[API]   batch-delete %s I/O chyba: %s", fid, exc)
             failed += 1

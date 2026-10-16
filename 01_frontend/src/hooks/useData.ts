@@ -29,10 +29,26 @@
  *   Používáno: hooks/useDatabaseState.ts, pages/ChartView.tsx
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { CsvRecord, DataFilter, OrderFile } from '../types'
+import type { CsvRecord, DataFilter, OrderFile, OrderInfo } from '../types'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../utils/apiFetch'
+
+/** order_info z /api/data — pole vždy jako pole (nekompatibilní odpověď nesmí shodit OrderInfoPanel). */
+export function normalizeOrderInfo(raw: unknown): OrderInfo | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? v as T[] : [])
+  const sc = o.sorting_categories
+  return {
+    recipe:             typeof o.recipe === 'string' ? o.recipe : null,
+    lots:               arr<string>(o.lots),
+    testing_parameters: arr<OrderInfo['testing_parameters'][number]>(o.testing_parameters),
+    sorting_categories: sc && typeof sc === 'object' && Array.isArray((sc as { groups?: unknown }).groups)
+      ? sc as OrderInfo['sorting_categories'] : null,
+    sorting_limits:     arr<OrderInfo['sorting_limits'][number]>(o.sorting_limits),
+  }
+}
 
 // ---
 // useFiles — seznam souborů dle location + type + stránka
@@ -152,6 +168,8 @@ function useDataFetch() {
   const [fileExpectedCount, setFileExpectedCount] = useState<number | null>(null)
   // Počet záznamů bez filtru status/kategorie (jen při aktivním filtru, jinak null)
   const [totalAll,          setTotalAll]          = useState<number | null>(null)
+  // Údaje zakázky z bloků PROD_ souboru (Gateway 2.3.0+); null = starší formát / testing
+  const [orderInfo,         setOrderInfo]         = useState<OrderInfo | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -176,6 +194,7 @@ function useDataFetch() {
       if (filter.order === 'desc')   params.set('order',    'desc')
       const headers: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {}
       const res = await apiFetch(`/api/data?${params}`, { signal: ctrl.signal, headers })
+      if (res.status === 413) throw new Error(tRef.current.common.errorFileTooLarge)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       if (!Array.isArray(json.records)) throw new Error(tRef.current.common.errorInvalidResponse)
@@ -185,6 +204,7 @@ function useDataFetch() {
       setGroupCounts(json.group_counts ?? {})
       setFileExpectedCount(json.file_expected_count ?? null)
       setTotalAll(typeof json.total_all === 'number' ? json.total_all : null)
+      setOrderInfo(normalizeOrderInfo(json.order_info))
       setLoading(false)
     } catch (e) {
       if (ctrl.signal.aborted) return
@@ -193,7 +213,7 @@ function useDataFetch() {
     }
   }, [token])
 
-  return { records, total, pages, groupCounts, fileExpectedCount, totalAll, loading, error, fetchData }
+  return { records, total, pages, groupCounts, fileExpectedCount, totalAll, orderInfo, loading, error, fetchData }
 }
 
 // ---

@@ -8,9 +8,9 @@
  *   - Clear button vymaže datum filtry (volá setDateFrom('') + setDateTo(''))
  *   - remote alert viditelný jen při location='remote' + remoteAvailable=false
  *   - Refresh button → volá fetchFiles()
- *   - StorageBar (zaplnění lokálního úložiště) jen na záložce Local
+ *   - StorageBar (lokální úložiště) a NasStorageBar (NAS) vždy obě, na obou záložkách
  *
- * Strategie: mockujeme useDatabaseState, FileTable, DeleteModal a StorageBar.
+ * Strategie: mockujeme useDatabaseState, FileTable, DeleteModal, StorageBar a NasStorageBar.
  * Testy se tak soustředí čistě na JSX logiku Database.tsx
  * bez závislosti na interní logice subkomponent.
  */
@@ -50,6 +50,7 @@ const defaultState = {
   setExpandedId:  mockSetExpandedId,
   deleteTarget:   null,
   setDeleteTarget: mockSetDeleteTarget,
+  canDeleteUnsynced: false,
   files:          [],
   wip:            [],
   hiddenByFilter: 0,
@@ -93,6 +94,10 @@ vi.mock('../components/DeleteModal', () => ({
 
 vi.mock('../components/StorageBar', () => ({
   default: () => <div data-testid="storage-bar" />,
+}))
+
+vi.mock('../components/NasStorageBar', () => ({
+  default: () => <div data-testid="nas-storage-bar" />,
 }))
 
 // -----------------------------------------------------------------------
@@ -177,12 +182,14 @@ describe('Database page', () => {
     expect(screen.getByText(/remote storage is unavailable/i)).toBeInTheDocument()
   })
 
-  it('StorageBar is shown only on the local tab', () => {
+  it('local and NAS storage bars are shown together on both tabs', () => {
     const { unmount } = renderDatabase({ location: 'local' })
     expect(screen.getByTestId('storage-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('nas-storage-bar')).toBeInTheDocument()
     unmount()
     renderDatabase({ location: 'remote' })
-    expect(screen.queryByTestId('storage-bar')).toBeNull()
+    expect(screen.getByTestId('storage-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('nas-storage-bar')).toBeInTheDocument()
   })
 
   it('Refresh button click calls fetchFiles()', () => {

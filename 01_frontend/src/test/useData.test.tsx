@@ -13,7 +13,7 @@ import { renderHook, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { LangProvider } from '../context/LangContext'
 import { AuthProvider } from '../context/AuthContext'
-import { useData } from '../hooks/useData'
+import { useData, normalizeOrderInfo } from '../hooks/useData'
 import type { DataFilter } from '../types'
 
 const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -203,5 +203,19 @@ describe('useData', () => {
 
     expect(result.current.error).toBeTruthy()
     expect(result.current.records).toHaveLength(0)
+  })
+})
+
+describe('normalizeOrderInfo — nekompatibilní order_info nesmí shodit OrderInfoPanel', () => {
+  it('chybějící / chybná pole → prázdná pole a null', () => {
+    expect(normalizeOrderInfo(null)).toBeNull()
+    expect(normalizeOrderInfo({ recipe: 5, lots: 'x', sorting_limits: {}, sorting_categories: { groups: 1 } })).toEqual({
+      recipe: null, lots: [], testing_parameters: [], sorting_categories: null, sorting_limits: [],
+    })
+  })
+
+  it('platná data beze změny', () => {
+    const ok = { recipe: '1', lots: ['A'], testing_parameters: [], sorting_categories: { grouping_value: null, unit: '', groups: [] }, sorting_limits: [] }
+    expect(normalizeOrderInfo(ok)).toEqual(ok)
   })
 })

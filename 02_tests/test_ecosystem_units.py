@@ -179,9 +179,13 @@ def test_production_block_format(ecosystem, client) -> None:
     prod = ecosystem["prod"]
     assert prod.name.startswith("PROD_ECO1_E01389-C_")
     assert prod.read_text(encoding="utf-8-sig").startswith("[Metadata]")
-    files = client.get("/api/files", params={"location": "local", "type": "production", "per_page": 50}).json()
-    item = next(f for f in files["files"] if f["file_id"] == prod.name)
-    assert item["order_id"] == "ECO1" and item["switch_name"] == "E01389-C"
+    for _ in range(100):                                                # dopočet na pozadí
+        files = client.get("/api/files", params={"location": "local", "type": "production", "per_page": 50}).json()
+        item = next(f for f in files["files"] if f["file_id"] == prod.name)
+        if item["record_count"] is not None:
+            break
+        time.sleep(0.05)
+    assert (item["order_id"], item["switch_id"], item["switch_name"]) == ("ECO1", "E01389-C", "Marquardt")
     body = client.get("/api/data", params={"file": prod.name, "location": "local", "type": "production"}).json()
     assert body["total"] == 1
     rec = body["records"][0]

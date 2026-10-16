@@ -6,7 +6,7 @@ ADS symboly a PLC typové informace pro ScadaViewer monitoring.
       Jedno místo pro správu symbolů minimalizuje riziko překlepů v ads_monitor.py.
 
 Zodpovědnost:
-  - SYM: Out symboly (PLC → ScadaViewer) — ADS notifikace, pouze čtení; 23 symbolů.
+  - SYM: Out symboly (PLC → ScadaViewer) — ADS notifikace, pouze čtení; 24 symbolů.
   - SYM_WRITE: In symboly (ScadaViewer → PLC) — sv_heartbeat, sv_ready; 2 symboly.
   - SYM_TYPES: override PLC typů a byte-velikostí pro ne-BOOL symboly (UINT, STRING).
     Vše neuvedené se předpokládá BOOL (1 byte) — výchozí v ads_monitor._DEFAULT_TYPE.
@@ -15,7 +15,7 @@ Zodpovědnost:
 
 Rozhraní:
   GVL_SV: str                              — prefix GVL cesty
-  SYM: dict[str, str]                      — {friendly_name: ads_path} (23 Out symbolů)
+  SYM: dict[str, str]                      — {friendly_name: ads_path} (24 Out symbolů)
   SYM_WRITE: dict[str, str]                — {friendly_name: ads_path} (2 In symboly)
   SYM_TYPES: dict[str, tuple[type, int]]   — override typů pro ads_monitor.py
 

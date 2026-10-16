@@ -8,13 +8,14 @@
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-11 (rizika před nasazením — R4, N2, N5, F2, F4, změna času, Gateway K17, X2, X3)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-16 (kontrola ekosystému E1–E21; hloubková analýza 2026-10-15 Q1–Q38)**.
 > Nálezy K1–K42 jsou zde jen odkazem — plný popis, scénář a oprava v záznamu „[2026-10-10] Kompletní audit".
 
 ### 🔴 HIGH
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
+| E2 | PLC Testing DUT: `NokCategory` v exportu [1..4], Gateway čte [5] — ověřit online v TwinCAT (E1 vyřešeno — Status se u testu nečte) | Gateway `constants.py:82`, PLC | [2026-10-16] |
 | T2 | Jádro AdsMonitor — `_reconnect_loop` (backoff, `clear_symbols`, broadcast) bez testu; úklid, RUN/verze a offline zápis už pokryty | `ads_monitor.py` | [2026-10-10 nejhlubší] |
 | X3 | Kódování STRING z PLC: obě aplikace cp1250 (Gateway opravena 2026-10-11) — **ověřit na PLC** názvem zakázky s „ř“ | Gateway `ads_reader.py`, `ads_monitor.py:79` | [2026-10-10 nejhlubší] |
 
@@ -22,13 +23,14 @@
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
+| E3–E7 | Stejná verze 2.3.0 pro dva kontrakty (před dalším vydáním zvednout — deploy zatím ne, rozhodnutí 2026-10-16); `$PlcNote`; přechodně ponechat `NokReason` na PLC; WIP při upgradu; TEST s „..“ v názvu (Gateway) | viz záznam [2026-10-16] | [2026-10-16] |
+| Q8, Q9, Q12 | Duplicitní zakázky v Gateway po čištění (oprava v Gateway); formát CSV bez specifikace a verze; podvržení portu 8080 pro kiosk (Q1–Q7, Q10, Q11, Q13 opraveny 2026-10-15) | viz záznam [2026-10-15] | [2026-10-15] |
 | Z2–Z4, Z6 | Zámek přihlášení obejde souběh; DoS velkým tělem / WS; admin rozbije users.toml (Z1, Z5 opraveny 2026-10-11) | `app.py`, `auth.py`, `plc_ws.py`, `files.py:230`, `users_api.py` | [2026-10-10 nejhlubší] |
 | N3 | Zákmity v grafech Signal Data mizí (N1, N2, N5 opraveny 2026-10-11) | `signal_reader.py:214` | [2026-10-10 nejhlubší] |
 | F3, F5, F6 | Zpět → stránka 1; vlastní heslo v UI; malé dotykové plochy (F1, F2, F4 opraveny 2026-10-11) | `useDatabaseState.ts`, `ChartView.tsx`, `Settings.tsx`, CSS | [2026-10-10 nejhlubší] |
 | T3, E3–E6 | Nepokryté kritické cesty v testech; přibalená `TcAdsDll.dll`; verze nezvednuta; build.bat bez kontroly stromu a testů; `users.toml.example` znemožní přihlášení (E2 opraven 2026-10-11) | `02_tests/`, `06_build/exe/`, `config.py` | [2026-10-10 nejhlubší] |
 | C1, C2 | `/api/data` vrací 200 prázdné místo 404/503 (NAS pryč, WIP uzavřen); souběh zahltí sdílený pool vláken → health stojí, zdravý NAS hlásí 503 | `file_service.py:314`, `io_pool.py` | [2026-10-10 nejhlubší] |
 | K13 | Fronta dopočtu z NAS bez stropu, priority a rušení (proklikání archivu = hodiny stahování) | `csv_repository.py`, `file_service.py` | [2026-10-10 kompletní] |
-| K18 | Zastaralé `.claude/rules` + části CLAUDE.md / docstringů (NAS pool 4→6, Router v6, čtení `wip/`) | `.claude/rules/`, `CLAUDE.md` | [2026-10-10 kompletní] |
 | A6 | Rate limit (120/min) i blokace přihlášení (5 pokusů / 10 min) jsou na IP — kancelářská PC za NAT / proxy sdílí jednu IP → sdílí limit i blokaci | `app.py`, `api/auth.py` | [2026-09-26 audit] |
 | A7 | `ChartView.tsx` (~930 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena; filtr kusů vyčleněn do `RecordFilterBar`, tisk do `usePrintMode`) | `pages/` | [2026-09-26 audit] |
 
@@ -51,7 +53,8 @@
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
 | X6, X7, X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R7, R9, C4–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
-| K21, K23, K24, K27–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny) | — | [2026-10-10 kompletní] |
+| K21, K23, K27–K29, K31–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny; K24, K30 ověřeny jako opravené 2026-10-15) | — | [2026-10-10 kompletní] |
+| Q15–Q23, Q25, Q26, Q28, Q30–Q32 (+ Q17 částečně) | viz záznam [2026-10-15] (stabilita, drobné scénáře, frontend, architektura) | — | [2026-10-15] |
 | A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
 
 ### 📈 ŠKÁLOVÁNÍ (doporučení do budoucna — mimo ScadaViewer / dohoda s Trafag)
@@ -73,6 +76,208 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-10-16] Kontrola celého ekosystému — Analyzing → PLC → DatabaseGateway → ScadaViewer
+
+> Pracovní kopie všech tří projektů (Gateway s necommitnutým odstraněním `NokReason`, ScadaViewer s opravami
+> z 2026-10-15). 3 nezávislé větve: kontrakt CSV (skutečný `FileManager` Gateway → API ScadaViewer, okrajové
+> případy), ADS symboly / PLC exporty / handshake / verze, revize oprav ScadaViewer. Prefix nálezů **E**.
+>
+> **Testy:** Analyzing **69 passed**, DatabaseGateway **89 passed**, ScadaViewer **416 passed** (0 skipped,
+> vč. kontraktů s Gateway), frontend **154 passed**, `tsc` 0, lint 0.
+
+### PLC a nasazení (mimo kód ScadaViewer — rozhodnutí / PLC programátor)
+
+| # | Závažnost | Popis | Kde | Status |
+|---|-----------|-------|-----|--------|
+| E1 | 🔴 HIGH | **Testing DUT v exportu PLC nemá `Status`**, nová Gateway ho čte (`Out.Data.Saving.Testing.Status`) → se současným PLC programem každá Op5 „symbol not found“, TEST soubor se neuloží. Production nedotčena | Gateway `constants.py:77`, `ads_reader.py:333`; export `ST_APP_Dataset_Testing.xml` (17. 9.) | ✅ Vyřešeno 2026-10-16 — rozhodnutí uživatele: Status u testu nepotřebujeme; Gateway ho nečte ani nezapisuje (`[NokInfo]` = 5× NokCategory), PLC beze změny |
+| E2 | 🔴 HIGH (ověřit) | Testing `NokCategory` je v exportu `ARRAY[1..4]`, Gateway čte i `[5]` (platí už pro vydanou 2.3.0) — buď je export zastaralý, nebo Op5 na stroji neprošla | Gateway `constants.py:82`; export Testing DUT | ⬜ ověřit online v TwinCAT |
+| E3 | ⚠️ MEDIUM | Dva různé kontrakty s PLC pod stejnou verzí **2.3.0** (vydaná Gateway čte `NokReason`, pracovní kopie `Testing.Status`); ScadaViewer s necommitnutými změnami také 2.3.0 — z ZIPu ani `/api/health` nepoznat, co se nasazuje | `__init__.py` obou, `06_build/deploy/deploy.ps1:21-24` | ⬜ zvednout verzi (2.3.1 / 2.4.0) |
+| E4 | ⚠️ MEDIUM | `deploy.ps1` `$PlcNote` se ptá jen na Production DUT — nezmiňuje `Testing.Status` ani `NokCategory[1..5]` | `06_build/deploy/deploy.ps1:24` | ⬜ s novou verzí |
+| E5 | ⚠️ MEDIUM | Doporučení: `NokReason` (Production i Testing) na PLC přechodně **ponechat** (Status do Testing se nepřidává — E1) — nový PLC program pak funguje se starou i novou Gateway (žádné „vše najednou“) | PLC | ⬜ |
+| E6 | ⚠️ MEDIUM | Rozpracovaná zakázka (WIP s 33 sloupci) se po nasazení nové Gateway dál neplní (Op2 Rejected) — před upgradem uzavřít (Op3); `deploy.ps1` na WIP upozorní | Gateway `file_manager.py:177-189, 347-350` | ⬜ postup nasazení |
+| E7 | ⚠️ MEDIUM | TEST soubor s „..“ v názvu Gateway zapíše (Op5 kontroluje jen zakázané znaky), ScadaViewer ho odmítne (`validate_params`) — v přehledu je, ale otevřít / stáhnout / smazat nejde | Gateway `file_manager.py:474-477` | ⬜ Gateway: odmítat „..“ jako Op1 |
+| E8 | 🔵 LOW | Kus se Status 0 a kategorií 0 není OK ani NOK (filtr OK + NOK ≠ celkem; `group_counts['0']`) — domluvit s PLC, že uložený kus má vždy Status 2/5 | PLC / Gateway | ⬜ |
+| E9 | 🔵 LOW | `Meas_TS` (hodiny PLC) se liší od času záznamu o ~19 h (reálný TEST soubor 21. 9.) — ověřit hodiny PLC / význam Info.TS | PLC | ⬜ |
+| E10 | 🔵 LOW | Aktivní limit s hodnotou NaN Gateway zapíše prázdně = v `OrderInfoPanel` nerozlišitelné od vypnutého | Gateway `order.py:270-271` | ⬜ přijmout / zdokumentovat |
+| E11 | 🔵 LOW | Cesty k NAS ve dvou aplikacích (Gateway `production_path`/`testing_path` × ScadaViewer `remote_path/production`) nikdo nekontroluje — jiná podsložka = prázdná záložka Vzdálená, čištění nic nesmaže | `deployment.md`, deploy skript | ⬜ |
+| E12 | 🔵 LOW | `order_name` čten jako STRING 82 B, TwinCAT `STRING(80)` = 81 B — ověřit v logu, že není „symbol přeskočen [order_name]“ (Overview odpojený — dopad nyní žádný) | `constants.py:86` | ⬜ ověřit na stroji |
+| E13 | 🔵 LOW | Zastaralé XML exporty PLC v Analyzing / Gateway (chybí `MeasuredData.Info.TS`, `ST_APP_Mod_Measuring_MeasuredRecord`) — znovu vyexportovat do všech tří projektů | `05_user_data/plc_communication/` | ⬜ |
+| E14 | 🔵 LOW | Dokumentace Gateway si odporuje (CLAUDE.md:330 „jen maska“ × 391/520 „Status“; 552 vede verdikt TEST ve ScadaViewer jako otevřený — je hotový); 2 vzorové soubory bez BOM; „absolutní čas“ v `signal_calc.py:25` | Gateway | ⬜ |
+| E15 | 🔵 LOW | TEST `Microswitch_ID` (UINT pořadové číslo) × PROD (SAP číslo) — stejný popisek „ID“ pro dvě věci; v přehledu Testing prázdné | ScadaViewer přehled | ⬜ |
+
+**Ověřeno bez nesouladu:** 24 analyzovaných parametrů Analyzing → PLC → Gateway (pořadí, názvy vč. překlepů PLC,
+`_pack_=1`), jednotky mN / µm / mΩ / µs a polohy C − x, STRING cp1250 v Gateway i ScadaViewer, každá aplikace
+zapisuje jen do své GVL (žádný sdílený zapisovaný symbol), handshake Op1–Op5 + heartbeat 0,5 s, AMS Net ID shodné,
+PROD bloky 8/13/25/32 sloupců 1:1 s kódem, šarže jen v `order_info`, TEST 6 sekcí s `[NokInfo]` = Status + 5× maska,
+signál (NaN/inf bez chyby, převody N→mN, A→mA, Ω→mΩ), názvy souborů s diakritikou a „_“ v zakázce, `.tmp`/`.part`
+se nečtou, čištění ověřené na NAS bezpečné, všechny vzorové soubory Gateway ScadaViewer přečte.
+
+### Revize oprav ScadaViewer z 2026-10-15 — opraveno týž den
+
+| # | Závažnost | Popis | Oprava | Test |
+|---|-----------|-------|--------|------|
+| E16 | ⚠️ MEDIUM (regrese Q2) | `NasProbe` vracel po výpadku NAS starý stav „dostupný“ po celý síťový timeout (dřív banner do 3 s) | starý stav jen dokud obnova neběží déle než `timeout_s`, pak výchozí (nedostupný); stále 1 běžící dotaz | `test_nasprobe_hanging_refresh_reports_default` |
+| E17 | 🔵 LOW (Q14) | Přerušená migrace cache 3→4 („duplicate column“) smazala celou cache vč. `known`; souběh dvou instancí | migrace v `BEGIN IMMEDIATE … COMMIT`, `ALTER` jen chybí-li sloupec; cache zamčená jinou instancí se nemaže (jen paměť) | `test_migration_repeatable_after_interrupt`, `test_locked_cache_not_deleted` |
+| E18 | 🔵 LOW (Q5) | Soubor v `done_local` i `done_remote`: mazání vždy mířilo na `done_local` (technik 403 u řádku Synced, admin smazal nesynchronizovanou kopii) | `DELETE ?sync=done_local\|done_remote` z řádku UI; bez něj chráněná `done_local` | `test_delete_targets_clicked_copy` |
+| E19 | 🔵 LOW (Q3) | `list_remote` při výpadku NAS volal ještě `is_dir()` na NAS (zdvojené čekání) | WinError 53/64/67 → rovnou chyba (503) | `test_list_remote_outage_no_second_network_call` |
+| E20 | 🔵 LOW (Q11) | Zrušený pokus PLC loginu zahodil platný token → osiřelá session do TTL | token z přerušeného pokusu se odhlásí (`/api/auth/logout`) | — |
+| E21 | 🔵 LOW (Q14) | NAS soubory Gateway 2.3.0 spočítané 13.–15. 10. mají po migraci ve sloupci „Mikrospínač“ SAP číslo a ID „—“ (cache schématu 3 ID neznala) | přijato — týká se jen 2 dnů testovacích dat; po smazání cache se dopočítají | — |
+
+**Celkem:** 21 nálezů (E1–E21) | 6 opraveno ve ScadaViewer (E16–E20, komentáře z E14) + E1 vyřešen rozhodnutím (Gateway bez Testing.Status, test zapisovač → API `test_gateway_testing_writer_roundtrip`) + 1 přijato (E21) | 13 otevřeno (PLC / Gateway / nasazení)
+
+---
+
+## [2026-10-15] Audit — vše (hloubková analýza: chyby, škodlivé scénáře, stabilita, architektura, dokumentace)
+
+> Rozsah: celý backend + frontend **včetně necommitnutých změn** (zaplnění NAS, údaje zakázky `order_info`,
+> sloupec ID mikrospínače, SQLite `_SCHEMA` 4) a návaznost na DatabaseGateway (pracovní kopie 2026-10-15).
+> 5 paralelních větví; nálezy ověřeny čtením kódu, většina reprodukcí (skripty ve scratchpadu relace).
+> Nové nálezy mají prefix **Q**. Již evidované nálezy se neopakují.
+>
+> **Stav testů:** backend **376 passed / 3 failed** (vše `test_gateway_prod_format.py::test_gateway_sample_files`, viz Q1);
+> frontend Vitest **141 passed / 21 souborů**; `tsc --noEmit` 0; `npm run lint` 0.
+
+### 1) Chyby a závažné věci
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| Q1 | 🔴 HIGH | **Gateway (necommitnuto 2026-10-15) odstranil sloupec `NokReason`**. PROD `[Data]` má 32 sloupců místo 33, TEST `[NokInfo]` 5 místo 6. ScadaViewer verdikt testu stále bere z `nokreason`. U nového TEST souboru se NOK kus ukáže jako zelené **OK** a záložka NOK se skryje. Dále: 3 testy padají, skripty `make_big_orders.py` / `make_demo_data.py` volají `header.index("NokReason [-]")`. **Oprava:** verdikt z masky `NokCategory_*` / `Status`, ideálně počítaný na backendu; sladit testy a skripty; nasadit s Gateway | `ChartView.tsx:795,799,863`, `paramMeta.ts:123`, `test_gateway_prod_format.py:168`, `test_prod_blocks.py:40` | ✅ Opraveno 2026-10-15 |
+| Q3 | ⚠️ MEDIUM | **Oprava N2 při skutečném výpadku NAS nezabere.** `list_remote` nejdřív volá `folder.exists()`. Nedostupný share vrátí False (WinError 53/67), takže archiv je prázdný s HTTP 200, místo posledního známého stavu nebo 503. Test mockuje jen `os.scandir`. **Oprava:** `exists()` odstranit, chybu nechat dojít do `_scan_folder`; do testu přidat mock `Path.exists` | `csv_repository.py:650` | ✅ Opraveno 2026-10-15 |
+| Q6 | ⚠️ MEDIUM | **Řazení podle ID / názvu mikrospínače** (necommitnuto). Nedopočítané soubory mají `switch_id=''` (ne `None`) a v `switch_name` je SAP ID z názvu. Při každém dopočtu tak odskočí na konec a na první stránku přijdou další nedopočítané, takže se kaskádou dopočítává celý NAS archiv (zesiluje K13). Řazení se ukládá a zůstává aktivní i na záložce Testing. **Oprava:** brát `record_count is None` jako neznámé a řadit na konec; při přechodu na Testing vrátit `created_at` | `file_service.py:110-116`, `csv_repository.py:861-870`, `FileTable.tsx:551` | ✅ Opraveno 2026-10-15 |
+| Q7 | ⚠️ MEDIUM | `read_order_info` je **druhé samostatné čtení** (necommitnuto): 3–4 SMB staty navíc na každou stránku. Index nad 256 MB se necachuje, takže se soubor čte celý 2×; naměřeno 290 MB CSV → 660 MB RAM, lokální 504 a vlákna dál běží. Při přesunu souboru mezi čteními vrátí `/api/data` 404, i když se záznamy přečetly. Velikost souboru není nijak omezená. **Oprava:** `order_info` z téhož indexu (`RecordsPage` dataclass), strop velikosti souboru | `api/data.py:67-71`, `file_service.py:329-336` | ✅ Opraveno 2026-10-15 |
+| Q10 | ⚠️ MEDIUM | **Pravidlo OK/NOK je na dvou místech s různou definicí.** Backend bere kategorie 1–6, jinak `Status`. Frontend bere `cat >= 5` = NOK, a to 3× copy-paste; čte jen `sortingcategory`, ne starší `group`. **Oprava:** pole `ok` v `CsvRecordModel`, frontend jen zobrazí | `csv_repository.py:115-141`, `ChartView.tsx:322,547`, `FileTable.tsx:247` | ✅ Opraveno 2026-10-15 |
+| Q14 | 🔵 LOW | Zvednutí `_SCHEMA` 3→4 udělá `DROP TABLE known` (necommitnuto). Počty kusů NAS archivu, které nemají lokální kopii, se po nasazení znovu stahují po stránkách. **Oprava:** `ALTER TABLE … ADD COLUMN switch_id`, zneplatnit jen řádky formátu 2.3.0; jinak aspoň uvést v `deployment.md` | `csv_repository.py:448-457` | ✅ Opraveno 2026-10-15 |
+| Q27 | 🔵 LOW | Log „zaplnění NAS nelze zjistit: “ je bez důvodu, protože `exc or …` je vždy pravdivé a `str(TimeoutError())` je prázdné. Má být `str(exc) or type(exc).__name__` | `api/storage.py:69` | ✅ Opraveno 2026-10-15 |
+
+### 2) Scénáře, které mohou aplikaci / data / výrobu poškodit
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| Q4 | ⚠️ MEDIUM | **Cesta vložená z Průzkumníku i s uvozovkami** se uloží jako `\"…\"`. Regex `"[^"]*"` při dalším uložení skončí na `\"` a zapíše **nevalidní TOML**. Po restartu PC služba nenastartuje a NSSM ji dokola restartuje. Reprodukováno (`tomllib`: „Expected newline“). **Oprava:** ořezat obalové uvozovky, `"` a řídicí znaky odmítnout (422); regex `"(?:[^"\\]|\\.)*"`; před `os.replace` ověřit `tomllib.loads` | `config_api.py:77-93` | ✅ Opraveno 2026-10-15 |
+| Q5 | ⚠️ MEDIUM | **Smazání nesynchronizované zakázky (`done_local`)** jednotlivě i hromadně proběhne bez rozlišení a bez varování „není na NAS“. Data jsou trvale ztracená. **Oprava:** `done_local` mazat jen admin s výrazným varováním, nebo vůbec; hromadné mazání jen `done_remote` s ověřením na NAS | `api/files.py:122-170`, `file_service.delete_file`, `cs.ts:68` | ✅ Opraveno 2026-10-15 |
+| Q8 | ⚠️ MEDIUM | **Čištění a mazání vyřadí kontrolu duplicitní zakázky v Gateway** (`_find_in_done` hledá jen v done_local a done_remote). Po „Vyčistit synchronizované“ Gateway přijme stejné číslo zakázky znovu, takže na NAS vzniknou 2 PROD_ soubory. Op4 pak hlásí „nenalezena“ a PLC Rejected. Gateway sama maže až po 90 dnech. **Oprava (Gateway):** kontrolovat i `sync_state.json` / NAS (dosud jen `project_reviews.md` E3) | Gateway `file_manager.py:311,442`, `storage_service.py` | ⬜ Otevřeno |
+| Q12 | 🔵 LOW–MEDIUM | **Podvržení serveru pro kiosk.** Jiný proces bez admin práv se může navázat na `[::1]:8080` / `127.0.0.1:8080` vedle služby na `0.0.0.0`. Kiosk (`localhost`, nejdřív `::1`) se pak připojí k němu, takže hrozí odchycení hesla a falešná data. Reprodukováno sockety. **Oprava:** sockety s `SO_EXCLUSIVEADDRUSE` pro `0.0.0.0` i `::1` → `uvicorn.Server.serve(sockets=…)` | `main.py`, `kiosk_start.bat` | ⬜ Otevřeno |
+| Q23 | 🔵 LOW | `PermissionError` na jediné podsložce `local_path` (ACL, antivir) → `/api/storage` i čištění vrací 500 a `nas_task` zůstane neočekaný | `storage_service.py:66-71` | ⬜ Otevřeno |
+| Q24 | 🔵 LOW | `local_max_gb = 1e-12` projde (`gt=0`), `limit_bytes` = 0 → úroveň „ok“, varování potichu zmizí. Má být `ge=0.1` | `models.py:322` | ✅ Opraveno 2026-10-15 |
+| Q25 | 🔵 LOW | Zakázka nebo šarže z HMI začínající `=`, `+`, `@` jde v originálním CSV beze změny a Excel ji vyhodnotí jako vzorec / DDE. XLSX je v pořádku. **Oprava (Gateway):** takové hodnoty odmítat | `/api/files/{id}/download`, Gateway | ⬜ Otevřeno |
+| Q26 | 🔵 LOW | TTL relace se počítá z `time.time()`, takže skok hodin (NTP po startu) odhlásí všechny nebo prodlouží relace. Má být `time.monotonic()` | `dependencies.py:128`, `auth.py` | ⬜ Otevřeno |
+
+**Prověřeno a aplikace to zvládá:**
+- path traversal ve `file_id` (`..`, `\`, `:`, NUL);
+- obejití `require_local` (`::ffff:127.0.0.1`, podvržený Host);
+- CSRF (bez CORS);
+- XSS (žádné `innerHTML`, CSP);
+- XLSX jako text;
+- mazání `*_WIP.csv` → 409;
+- limit úložiště NaN/Inf/0 → 422;
+- poškozené / binární / poloviční CSV bez 500;
+- zamčená / poškozená SQLite;
+- `/api/signal` s NaN → 400;
+- druhá instance na `0.0.0.0` (WinError 10048);
+- ochrana uživatelů (sebe / posledního / vyšší roli);
+- čištění jen `*.csv` v `done_remote`.
+
+### 3) Stabilita (24/7 služba + kiosk)
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| Q2 | ⚠️ MEDIUM | **Zaplnění NAS bez single-flight** (necommitnuto): po vypršení cache 60 s spustí každý souběžný `/api/storage` vlastní `disk_usage(NAS)`. Spouštěčem je `files_changed` každé ~2 s u všech klientů naráz. Při visícím NAS se obsadí všech 6 slotů NAS poolu, takže výpis NAS, data, signál i čištění vrací 503. `NasBusyError` se navíc uloží do cache jako „nedostupný“ a lokální odpověď čeká 5 s. `/api/status` (30 s na klienta) nemá cache vůbec. Reprodukováno (6/6 slotů). **Oprava:** sdílený běžící Task, `NasBusyError` necachovat, obnova na pozadí (stale-while-revalidate), krátká cache pro `/api/status` | `api/storage.py:49-72`, `api/status.py` | ✅ Opraveno 2026-10-15 |
+| Q11 | ⚠️ MEDIUM | **Kiosk: PLC auto-login se po neúspěchu neopakuje.** Po 8h TTL se zavolá `plc-login`; jedno selhání (429 / 5xx / síť) nechá kiosk na LoginOverlay, přestože PLC hlásí přihlášení. **Oprava:** opakování s backoffem 2→30 s, dokud `plcLoggedIn && clientLocal && !plcToken` | `AuthContext.tsx:132-147` | ✅ Opraveno 2026-10-15 |
+| Q13 | 🔵 LOW–MEDIUM | Visící NAS / ADS vlákno blokuje ukončení procesu. Vlákna `ThreadPoolExecutor` nejsou daemon; reprodukováno: main skončil za 0,2 s, proces až za 6,5 s. `nssm stop` / deploy pak čeká až na tvrdé ukončení. **Oprava:** daemon vlákna + `cancel_futures=True` | `io_pool.py:32`, `ads_monitor.py:192` | ✅ Opraveno 2026-10-15 |
+| Q15 | 🔵 LOW | Vlákno dopočtu může tiše umřít (`try/finally` bez `except`) a `_ensure_count_threads` ho znovu nespustí. Pak platí `counts_pending` navždy a každý klient se ptá `/api/files` každých 1,5 s | `csv_repository.py:893-919` | ⬜ Otevřeno |
+| Q16 | 🔵 LOW | `/api/health` nehlásí mrtvý FilesWatcher, `_reconnect_task` ani vlákna dopočtu | `api/health.py` | ⬜ Otevřeno |
+| Q17 | 🔵 LOW | `AdsMonitor._run` nemá časový limit. Zaseknutý ADS router zastaví heartbeat, `connected` zůstane True a hodnoty zamrznou | `ads_monitor.py:195-199,263` | 🟡 Částečně — `stop()` má limit 5 s |
+| Q18 | 🔵 LOW | `_flush` vyprázdní `_dirty` ještě před zápisem; při plném disku se dávka počtů ztratí a varování jde při každém flushi | `csv_repository.py:506-511,615-624` | ⬜ Otevřeno |
+| Q19 | 🔵 LOW | Rotované logy se mažou jen při startu služby; při měsících běhu bez restartu přibývají | `main.py:43` | ⬜ Otevřeno |
+| Q20 | 🔵 LOW | `_prefetch_tasks` nemá deduplikaci ani rušení (proklikání testů = fronta parsování). Signál a data z lokální kopie NAS souboru jdou zbytečně přes NAS pool; `files.py` už má `io_loc` | `api/data.py:52,180-188`, `api/signal.py:89-101` | ⬜ Otevřeno |
+| Q21 | 🔵 LOW | Rozpracovaná zakázka se při každé změně (~2 s) čte celá kvůli počtu řádků; u 50 000 kusů je to 13 MB každé 2 s. Řešení: inkrementální počet z offsetu | `csv_repository.py:745,794,1071` | ⬜ Otevřeno |
+| Q22 | 🔵 LOW | `/ws/plc` bez aplikačního pingu, takže zůstávají zombie klienti a zastaralý stav ADS. Po restartu backendu se WS připojí až za ~30 s (backoff), přestože offline banner zmizí do 10 s | `plc_ws.py`, `PlcContext.tsx:126` | ⬜ Otevřeno |
+| Q32 | 🔵 LOW | `_known` (paměť i SQLite) roste bez úklidu a chybí v tabulce stropů v `architecture.md`; po `PATCH /api/config/paths` zůstávají záznamy starých cest | `csv_repository.py:537,593-600` | ⬜ Otevřeno |
+
+**V pořádku:**
+- frontendové timery a listenery mají úklid; cache `useOrderTimeline` (5) a `useContentScroll` (50) jsou omezené;
+- backoff WS se po `onopen` resetuje;
+- `vite:preloadError`;
+- uvolnění slotu `io_pool` i při zrušení (R4);
+- úklid callbacků pyads;
+- SQLite pod zámkem.
+
+### 4) Architektura
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| Q9 | ⚠️ MEDIUM | **Formát CSV mezi aplikacemi nemá specifikaci ani verzi** (Q1 je přímým důsledkem). ScadaViewer rozlišuje 4 formáty heuristikou na 3 místech a blokový formát parsuje potřetí. Kontraktní testy se bez sesterského projektu tiše přeskočí. **Doporučení:** `csv_format.md` v Gateway, blok `[Format] Version=`, jedna funkce `detect_format()` + parser na formát, v buildu skip → fail | `csv_repository.py` ~1011, ~1266, 345-402; `signal_reader.py:181` | ⬜ Otevřeno |
+| Q28 | 🔵 LOW | Rozhraní služby tvoří n-tice a výstupní parametry (`stats`, `timeline`); protokol `DataReader` se nevynucuje (bez `close()`). Vrstvy importují privátní symboly (`_parse_sectioned`, `_normalize_key`, lockout z `auth.py`) | `file_service.py`, `protocols.py`, `signal_reader.py:35`, `users_api.py:20` | ⬜ Otevřeno |
+| Q29 | 🔵 LOW | `_nas_cache` je globální proměnná modulu (ne `app.state`), sdílí se mezi instancemi v testech | `api/storage.py` | ✅ Opraveno 2026-10-15 (s Q2) |
+| Q31 | 🔵 LOW | Odpojený Overview / WIP stále stojí: `overview.css` a `wip.css` jsou v bundlu, `wip.py` / `order_watcher.py` v hiddenimports exe, i18n klíče se udržují; `Wip.tsx:33` volá holý `fetch` bez tokenu. **Doporučení:** tag `archive/overview` a kód smazat | `index.css:15-16`, `scada.spec:35-38` | ⬜ Otevřeno |
+
+**Q30 — Frontend (LOW, 🟡 částečně — normalizace `order_info` opravena 2026-10-15, ostatní ⬜):**
+- `useFiles` a `useDataFetch` nerusí požadavek při unmountu (`useData.ts:90,161`).
+- `json.order_info as OrderInfo` bez normalizace polí (`useData.ts:190`).
+- Hodnota `StorageContext` není memoizovaná, takže každý refresh překreslí Topbar, StorageBar i Settings (`StorageContext.tsx:139`).
+- Špatný `colSpan` (+1) v `FileTable.tsx:381`.
+- Natvrdo zapsané „Min“, „Max“, „NAS“ a „—“ (`OrderInfoPanel.tsx:59,141,206`, `Topbar.tsx:90`); `[TestingParameters]` jako surový text bez `formatParam` / `formatLimit` (`OrderInfoPanel.tsx:120`).
+- `NasStorageBar`: nápověda jen v `title` (na dotyku nedostupná), `aria-label` bez `role`, `role="alert"` na trvalém prvku; NAS čip v Topbaru vede na stránku bez akce; `OrderInfoPanel` má `role="tab"` bez `tabpanel`.
+
+**Silné stránky:**
+- vrstvy api → FileService → CsvRepository jsou dodržené;
+- NAS I/O důsledně přes `run_io` a soubory přes `open_shared`;
+- cache mají stropy;
+- frontend jednotně používá `apiFetch`, AbortController a `usePlcConnection`;
+- i18n je typované;
+- kontrakt s Gateway hlídají testy přímo proti kódu Gateway (proto byl Q1 vůbec odhalen).
+
+### 5) Dokumentace
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| Q33 | ⚠️ MEDIUM | CLAUDE.md § 2 chybí soubory: `services/protocols.py`, `test_prod_blocks.py`, `test_gateway_prod_format.py`, `NasStorageBar.tsx`, `OrderInfoPanel.tsx`, `Config.toml.example`, `users.toml(.example)`, `typedoc.json` | `CLAUDE.md` | ✅ Opraveno 2026-10-15 |
+| Q34 | ⚠️ MEDIUM | CLAUDE.md § 5 / § 6 / § 13 a `architecture.md:1078` popisují stav před necommitnutými změnami:<br>• chybí `nas{…}` v `/api/storage`, `order_info` v `/api/data` a `sort_by=switch_id` / `switch_id`;<br>• „ostatní bloky přeskakuje, šarže ne“ už neplatí, protože `_order_info` + `OrderInfoPanel` je čtou | `CLAUDE.md`, `architecture.md` | ✅ Opraveno 2026-10-15 |
+| Q35 | ⚠️ MEDIUM | Počet ADS symbolů je „23 Out“, skutečnost 24 (R5) — CLAUDE.md § 6, `constants.py:9,18`, `scada/__init__.py`. CLAUDE.md § 13 Settings uvádí sekci „Účet“, která neexistuje (F5) | `CLAUDE.md`, `constants.py` | ✅ Opraveno 2026-10-15 |
+| Q36 | ⚠️ MEDIUM | `.claude/rules` jsou zastaralé (rozšíření K18):<br>• NAS pool 4 → 6;<br>• React Router v6 a `/` → Overview;<br>• `GVL_BASE …DatabaseGateway` (správně `…DatabaseGatewayApp`);<br>• „3 formáty“ (správně 4);<br>• „nečte wip/“ (Database rozpracovanou zakázku zobrazuje);<br>• `api-implementer.md`: „file_id vždy `*_DONE.csv`“ (existuje i `*_WIP.csv`), chybí `require_local` / `open_shared` | `.claude/rules/*`, `.claude/agents/api-implementer.md` | ✅ Opraveno 2026-10-15 |
+| Q37 | 🔵 LOW | Zastaralé počty testů: CLAUDE.md 362/131, MEMORY 355/131, `roadmap.md` 274/117, `run-tests.md` 199/77 → **skutečnost 379 / 141 (21 souborů)**. Dále: § 3 Testy uvádí jen `test_scada.py`; § 13 „5 stránek, Router v6“; § 4 „žádný zápis do PLC“ (`SYM_WRITE` existuje); příklad `/api/health` 2.2.0; § 8 bez `[auth]` / `users.toml`; ~295 i18n klíčů (≈356); velikosti souborů u A7 / A12 (1 428 / 972 / 984 ř.) | `CLAUDE.md`, `roadmap.md`, `.claude/commands/run-tests.md` | ✅ Opraveno 2026-10-15 |
+| Q38 | 🔵 LOW | `how_to_extend.md:375` „3 formáty“ a ř. 10 Overview; `deployment.md` bez poznámky k zaplnění NAS (kvóta share / celý svazek pod servisním účtem); komentář `Database.tsx` „jen záložka Lokální“; hlavička `Topbar.tsx` bez NAS čipu; přehled otevřených nálezů v audit_logu s datem 2026-10-11 a posunutými čísly řádků (X6 → `csv_repository.py:1414`) | `04_docs/*`, `Database.tsx`, `Topbar.tsx` | ✅ Opraveno 2026-10-15 |
+
+**Ověřeno, že je už opraveno (přehled otevřených nálezů aktualizován):**
+- **K24**: detail se otevírá podle `_idx` (`ChartView.tsx:485`).
+- **K30**: `normalizeClockShift()` (`orderTimeline.ts:59` + test).
+- **E4**: verze 2.3.0, releasy proběhly. Zbývá jen „build.bat failnout při existujícím tagu“ (`build.bat:162` jen varuje), proto 🟡 částečně.
+
+**Stále platí** (ověřeno v kódu): Z3, Z4, Z10, F5, F10, F11, N8, X6, E3, E6, C1, K23, K28, K39, R5.
+
+### Opravy 2026-10-15 (stejný den)
+| # | Oprava | Test |
+|---|--------|------|
+| Q1 | `testingNokState()` v `paramMeta.ts`: výsledek z masky (rozhodnutí 2026-10-16: `Status` u testu není; případný Status by měl přednost), tj. NOK = některá `NokCategory_*` = 1, u starších souborů i `NokReason ≠ 0`; nový test `test_gateway_testing_sample_verdict` (vzory TEST z Gateway); bez bloku `[NokInfo]` se odznak OK/NOK nezobrazí (dřív vždy „OK“). Test kontraktu porovnává sloupce `[Data]` přímo s `ProductionRecord.csv_header()` (ne natvrdo 33). `make_big_orders.py` / `make_demo_data.py` zvládnou formát bez NokReason | `paramMeta.test.ts`, `test_gateway_prod_format.py` |
+| Q2, Q27 | `io_pool.NasProbe`: jeden běžící dotaz na NAS pro všechny klienty, cache i neúspěchu, po vypršení poslední známý stav hned + obnova na pozadí, `NasBusyError` se necachuje, v logu důvod. Použito v `/api/storage` (60 s) i `/api/status` (10 s); stav v `app.state` (řeší i Q29) | `test_storage.py::TestNasProbe` (8 souběžných dotazů = 1 vlákno) |
+| Q3 | `list_remote` bez `exists()`: výpadek share → poslední známý stav / 503; prázdný seznam jen když share odpovídá a podsložka opravdu chybí; bez `remote_path` vždy `[]` | `test_audit_20261015.py::TestQ3…` |
+| Q4 | `_clean_path()`: odstraní obalové uvozovky, `"` / řídicí znaky uvnitř → 400; regex hodnoty zvládá escapy i literal string a jen začátek řádku (komentáře nedotčeny); výsledek se před zápisem ověří `tomllib` — nevalidní Config.toml se nikdy nezapíše | `TestQ4ConfigPaths` |
+| Q6 | Řazení podle ID / typu spínače: nepřečtené soubory (`record_count None`) a prázdné hodnoty jsou neznámé → vždy na konec; Testing ignoruje uložené řazení podle sloupců, které nemá (`order_id`, `switch_id`) | `TestQ6SortBySwitch` |
+| Q14 | Migrace cache 3 → 4: `known` dostane sloupec `switch_id` (NULL = neznámé) místo smazání; NAS soubory si ponechají počet kusů bez stahování, lokální se přečtou znovu; jiné verze schématu se dál zakládají znovu | `TestQ14CacheMigration` |
+| Q24 | `local_max_gb ≥ 0,1` (UI už mělo `min=0.1`) | `test_q24_storage_limit_minimum` |
+| Q5 | **Rozhodnutí uživatele:** soubor z `done_local/` (ještě není na NAS) smí smazat jen admin+. Backend: `delete_file(…, allow_unsynced)` → 403 / v hromadném mazání chyba `unsynced_forbidden` (ostatní soubory se smažou); technik dál maže synchronizované. UI: dialog s výrazným varováním „není na NAS — data se nenávratně ztratí“, pro nižší roli tlačítko zakázané; hromadné mazání ukáže počet nesynchronizovaných, toast s důvodem | `TestQ5DeleteUnsynced`, `DeleteModal.test.tsx` |
+
+| Q11 | Neúspěšný PLC auto-login (429 / 5xx / síť) se opakuje s backoffem 2 → 30 s, po úspěchu reset; podmínky (`plcLoggedIn`, u stroje, bez tokenu) se ověří při každém pokusu | `AuthContext.test.tsx` (Q11) |
+| Q7 | `order_info` vrací `read_records` přes `stats` ze stejného indexu — `_read_with_info` / druhé čtení zrušeno; production soubor > 200 MB → `FileTooLargeError` → 413 + hláška „stáhněte originální CSV" (TEST se strop netýká); `normalizeOrderInfo()` ve frontendu (část Q30) | `TestQ7OrderInfoSingleRead`, `useData.test.tsx` |
+| Q13 | `io_pool.DaemonThreadPool` (daemon vlákna, stejná sémantika rušení jako R4) pro NAS pool i ADS executor; `AdsMonitor.stop()` — úklid s limitem 5 s (část Q17) | `TestQ13DaemonPool` (proces s visícím NAS vláknem skončí hned) |
+| Q10 | `recordOkState()` v `paramMeta.ts` = pravidlo serveru `_record_matches` (kategorie 1–6 z `group` / `sortingcategory`, jinak Status); 3 kopie ve `ChartView` / `FileTable` nahrazeny | `paramMeta.test.ts` |
+| Q33–Q38 | CLAUDE.md (struktura, API `nas` / `order_info` / `switch_id`, 24 ADS symbolů, Settings, routing v7, testy, `[auth]`, fáze 46), `.claude/rules` (NAS pool 6, Router v7, GVL `…DatabaseGatewayApp`, 4 formáty CSV, `wip/`), `api-implementer.md`, `run-tests.md`, `architecture.md` (fáze 46), `roadmap.md`, `how_to_extend.md`, `deployment.md` (další vydání: NokReason, migrace cache, mazání done_local, kvóta NAS + checklist), docstringy `scada/__init__.py`, `constants.py`, komentáře `Database.tsx`, `Topbar.tsx` — uzavírá i K18 | — |
+Výsledek: backend **418 passed** (dřív 376 + 3 failed), frontend **154 passed** (22 souborů), `tsc` 0, lint 0, `npm run build` OK.
+
+### Doporučené pořadí oprav
+1. **Q1**: NOK test zobrazený jako OK. Opravit spolu s Gateway před nasazením necommitnutých změn.
+2. **Q2, Q6, Q14, Q27**: necommitnutý kód, malé opravy před commitem.
+3. **Q4**: služba po chybě obsluhy nenastartuje.
+4. **Q3**: archiv prázdný při výpadku NAS.
+5. **Q5, Q8**: nevratná ztráta dat / duplicitní zakázky (Q8 v Gateway).
+6. **Q11, Q7, Q13**: stabilita kiosku a služby.
+7. **Q9, Q10**: specifikace formátu a jedno pravidlo OK/NOK (architektura).
+8. Dokumentace Q33–Q38, ostatní LOW.
+
+**Celkem:** 38 nálezů (1 HIGH, 14 MEDIUM, 2 LOW–MEDIUM, 21 LOW; Q30 = souhrnný bod frontend LOW) | 20 opraveno (Q1–Q7, Q10, Q11, Q13, Q14, Q24, Q27, Q29, Q33–Q38) + 2 částečně (Q17, Q30) | 16 otevřeno — + 2 dříve otevřené ověřeny jako opravené (K24, K30), E4 částečně
 
 ---
 

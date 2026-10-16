@@ -53,7 +53,8 @@ class OrderFileModel(BaseModel):
     type:         Literal['production', 'testing']
     location:     Literal['local', 'remote']
     order_id:     str | None                                            # None pro testing
-    switch_name:  str
+    switch_name:  str                                                   # název mikrospínače (Microswitch_Name)
+    switch_id:    str = ''                                              # ID mikrospínače (SAP, Gateway 2.3.0+)
     created_at:   str                                                   # ISO datetime
     record_count: int | None   # None = ještě se dopočítává (přehled jde nejdřív z názvů souborů)
     sync_status:  Literal['wip', 'done_local', 'done_remote'] | None = None   # None pro remote; 'wip' = rozpracovaná
@@ -113,6 +114,46 @@ class CsvRecordModel(BaseModel):
         return int(f) if f.is_integer() else None
 
 
+class OrderParam(BaseModel):
+    """Jedna hodnota z [TestingParameters] — název a jednotka z hlavičky CSV."""
+    key:   str
+    name:  str
+    unit:  str = ''
+    value: str | None = None
+
+
+class SortingGroup(BaseModel):
+    group: int
+    min:   str | None = None    # None = skupina se nepoužívá
+    max:   str | None = None
+
+
+class SortingCategories(BaseModel):
+    grouping_value: str | None = None   # parametr, podle kterého se třídí (např. MD)
+    unit:           str = ''
+    groups:         list[SortingGroup] = Field(default_factory=list)
+
+
+class SortingLimit(BaseModel):
+    """Limit parametru — Trafag (max/min) a výrobce (max_supplier/min_supplier); None = neaktivní."""
+    key:          str
+    name:         str
+    unit:         str = ''
+    max:          str | None = None
+    min:          str | None = None
+    max_supplier: str | None = None
+    min_supplier: str | None = None
+
+
+class OrderInfo(BaseModel):
+    """Údaje zakázky z bloků PROD_ souboru (DatabaseGateway 2.3.0+)."""
+    recipe:             str | None = None
+    lots:               list[str] = Field(default_factory=list)   # šarže výrobce v pořadí výskytu
+    testing_parameters: list[OrderParam] = Field(default_factory=list)
+    sorting_categories: SortingCategories | None = None
+    sorting_limits:     list[SortingLimit] = Field(default_factory=list)
+
+
 class DataResponse(BaseModel):
     """Odpověď GET /api/data."""
     records:              list[CsvRecordModel]
@@ -128,6 +169,9 @@ class DataResponse(BaseModel):
     # 'encoder' = stupnice enkodéru (starší soubory), None = nelze určit. Hodnoty jsou
     # v jednotkách zákazníka (mN, µm, mΩ, µs) — převedené podle hlavičky CSV.
     position_scale:       str | None            = None
+    # Údaje zakázky (receptura, šarže, testovací parametry, kategorie, limity) — jen blokový
+    # PROD_ soubor z DatabaseGateway 2.3.0+, jinak None
+    order_info:           OrderInfo | None      = None
 
 
 # ======================================================================
@@ -275,12 +319,22 @@ class UpdatePathsRequest(BaseModel):
 
 class UpdateStorageLimitRequest(BaseModel):
     """Tělo požadavku PATCH /api/config/storage."""
-    local_max_gb: float = Field(gt=0, le=100_000)
+    local_max_gb: float = Field(ge=0.1, le=100_000)    # < 0,1 GB → limit 0 B = varování potichu vypnuté (audit Q24)
 
 
 # ======================================================================
 # /api/storage — zaplnění lokálního úložiště + čištění synchronizovaných
 # ======================================================================
+
+class NasStorage(BaseModel):
+    """Zaplnění sdílené složky NAS (s kvótou na Synology = kvóta, jinak celý svazek)."""
+    available:   bool
+    total_bytes: int | None = None
+    used_bytes:  int | None = None
+    free_bytes:  int | None = None
+    percent:     float | None = None
+    level:       Literal["ok", "warning", "critical"] | None = None
+
 
 class StorageResponse(BaseModel):
     """Odpověď GET /api/storage."""
@@ -294,6 +348,7 @@ class StorageResponse(BaseModel):
     disk_total_bytes: int | None = None
     disk_free_bytes:  int | None = None
     disk_low:         bool = False          # na disku zbývá < 10 % (pojistka nezávislá na limitu)
+    nas:              NasStorage | None = None   # None = NAS není nastavený (remote_path prázdný)
 
 
 class CleanupResponse(BaseModel):

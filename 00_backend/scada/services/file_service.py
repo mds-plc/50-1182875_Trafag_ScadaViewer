@@ -21,6 +21,7 @@ import math
 from datetime import date as _date
 from datetime import datetime as _dt
 from pathlib import Path
+from typing import Any
 
 from scada.services.protocols import PagedResult
 from scada.services.xlsx_export import build_xlsx
@@ -107,12 +108,19 @@ class FileService:
             files = filtered
 
         # Řazení — BUSINESS PRAVIDLO (pořadí závisí na sortovací volbě uživatele)
-        _SORT_KEYS = {'created_at', 'switch_name', 'record_count', 'order_id'}
+        _SORT_KEYS = {'created_at', 'switch_name', 'switch_id', 'record_count', 'order_id'}
         if sort_by in _SORT_KEYS:
             reverse = (sort_dir == 'desc')
-            # Neznámá hodnota (None — např. počet kusů se ještě dopočítává) vždy na konec
-            known   = [f for f in files if f.get(sort_by) is not None]
-            unknown = [f for f in files if f.get(sort_by) is None]
+            # Neznámá hodnota (None — např. počet kusů se ještě dopočítává) vždy na konec.
+            # ID / typ spínače jsou před přečtením souboru jen odhad z názvu ('' / SAP číslo) —
+            # také neznámé; jinak by dopočtené soubory odskakovaly a na 1. stránku chodily
+            # další nedopočtené → dopočet celého NAS archivu kaskádou (audit Q6).
+            def _unknown(f) -> bool:
+                if sort_by in ('switch_id', 'switch_name') and f.get('record_count') is None:
+                    return True
+                return f.get(sort_by) is None or f.get(sort_by) == ''
+            known   = [f for f in files if not _unknown(f)]
+            unknown = [f for f in files if _unknown(f)]
             files = sorted(known, key=lambda f: f[sort_by], reverse=reverse) + unknown
 
         return files
@@ -259,15 +267,23 @@ class FileService:
         file_id:   str,
         location:  str = 'local',
         file_type: str = 'production',
+        allow_unsynced: bool = False,
+        sync: str | None = None,
     ) -> str:
         """
         Smaže soubor z lokálního úložiště.
 
+        allow_unsynced: smí se smazat i soubor z done_local/ (ještě NENÍ na NAS — jediná kopie
+                        dat)? Jen admin+ (rozhodnutí uživatele 2026-10-15, audit Q5).
+        sync:           'done_local' / 'done_remote' — kterou kopii smazat, leží-li soubor v obou
+                        složkách (řádek v UI). Bez něj platí done_local (bezpečnější — chráněná).
+
         Returns:
-          'ok'               — soubor smazán
-          'not_found'        — soubor neexistuje
-          'remote_forbidden' — remote soubory nelze smazat
-          'wip_forbidden'    — rozpracovanou zakázku nelze smazat (DatabaseGateway do ní zapisuje)
+          'ok'                 — soubor smazán
+          'not_found'          — soubor neexistuje
+          'remote_forbidden'   — remote soubory nelze smazat
+          'wip_forbidden'      — rozpracovanou zakázku nelze smazat (DatabaseGateway do ní zapisuje)
+          'unsynced_forbidden' — soubor ještě není na NAS a volající nemá právo ho smazat
         """
         if location != 'local':
             return 'remote_forbidden'
@@ -276,6 +292,12 @@ class FileService:
         path = self._repo.resolve_path(file_id, location, file_type)
         if path is None or not path.exists():
             return 'not_found'
+        if sync in ('done_local', 'done_remote') and path.parent.name != sync:
+            alt = path.parent.parent / sync / file_id
+            if alt.exists():
+                path = alt
+        if path.parent.name == 'done_local' and not allow_unsynced:
+            return 'unsynced_forbidden'
         self._repo.delete_file(path)
         log.info("[SVC]   delete_file %s (%s/%s)", file_id, location, file_type)
         return 'ok'
@@ -326,6 +348,15 @@ class FileService:
     # Záznamy
     # ------------------------------------------------------------------
 
+    def read_order_info(self, file_id: str, location: str = 'local', file_type: str = 'production') -> dict | None:
+        """Údaje zakázky z bloků blokového PROD_ souboru — viz CsvRepository.read_order_info. None = nejsou."""
+        if file_type != 'production':
+            return None
+        path = self._read_path(file_id, location, file_type)
+        if path is None or not path.exists():
+            return None
+        return self._repo.read_order_info(path)
+
     def read_records(
         self,
         file_id:   str,
@@ -337,7 +368,7 @@ class FileService:
         per_page: int = 0,     # 0 = všechny záznamy
         categories: frozenset[str] | None = None,
         status:     str | None = None,
-        stats:      dict[str, int] | None = None,
+        stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """Načte záznamy z daného souboru — deleguje na repozitář.

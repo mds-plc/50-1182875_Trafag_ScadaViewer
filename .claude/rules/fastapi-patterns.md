@@ -123,7 +123,7 @@ Vlákno visící na nedostupném NAS po timeoutu dál běží. Proto NAS I/O **n
 ```python
 from scada.services.io_pool import run_io
 
-# ✅ location="remote" → vlastní NAS pool (4 vlákna); plný → NasBusyError → HTTP 503 okamžitě
+# ✅ location="remote" → vlastní NAS pool (6 daemon vláken); plný → NasBusyError → HTTP 503 okamžitě
 #    location="local"  → asyncio.to_thread
 result = await asyncio.wait_for(
     run_io(location, reader.read_records, file_id=file, location=location, ...),

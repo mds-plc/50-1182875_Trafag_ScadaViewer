@@ -15,7 +15,8 @@ Zodpovědnost:
 
 Rozhraní:
   GET /api/data → DataResponse (records[], total, page, pages, group_counts, file_expected_count,
-                                has_signal, total_all — počet bez filtru status/category)
+                                has_signal, total_all — počet bez filtru status/category,
+                                order_info — údaje zakázky z bloků PROD_ souboru, Gateway 2.3.0+)
   GET /api/timeline → TimelineResponse (timestamps[], categories[]) — časový průběh zakázky
   Parametry: file (povinný), location, type, from, to, page, per_page (0 = vše),
              status (ok | nok), category (např. "1,3") — filtr detailu zakázky,
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 from datetime import date as _date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -131,7 +133,7 @@ async def get_data(
             raise HTTPException(status_code=422, detail=f"Neplatný parametr 'category' (1–6): {category!r}")
         categories = parts
     filtering = categories is not None or status is not None
-    stats: dict[str, int] = {}
+    stats: dict[str, Any] = {}       # total_all + order_info ze stejného indexu (jedno čtení, audit Q7)
     # per_page=0 = všechny záznamy najednou. Strop 20 000 řádků (~100 MB dočasně v paměti) chrání
     # server před vyčerpáním paměti — celé velké zakázky jdou přes XLSX / CSV (bez dictů po řádcích).
     effective_per_page = per_page if per_page > 0 else _ALL_RECORDS_CAP
@@ -185,6 +187,7 @@ async def get_data(
         has_signal=has_signal,
         total_all=stats.get('total_all') if filtering else None,
         position_scale=_position_scale(records),
+        order_info=stats.get('order_info') if file_type == 'production' else None,
     )
 
 

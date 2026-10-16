@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from scada.config import DataConfig
 from scada.services.shared_open import open_shared   # čtení nebrání přesunu v Gateway (X2)
@@ -56,6 +57,17 @@ _READ_WORKERS_LOCAL   = 4
 # (50 000 kusů ≈ 20 MB; větší soubor než limit se obslouží, jen se nedrží v paměti)
 _INDEX_CACHE_FILES    = 3
 _INDEX_CACHE_BYTES    = 256 * 1024 * 1024
+# Strop velikosti zakázky pro zobrazení v aplikaci (index v paměti ≈ 2,3 × velikost souboru).
+# Běžná zakázka 50 000 kusů ≈ 13 MB; větší soubor = poškozený / cizí → stáhnout originál (audit Q7).
+_MAX_ORDER_FILE_BYTES = 200 * 1024 * 1024
+
+
+class FileTooLargeError(Exception):
+    """Soubor zakázky je příliš velký na zobrazení v aplikaci (API → 413)."""
+
+    def __init__(self, size: int) -> None:
+        super().__init__(f"soubor má {size / 1e6:.0f} MB (strop {_MAX_ORDER_FILE_BYTES / 1e6:.0f} MB)")
+        self.size = size
 # Dopočet počtu kusů na pozadí (přehled se zobrazí hned z názvů souborů) — vláken na lokalitu.
 # NAS záměrně málo: dopočet stahuje celé soubory a nesmí vytížit linku (upload DatabaseGateway,
 # kancelář). Z NAS se navíc dopočítávají jen právě zobrazené soubory (request_counts).
@@ -108,6 +120,8 @@ class _OrderIndex:
     nbytes:      int = 0            # odhad paměti indexu (limit _INDEX_CACHE_BYTES)
     # klíč → násobek na jednotky zákazníka (N → mN, Ω → mΩ); jen sloupce, které převod potřebují
     scales:      dict[str, float] | None = None
+    # Údaje zakázky z bloků před [Data] (blokový formát, Gateway 2.3.0+) — viz _order_info()
+    order_info:  dict | None = None
 
 
 def _record_matches(
@@ -240,13 +254,16 @@ _TEST_ONLY_BLOCKS = frozenset({'analyzedparameters', 'nokinfo', 'measuredinfo', 
 _LOT_PREFIX = 'supplier_order-lot'
 
 
-def _prod_blocks_metadata(f, separator: str) -> tuple[list[str], list[str]] | None:
+def _prod_blocks_metadata(
+    f, separator: str, blocks: dict[str, list[list[str]]] | None = None,
+) -> tuple[list[str], list[str]] | None:
     """Blokový PROD_ soubor: přečte bloky před [Data] a vrátí (hlavička, hodnoty) bloku [Metadata].
 
     f stojí na začátku souboru; po návratu stojí za řádkem ``[Data]`` — další neprázdný řádek je
-    datová hlavička (stejně jako u dvoudílného formátu). [TestingParameters], [SortingCategories]
-    a [SortingLimits] se zatím přeskakují. None = není blokový production soubor (sekční TEST
-    nebo chybí [Data]) — volající vrátí f na začátek.
+    datová hlavička (stejně jako u dvoudílného formátu). Vrácená metadata jsou bez šarží (vkládají
+    se do záznamů). blocks: je-li předán slovník, doplní se do něj řádky (buňky) každého bloku
+    před [Data] — {název bloku lowercase: [řádky]}, pro _order_info(). None = není blokový
+    production soubor (sekční TEST nebo chybí [Data]) — volající vrátí f na začátek.
     """
     section: str | None = None
     meta_header: list[str] = []
@@ -269,6 +286,8 @@ def _prod_blocks_metadata(f, separator: str) -> tuple[list[str], list[str]] | No
                 return None
             rows = 0
             continue
+        if blocks is not None and section is not None:
+            blocks.setdefault(section, []).append([c.strip() for c in line.split(separator)])
         if section == 'metadata':
             if rows == 0:
                 meta_header = [c.strip() for c in line.split(separator)]
@@ -277,26 +296,103 @@ def _prod_blocks_metadata(f, separator: str) -> tuple[list[str], list[str]] | No
             rows += 1
 
 
+_UNIT_RE      = re.compile(r'^(?P<name>.*?)\s*\[(?P<unit>[^\]]*)\]\s*$')
+_GROUP_COL_RE = re.compile(r'^group(?P<n>\d+)_(?P<side>min|max)$', re.IGNORECASE)
+_LIMIT_ROWS   = {'max': 'max', 'min': 'min', 'max_supplier': 'max_supplier', 'min_supplier': 'min_supplier'}
+
+
+def _split_unit(header: str) -> tuple[str, str]:
+    """'Actuation_Speed [mm/s]' → ('Actuation_Speed', 'mm/s'); bez jednotky → (název, '')."""
+    m = _UNIT_RE.match(header)
+    return (m['name'].strip(), m['unit'].strip()) if m else (header.strip(), '')
+
+
+def _order_info(blocks: dict[str, list[list[str]]]) -> dict:
+    """Údaje zakázky z bloků blokového PROD_ souboru (Gateway 2.3.0+) pro detail zakázky.
+
+    Hodnoty zůstávají textem jako v CSV (jednotky zákazníka — Gateway je zapisuje převedené);
+    prázdná buňka = None (limit neaktivní / skupina se nepoužívá). Šarže v pořadí výskytu.
+    """
+    def pair(name: str) -> tuple[list[str], list[str]]:
+        rows = blocks.get(name) or [[]]
+        return rows[0], (rows[1] if len(rows) > 1 else [])
+
+    def cell(vals: list[str], i: int) -> str | None:
+        return (vals[i] or None) if i < len(vals) else None
+
+    head, vals = pair('metadata')
+    meta = {h: cell(vals, i) for i, h in enumerate(head)}
+    lots = [v for h, v in meta.items() if h.lower().startswith(_LOT_PREFIX) and v]
+
+    head, vals = pair('testingparameters')
+    testing = []
+    for i, h in enumerate(head):
+        name, unit = _split_unit(h)
+        testing.append({'key': _normalize_key(h), 'name': name, 'unit': unit, 'value': cell(vals, i)})
+
+    head, vals = pair('sortingcategories')
+    categories: dict | None = None
+    if head:
+        groups: dict[int, dict] = {}
+        unit = ''
+        grouping = None
+        for i, h in enumerate(head):
+            name, u = _split_unit(h)
+            m = _GROUP_COL_RE.match(name)
+            if m:
+                unit = unit or u
+                groups.setdefault(int(m['n']), {'group': int(m['n']), 'min': None, 'max': None})[m['side'].lower()] = cell(vals, i)
+            elif name.lower() == 'grouping_value':
+                grouping = cell(vals, i)
+        categories = {'grouping_value': grouping, 'unit': unit, 'groups': [groups[k] for k in sorted(groups)]}
+
+    rows = blocks.get('sortinglimits') or []
+    limits = []
+    if rows:
+        head = rows[0]
+        by_kind = {_LIMIT_ROWS[r[0].strip().lower()]: r for r in rows[1:] if r and r[0].strip().lower() in _LIMIT_ROWS}
+        for i, h in enumerate(head[1:], start=1):
+            name, unit = _split_unit(h)
+            item = {'key': _normalize_key(h), 'name': name, 'unit': unit}
+            for kind in _LIMIT_ROWS.values():
+                item[kind] = cell(by_kind.get(kind, []), i)
+            limits.append(item)
+
+    return {
+        'recipe': meta.get('Recipe'),
+        'lots': lots,
+        'testing_parameters': testing,
+        'sorting_categories': categories,
+        'sorting_limits': limits,
+    }
+
+
 class FileMeta(Mapping):
     """Metadata jednoho souboru v přehledu — neměnná, kompaktní (__slots__), čte se jako dict.
 
     Cache drží přímo tyto objekty a výpis je vrací bez kopírování (neměnné → bezpečné).
     100 000 souborů ≈ desítky MB místo ~160 MB pro dict na soubor. Změna = nový objekt (replace).
-    Klíče jako dřívější dict: file_id, name, type, location, order_id, switch_name, created_at,
-    record_count (None = dopočítává se) a sync_status (jen lokální soubory).
+    Klíče jako dřívější dict: file_id, name, type, location, order_id, switch_name, switch_id,
+    created_at, record_count (None = dopočítává se) a sync_status (jen lokální soubory).
+    switch_name = název mikrospínače (Microswitch_Name), switch_id = ID mikrospínače (Microswitch_ID,
+    SAP číslo — jen blokový PROD_ soubor Gateway 2.3.0+, jinak ''). Rozlišovat: tři různé údaje
+    (+ ID receptury v detailu zakázky). Dokud se soubor nepřečte (record_count None), je switch_name
+    jen druhé pole názvu souboru — u nových souborů to je ID → frontend ukazuje „…".
     """
-    __slots__ = ('file_id', 'type', 'location', 'order_id', 'switch_name', 'created_at',
+    __slots__ = ('file_id', 'type', 'location', 'order_id', 'switch_name', 'switch_id', 'created_at',
                  'record_count', 'sync_status', 'ts_final', 'path')
-    _KEYS = ('file_id', 'name', 'type', 'location', 'order_id', 'switch_name', 'created_at', 'record_count')
+    _KEYS = ('file_id', 'name', 'type', 'location', 'order_id', 'switch_name', 'switch_id', 'created_at',
+             'record_count')
 
     def __init__(self, file_id: str, type: str, location: str, order_id: str | None, switch_name: str,
                  created_at: str, record_count: int | None, sync_status: str | None = None,
-                 ts_final: bool = True, path: str = '') -> None:
+                 ts_final: bool = True, path: str = '', switch_id: str = '') -> None:
         self.file_id      = file_id
         self.type         = sys.intern(type)
         self.location     = sys.intern(location)
         self.order_id     = order_id
         self.switch_name  = sys.intern(switch_name or '')
+        self.switch_id    = switch_id or ''
         self.created_at   = created_at
         self.record_count = record_count
         self.sync_status  = sys.intern(sync_status) if sync_status else None
@@ -329,7 +425,8 @@ class FileMeta(Mapping):
     @classmethod
     def from_dict(cls, d: dict, path: str, ts_final: bool = True) -> FileMeta:
         return cls(d['file_id'], d['type'], d['location'], d.get('order_id'), d.get('switch_name', ''),
-                   d.get('created_at', ''), d.get('record_count'), d.get('sync_status'), ts_final, path)
+                   d.get('created_at', ''), d.get('record_count'), d.get('sync_status'), ts_final, path,
+                   d.get('switch_id', ''))
 
 
 class _MetaStore:
@@ -341,9 +438,9 @@ class _MetaStore:
     Dřív JSON: 100 000 souborů = 42 MB přepisovaných při každé změně (~4 s s drženým GIL — server
     mezitím stál) a ~2,5 s načítání po startu. Poškozený / cizí soubor se zahodí a založí znovu.
     """
-    _SCHEMA = '3'
+    _SCHEMA = '4'                    # 4: switch_id (ID mikrospínače, Gateway 2.3.0+)
     _COLS = ('path', 'mtime_ns', 'size', 'hidden', 'file_id', 'type', 'location', 'order_id',
-             'switch_name', 'created_at', 'record_count', 'sync_status', 'ts_final')
+             'switch_name', 'created_at', 'record_count', 'sync_status', 'ts_final', 'switch_id')
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -359,19 +456,41 @@ class _MetaStore:
                 conn.execute('PRAGMA journal_mode=WAL')
                 conn.execute('PRAGMA synchronous=NORMAL')
                 conn.execute('CREATE TABLE IF NOT EXISTS info (k TEXT PRIMARY KEY, v TEXT)')
+                # Celá kontrola / migrace schématu v jedné transakci se zámkem zápisu — souběžný
+                # start druhé instance ani přerušení uprostřed nenechá napůl migrovanou cache.
+                conn.execute('BEGIN IMMEDIATE')
                 row = conn.execute("SELECT v FROM info WHERE k='schema'").fetchone()
+                keep_known = False
+                if row is not None and row[0] == '3':
+                    # 3 → 4 bez ztráty počtů kusů NAS archivu (audit Q14): known dostane sloupec
+                    # switch_id (NULL = neznámé — lokální soubor se přečte znovu, NAS soubor si počet
+                    # ponechá bez stahování); meta (lokální, levné) se založí znovu.
+                    cols = {r[1] for r in conn.execute('PRAGMA table_info(known)')}
+                    if 'switch_id' not in cols:
+                        conn.execute('ALTER TABLE known ADD COLUMN switch_id TEXT')
+                    conn.execute('DROP TABLE IF EXISTS meta')
+                    row = None
+                    keep_known = True
                 if row is None or row[0] != self._SCHEMA:
                     conn.execute('DROP TABLE IF EXISTS meta')
-                    conn.execute('DROP TABLE IF EXISTS known')
-                    conn.execute('CREATE TABLE known (name TEXT PRIMARY KEY, size INTEGER, '
-                                 'record_count INTEGER, order_id TEXT, switch_name TEXT)')
+                    if not keep_known:
+                        conn.execute('DROP TABLE IF EXISTS known')
+                        conn.execute('CREATE TABLE known (name TEXT PRIMARY KEY, size INTEGER, '
+                                     'record_count INTEGER, order_id TEXT, switch_name TEXT, switch_id TEXT)')
                     conn.execute('CREATE TABLE meta (path TEXT PRIMARY KEY, mtime_ns INTEGER, size INTEGER, '
                                  'hidden INTEGER, file_id TEXT, type TEXT, location TEXT, order_id TEXT, '
                                  'switch_name TEXT, created_at TEXT, record_count INTEGER, sync_status TEXT, '
-                                 'ts_final INTEGER)')
+                                 'ts_final INTEGER, switch_id TEXT)')
                     conn.execute("INSERT OR REPLACE INTO info VALUES ('schema', ?)", (self._SCHEMA,))
+                conn.execute('COMMIT')
                 return conn
             except (sqlite3.Error, OSError) as exc:
+                if isinstance(exc, sqlite3.OperationalError) and 'locked' in str(exc).lower():
+                    # Cache drží jiná instance (druhý server) — nemazat jí ji, běžet jen v paměti
+                    log.warning("[CSV]   cache metadat zamčená jinou instancí — jen v paměti")
+                    if conn is not None:
+                        conn.close()
+                    return None
                 log.warning("[CSV]   cache metadat nečitelná (%s) — zakládám novou", exc)
                 if conn is not None:
                     conn.close()
@@ -397,7 +516,7 @@ class _MetaStore:
             return []
         with self._lock:
             try:
-                return self._conn.execute("SELECT name, size, record_count, order_id, switch_name FROM known").fetchall()
+                return self._conn.execute("SELECT name, size, record_count, order_id, switch_name, switch_id FROM known").fetchall()
             except sqlite3.Error as exc:
                 log.warning("[CSV]   tabulku známých zakázek nelze načíst: %s", exc)
                 return []
@@ -416,7 +535,7 @@ class _MetaStore:
                 if deletes:
                     self._conn.executemany("DELETE FROM meta WHERE path = ?", [(p,) for p in deletes])
                 if known:
-                    self._conn.executemany("INSERT OR REPLACE INTO known VALUES (?, ?, ?, ?, ?)", known)
+                    self._conn.executemany("INSERT OR REPLACE INTO known VALUES (?, ?, ?, ?, ?, ?)", known)
                 self._conn.execute('COMMIT')
             except sqlite3.Error as exc:
                 log.warning("[CSV]   cache metadat nelze uložit: %s", exc)
@@ -448,8 +567,9 @@ class CsvRepository:
         self._meta: dict[str, tuple[int, int, FileMeta | None]] = {}
         self._folder_keys: dict[str, list[str]] = {}      # složka → klíče z posledního výpisu
         self._dirty: dict[str, tuple | None] = {}         # změny čekající na zápis do SQLite
-        # Trvalá znalost zakázek: název → (size, record_count, order_id, switch_name)
-        self._known: dict[str, tuple[int, int, str | None, str]] = {}
+        # Trvalá znalost zakázek: název → (size, record_count, order_id, switch_name, switch_id)
+        # switch_id None = záznam z cache schématu 3 (ID ještě neznámé, audit Q14)
+        self._known: dict[str, tuple[int, int, str | None, str, str | None]] = {}
         self._dirty_known: dict[str, tuple] = {}
         self._dirty_lock = threading.Lock()
         self._store = _MetaStore(cache_file) if cache_file is not None else None
@@ -493,13 +613,13 @@ class CsvRepository:
     def _load_store(self) -> None:
         if self._store is None:
             return
-        for name, size, count, order_id, switch_name in self._store.load_known():
-            self._known[name] = (size, count, order_id, switch_name or '')
+        for name, size, count, order_id, switch_name, switch_id in self._store.load_known():
+            self._known[name] = (size, count, order_id, switch_name or '', switch_id)
         for (path, mtime_ns, size, hidden, file_id, ftype, location, order_id, switch_name,
-             created_at, record_count, sync_status, ts_final) in self._store.load():
+             created_at, record_count, sync_status, ts_final, switch_id) in self._store.load():
             meta = None if hidden else FileMeta(file_id, ftype, location, order_id, switch_name or '',
                                                 created_at or '', record_count, sync_status,
-                                                bool(ts_final), path)
+                                                bool(ts_final), path, switch_id or '')
             self._meta[path] = (mtime_ns, size, meta)
             self._folder_keys.setdefault(os.path.dirname(path), []).append(path)
         if self._meta:
@@ -508,15 +628,16 @@ class CsvRepository:
     def _put(self, key: str, mtime_ns: int, size: int, meta: FileMeta | None, persist: bool = True) -> None:
         self._meta[key] = (mtime_ns, size, meta)
         if (meta is not None and persist and meta.type == 'production' and meta.record_count is not None):
-            entry = (size, meta.record_count, meta.order_id, meta.switch_name)
+            entry = (size, meta.record_count, meta.order_id, meta.switch_name, meta.switch_id)
             if self._known.get(meta.file_id) != entry:
                 self._known[meta.file_id] = entry
                 with self._dirty_lock:
                     self._dirty_known[meta.file_id] = (meta.file_id, *entry)
         if persist and self._store is not None:
-            row = (key, mtime_ns, size, 1, '', '', '', None, '', '', None, None, 1) if meta is None else (
+            row = (key, mtime_ns, size, 1, '', '', '', None, '', '', None, None, 1, '') if meta is None else (
                 key, mtime_ns, size, 0, meta.file_id, meta.type, meta.location, meta.order_id,
-                meta.switch_name, meta.created_at, meta.record_count, meta.sync_status, int(meta.ts_final))
+                meta.switch_name, meta.created_at, meta.record_count, meta.sync_status, int(meta.ts_final),
+                meta.switch_id)
             with self._dirty_lock:
                 self._dirty[key] = row
 
@@ -560,11 +681,22 @@ class CsvRepository:
 
     def list_remote(self, file_type: str) -> list[FileMeta]:
         """Čte přímo z NAS — flat složka (žádné done_local/done_remote podadresáře)."""
-        folder = Path(self._cfg.remote_path) / file_type
-        if not folder.exists():
-            log.warning("[CSV]   NAS složka nedostupná: %s", folder)
+        if not self._cfg.remote_path:
             return []
-        results = self._scan_folder(folder, file_type, 'remote', None)
+        folder = Path(self._cfg.remote_path) / file_type
+        # Bez předchozího folder.exists(): u nedostupného share vrací False (WinError 53/67) →
+        # prázdný archiv s HTTP 200 místo posledního známého stavu / 503 (audit Q3, oprava N2).
+        try:
+            results = self._scan_folder(folder, file_type, 'remote', None)
+        except (FileNotFoundError, NotADirectoryError) as exc:
+            # WinError 53 / 67 / 64 (síťová cesta / share nenalezen, spojení ztraceno) = výpadek NAS —
+            # rovnou 503, žádné další síťové volání (u visícího NAS by se čekání zdvojilo)
+            if getattr(exc, 'winerror', None) in (53, 64, 67):
+                raise
+            if Path(self._cfg.remote_path).is_dir() and not folder.exists():   # share OK, podsložka chybí
+                log.warning("[CSV]   NAS složka neexistuje: %s", folder)
+                return []
+            raise                                          # NAS nedostupný → 503 v API
         log.debug("[CSV]   list_remote %s → %d souborů", file_type, len(results))
         return results
 
@@ -772,15 +904,18 @@ class CsvRepository:
         if created is None:
             return None
         order_id = m['order'] if file_type == 'production' else None
-        switch   = m['switch']
+        switch   = m['switch']                  # název (≤ 2.2.0) nebo ID mikrospínače (2.3.0+) — z názvu nepoznat
+        switch_id = ''
         count    = 1 if file_type == 'testing' else None
         known = self._known.get(name) if file_type == 'production' else None
-        if known is not None and known[0] == size:          # zakázka už jednou spočítaná (i když
-            count, order_id, switch = known[1], known[2], known[3]   # lokální kopie mezitím zmizela)
+        # Zakázka už jednou spočítaná (i když kopie zmizela). Záznam bez ID (cache schématu 3):
+        # lokální soubor raději přečíst znovu (levné), NAS soubor si ponechá počet bez stahování.
+        if known is not None and known[0] == size and (known[4] is not None or location == 'remote'):
+            count, order_id, switch, switch_id = known[1], known[2], known[3], known[4] or ''
         return FileMeta(
             file_id=name, type=file_type, location=location, order_id=order_id,
             switch_name=switch, created_at=created, record_count=count,
-            sync_status=sync_status, ts_final=True, path=key,
+            sync_status=sync_status, ts_final=True, path=key, switch_id=switch_id,
         )
 
     def request_counts(self, metas: Iterable[Mapping]) -> None:
@@ -860,7 +995,7 @@ class CsvRepository:
             self._put(key, mtime_ns, size, None)
             return
         changes = dict(order_id=full.get('order_id'), switch_name=full.get('switch_name', ''),
-                       record_count=full.get('record_count'))
+                       switch_id=full.get('switch_id', ''), record_count=full.get('record_count'))
         if not meta.ts_final:                                        # čas z názvu nešel → ze souboru
             changes.update(created_at=full.get('created_at') or meta.created_at, ts_final=True)
         self._put(key, mtime_ns, size, meta.replace(**changes))
@@ -911,8 +1046,8 @@ class CsvRepository:
             Řádek 2: {hodnoty}
             Řádek 3: (prázdný)
             Řádek 4: Timestamp;OF_OperatingForce;...  ← data header
-          Blokový (Gateway 2.3.0+): [Metadata] … [Data] — switch_name = Microswitch_ID (SAP číslo,
-            stejně jako v názvu souboru), viz _prod_blocks_metadata
+          Blokový (Gateway 2.3.0+): [Metadata] … [Data] — switch_name = Microswitch_Name,
+            switch_id = Microswitch_ID (SAP číslo, i v názvu souboru), viz _prod_blocks_metadata
           Sekční TEST: [Metadata] + [AnalyzedParameters] + …
         """
         with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
@@ -920,6 +1055,7 @@ class CsvRepository:
             first_col = line1.split(self._cfg.csv_separator)[0].strip()
 
             blocks = None
+            switch_id = ''                              # ID mikrospínače — jen blokový formát
             if line1.startswith('['):
                 f.seek(0)
                 blocks = _prod_blocks_metadata(f, self._cfg.csv_separator)
@@ -930,7 +1066,8 @@ class CsvRepository:
                 # Blokový production soubor — f stojí na datové hlavičce
                 meta_row    = dict(zip(*blocks))
                 order_id    = meta_row.get('Order')
-                switch_name = meta_row.get('Microswitch_ID') or meta_row.get('Microswitch_Name', '')
+                switch_name = meta_row.get('Microswitch_Name', '')
+                switch_id   = meta_row.get('Microswitch_ID', '')
             elif line1.startswith('['):
                 # Sekční formát (TEST) — [Metadata] + [AnalyzedParameters] + …
                 sections = _parse_sectioned(f, self._cfg.csv_separator)
@@ -989,6 +1126,7 @@ class CsvRepository:
             'location':     location,
             'order_id':     order_id if file_type == 'production' else None,
             'switch_name':  switch_name,
+            'switch_id':    switch_id if file_type == 'production' else '',
             'created_at':   first.get('timestamp', ''),
             'record_count': record_count,
         }
@@ -1011,7 +1149,7 @@ class CsvRepository:
         timeline: list[tuple[str, str]] | None = None,
         categories: frozenset[str] | None = None,
         status:     str | None = None,
-        stats:      dict[str, int] | None = None,
+        stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]:
         """
@@ -1022,7 +1160,9 @@ class CsvRepository:
         'ok' / 'nok'. total_matching a stránkování platí pro vyfiltrované záznamy; group_counts,
         timeline a expected_count dál pro celý soubor. Při aktivním filtru nese každý záznam
         `_idx` = pořadí v nefiltrovaném souboru (odkaz na detail záznamu `?record=N`).
-        stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií.
+        stats: je-li předán slovník, doplní se `total_all` = počet záznamů bez filtru kategorií
+        a `order_info` = údaje zakázky z bloků blokového PROD_ souboru (ze stejného indexu —
+        bez druhého čtení souboru; audit Q7).
 
         order: 'asc' = od nejstaršího (pořadí výroby), 'desc' = od nejnovějšího. Řadí se podle
         pořadí v souboru, ne podle textu času — Gateway zapisuje kusy tak, jak vznikají, a při
@@ -1117,6 +1257,7 @@ class CsvRepository:
             records.append(rec)
         if stats is not None:
             stats['total_all'] = total_all
+            stats['order_info'] = ix.order_info
         return records, total, group_counts, file_expected_count
 
     def _read_sectioned(self, f, from_day: _date | None, to_day: _date | None,
@@ -1154,7 +1295,7 @@ class CsvRepository:
             if hit is not None and hit[0] == sig:
                 self._index_cache.move_to_end(path)
                 return hit[1]
-        ix = self._build_index(path)
+        ix = self._build_index(path, st.st_size)
         if ix is not None and ix.nbytes <= _INDEX_CACHE_BYTES:
             with self._index_lock:
                 self._index_cache[path] = (sig, ix)
@@ -1164,20 +1305,28 @@ class CsvRepository:
                     self._index_cache.popitem(last=False)
         return ix
 
-    def _build_index(self, path: Path) -> _OrderIndex | None:
-        """Jedno přečtení souboru → _OrderIndex. Formát a pravidla jako csv.DictReader nad souborem."""
+    def _build_index(self, path: Path, size: int = 0) -> _OrderIndex | None:
+        """Jedno přečtení souboru → _OrderIndex. Formát a pravidla jako csv.DictReader nad souborem.
+
+        Production soubor nad _MAX_ORDER_FILE_BYTES → FileTooLargeError (dřív index celý v paměti
+        a nad 256 MB bez cache → každý klik nové čtení, 290 MB soubor = 660 MB RAM; audit Q7).
+        TEST (sekční, signál až 40 MB+) se neindexuje — strop se ho netýká.
+        """
         sep = self._cfg.csv_separator
         with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
             line1 = f.readline().strip()
             first_col = line1.split(sep)[0].strip()
             meta_header: list[str] = []
             meta_vals:   list[str] = []
+            order_info:  dict | None = None
             if line1.startswith('['):
                 f.seek(0)                                    # blokový formát (Gateway 2.3.0+)
-                blocks = _prod_blocks_metadata(f, sep)
+                raw_blocks: dict[str, list[list[str]]] = {}
+                blocks = _prod_blocks_metadata(f, sep, raw_blocks)
                 if blocks is None:
                     return None                              # sekční TEST — neindexuje se
                 meta_header, meta_vals = blocks
+                order_info = _order_info(raw_blocks)
             elif first_col.lower() == 'timestamp':
                 f.seek(0)                                    # starý jednodílný formát
             else:
@@ -1185,6 +1334,8 @@ class CsvRepository:
                 meta_vals   = [v.strip() for v in f.readline().strip().split(sep)]
                 f.readline()                                 # prázdný oddělovací řádek
             meta_inject = {k.lower(): v for k, v in zip(meta_header, meta_vals) if v}
+            if size > _MAX_ORDER_FILE_BYTES:
+                raise FileTooLargeError(size)
 
             buf: list[str] = []                              # surové řádky aktuálního záznamu
 
@@ -1236,7 +1387,17 @@ class CsvRepository:
         nbytes = sum(len(x) for x in lines) + len(lines) * 260      # text + seznamy, časy, objekty
         scales = {_normalize_key(k): unit_factor(k) for k in fieldnames if unit_factor(k) != 1.0}
         return _OrderIndex(meta_header, meta_vals, meta_inject, fieldnames,
-                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes, scales)
+                           lines, ts_l, days, grp_l, st_l, ec_l, nbytes, scales, order_info)
+
+    def read_order_info(self, path: Path) -> dict | None:
+        """Údaje zakázky (receptura, šarže, testovací parametry, kategorie, limity) — jen blokový
+        PROD_ soubor (Gateway 2.3.0+), jinak None. Z indexu zakázky v paměti (stejný jako read_records)."""
+        try:
+            ix = self._order_index(path)
+        except (UnicodeDecodeError, csv.Error) as exc:
+            log.error("[CSV]   chyba čtení %s: %s", path.name, exc)
+            return None
+        return ix.order_info if ix is not None else None
 
     def read_table(self, path: Path) -> tuple[list[str], Iterator[list[str]]]:
         """Celý soubor jako tabulka pro export (XLSX): originální názvy sloupců i hodnoty.

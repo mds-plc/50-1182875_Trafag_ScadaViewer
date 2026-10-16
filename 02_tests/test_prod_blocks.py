@@ -7,12 +7,15 @@ PROD_{zakázka}_{Microswitch_ID = SAP číslo}_{datum}_{čas}_DONE.csv (vzor: Da
 04_docs/sample_production.csv).
 
 POKRYTÍ:
-  - přehled: zakázka + SAP číslo z názvu, po dopočtu počet kusů, SAP číslo zůstane (ne Microswitch_Name)
+  - přehled: zakázka z názvu hned; po přečtení počet kusů, switch_name = název mikrospínače,
+    switch_id = ID mikrospínače (SAP) — dva různé údaje; starší soubor switch_id prázdné
   - /api/data: kusy z [Data] (ne „1 kus bez dat" jako sekční TEST), metadata v záznamech bez šarží,
     jednotky z hlavičky, filtr, řazení, časový průběh
   - rozpracovaná zakázka (WIP) bez kusů — jen metadata
   - XLSX: jen data (metadata zakázky jako první sloupce jako dřív, bez šarží a bez bloků)
   - sekční TEST soubor se dál čte jako jeden záznam
+  - order_info v /api/data: receptura, šarže, testovací parametry, kategorie třídění, limity;
+    starší formát → null
 """
 from __future__ import annotations
 
@@ -124,12 +127,13 @@ def test_listing_keeps_sap_number(tmp_path: Path) -> None:
     repo = CsvRepository(_cfg(tmp_path), background_counts=True)
     try:
         f = repo.list_local("production")[0]
-        assert (f["order_id"], f["switch_name"]) == ("1268847", "E01389-C")      # z názvu, hned
+        assert f["order_id"] == "1268847" and f["record_count"] is None           # z názvu, hned
+        assert f["switch_id"] == ""                       # z názvu nepoznat, zda jde o ID → po přečtení
         t0 = time.time()
         while repo.counts_pending() and time.time() - t0 < 5:
             time.sleep(0.02)
         f = repo.list_local("production")[0]
-        assert (f["order_id"], f["switch_name"], f["record_count"]) == ("1268847", "E01389-C", 7)
+        assert (f["order_id"], f["switch_name"], f["switch_id"], f["record_count"]) ==                ("1268847", "Marquardt", "E01389-C", 7)
         assert f["created_at"] == "2026-09-16T16:17:00"
     finally:
         repo.close()
@@ -140,7 +144,7 @@ def test_wip_without_records(tmp_path: Path) -> None:
     _write(wip, [])
     meta = CsvRepository(_cfg(tmp_path)).read_file_meta(wip, "production", "local", "wip", allow_empty=True)
     assert meta is not None
-    assert (meta["order_id"], meta["switch_name"], meta["record_count"]) == ("1268847", "E01389-C", 0)
+    assert (meta["order_id"], meta["switch_name"], meta["switch_id"], meta["record_count"]) ==            ("1268847", "Marquardt", "E01389-C", 0)
 
 
 def _sheet(data: bytes) -> list[list[str]]:
@@ -170,3 +174,54 @@ def test_testing_file_still_single_record(client) -> None:
     rec = body["records"][0]
     assert rec["of_operatingforce"] == "1110" and rec["actuation_speed"] == "200"
     assert body["has_signal"] is True
+
+
+def test_order_info(client) -> None:
+    info = _data(client)["order_info"]
+    assert info["recipe"] == "1"
+    assert info["lots"] == ["185974-598477", "185974-598478"]
+    assert info["testing_parameters"][0] == {"key": "actuation_speed", "name": "Actuation_Speed",
+                                             "unit": "mm/s", "value": "200"}
+    assert [p["key"] for p in info["testing_parameters"]] == ["actuation_speed", "acceleration",
+                                                              "max_force", "resistance_limit"]
+    cats = info["sorting_categories"]
+    assert cats["grouping_value"] == "MD" and cats["unit"] == "um"
+    assert cats["groups"] == [{"group": 1, "min": "18", "max": "30"}, {"group": 2, "min": "30.1", "max": "60"}]
+    of, fp = info["sorting_limits"]
+    assert of == {"key": "of_operatingforce", "name": "OF_OperatingForce", "unit": "mN",
+                  "max": "2200", "min": "1200", "max_supplier": "2500", "min_supplier": "1000"}
+    assert fp["key"] == "fp_freeposition" and fp["max_supplier"] is None      # neaktivní limit
+    # i na další stránce / s filtrem (detail zakázky ho drží z poslední odpovědi)
+    assert _data(client, page=2, per_page=5, status="ok")["order_info"]["recipe"] == "1"
+
+
+def test_order_info_absent_for_old_format(tmp_path: Path) -> None:
+    f = tmp_path / "production/done_local/PROD_1_Marquardt_20261001_080000_DONE.csv"
+    f.parent.mkdir(parents=True)
+    f.write_text("Order;Microswitch_ID;Microswitch_Name\n1;0;Marquardt\n\nTimestamp;Status [-]\n"
+                 "2026-10-01T08:00:00;2\n", encoding="utf-8-sig")
+    assert CsvRepository(_cfg(tmp_path)).read_order_info(f) is None
+
+
+def test_old_format_has_no_switch_id(tmp_path: Path) -> None:
+    f = tmp_path / "production/done_local/PROD_1_Marquardt_20261001_080000_DONE.csv"
+    f.parent.mkdir(parents=True)
+    f.write_text("Order;Microswitch_ID;Microswitch_Name\n1;0;Marquardt\n\nTimestamp;Status [-]\n"
+                 "2026-10-01T08:00:00;2\n", encoding="utf-8-sig")
+    meta = CsvRepository(_cfg(tmp_path)).read_file_meta(f, "production", "local", "done_local")
+    assert (meta["switch_name"], meta["switch_id"]) == ("Marquardt", "")   # číslo 0 není SAP ID
+
+
+def test_switch_id_survives_cache_restart(tmp_path: Path) -> None:
+    """SQLite cache (schéma 4) i tabulka known drží ID mikrospínače — po restartu bez čtení souboru."""
+    _write(tmp_path / "production/done_local" / _NAME, _rows(3))
+    db = tmp_path / "cache/file_meta.sqlite"
+    repo = CsvRepository(_cfg(tmp_path), cache_file=db)
+    assert repo.list_local("production")[0]["switch_id"] == "E01389-C"
+    repo.close()
+    repo = CsvRepository(_cfg(tmp_path), cache_file=db, background_counts=True)
+    try:
+        f = repo.list_local("production")[0]
+        assert (f["switch_name"], f["switch_id"], f["record_count"]) == ("Marquardt", "E01389-C", 3)
+    finally:
+        repo.close()

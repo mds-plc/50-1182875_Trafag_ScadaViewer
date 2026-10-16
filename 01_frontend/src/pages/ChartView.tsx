@@ -22,6 +22,7 @@ import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import {
   PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
   MEASUREDINFO_KEYS, MEASUREDINFO_GROUPS, formatParam, hasMeasuredValue, paramUnit,
+  testingNokState, recordOkState,
 } from '../utils/paramMeta'
 import { formatDateTime } from '../utils/formatting'
 import DataTable      from '../components/DataTable'
@@ -34,6 +35,7 @@ import SignalCharts   from '../components/SignalCharts'
 import OrderTimelineChart from '../components/OrderTimelineChart'
 import { usePrintMode } from '../hooks/usePrintMode'
 import RecordFilterBar from '../components/RecordFilterBar'
+import OrderInfoPanel from '../components/OrderInfoPanel'
 import type { SortOrder, StatusFilter } from '../components/RecordFilterBar'
 import { CATEGORY_COLORS, categoryColor } from '../utils/groupColors'
 
@@ -164,7 +166,7 @@ interface MetricsProps {
 
 // ── OrderHero — bohatá hlavička zakázky ──────────────────────────────────────
 
-function OrderHero({ records, total: totalProp, t }: MetricsProps) {
+function OrderHero({ records, total: totalProp, lots, t }: MetricsProps & { lots?: string[] }) {
   const first        = records[0] ?? {}
   const displayTotal = totalProp ?? records.length   // použij API total, ne délku stránky
 
@@ -216,12 +218,24 @@ function OrderHero({ records, total: totalProp, t }: MetricsProps) {
 
       <div className="order-hero__divider" />
 
-      {/* Pravá část — typ spínače + skupiny */}
+      {/* Pravá část — název a ID mikrospínače, ID receptury (rozlišovat — tři různé údaje) + skupiny */}
       <div className="order-hero__right">
         <div className="order-hero__switch-label">{t.db.colSwitch}</div>
         <div className="order-hero__switch-name">{String(first.microswitch_name ?? '—')}</div>
         {first.microswitch_id != null && (
-          <div className="order-hero__switch-id">{String(first.microswitch_id)}</div>
+          <div className="order-hero__switch-id">{t.db.colId}: {String(first.microswitch_id)}</div>
+        )}
+        {first.recipe != null && (
+          <div className="order-hero__switch-id">{t.chart.oiRecipe}: {String(first.recipe)}</div>
+        )}
+        {/* Šarže výrobce (Gateway 2.3.0+) — seznam za celou zakázku v pořadí výskytu */}
+        {lots && lots.length > 0 && (
+          <div className="order-hero__lots" title={t.chart.oiLotsNote}>
+            <span className="order-hero__switch-label">{t.chart.oiLots} ({lots.length})</span>
+            <ul className="order-hero__lot-list">
+              {lots.map((lot, i) => <li key={lot} className="order-hero__lot"><span>#{i + 1}</span>{lot}</li>)}
+            </ul>
+          </div>
         )}
         {hasGroups && (
           <div className="order-hero__groups">
@@ -272,9 +286,10 @@ function OrderSummary({ record, t, children }: {
   children?: React.ReactNode
 }) {
   const items = [
-    { key: 'order',            label: t.db.colOrder  },
-    { key: 'microswitch_name', label: t.db.colSwitch },
-    { key: 'microswitch_id',   label: t.db.colId     },
+    { key: 'order',            label: t.db.colOrder    },
+    { key: 'recipe',           label: t.chart.oiRecipe },
+    { key: 'microswitch_name', label: t.db.colSwitch   },
+    { key: 'microswitch_id',   label: t.db.colId       },
   ].filter(item => record[item.key] != null)
 
   if (items.length === 0 && !children) return null
@@ -296,8 +311,7 @@ function OrderSummary({ record, t, children }: {
  *  - status / sortingcategory → OK/NOK badge, badge kategorie (barva boxu)
  *  - nokcategory_* → ✓ / !
  *  - měřené parametry → formatParam (jednotné formátování, mΩ, ∞ pro rozepnutý kontakt)
- *  Status OK/NOK se odvozuje z sortingcategory (1–4 = OK, 5–6 = NOK); v datech je vždy
- *  konzistentní se Status (2 ↔ 1–4, 5 ↔ 5–6), fallback na Status když kategorie chybí. */
+ *  Status OK/NOK = recordOkState() (paramMeta.ts) — stejné pravidlo jako filtr na serveru. */
 function makeChartCellRenderer(openLabel: string) {
   return (col: string, value: unknown, row: Record<string, unknown>) => renderChartCell(col, value, row, openLabel)
 }
@@ -306,15 +320,8 @@ function renderChartCell(col: string, value: unknown, row: Record<string, unknow
   const v = String(value ?? '')
   if (col === 'timestamp') return formatDateTime(v, true)
   if (col === 'status') {
-    const cat = Number(row['sortingcategory'] ?? 0)
-    if (cat >= 1) {
-      const isNok = cat >= 5
-      return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
-    }
-    // fallback pokud sortingcategory chybí — použij status pole
-    if (v === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
-    if (v === '5' || v === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
-    return v || null
+    const s = recordOkState(row)
+    return s ? <span className={`db-status-badge db-status-badge--${s}`}>{s.toUpperCase()}</span> : (v || null)
   }
   if (col === 'sortingcategory') {
     if (!v) return null
@@ -363,7 +370,7 @@ export default function ChartView() {
   const recordParam = searchParams.get('record')
   const recordIdx   = recordParam !== null ? Number(recordParam) : null
 
-  const { records, total, pages, groupCounts, totalAll, loading, error, fetchData } = useData()
+  const { records, total, pages, groupCounts, totalAll, orderInfo, loading, error, fetchData } = useData()
   const { t, lang } = useLang()
   const { printing, printNow } = usePrintMode()   // tiskové tabulky zakázky jen při tisku
   const { token } = useAuth()
@@ -404,8 +411,11 @@ export default function ChartView() {
   // Hlavička zakázky (číslo, očekávaný počet) z posledních neprázdných dat — i když filtr nic nenajde
   const [heroRecords, setHeroRecords] = useState<typeof records>([])
   useEffect(() => { if (records.length > 0) setHeroRecords(records) }, [records])
+  // Údaje zakázky (bloky PROD_ souboru) — stejné pro všechny stránky / filtry, drží se poslední známé
+  const [heroInfo, setHeroInfo] = useState<typeof orderInfo>(null)
+  useEffect(() => { if (orderInfo) setHeroInfo(orderInfo) }, [orderInfo])
   useEffect(() => {
-    setStatusFilterRaw('all'); setCatFilterRaw([]); setSortOrderRaw('asc'); setHeroRecords([])
+    setStatusFilterRaw('all'); setCatFilterRaw([]); setSortOrderRaw('asc'); setHeroRecords([]); setHeroInfo(null)
   }, [fileId, location, fileType])
 
   // Resetovat stránku při změně souboru nebo cíle záznamu
@@ -528,15 +538,8 @@ export default function ChartView() {
               )}
               <span className="chart-summary__item chart-summary__item--status">
                 {(() => {
-                  const cat = Number(record.sortingcategory ?? 0)
-                  if (cat >= 1) {
-                    const isNok = cat >= 5
-                    return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'}`}>{isNok ? 'NOK' : 'OK'}</span>
-                  }
-                  const v = String(record.status ?? '')
-                  if (v === '2') return <span className="db-status-badge db-status-badge--ok">OK</span>
-                  if (v === '5' || v === '6') return <span className="db-status-badge db-status-badge--nok">NOK</span>
-                  return null
+                  const s = recordOkState(record)
+                  return s && <span className={`db-status-badge db-status-badge--${s}`}>{s.toUpperCase()}</span>
                 })()}
               </span>
             </OrderSummary>
@@ -570,8 +573,9 @@ export default function ChartView() {
 
         {!error && (!loading || heroRecords.length > 0) && (
           <>
-            {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} t={t} />}
+            {heroRecords.length > 0 && <OrderHero records={heroRecords} total={totalAll ?? total} lots={heroInfo?.lots} t={t} />}
             <PositionScaleNote records={heroRecords} />
+            {heroInfo && <OrderInfoPanel info={heroInfo} />}
 
             <div className="tile tile--12 mb-4">
               <div className="tile__header">
@@ -612,7 +616,7 @@ export default function ChartView() {
             </div>
 
             {/* Obrazovka — záložková tabulka */}
-            <div className={`tile tile--12 cv-screen-only${loading ? ' cv-table--loading' : ''}`} aria-busy={loading}>
+            <div className={`tile tile--12 cv-screen-only cv-table-scroll${loading ? ' cv-table--loading' : ''}`} aria-busy={loading}>
               <div className="tile__header">
                 <div className="cv-param-tabs">
                   {TABLE_TABS.map(tab => (
@@ -774,12 +778,13 @@ export default function ChartView() {
   const hasTestingParams = record != null && TESTING_INPUT_GROUPS.some(g => g.keys.some(k => record[k] != null))
   const hasMeasuredInfo  = record != null && MEASUREDINFO_KEYS.some(k => record[k] != null)
   const hasAnalyzed      = record != null && PARAM_GROUPS.some(g => g.keys.some(k => record[k] != null))
-  const hasNokInfo       = record != null && record.nokreason != null
+  // Výsledek testu = maska NokCategory_* z [NokInfo] (u starších souborů i NokReason)
+  const nokState         = record != null ? testingNokState(record) : null
+  const hasNokInfo       = nokState?.hasInfo ?? false
 
   /** NOK render — speciální zobrazení s OK/NOK ikonami. */
   const renderNokTable = (rec: Record<string, unknown>) => {
-    const reason = Number(rec.nokreason ?? 0)
-    const isNok = reason !== 0
+    const { isNok, reason } = testingNokState(rec)
     const cats = ['force', 'position', 'electric', 'times', 'process'] as const
     return (
       <div className="cv-nok-section">
@@ -787,7 +792,7 @@ export default function ChartView() {
           <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'} cv-nok-result__badge`}>
             {isNok ? 'NOK' : 'OK'}
           </span>
-          {isNok && <span className="cv-nok-result__code">Code: {reason}</span>}
+          {isNok && reason != null && reason !== 0 && <span className="cv-nok-result__code">Code: {reason}</span>}
         </div>
         <div className="cv-nok-cats">
           {cats.map(cat => {
@@ -841,11 +846,10 @@ export default function ChartView() {
               </div>
             )}
             {/* Celkový OK/NOK */}
-            {(() => {
-              const reason = Number(record.nokreason ?? 0)
-              const isNok = reason !== 0
-              return <span className={`db-status-badge db-status-badge--${isNok ? 'nok' : 'ok'} testing-hero__status`}>{isNok ? 'NOK' : 'OK'}</span>
-            })()}
+            {/* Bez bloku [NokInfo] výsledek neznáme — nezobrazovat OK naslepo */}
+            {nokState?.hasInfo && (
+              <span className={`db-status-badge db-status-badge--${nokState.isNok ? 'nok' : 'ok'} testing-hero__status`}>{nokState.isNok ? 'NOK' : 'OK'}</span>
+            )}
           </div>
           <PositionScaleNote records={[record]} />
 

@@ -152,6 +152,21 @@
   background: var(--color-surface);
 }
 
+/*
+ * Připnutá hlavička — všechny sloupce zůstanou nahoře při posunu dolů. Funguje uvnitř posuvné
+ * oblasti obalu (overflow), proto stránka, která ji chce, obalu nastaví max-height (detail zakázky:
+ * chart.css .cv-table-scroll). Roh = pevný sloupec v hlavičce (nahoře i vlevo) — nad vším.
+ * Spodní linka přes box-shadow: border u sticky buňky při posunu „odjede".
+ */
+.data-table-scroll .data-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
+.data-table-scroll th[data-fixed-index] { z-index: 4; }
+
 /* Hover řádku zachovává viditelnost sticky buněk */
 .data-table__row--clickable:hover [data-fixed-index] {
   background: var(--color-surface-2);

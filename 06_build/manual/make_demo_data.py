@@ -57,7 +57,8 @@ templates = [l.split(";") for l in lines[4:] if l.strip()]
 templates = [t for t in templates if t[header.index("SortingCategory [-]")] in ("1", "2", "3", "4")]
 i_status, i_cat = header.index("Status [-]"), header.index("SortingCategory [-]")
 i_nok = [i for i, h in enumerate(header) if h.startswith("NokCategory_")]
-i_reason = header.index("NokReason [-]")
+# NokReason jen starší soubory (Gateway od 2026-10-15 nezapisuje)
+i_reason = header.index("NokReason [-]") if "NokReason [-]" in header else -1
 
 CATS = ["1"] * 15 + ["2"] * 55 + ["3"] * 14 + ["4"] * 8 + ["5"] * 5 + ["6"] * 3
 
@@ -84,7 +85,8 @@ def row(ts: datetime) -> str:
         t[i] = "0"
     if cat in "56":
         t[random.choice(i_nok)] = "1"
-        t[i_reason] = str(random.choice([12, 21, 33]))
+        if i_reason >= 0:
+            t[i_reason] = str(random.choice([12, 21, 33]))
     return ";".join(t)
 
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass
@@ -74,6 +74,8 @@ class DataReader(Protocol):
         file_id:   str,
         location:  str = 'local',
         file_type: str = 'production',
+        allow_unsynced: bool = False,
+        sync: str | None = None,
     ) -> str: ...
 
     def read_records(
@@ -87,9 +89,16 @@ class DataReader(Protocol):
         per_page: int = 0,
         categories: frozenset[str] | None = None,
         status:     str | None = None,
-        stats:      dict[str, int] | None = None,
+        stats:      dict[str, Any] | None = None,
         order:      str = 'asc',
     ) -> tuple[list[dict], int, dict[str, int], int | None]: ...
+
+    def read_order_info(
+        self,
+        file_id:   str,
+        location:  str = 'local',
+        file_type: str = 'production',
+    ) -> dict | None: ...
 
     def export_xlsx(
         self,

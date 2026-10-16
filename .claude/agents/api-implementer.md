@@ -25,8 +25,11 @@ Specializovaný agent pro implementaci REST/WebSocket endpointů a napojení na 
 
 - **Stav synchronizace** se dedukuje ze složkové struktury (`done_local/` / `done_remote/`),
   ScadaViewer **nečte** žádný `sync_state.json`
-- **file_id** je vždy název souboru ve tvaru `*_DONE.csv` — validuje `CsvRepository.validate_params()`
+- **file_id** je název souboru `*_DONE.csv` (rozpracovaná zakázka `*_WIP.csv` — nelze smazat) — validuje `CsvRepository.validate_params()`
   (odmítá `/`, `\`, `..`, `:`, NUL, > 255 znaků)
 - Souborové I/O přes `run_io(location, …)` z `services/io_pool.py` (NAS ve vlastním poolu), viz fastapi-patterns.md
 - Chráněný endpoint = `Depends(require_auth)` / `require_role(...)`; frontend volá přes `apiFetch`
+- Zápisový endpoint (mazání, konfigurace, uživatelé) navíc `Depends(require_local)` — vzdáleně jen prohlížení
+- Soubory (CSV, signál, stažení) otevírat VŽDY `open_shared()` (`services/shared_open.py`), ne `open()`
+- Opakovaný dotaz na NAS, na který se ptá každý klient → `io_pool.NasProbe` (1 běžící vlákno + cache)
 - Response modely jsou v `scada/models.py` (Pydantic v2)

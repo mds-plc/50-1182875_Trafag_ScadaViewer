@@ -10,6 +10,7 @@ import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
 import DeleteModal from '../components/DeleteModal'
 import StorageBar  from '../components/StorageBar'
+import NasStorageBar from '../components/NasStorageBar'
 
 /**
  * Stránka prohlížeče CSV databáze (/database) — tenký presentační container.
@@ -24,7 +25,7 @@ export default function Database() {
     dateTo,   setDateTo,
     page,     setPage,
     expandedId,   setExpandedId,
-    deleteTarget, setDeleteTarget,
+    deleteTarget, setDeleteTarget, canDeleteUnsynced,
     sortBy, sortDir, onSort,
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
@@ -32,6 +33,7 @@ export default function Database() {
     deleteFile, downloadCsv, downloadXlsx,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   } = useDatabaseState()
+  const selectedUnsynced = files.filter(f => selectedIds.has(f.file_id) && f.sync_status === 'done_local').length
 
   return (
     <div className="db-page">
@@ -41,8 +43,10 @@ export default function Database() {
         <h1 className="page-title">{t.db.title}</h1>
         <div className="db-controls">
 
-          {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných (jen záložka Lokální) */}
-          {location === 'local' && <StorageBar readOnly={readOnly} />}
+          {/* Zaplnění lokálního úložiště + vyčištění synchronizovaných (obě záložky) */}
+          <StorageBar readOnly={readOnly} />
+          {/* Zaplnění NAS (zbývající místo, varování 80 / 95 %) — vždy vedle lokálního úložiště */}
+          <NasStorageBar />
 
           {/* Local / Remote */}
           <div className="db-tabs">
@@ -166,6 +170,7 @@ export default function Database() {
       {deleteTarget && (
         <DeleteModal
           target={deleteTarget}
+          canDeleteUnsynced={canDeleteUnsynced}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { void deleteFile(deleteTarget) }}
         />
@@ -185,6 +190,12 @@ export default function Database() {
               <ul className="db-modal__list">
                 {[...selectedIds].map(id => <li key={id}>{id}</li>)}
               </ul>
+              {/* Soubory, které ještě nejsou na NAS — jediná kopie dat (audit Q5) */}
+              {selectedUnsynced > 0 && (
+                <p className="db-modal__warning" role="alert">
+                  {t.db.batchUnsyncedCount}: {selectedUnsynced}
+                </p>
+              )}
             </div>
             <div className="db-modal__actions">
               <button className="btn btn--secondary" onClick={() => setBatchConfirm(false)}>

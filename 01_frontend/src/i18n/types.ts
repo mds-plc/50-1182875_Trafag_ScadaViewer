@@ -15,6 +15,8 @@ export interface Translations {
     from: string
     to: string
     errorInvalidResponse: string
+    /** HTTP 413 — zakázka nad strop velikosti (audit Q7) */
+    errorFileTooLarge: string
     errorLoading: string
     backendOffline: string
     save: string
@@ -70,6 +72,11 @@ export interface Translations {
     deleteBtn: string
     deleteSuccess: string
     deleteError: string
+    /** Soubor z done_local — ještě není na NAS (audit Q5) */
+    deleteUnsyncedWarning: string
+    deleteUnsyncedAdminOnly: string
+    deleteUnsyncedForbidden: string
+    batchUnsyncedCount: string
     rangeRecords: string
     clearFilter: string
     page: string
@@ -111,6 +118,24 @@ export interface Translations {
     sortOldest: string
     sortNewest: string
     printNewestFirst: string
+    oiTitle: string
+    oiTabTesting: string
+    oiTabCategories: string
+    oiTabLimits: string
+    oiRecipe: string
+    oiLots: string
+    oiLotsNote: string
+    oiGroupingBy: string
+    oiUnused: string
+    oiCatNokTrafag: string
+    oiCatNokSupplier: string
+    oiCategoriesNote: string
+    oiLimitTrafag: string
+    oiLimitSupplier: string
+    oiLimitsNote: string
+    oiActiveLimits: string
+    oiOnlyActive: string
+    oiNoActive: string
     printRange: string
     printFilter: string
     tlStart: string
@@ -357,5 +382,15 @@ export interface Translations {
     limitAdminOnly: string
     helpLimit:      string
     helpUsage:      string
+    nasTitle: string
+    nasUsage: string
+    nasUsageLabel: string
+    nasUnavailable: string
+    nasWarning: string
+    nasCritical: string
+    nasToastWarning: string
+    nasToastCritical: string
+    nasChipTitle: string
+    nasHelp: string
   }
 }

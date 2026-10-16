@@ -5,7 +5,10 @@ REST endpointy — zaplnění lokálního úložiště a čištění synchronizo
       vůči limitu local_max_gb a umožňuje uvolnit místo smazáním souborů, které už jsou na NAS.
 
 Zodpovědnost:
-  - GET  /api/storage          — zaplnění (lokální disk, asyncio.to_thread + timeout 10 s).
+  - GET  /api/storage          — zaplnění (lokální disk, asyncio.to_thread + timeout 10 s)
+    + zaplnění NAS (io_pool.NasProbe: jeden běžící dotaz pro všechny klienty, cache _NAS_TTL_S
+    i neúspěchu, po vypršení poslední známý stav hned + obnova na pozadí; čeká se jen bez známého
+    stavu, nejvýš 5 s; nedostupný NAS = nas.available false, lokální údaje se vrátí vždy).
   - POST /api/storage/cleanup  — smaže done_remote/ soubory ověřené na NAS; běží v NAS poolu
     (run_io "remote"), timeout 60 s. NAS nedostupný → 503, nic se nesmaže.
     ?force=true → smaže VŠE z done_remote/ bez ověření (NAS se nekontaktuje, lokální I/O);
@@ -31,11 +34,12 @@ from fastapi.responses import JSONResponse
 
 from scada.api.dependencies import require_auth, require_local
 from scada.models import CleanupResponse, StorageResponse
-from scada.services.io_pool import run_io
+from scada.services.io_pool import NasProbe, run_io
 from scada.services.storage_service import (
     CleanupBusyError,
     NasUnavailableError,
     cleanup_synced,
+    nas_usage,
     storage_usage,
 )
 
@@ -44,18 +48,33 @@ log = logging.getLogger(__name__)
 
 _USAGE_TIMEOUT_S   = 10.0
 _CLEANUP_TIMEOUT_S = 60.0
+_NAS_TIMEOUT_S     = 5.0
+_NAS_TTL_S         = 60.0      # zaplnění NAS se mění pomalu — dotaz nejvýš jednou za minutu
+
+
+async def _nas_usage_cached(app, cfg) -> dict | None:
+    """Zaplnění NAS přes NasProbe v app.state — jeden běžící dotaz pro všechny klienty, cache
+    i neúspěchu (visící NAS nezaplní pool; audit Q2)."""
+    if not cfg.remote_path:
+        return None
+    probe = getattr(app.state, "nas_usage_probe", None)
+    if probe is None:
+        probe = app.state.nas_usage_probe = NasProbe(_NAS_TTL_S, _NAS_TIMEOUT_S, {"available": False})
+    return await probe.get(cfg.remote_path, nas_usage, cfg)
 
 
 @router.get("/storage", response_model=StorageResponse, dependencies=[Depends(require_auth)])
 async def get_storage(request: Request) -> StorageResponse:
-    """Zaplnění lokálního úložiště vůči limitu + volné místo na disku."""
+    """Zaplnění lokálního úložiště vůči limitu + volné místo na disku + zaplnění NAS."""
     cfg = request.app.state.config
+    nas_task = asyncio.create_task(_nas_usage_cached(request.app, cfg.data))   # souběžně s lokálním výpisem
     try:
         usage = await asyncio.wait_for(asyncio.to_thread(storage_usage, cfg.data), timeout=_USAGE_TIMEOUT_S)
     except asyncio.TimeoutError:
+        nas_task.cancel()
         log.error("[API]   /api/storage timeout (%ss)", _USAGE_TIMEOUT_S)
         raise HTTPException(status_code=503, detail="Lokální úložiště neodpovídá") from None
-    return StorageResponse(**usage)
+    return StorageResponse(**usage, nas=await nas_task)
 
 
 @router.post("/storage/cleanup", response_model=CleanupResponse, dependencies=[Depends(require_local)])

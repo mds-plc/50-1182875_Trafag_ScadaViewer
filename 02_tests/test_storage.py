@@ -6,9 +6,12 @@ POKRYTÍ:
   - POST /api/storage/cleanup: maže jen done_remote/ ověřené na NAS (název + velikost),
     done_local/ a wip/ nikdy; NAS nedostupný → 503 a nic se nesmaže; bez tokenu 401
   - PATCH /api/config/storage: zápis/vložení local_max_gb do Config.toml, admin+
+  - zaplnění NAS (nas_usage, /api/storage nas): bez NAS = null, kvóta / svazek → total/used/free/%,
+    úrovně 80 / 95 %, nedostupný NAS = available false (lokální údaje dál), cache 60 s
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from pathlib import Path
 
@@ -17,7 +20,9 @@ from fastapi.testclient import TestClient
 
 from scada.app import create_app
 from scada.config import AppConfig, AdsConfig, DataConfig, ServerConfig, load_config
-from scada.services.storage_service import storage_usage
+from scada.api import storage as storage_api
+from scada.services import storage_service
+from scada.services.storage_service import nas_usage, storage_usage
 
 _TOKEN = "test-storage-token"
 
@@ -218,3 +223,113 @@ class TestStorageLimitConfig:
     def test_default_when_key_missing(self, tmp_path: Path) -> None:
         _, p = self._setup(tmp_path)
         assert load_config(p).data.local_max_gb == 5.0
+
+
+# ── zaplnění NAS ─────────────────────────────────────────────────────────────
+
+class _DU:
+    def __init__(self, total: int, free: int) -> None:
+        self.total, self.free, self.used = total, free, total - free
+
+
+class TestNasUsage:
+    def test_without_nas_is_none(self, tmp_path: Path) -> None:
+        assert nas_usage(_cfg(tmp_path).data) is None
+
+    @pytest.mark.parametrize("free, level", [(500, "ok"), (150, "warning"), (40, "critical")])
+    def test_levels(self, tmp_path: Path, monkeypatch, free: int, level: str) -> None:
+        monkeypatch.setattr(storage_service.shutil, "disk_usage", lambda p: _DU(1000, free))
+        r = nas_usage(_cfg(tmp_path, remote=str(tmp_path)).data)
+        assert r == {"available": True, "total_bytes": 1000, "used_bytes": 1000 - free, "free_bytes": free,
+                     "percent": round((1000 - free) / 10, 1), "level": level}
+
+    def test_unreachable(self, tmp_path: Path) -> None:
+        r = nas_usage(_cfg(tmp_path, remote=str(tmp_path / "neexistuje")).data)
+        assert r == {"available": False}
+
+
+class TestNasApi:
+    # cache zaplnění NAS je v app.state (NasProbe) — každý _client() začíná bez ní
+
+    def test_no_nas_configured(self, tmp_path: Path) -> None:
+        assert _client(_cfg(tmp_path)).get("/api/storage").json()["nas"] is None
+
+    def test_nas_reported_and_cached(self, tmp_path: Path, monkeypatch) -> None:
+        calls = []
+
+        def du(p):
+            calls.append(p)
+            return _DU(10 * 1024 ** 3, 1024 ** 3)            # 10 GB kvóta, 1 GB volno → 90 %
+        monkeypatch.setattr(storage_service.shutil, "disk_usage", du)
+        nas = tmp_path / "nas"
+        nas.mkdir()
+        c = _client(_cfg(tmp_path, remote=str(nas)))
+        body = c.get("/api/storage").json()
+        assert body["nas"]["available"] is True and body["nas"]["level"] == "warning"
+        assert body["nas"]["free_bytes"] == 1024 ** 3 and body["nas"]["percent"] == 90.0
+        assert "used_bytes" in body and body["level"] == "ok"           # lokální údaje beze změny
+        nas_calls = lambda: sum(1 for p in calls if str(p) == str(nas))   # noqa: E731
+        assert nas_calls() == 1
+        c.get("/api/storage")
+        assert nas_calls() == 1                                         # druhý dotaz z cache
+
+    def test_nas_unavailable_keeps_local(self, tmp_path: Path) -> None:
+        body = _client(_cfg(tmp_path, remote=str(tmp_path / "neexistuje"))).get("/api/storage").json()
+        assert body["nas"] == {"available": False, "total_bytes": None, "used_bytes": None,
+                               "free_bytes": None, "percent": None, "level": None}
+        assert body["level"] == "ok" and "percent" in body
+
+
+class TestNasProbe:
+    """Audit Q2: souběžné dotazy na visící NAS nesmí zaplnit NAS pool."""
+
+    def test_single_flight_while_nas_hangs(self) -> None:
+        import threading
+        from scada.services import io_pool
+        from scada.services.io_pool import NasProbe
+
+        release, calls = threading.Event(), []
+
+        def hang():
+            calls.append(1)
+            release.wait(5)
+            return "ok"
+
+        async def scenario():
+            probe = NasProbe(ttl_s=60, timeout_s=0.1, default="?")
+            first = await asyncio.gather(*(probe.get("nas", hang) for _ in range(8)))
+            assert first == ["?"] * 8                    # bez známého stavu: po timeoutu výchozí
+            assert len(calls) == 1 and io_pool._nas_active == 1   # 8 dotazů = 1 vlákno
+            assert await probe.get("nas", hang) == "?" and len(calls) == 1
+            release.set()
+            await asyncio.sleep(0.2)
+            assert await probe.get("nas", hang) == "ok" and len(calls) == 1   # doběhlý výsledek z cache
+
+        asyncio.run(scenario())
+
+    def test_stale_value_returned_while_refreshing(self) -> None:
+        from scada.services.io_pool import NasProbe
+
+        values = iter(["a", "b"])
+
+        async def scenario():
+            probe = NasProbe(ttl_s=0.05, timeout_s=1, default="?")
+            assert await probe.get("nas", lambda: next(values)) == "a"
+            await asyncio.sleep(0.1)                     # vypršelo → hned starý stav, obnova na pozadí
+            assert await probe.get("nas", lambda: next(values)) == "a"
+            await asyncio.sleep(0.1)
+            assert await probe.get("nas", lambda: "c") == "b"
+
+        asyncio.run(scenario())
+
+    def test_failure_logged_with_reason(self, caplog) -> None:
+        from scada.services.io_pool import NasProbe
+
+        def boom():
+            raise TimeoutError()
+
+        async def scenario():
+            return await NasProbe(ttl_s=60, timeout_s=1, default=False).get("nas", boom)
+
+        assert asyncio.run(scenario()) is False
+        assert "TimeoutError" in caplog.text           # Q27: důvod nesmí být prázdný

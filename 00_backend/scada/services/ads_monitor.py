@@ -37,7 +37,6 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import pyads
@@ -45,6 +44,7 @@ from pyads.constants import ADSIGRP_SYM_VERSION
 
 from scada.config import AppConfig
 from scada.constants import SYM, SYM_TYPES, SYM_WRITE
+from scada.services.io_pool import DaemonThreadPool
 from scada.services.ws_manager import ConnectionManager
 
 log = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class AdsMonitor:
         self._reconnect_task:   asyncio.Task | None = None   # reconnect + heartbeat loop
         # Vlastní vlákno pro ADS volání — heartbeat (500 ms) nesmí čekat ve výchozím poolu za
         # XLSX exportem, stavbou indexu zakázky nebo PBKDF2 (watchdog v PLC by hlásil výpadek)
-        self._executor:         ThreadPoolExecutor | None = None
+        self._executor:         DaemonThreadPool | None = None
         self._hb_handle:   int | None = None   # handle sv_heartbeat (jednou za spojení — 1 round-trip místo 3)
         self._sym_version: int | None = None   # verze symbolů PLC — změna = nový program (download)
         self._hb_count = 0
@@ -169,7 +169,8 @@ class AdsMonitor:
         """
         self._loop = asyncio.get_running_loop()
         if self._executor is None:
-            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ads")
+            # daemon vlákno — zaseknutý ADS router nesmí držet ukončení služby (audit Q13)
+            self._executor = DaemonThreadPool(1, "ads")
         await self._manager.broadcast({"type": "ads_status", "connected": False})
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
@@ -185,7 +186,8 @@ class AdsMonitor:
         # Safety cleanup — CancelledError v _reconnect_loop mohl přerušit disconnect
         if self._plc is not None:
             try:
-                await self._run(self._disconnect, self._alive)
+                # časový limit — zaseknutý ADS router by jinak zastavil vypnutí aplikace (Q13/Q17)
+                await asyncio.wait_for(self._run(self._disconnect, self._alive), timeout=5.0)
             except Exception as exc:
                 log.debug("[ADS]   Safety cleanup selhal: %s", exc)
         if self._executor is not None:

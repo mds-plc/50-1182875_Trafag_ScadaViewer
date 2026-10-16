@@ -947,6 +947,26 @@ export default function Settings() {
               </div>
               <HelpButton id="remotePath" text={t.settings.helpRemotePath} {...hp} />
             </div>
+
+            <div className="settings-row">
+              <span className="settings-row__label">{t.storage.nasUsageLabel}</span>
+              <div className="settings-row__control settings-storage">
+                {storage?.nas?.available && storage.nas.percent != null ? (
+                  <>
+                    <div className={`settings-storage__track settings-storage__track--${storage.nas.level ?? 'ok'}`}>
+                      <div className="settings-storage__fill" style={{ width: `${Math.min(100, storage.nas.percent)}%` }} />
+                    </div>
+                    <span>
+                      {t.storage.nasUsage
+                        .replace('{free}',  formatBytes(storage.nas.free_bytes ?? 0))
+                        .replace('{total}', formatBytes(storage.nas.total_bytes ?? 0))}
+                      {' · '}{Math.round(storage.nas.percent)} %
+                    </span>
+                  </>
+                ) : storage?.nas ? t.storage.nasUnavailable : '—'}
+              </div>
+              <HelpButton id="nasUsage" text={t.storage.nasHelp} {...hp} />
+            </div>
           </>
         )}
 

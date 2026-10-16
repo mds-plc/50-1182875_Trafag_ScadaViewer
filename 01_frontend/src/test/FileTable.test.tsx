@@ -128,6 +128,23 @@ describe('FileTable', () => {
     expect(screen.getByText('5')).toBeInTheDocument()   // record_count badge
   })
 
+  it('production: separate microswitch ID and name columns; "…" until the file is read', () => {
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} total={2} files={[
+          makeFile({ file_id: 'A.csv', switch_id: 'E01389-C', switch_name: 'Marquardt' }),
+          makeFile({ file_id: 'B.csv', switch_id: '', switch_name: 'E07777-A', record_count: null }),
+        ]} />
+      </Wrapper>
+    )
+    expect(screen.getByRole('columnheader', { name: /Microswitch ID/ })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Microswitch name/ })).toBeInTheDocument()
+    expect(screen.getByText('E01389-C')).toBeInTheDocument()
+    expect(screen.getByText('Marquardt')).toBeInTheDocument()
+    // nepřečtený soubor: druhé pole názvu (u nového souboru ID) se nezobrazí jako název
+    expect(screen.queryByText('E07777-A')).toBeNull()
+  })
+
   it('clicking production row calls onExpandToggle with file_id', () => {
     const onExpandToggle = vi.fn()
     const { container } = render(

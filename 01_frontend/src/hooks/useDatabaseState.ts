@@ -92,6 +92,9 @@ const isDataType = (v: unknown): v is DataType => v === 'production' || v === 't
 const isSortDir  = (v: unknown): v is 'asc' | 'desc' => v === 'asc' || v === 'desc'
 const isString   = (v: unknown): v is string => typeof v === 'string'
 
+/** Sloupce řazení, které má jen Production (FileTable). */
+const PRODUCTION_ONLY_SORT = new Set(['order_id', 'switch_id'])
+
 /** Jak často se ptát znovu, dokud server dopočítává počty kusů [ms] */
 const COUNTS_RETRY_MS = 1500
 
@@ -109,7 +112,9 @@ const COUNTS_RETRY_MS = 1500
 export function useDatabaseState() {
   const { addToast } = useToast()
   const { t }        = useLang()
-  const { token, isRemote } = useAuth()
+  const { token, isRemote, role } = useAuth()
+  // Soubor z done_local (ještě není na NAS) smí smazat jen admin+ — backend to vynucuje (audit Q5)
+  const canDeleteUnsynced = role === 'admin' || role === 'manufacturer'
   const { perPage, refreshMs } = useSettings()
 
   const [location,     setLocationRaw]  = useState<Location>(() => _lsGet('location', 'local' as Location, isLocation))
@@ -142,7 +147,9 @@ export function useDatabaseState() {
   const [page,         setPage]         = useState(1)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OrderFile | null>(null)
-  const [sortBy,       setSortByRaw]    = useState<string>(() => _lsGet('sortBy', 'created_at', isString))
+  const [storedSortBy, setSortByRaw]    = useState<string>(() => _lsGet('sortBy', 'created_at', isString))
+  // Testing nemá sloupce Zakázka / ID — uložené řazení podle nich by bylo neviditelné (audit Q6)
+  const sortBy = dataType === 'testing' && PRODUCTION_ONLY_SORT.has(storedSortBy) ? 'created_at' : storedSortBy
   const [sortDir,      setSortDirRaw]   = useState<'asc' | 'desc'>(() => _lsGet('sortDir', 'desc' as 'asc' | 'desc', isSortDir))
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
   const [batchConfirm, setBatchConfirm] = useState(false)
@@ -251,19 +258,22 @@ export function useDatabaseState() {
   const deleteFile = useCallback(async (file: OrderFile): Promise<void> => {
     setDeleteTarget(null)
     try {
-      const url = `/api/files/${encodeURIComponent(file.file_id)}?location=${file.location}&type=${file.type}`
+      // sync = kterou kopii smazat, leží-li soubor v done_local i done_remote (řádek, na který uživatel klikl)
+      const sync = file.sync_status === 'done_local' || file.sync_status === 'done_remote' ? `&sync=${file.sync_status}` : ''
+      const url = `/api/files/${encodeURIComponent(file.file_id)}?location=${file.location}&type=${file.type}${sync}`
       const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
       const res = await apiFetch(url, { method: 'DELETE', headers })
       if (res.ok) {
         addToast(t.db.deleteSuccess, 'success')
         fetchFiles()
       } else {
-        addToast(t.db.deleteError, 'danger')
+        addToast(res.status === 403 && file.sync_status === 'done_local'
+          ? t.db.deleteUnsyncedForbidden : t.db.deleteError, 'danger')
       }
     } catch {
       addToast(t.db.deleteError, 'danger')
     }
-  }, [addToast, fetchFiles, t.db.deleteError, t.db.deleteSuccess, token])
+  }, [addToast, fetchFiles, t.db.deleteError, t.db.deleteSuccess, t.db.deleteUnsyncedForbidden, token])
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -292,13 +302,17 @@ export function useDatabaseState() {
         body: JSON.stringify({ file_ids: ids, location, type: dataType }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as { deleted: number; failed: number }
+      const data = await res.json() as { deleted: number; failed: number; errors?: { error: string }[] }
       if (data.deleted > 0) {
         addToast(`${t.db.deleteSuccess} (${data.deleted})`, 'success')
         fetchFiles()
       }
-      if (data.failed > 0) {
-        addToast(`${data.failed} ${t.db.deleteError}`, 'danger')
+      const unsynced = (data.errors ?? []).filter(e => e.error === 'unsynced_forbidden').length
+      if (unsynced > 0) {
+        addToast(`${t.db.deleteUnsyncedForbidden} (${unsynced})`, 'warning')
+      }
+      if (data.failed - unsynced > 0) {
+        addToast(`${data.failed - unsynced} ${t.db.deleteError}`, 'danger')
       }
       // clearSelect() záměrně uvnitř try — při síťové chybě nechceme výběr smazat,
       // aby mohl uživatel zkusit batch-delete znovu bez opětovného výběru souborů
@@ -306,7 +320,7 @@ export function useDatabaseState() {
     } catch {
       addToast(t.db.deleteError, 'danger')
     }
-  }, [selectedIds, files, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, clearSelect])
+  }, [selectedIds, files, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, t.db.deleteUnsyncedForbidden, clearSelect])
 
   const showSync     = location === 'local'
   // null = některé počty se ještě dopočítávají (patička ukáže „…")
@@ -321,7 +335,7 @@ export function useDatabaseState() {
     dateTo,       setDateTo,
     page,         setPage,
     expandedId,   setExpandedId,
-    deleteTarget, setDeleteTarget,
+    deleteTarget, setDeleteTarget, canDeleteUnsynced,
     sortBy, sortDir, onSort,
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,

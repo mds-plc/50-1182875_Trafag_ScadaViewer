@@ -1075,8 +1075,8 @@ Gateway 2.3.0 (s novým PLC DUT `ST_APP_Dataset_Production`) zapisuje production
   `[AnalyzedParameters]` / `[NokInfo]` / `[MeasuredInfo]` / `[SignalData]`) — TEST se nečte do konce.
 - Metadata Order, Recipe, Microswitch_ID, Microswitch_Name se vkládají do záznamů a jsou první sloupce XLSX
   (XLSX jen data — rozhodnutí uživatele). **Šarže** `Supplier_Order-LOT#n` ne — jsou seznamem za zakázku
-  bez vazby na kus (vazba kus → šarže: otázka na Trafag). `[TestingParameters]`, `[SortingCategories]`,
-  `[SortingLimits]` se zatím přeskakují.
+  bez vazby na kus (vazba kus → šarže: otázka na Trafag) — od fáze 46 v `order_info.lots`.
+  `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]` → `order_info` (fáze 46).
 - **Přehled Databáze:** sloupec „Typ spínače" = druhé pole názvu souboru — u nových zakázek SAP číslo
   (rozhodnutí uživatele), u starších název spínače. `read_file_meta` pro blokový soubor vrací `Microswitch_ID`,
   takže se hodnota po dopočtu nepřepne.
@@ -1085,13 +1085,41 @@ Gateway 2.3.0 (s novým PLC DUT `ST_APP_Dataset_Production`) zapisuje production
 
 **Stav testů po fázi 45:** Backend **362/362**, Frontend **131/131**; DatabaseGateway 89.
 
+### Fáze 46 — zaplnění NAS, údaje zakázky, hloubková analýza (2026-10-15)
+
+- **Údaje zakázky** z blokového PROD_ souboru: `_order_info()` → `order_info` v `/api/data` (receptura, šarže,
+  `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]`) → `OrderInfoPanel`. Vrací ho stejné
+  `read_records` přes `stats['order_info']` — žádné druhé čtení souboru (Q7).
+- **Sloupec ID mikrospínače** v přehledu (`switch_id`, `sort_by=switch_id`); cache SQLite `_SCHEMA` 4 — migrace
+  ze 3 přidá sloupec do `known` (počty kusů NAS archivu zůstanou), `meta` se založí znovu (Q14). Řazení podle
+  ID / typu: nepřečtené soubory (`record_count None`) vždy na konec — jinak kaskáda dopočtu celého NAS (Q6).
+- **Zaplnění NAS** (`nas` v `/api/storage`, `NasStorageBar`, NAS čip v topbaru): `shutil.disk_usage` na UNC =
+  kvóta sdílené složky pod účtem služby, bez kvóty celý svazek.
+- **`io_pool.NasProbe`** — opakovaný dotaz na NAS, na který se ptá každý klient (`/api/storage` 60 s,
+  `/api/status` 10 s): jeden běžící dotaz (úloha čeká na vlákno bez timeoutu → visící NAS zabere 1 slot, ne 6),
+  po vypršení poslední stav + obnova na pozadí, `NasBusyError` se necachuje (Q2).
+- **`io_pool.DaemonThreadPool`** — NAS pool i ADS executor s daemon vlákny: visící SMB / ADS volání nedrží
+  ukončení služby (ThreadPoolExecutor vlákna při ukončení joinuje — Q13).
+- **Výpadek NAS:** `list_remote` bez `exists()` (u nedostupného share False → prázdný archiv 200); prázdný
+  seznam jen když share odpovídá a podsložka chybí (Q3).
+- **Zakázka > 200 MB** (`_MAX_ORDER_FILE_BYTES`) → `FileTooLargeError` → 413 „stáhněte originální CSV" (Q7).
+- **Mazání `done_local`** (ještě není na NAS) jen admin+ — `delete_file(allow_unsynced)`, UI varování (Q5).
+- **Cesty v Config.toml** z UI: obalové uvozovky pryč, `"` / řídicí znaky → 400, výsledek ověřen `tomllib`
+  před zápisem (Q4).
+- **OK/NOK** kusu = `recordOkState()` (paramMeta.ts) — totéž pravidlo jako server `_record_matches` (Q10);
+  výsledek TEST souboru = `testingNokState()` z masky `NokCategory_*` v `[NokInfo]` (Gateway zrušil
+  `NokReason`, `Status` u testu nezapisuje — rozhodnutí 2026-10-16; případný Status má přednost jako pojistka) (Q1).
+- **Kiosk:** neúspěšný PLC auto-login se opakuje s backoffem 2 → 30 s (Q11).
+
+**Stav testů po fázi 46:** Backend **418/418**, Frontend **154/154** (22 souborů); `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat
 
 ```
 [TwinCAT 3 PLC]
-    │  ADS notifikace (pyads — read-only, žádný zápis do PLC)
+    │  ADS notifikace (pyads — čtení; zápis jen sv_heartbeat / sv_ready)
     ▼
 [AdsMonitor]                     asyncio.run_coroutine_threadsafe()
 (services/ads_monitor.py)  ─────────────────────────────────────►  [ConnectionManager]

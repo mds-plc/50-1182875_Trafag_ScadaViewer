@@ -55,7 +55,7 @@ def test_index_reused_and_invalidated(tmp_path: Path, monkeypatch) -> None:
     repo = CsvRepository(_cfg(tmp_path))
     builds = []
     orig = repo._build_index
-    monkeypatch.setattr(repo, "_build_index", lambda p: builds.append(p) or orig(p))
+    monkeypatch.setattr(repo, "_build_index", lambda p, *a: builds.append(p) or orig(p, *a))
 
     recs, total, groups, _ = repo.read_records(f, page=1, per_page=200)
     assert total == 500 and len(recs) == 200 and recs[0]["order"] == "1"
@@ -349,7 +349,7 @@ def test_remote_detail_reads_local_copy(tmp_path: Path, monkeypatch) -> None:
     repo = CsvRepository(_cfg_nas(tmp_path))
     built = []
     orig = repo._build_index
-    monkeypatch.setattr(repo, "_build_index", lambda p: built.append(p) or orig(p))
+    monkeypatch.setattr(repo, "_build_index", lambda p, *a: built.append(p) or orig(p, *a))
     recs, total, _, _ = FileService(repo).read_records(name, location="remote", file_type="production", per_page=10)
     assert total == 30 and built == [tmp_path / "local/production/done_remote" / name]
 

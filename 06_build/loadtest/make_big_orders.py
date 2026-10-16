@@ -35,7 +35,9 @@ def _load(template: Path):
 
 
 def _row(rnd: random.Random, ts: datetime, header: list[str], templates: list[list[str]]) -> str:
-    i_status, i_cat, i_reason = header.index("Status [-]"), header.index("SortingCategory [-]"), header.index("NokReason [-]")
+    i_status, i_cat = header.index("Status [-]"), header.index("SortingCategory [-]")
+    # NokReason jen starší soubory (Gateway od 2026-10-15 nezapisuje)
+    i_reason = header.index("NokReason [-]") if "NokReason [-]" in header else -1
     i_nok = [i for i, h in enumerate(header) if h.startswith("NokCategory_")]
     t = list(rnd.choice(templates))
     t[0] = ts.strftime("%Y-%m-%dT%H:%M:%S")
@@ -55,7 +57,8 @@ def _row(rnd: random.Random, ts: datetime, header: list[str], templates: list[li
         t[i] = "0"
     if cat in "56":
         t[rnd.choice(i_nok)] = "1"
-        t[i_reason] = str(rnd.choice([12, 21, 33]))
+        if i_reason >= 0:
+            t[i_reason] = str(rnd.choice([12, 21, 33]))
     return ";".join(t)
 
 
