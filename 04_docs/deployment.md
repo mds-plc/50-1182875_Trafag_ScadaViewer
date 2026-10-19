@@ -44,10 +44,15 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
-## Příští vydání (2.4.0, společně s DatabaseGateway 2.4.0) — zaplnění NAS, údaje zakázky, změny formátu
+## Release 2.4.0 (2026-10-19) — společné vydání všech tří aplikací
 
-**DatabaseGateway + PLC program (DUT `ST_APP_Dataset_Testing`: `Recipe : UINT`, `Microswitch_ID : STRING`,
-`NokCategory ARRAY[1..5]`) + ScadaViewer se nasazují SPOLEČNĚ** (podrobně `DatabaseGateway/04_docs/deployment.md`).
+**Analyzing 2.4.0 + DatabaseGateway 2.4.0 + PLC program (DUT `ST_APP_Dataset_Testing`: `Recipe : UINT`,
+`Microswitch_ID : STRING`, `NokCategory ARRAY[1..5]`; `ST_APP_Dataset_Production` z 2.3.0) + ScadaViewer 2.4.0 se
+nasazují SPOLEČNĚ** (podrobně `DatabaseGateway/04_docs/deployment.md`). Balíček `06_build/releases/deploy_v2.4.0/`
+(`deploy.bat`): navíc kontroluje cesty na NAS v Config.toml Gateway (`\\host\share`), nastaví NSSM Gateway
+(`AppRotateOnline`, `AppStopMethodConsole 15000`, `AppDirectory` bez koncového `\`) a 20 s po startu ověří, že žádná
+služba nespadla. Analyzing 2.4.0 = audit 18. 10. (do PLC nikdy NaN/Inf, nový volitelný klíč
+`switch_glitch_window_samples`, bez Config.toml nestartuje).
 
 | Změna formátu (Gateway) | ScadaViewer |
 |---|---|

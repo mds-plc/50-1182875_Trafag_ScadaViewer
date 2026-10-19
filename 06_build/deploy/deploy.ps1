@@ -11,17 +11,24 @@
 # Postup:
 #   1. Najde slozky aplikaci podle NSSM sluzeb (AppDirectory) - nic se nehada.
 #   2. Kontroly PRED jakoukoli zmenou: Config.toml existuji, Analyzing ma position_reference_um > 0,
+#      DatabaseGateway: cesty na NAS lezi pod \\host\share (od 2.4.0 jinak nenastartuje),
 #      production/wip je prazdna, done_local (upozorneni).
 #   3. Zastavi ScadaViewer -> DatabaseGateway -> AdsAnalyzer.
 #   4. Stary exe + _internal\ PRESUNE do <slozka>.backup_<cas>\ (+ kopie Config.toml / users.toml).
 #   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
 #      nssm.exe a .bat skripty zustanou beze zmeny.
-#   6. Spusti AdsAnalyzer -> DatabaseGateway -> ScadaViewer a overi /api/health (hlasena verze ScadaViewer = $Version).
+#   5b. NSSM (od 2.4.0): AppDirectory bez koncoveho "\", DatabaseGateway AppRotateOnline 1 + AppStopMethodConsole 15000.
+#   6. Spusti AdsAnalyzer -> DatabaseGateway -> ScadaViewer, po 20 s overi, ze vsechny bezi (chyba v configu =
+#      sluzba spadne), a /api/health (hlasena verze ScadaViewer = $Version).
+#
+# 2.4.0 (2026-10-19): vsechny tri aplikace 2.4.0 - spolecne vydani. Vyzaduje PLC program s DUT
+#   ST_APP_Dataset_Production (od 2.3.0) a ST_APP_Dataset_Testing (Recipe UINT, Microswitch_ID STRING,
+#   NokCategory ARRAY[1..5]). ScadaViewer 2.4.0 maze rozpracovane zakazky jen s DatabaseGateway 2.4.0.
 
-param([switch]$Rollback, [string]$Version = '2.3.0')
+param([switch]$Rollback, [string]$Version = '2.4.0')
 
-$AppVersions = @{ AdsAnalyzer = '2.2.0'; DatabaseGateway = '2.3.0'; ScadaViewer = '2.3.0' }
-$PlcNote     = 'Bezi na PLC NOVY program (DUT ST_APP_Dataset_Production: Microswitch_ID STRING, Recipe, SupplierOrder, Sorting)? DatabaseGateway 2.3.0 se starym programem zakazky neulozi.'
+$AppVersions = @{ AdsAnalyzer = '2.4.0'; DatabaseGateway = '2.4.0'; ScadaViewer = '2.4.0' }
+$PlcNote     = 'Bezi na PLC NOVY program? DUT ST_APP_Dataset_Testing: Recipe UINT, Microswitch_ID STRING, NokCategory ARRAY[1..5] (2.4.0) a ST_APP_Dataset_Production: Microswitch_ID STRING, Recipe, SupplierOrder, Sorting (od 2.3.0). DatabaseGateway 2.4.0 se starym programem testy / zakazky neulozi.'
 
 $ErrorActionPreference = 'Stop'
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -129,8 +136,9 @@ Log "Log: $LogFile"
 # 1. Slozky aplikaci podle NSSM
 foreach ($app in $Apps) {
     $app.Nssm = Get-Nssm $app.Service
-    $dir = (& $app.Nssm get $app.Service AppDirectory) -join '' -replace "`0", ''
-    $dir = $dir.Trim().TrimEnd('\')
+    $raw = ((& $app.Nssm get $app.Service AppDirectory) -join '' -replace "`0", '').Trim()
+    $app.DirRaw = $raw
+    $dir = $raw.Trim('"').TrimEnd('\')
     if (-not (Test-Path -LiteralPath (Join-Path $dir $app.Exe))) { Fail "$($app.Service): $($app.Exe) neni v $dir" }
     $app.Dir = $dir
     Log ("{0,-16} {1}" -f $app.Service, $dir)
@@ -186,6 +194,25 @@ if (-not $c -or [double]::Parse($c, [Globalization.CultureInfo]::InvariantCultur
 }
 Log "Analyzing position_reference_um = $c" 'Green'
 
+# DatabaseGateway 2.4.0: s vyplnenym [server] host musi production_path / testing_path lezet pod \\host\share,
+# jinak sluzba nenastartuje (audit 2026-10-18 - upload pod jinym nazvem serveru by sel bez prihlaseni)
+$gwCfg  = Join-Path $Apps[1].Dir 'Config.toml'
+$gwHost = Get-TomlValue $gwCfg 'server' 'host'
+if ($gwHost) {
+    $gwShare = Get-TomlValue $gwCfg 'server' 'share'
+    $root    = ("\\$gwHost\$gwShare").ToLower()
+    foreach ($k in 'production_path', 'testing_path') {
+        $p = Get-TomlValue $gwCfg 'server' $k
+        if (-not $p -or -not ($p.ToLower() -eq $root -or $p.ToLower().StartsWith("$root\"))) {
+            Log "[CHYBA] DatabaseGateway Config.toml: [server] $k = '$p' nelezi pod \\$gwHost\$gwShare." 'Red'
+            Log "        Verze 2.4.0 s takovym nastavenim nenastartuje. Oprava v $gwCfg :" 'Red'
+            Log "            $k = ""\\\\$gwHost\\$gwShare\\...""   (stejny host jako v [server] host)" 'Red'
+            Fail "DatabaseGateway: $k mimo \\host\share."
+        }
+    }
+    Log "DatabaseGateway NAS cesty lezi pod \\$gwHost\$gwShare" 'Green'
+} else { Log 'DatabaseGateway [server] host prazdny - NAS se nepripojuje automaticky (cmdkey / ucet sluzby)' 'Gray' }
+
 $local = Get-TomlValue $svCfg 'data' 'local_path'
 if ($local) {
     if (-not [IO.Path]::IsPathRooted($local)) { $local = Join-Path $sv.Dir $local }
@@ -194,7 +221,7 @@ if ($local) {
            @(Get-ChildItem -LiteralPath (Join-Path $local 'testing\done_local') -File -ErrorAction SilentlyContinue)
     if ($wip.Count -gt 0) {
         Log "[VAROVANI] production\wip obsahuje $($wip.Count) soubor(u): $($wip.Name -join ', ')" 'Yellow'
-        Log '           Rozpracovana zakazka se starou hlavickou nove kusy odmitne - nejdriv ji uzavrete na PLC.' 'Yellow'
+        Log '           Rozpracovana zakazka se starou hlavickou (33 sloupcu, s NokReason) nove kusy odmitne - nejdriv ji uzavrete na PLC.' 'Yellow'
         if (-not (Ask 'Presto pokracovat?')) { Log 'Zruseno.'; exit 1 }
     } else { Log 'production\wip je prazdna' 'Green' }
     if ($dl.Count -gt 0) { Log "[INFO] done_local: $($dl.Count) soubor(u) jeste neni na NAS - po startu Gateway se dosynchronizuji." 'Yellow' }
@@ -241,15 +268,37 @@ foreach ($app in $Apps) {
 }
 Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
+# 5b. NSSM nastaveni (2.4.0): AppDirectory bez koncoveho "\" (starsi nssm_install.bat ho predaval jako
+#     escapovanou uvozovku), Gateway: rotace stdout logu za behu + 15 s na dokonceni operace / uploadu pri stopu
+foreach ($app in $Apps) {
+    if ($app.DirRaw -ne $app.Dir) {
+        & $app.Nssm set $app.Service AppDirectory $app.Dir | Out-Null
+        Log "  $($app.Service): AppDirectory opraveno na $($app.Dir) (bylo '$($app.DirRaw)')" 'Green'
+    }
+}
+$gw = $Apps[1]
+& $gw.Nssm set $gw.Service AppRotateOnline 1 | Out-Null
+& $gw.Nssm set $gw.Service AppStopMethodConsole 15000 | Out-Null
+Log '  DatabaseGateway: NSSM AppRotateOnline 1, AppStopMethodConsole 15000' 'Green'
+
 # 6. Spustit + overit
 Start-Apps
+# Sluzba s chybou v Config.toml se ukonci hned po startu (od 2.4.0 i bez Config.toml) - NSSM ji pak restartuje
+# nebo pozastavi; po 20 s musi vsechny bezet
+Log 'Kontrola za 20 s, ze sluzby po startu nespadly ...'
+Start-Sleep -Seconds 20
+$down = @($Apps | Where-Object { (Get-Service $_.Service).Status -ne 'Running' })
+foreach ($app in $down) {
+    Log "[CHYBA] $($app.Service) nebezi ($((Get-Service $app.Service).Status)) - log: $($app.Dir)\03_output\logs\ (stderr: chyba v Config.toml?)" 'Red'
+}
 $h = Check-Health $port
-if ($h -and $h.version -eq $Version) { Log "=== Nasazeno: ScadaViewer $($h.version) ===" 'Green' }
-else { Log "[VAROVANI] /api/health nehlasi verzi $Version - zkontrolujte logy, pripadne rollback.bat" 'Yellow' }
+if ($down.Count -eq 0 -and $h -and $h.version -eq $Version) { Log "=== Nasazeno: v$Version, ScadaViewer hlasi $($h.version) ===" 'Green' }
+else { Log "[VAROVANI] Nasazeni neni v poradku (nebezici sluzby / /api/health nehlasi $Version) - zkontrolujte logy, pripadne rollback.bat" 'Yellow' }
 
 Log ''
 Log 'Dalsi kroky (rucne):'
-Log '  1. Otevrit http://localhost:8080 a novy zaznam: sila v mN (stovky-tisice), odpor v mOhm (rozepnuto = nekonecno),'
-Log '     polohy cca 7 000-9 300 um.'
-Log '  2. Prejimaci test 04_docs/acceptance_test.md (body 3.12-3.16) a kalibrace C (position_reference_um).'
-Log '  3. Zalohy *.backup_* po overeni smazat.'
+Log '  1. Logy vsech tri aplikaci: zadne "[SVC] Config: neznamy klic" (Analyzing) ani chyby pri startu.'
+Log '  2. Novy test na stroji (Op5): detail testu ukazuje ID mikrospinace a recepturu, vysledek OK / NOK.'
+Log '  3. Nova zakazka: Databaze -> detail zakazky: graf kategorii (pasy OK / NOK Trafag / NOK Supplier, barvy krabic),'
+Log '     filtr NOK oblasti, udaje zakazky (sarze). Prejimaci test 04_docs/acceptance_test.md body 2.2 a 3.17.'
+Log '  4. Zalohy *.backup_* po overeni smazat.'

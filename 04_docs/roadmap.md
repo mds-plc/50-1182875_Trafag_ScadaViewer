@@ -17,11 +17,11 @@
 | Autentizace (PBKDF2, multi-user) | ✅ Hotovo | users.toml, role (operator < technician < admin < manufacturer), Bearer tokeny, PLC auto-login jen u stroje |
 | Vzdálený přístup z kanceláře | ✅ Hotovo | Jen prohlížení (`require_local`), `local_clients` — `deployment.md` |
 | Security middleware | ✅ Hotovo | CSP (SHA-256 hash), SecurityHeaders, RateLimit, CORS, WS origin |
-| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.1.1** (2026-10-10, ZIP + tag) |
+| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.4.0** (2026-10-19, ZIP + tag, společné vydání; balíček `deploy_v2.4.0`) |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Backend testy | ✅ Hotovo | **437 testů** (2026-10-16); `pytest 02_tests/ -v` |
 | Frontend testy | ✅ Hotovo | **187 testů**, 24 souborů Vitest (2026-10-16); `npm run test`; `npm run lint` 0; `npm audit` 0 |
-| Fáze 47 (2026-10-16, necommitnuto část) | ✅ Hotovo | hledání zakázky, nápověda stránek + grafická nápověda parametrů, Údaje zakázky (rozbalovací řádky), ikona detailu, mazání In progress adminem (+ Gateway), graf kategorií OK / NOK Trafag / NOK Supplier + rozmezí MD, paleta = štítky krabic, filtr kusů podle NOK oblasti — vydat jako 2.4.0 společně s Gateway, přegenerovat manuál |
+| Fáze 47 (2026-10-16, necommitnuto část) | ✅ Hotovo | hledání zakázky, nápověda stránek + grafická nápověda parametrů, Údaje zakázky (rozbalovací řádky), ikona detailu, mazání In progress adminem (+ Gateway), graf kategorií OK / NOK Trafag / NOK Supplier + rozmezí MD, paleta = štítky krabic, filtr kusů podle NOK oblasti — **vydáno 2.4.0 (2026-10-19)** se všemi třemi aplikacemi; zbývá přegenerovat manuál |
 | Výkon — velké zakázky | ✅ Hotovo | Zakázka 50 000 kusů: stránka / filtr / detail kusu 0,02–0,05 s (index v paměti), XLSX ze serveru ~3 s |
 | Výkon — velký archiv | ✅ Hotovo | Přehled z názvů souborů, dopočet počtů na pozadí, SQLite cache, NAS výpis v paměti; 100 000 souborů: výpis 0,16 s — `architecture.md` „Výkon, paměť a škálovatelnost" |
 | Filtr kusů v detailu zakázky | ✅ Hotovo | Stav OK / NOK + kategorie 1–6 (server) |

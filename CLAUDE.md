@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.3.0"
+    ├── __init__.py            ← __version__ = "2.4.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -821,7 +821,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.3.0** — s DatabaseGateway 2.3.0 a novým PLC DUT, 2026-10-13; Analyzing zůstává 2.2.0) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.4.0** — společné vydání všech tří aplikací 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
@@ -877,15 +877,15 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 9. Zpevnění ekosystému (hodnocení 2026-09-26, `project_reviews.md`): společná specifikace formátu CSV
    + verze v souboru + test napříč aplikacemi, časové značky s časovou zónou, stav DatabaseGateway
    ve ScadaViewer, heslo k NAS mimo git
-10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13; ~~Release 2.3.0~~ (blokový PROD_ soubor, řazení kusů) — 2026-10-13
+10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13; ~~Release 2.3.0~~ (blokový PROD_ soubor, řazení kusů) — 2026-10-13; ~~Release 2.4.0~~ (společný — Analyzing, DatabaseGateway, ScadaViewer; fáze 46–47) — 2026-10-19
 11. Škálování (audit 2026-10-10 S1–S5, `roadmap.md` → 6.): podsložky `Production/RRRR/MM/` na NAS
     (s DatabaseGateway), počet kusů v souboru při uzavření zakázky, retence archivu (Trafag),
     nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje
 12. A12 — rozdělit `csv_repository.py` (~1 470 ř.) na přehled / cache / index zakázky
 13. Smazat vzorové zakázky `VZOR-50K-*` (100 × 13 MB) z `12.Database/production/done_remote/` po testech
-14. Před vydáním 2.4.0: zvednout verze (ScadaViewer + DatabaseGateway — mazání WIP vyžaduje obě), `deploy.ps1` `$PlcNote`,
-    přegenerovat uživatelský manuál (`06_build/manual/` — nová ikona detailu, nápověda stránek, graf / barvy kategorií,
-    mazání In progress)
+14. ~~Vydání 2.4.0~~ (verze, `deploy.ps1`, balíček `deploy_v2.4.0`) — hotovo 2026-10-19. Zbývá: přegenerovat uživatelský
+    manuál (`06_build/manual/` — ikona detailu, nápověda stránek, graf / barvy kategorií, filtr NOK oblasti, mazání
+    In progress) a GitHub release ručně (gh nepřihlášen)
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.

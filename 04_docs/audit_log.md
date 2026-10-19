@@ -78,6 +78,20 @@
 
 ---
 
+## [2026-10-19] Release 2.4.0 — společné vydání Analyzing + DatabaseGateway + ScadaViewer
+
+| Oblast | Popis |
+|---|---|
+| Verze | všechny tři aplikace **2.4.0** (Analyzing z 2.2.0 — 2.3.0 vynechána, aby celé vydání mělo jedno číslo) |
+| ScadaViewer | fáze 46–47 (zaplnění NAS, údaje zakázky, hledání zakázky, nápovědy, mazání In progress, graf a paleta kategorií, filtr NOK oblasti, revize) |
+| DatabaseGateway | bez NokReason, TEST [Metadata] jako PROD_, smazaný WIP, audit 2026-10-18 (výpadky disku / NAS / PLC, NSSM, kontrola cest NAS, pyads 3.5.2) |
+| Analyzing | audit 2026-10-18 (do PLC nikdy NaN/Inf, `switch_glitch_window_samples`, bez Config.toml nestartuje, pyads < 3.6) |
+| Nasazovací skript | `06_build/deploy/deploy.ps1` 2.4.0: `$AppVersions` 2.4.0, `$PlcNote` (DUT Testing + Production), kontrola `[server]` cest Gateway pod `\\host\share` před odstávkou, NSSM Gateway (`AppRotateOnline 1`, `AppStopMethodConsole 15000`, `AppDirectory` bez `\`), kontrola 20 s po startu, že žádná služba nespadla; balíček `06_build/releases/deploy_v2.4.0/` |
+| Ověření před buildem | pytest ScadaViewer 437 (test kontraktu s Gateway / Analyzing bez přeskočení), Gateway 127, Analyzing 90; frontend 187, tsc 0, lint 0; `deploy.ps1` bez chyb parseru |
+| Zbývá | přegenerovat uživatelský manuál; GitHub release ručně (gh nepřihlášen) |
+
+---
+
 ## [2026-10-16] Nová funkce — filtr kusů podle NOK oblasti (detail zakázky)
 
 | Oblast | Popis |
