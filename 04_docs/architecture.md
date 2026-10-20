@@ -1342,6 +1342,35 @@ Testy: `02_tests/test_nok_filter.py` (8), `RecordFilterBar.test.tsx` (+3); vizu�
 **Stav testů po fázi 47:** Backend **437/437**, Frontend **187/187** (24 souborů); DatabaseGateway 96,
 Analyzing 69; `tsc` 0, lint 0.
 
+### Fáze 48 — vydání 2.4.0 a 2.4.1, parametry pohonu starších souborů, Čas / NTP (2026-10-19 → 10-20)
+
+**Vydání 2.4.0** (2026-10-19) — společné pro Analyzing, DatabaseGateway a ScadaViewer, balíček
+`06_build/releases/deploy_v2.4.0` (viz `deployment.md` → Release 2.4.0, `audit_log.md`).
+
+#### Testovací parametry starších souborů pod současnými názvy
+
+Gateway 2.3.0 (do 2026-10-15) psala do `[TestingParameters]` `Actuation_Speed;Acceleration;Jerk_Up;Jerk_Down`
+(Jerk_Up = Jerk_Down = `Drive.Jerk`, zpomalení se nečetlo), od 2.4.0 `Velocity;Acceleration;Deceleration;Jerk`.
+`csv_repository._modern_drive_params()` (v `_order_info`) starý soubor převede: Actuation_Speed → Velocity,
+Jerk_Up / Jerk_Down → Jerk, Deceleration = řádek bez hodnoty („—"); různé Jerk_Up / Jerk_Down zůstanou.
+Test `test_prod_blocks.test_drive_params_legacy_names`. Vydáno v **2.4.1** (2026-10-20, balíček `deploy_v2.4.1`).
+
+#### Čas PC a NTP server pro IPC (Nastavení → Čas / NTP)
+
+PC s ScadaViewer slouží jako lokální NTP server (služba Windows Time / w32time) pro další IPC stroje.
+
+| Vrstva | Řešení |
+|---|---|
+| Stav | `services/time_service.time_status()` — čas PC (UTC, místní, pásmo), služba W32Time přes SCM (stav, typ spuštění z registru), registr `W32Time\TimeProviders\NtpServer\Enabled`, `Config\AnnounceFlags` (bit 0x1 = spolehlivý zdroj — bez nadřazeného zdroje nutné 5, jinak IPC čas nepřevezmou), `Parameters\Type` / `NtpServer`, `w32tm /query /source` + `/query /status` (štítky CS i EN; Leap Indicator 3 = nesynchronizováno; surový text pro detail), `netstat` UDP 123, IPv4 adresy PC. Vše best effort (chyba = `null`), ~0,1 s |
+| Nastavení | `set_local_time("RRRR-MM-DDTHH:MM[:SS]")` — čas v pásmu PC → UTC → `SetSystemTime` (kernel32) po zapnutí `SeSystemtimePrivilege` (`AdjustTokenPrivileges`); bez práva → `TimePrivilegeError` (409 s návodem secpol), jiný systém → 501; rok 2020–2099 (ochrana proti překlepu) |
+| API | `GET /api/system/time` (každý přihlášený, i vzdáleně; `can_set` = admin+ u stroje na Windows); `POST /api/system/time` — `require_local` + `require_role("admin")` (rozhodnutí uživatele 2026-10-20: jen ruční zadání, jen admin u stroje); změna = WARNING (uživatel, starý → nový čas, rozdíl) |
+| UI | `components/TimeServerTab.tsx` — sekce Čas PC (tikající hodiny v pásmu PC, rozdíl vůči zařízení prohlížeče = utc serveru − střed doby dotazu), NTP server pro IPC (služba, server, UDP 123, ohlašování, adresy), Zdroj času PC (varování: bez nadřazeného zdroje / zdroj nastavený, ale nesynchronizováno), Nastavit čas PC (`datetime-local` step 1, předvyplněno časem PC, dialog: teď → nový čas, změna, varování, zaškrtnutí „Rozumím"); obnova 30 s |
+| Dopady změny času | IPC (NTP klienti) převezmou nový čas; časové značky nových CSV ve všech třech aplikacích; relace (`created_at = time.time()`) — skok dopředu > 8 h odhlásí všechny; synchronizuje-li PC ze zdroje, ruční čas se při další synchronizaci přepíše (UI upozorní) |
+
+Testy: `02_tests/test_system_time.py` (16 — skutečný SetSystemTime se nevolá), `TimeServerTab.test.tsx` (9).
+
+**Stav testů po fázi 48:** Backend **454/454**, Frontend **195/195** (25 souborů); `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

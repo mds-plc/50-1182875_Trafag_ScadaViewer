@@ -354,6 +354,37 @@ class StorageResponse(BaseModel):
     nas:              NasStorage | None = None   # None = NAS není nastavený (remote_path prázdný)
 
 
+class SystemTimeResponse(BaseModel):
+    """Odpověď GET /api/system/time — čas PC a jeho NTP server pro IPC (services/time_service.py)."""
+    supported:          bool                    # False = jiný systém než Windows (nastavení nejde)
+    utc:                str                     # ISO, ms — klient z něj počítá rozdíl vůči svému času
+    local:              str                     # ISO s posunem pásma
+    tz_name:            str | None = None
+    utc_offset_min:     int = 0
+    service_state:      str | None = None       # running | stopped | … | not_installed
+    service_start:      str | None = None       # auto | manual | disabled
+    ntp_server_enabled: bool | None = None      # TimeProviders\NtpServer Enabled
+    ntp_client_enabled: bool | None = None
+    announce_flags:     int | None = None
+    announce:           Literal["reliable", "conditional", "never"] | None = None
+    sync_type:          str | None = None       # NTP | NT5DS | NoSync | AllSync
+    configured_peers:   str | None = None
+    source:             str | None = None       # w32tm /query /source
+    stratum:            int | None = None
+    synchronized:       bool | None = None      # Leap Indicator ≠ 3
+    last_sync:          str | None = None
+    poll_interval:      str | None = None
+    udp123_listening:   bool | None = None
+    addresses:          list[str] = []
+    status_text:        str | None = None       # surový výstup w32tm /query /status (detail)
+    can_set:            bool = False            # smí přihlášený čas nastavit (admin+ u stroje, Windows)
+
+
+class SetSystemTimeRequest(BaseModel):
+    """POST /api/system/time — místní čas PC jako z <input type=datetime-local>."""
+    local_time: str = Field(..., max_length=32, description="RRRR-MM-DDTHH:MM[:SS] v časovém pásmu PC")
+
+
 class CleanupResponse(BaseModel):
     """Odpověď POST /api/storage/cleanup."""
     deleted:     int

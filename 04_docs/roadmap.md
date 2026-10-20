@@ -17,7 +17,7 @@
 | Autentizace (PBKDF2, multi-user) | ✅ Hotovo | users.toml, role (operator < technician < admin < manufacturer), Bearer tokeny, PLC auto-login jen u stroje |
 | Vzdálený přístup z kanceláře | ✅ Hotovo | Jen prohlížení (`require_local`), `local_clients` — `deployment.md` |
 | Security middleware | ✅ Hotovo | CSP (SHA-256 hash), SecurityHeaders, RateLimit, CORS, WS origin |
-| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.4.0** (2026-10-19, ZIP + tag, společné vydání; balíček `deploy_v2.4.0`) |
+| Build pipeline (exe) | ✅ Hotovo | `06_build/exe/build.bat` + `scada.spec` + `kiosk_start.bat`; poslední release **v2.4.1** (2026-10-20, ScadaViewer; Analyzing + Gateway 2.4.0; balíček `deploy_v2.4.1`) |
 | NSSM installer | ✅ Hotovo | `06_build/exe/nssm_install.bat` |
 | Backend testy | ✅ Hotovo | **437 testů** (2026-10-16); `pytest 02_tests/ -v` |
 | Frontend testy | ✅ Hotovo | **187 testů**, 24 souborů Vitest (2026-10-16); `npm run test`; `npm run lint` 0; `npm audit` 0 |

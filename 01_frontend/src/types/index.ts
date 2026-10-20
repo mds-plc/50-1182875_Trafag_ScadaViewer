@@ -53,6 +53,32 @@ export interface DataFilter {
   nok?:        NokArea[]
 }
 
+/** Čas PC a jeho NTP server pro IPC — GET /api/system/time (Nastavení → Čas / NTP) */
+export interface SystemTimeStatus {
+  supported:          boolean
+  utc:                string            // ISO s ms
+  local:              string            // ISO s posunem pásma PC
+  tz_name:            string | null
+  utc_offset_min:     number
+  service_state:      string | null     // running | stopped | not_installed | …
+  service_start:      'auto' | 'manual' | 'disabled' | null
+  ntp_server_enabled: boolean | null
+  ntp_client_enabled: boolean | null
+  announce_flags:     number | null
+  announce:           'reliable' | 'conditional' | 'never' | null
+  sync_type:          string | null     // NTP | NT5DS | NoSync | AllSync
+  configured_peers:   string | null
+  source:             string | null
+  stratum:            number | null
+  synchronized:       boolean | null
+  last_sync:          string | null
+  poll_interval:      string | null
+  udp123_listening:   boolean | null
+  addresses:          string[]
+  status_text:        string | null
+  can_set:            boolean           // admin+ u stroje, Windows
+}
+
 /** NOK oblast kusu = sloupec NokCategory_* (Gateway) — pořadí jako NOK_CATEGORIES v csv_repository.py */
 export type NokArea = 'force' | 'position' | 'electric' | 'times' | 'process'
 

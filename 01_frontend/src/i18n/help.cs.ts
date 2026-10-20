@@ -59,10 +59,11 @@ export const helpCs: Translations['help'] = {
     },
     settings: {
       title: 'Nastavení',
-      intro: 'Předvolby zobrazení, stav připojení k PLC a úložištím a správa uživatelů.',
+      intro: 'Předvolby zobrazení, stav připojení k PLC a úložištím, čas PC (NTP server pro IPC) a správa uživatelů.',
       items: [
         { title: 'Předvolby', text: 'Jazyk, světlý / tmavý režim, počet souborů na stránce a interval automatického obnovení. Ukládají se v tomto prohlížeči.' },
         { title: 'Připojení', text: 'Stav serveru, PLC (ADS) a lokálního úložiště a NAS. Administrátor u stroje zde mění cesty k datům a limit lokálního úložiště.' },
+        { title: 'Čas / NTP', text: 'Čas PC u stroje, které slouží jako NTP server pro další IPC: běží služba Windows Time, je zapnutý NTP server a ohlašuje se jako spolehlivý zdroj, odkud bere čas PC samo a o kolik se liší od zařízení, ze kterého se díváte. Administrátor u stroje může čas PC ručně nastavit — převezmou ho IPC i časové značky nových záznamů.' },
         { title: 'Uživatelé', text: 'Jen pro administrátora: přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá.' },
       ],
     },

@@ -176,14 +176,37 @@ def test_testing_file_still_single_record(client) -> None:
     assert body["has_signal"] is True
 
 
+def test_drive_params_legacy_names() -> None:
+    """Gateway 2.3.0: Actuation_Speed;Acceleration;Jerk_Up;Jerk_Down → Velocity;Acceleration;Deceleration;Jerk."""
+    from scada.services.repositories.csv_repository import _modern_drive_params
+
+    def tp(*items):
+        return [{"key": k, "name": n, "unit": u, "value": v} for k, n, u, v in items]
+    old = tp(("actuation_speed", "Actuation_Speed", "mm/s", "0.2"), ("acceleration", "Acceleration", "mm/s2", "0.8"),
+             ("jerk_up", "Jerk_Up", "mm/s3", "10"), ("jerk_down", "Jerk_Down", "mm/s3", "10"),
+             ("max_force", "Max_Force", "mN", "4000"))
+    got = _modern_drive_params(old)
+    assert [(p["name"], p["value"]) for p in got] == [
+        ("Velocity", "0.2"), ("Acceleration", "0.8"), ("Deceleration", None), ("Jerk", "10"), ("Max_Force", "4000")]
+    assert got[2]["unit"] == "mm/s2"
+    # Jerk_Up ≠ Jerk_Down (nemělo by nastat) → oba zůstanou, nic se neslučuje
+    diff = _modern_drive_params(tp(("jerk_up", "Jerk_Up", "mm/s3", "10"), ("jerk_down", "Jerk_Down", "mm/s3", "12")))
+    assert [p["name"] for p in diff] == ["Jerk_Up", "Jerk_Down"]
+    # nový formát (Gateway 2.4.0) beze změny
+    new = tp(("velocity", "Velocity", "mm/s", "0.2"), ("acceleration", "Acceleration", "mm/s2", "0.8"),
+             ("deceleration", "Deceleration", "mm/s2", "0.9"), ("jerk", "Jerk", "mm/s3", "10"))
+    assert _modern_drive_params(new) == new
+
+
 def test_order_info(client) -> None:
     info = _data(client)["order_info"]
     assert info["recipe"] == "1"
     assert info["lots"] == ["185974-598477", "185974-598478"]
-    assert info["testing_parameters"][0] == {"key": "actuation_speed", "name": "Actuation_Speed",
-                                             "unit": "mm/s", "value": "200"}
-    assert [p["key"] for p in info["testing_parameters"]] == ["actuation_speed", "acceleration",
+    # soubor Gateway 2.3.0 (Actuation_Speed) → současné názvy jako v PLC; Deceleration se tehdy nečetl → bez hodnoty
+    assert info["testing_parameters"][0] == {"key": "velocity", "name": "Velocity", "unit": "mm/s", "value": "200"}
+    assert [p["key"] for p in info["testing_parameters"]] == ["velocity", "acceleration", "deceleration",
                                                               "max_force", "resistance_limit"]
+    assert info["testing_parameters"][2]["value"] is None
     cats = info["sorting_categories"]
     assert cats["grouping_value"] == "MD" and cats["unit"] == "um"
     assert cats["groups"] == [{"group": 1, "min": "18", "max": "30"}, {"group": 2, "min": "30.1", "max": "60"}]

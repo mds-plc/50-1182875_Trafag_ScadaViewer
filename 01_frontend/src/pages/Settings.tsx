@@ -1,11 +1,11 @@
 /**
  * @file Settings.tsx
- * @description Stránka nastavení — záložky Předvolby / Připojení.
+ * @description Stránka nastavení — záložky Předvolby / Připojení / Čas / NTP (TimeServerTab) / Uživatelé.
  *   Každý parametr má tlačítko s nápovědou (popup).
  *   Připojení rozděleno na PLC/ADS a Úložiště s editací cest.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, Folder, FolderOpen, HardDrive, Info, Cpu, Network, SlidersHorizontal, Users, X } from 'lucide-react'
+import { ChevronRight, Clock, Folder, FolderOpen, HardDrive, Info, Cpu, Network, SlidersHorizontal, Users, X } from 'lucide-react'
 import { useLang }     from '../context/LangContext'
 import { useToast }    from '../context/ToastContext'
 import { useAuth }     from '../context/AuthContext'
@@ -14,6 +14,7 @@ import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
 import LoadingSpinner  from '../components/LoadingSpinner'
 import PageHelp        from '../components/PageHelp'
+import TimeServerTab   from '../components/TimeServerTab'
 import { apiFetch } from '../utils/apiFetch'
 import { formatBytes } from '../utils/formatting'
 
@@ -200,7 +201,7 @@ interface StatusData {
   remote_available: boolean
 }
 
-type Tab = 'preferences' | 'connection' | 'users'
+type Tab = 'preferences' | 'connection' | 'time' | 'users'
 
 // ---------------------------------------------------------------------------
 // UsersTab — správa uživatelů (admin+)
@@ -685,6 +686,13 @@ export default function Settings() {
             <Network size={13} />
             {t.settings.connTile}
           </button>
+          <button
+            className={`db-tab${activeTab === 'time' ? ' db-tab--active' : ''}`}
+            onClick={() => setActiveTab('time')}
+          >
+            <Clock size={13} />
+            {t.time.tab}
+          </button>
           {isAdmin && canEdit && (
             <button
               className={`db-tab${activeTab === 'users' ? ' db-tab--active' : ''}`}
@@ -769,6 +777,9 @@ export default function Settings() {
             </div>
           </>
         )}
+
+        {/* ── Čas / NTP server pro IPC ── */}
+        {activeTab === 'time' && <TimeServerTab />}
 
         {/* ── Uživatelé ── */}
         {activeTab === 'users' && isAdmin && canEdit && (

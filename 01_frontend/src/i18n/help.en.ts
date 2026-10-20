@@ -59,10 +59,11 @@ export const helpEn: Translations['help'] = {
     },
     settings: {
       title: 'Settings',
-      intro: 'Display preferences, connection status of the PLC and storages, and user management.',
+      intro: 'Display preferences, connection status of the PLC and storages, PC time (NTP server for IPCs) and user management.',
       items: [
         { title: 'Preferences', text: 'Language, light / dark mode, files per page and auto-refresh interval. Stored in this browser.' },
         { title: 'Connection', text: 'Status of the server, PLC (ADS), local storage and NAS. An administrator at the machine changes the data paths and the local storage limit here.' },
+        { title: 'Time / NTP', text: 'Time of the PC at the machine, which serves as the NTP server for the other IPCs: whether the Windows Time service runs, the NTP server is enabled and announced as a reliable source, where the PC itself takes its time from and how much it differs from the device you are viewing from. An administrator at the machine can set the PC time manually — the IPCs and the timestamps of new records take it over.' },
         { title: 'Users', text: 'Administrators only: add and remove users, change passwords. A user can have at most the same role as the person creating them.' },
       ],
     },

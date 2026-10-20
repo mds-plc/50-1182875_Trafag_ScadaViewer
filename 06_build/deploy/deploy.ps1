@@ -24,10 +24,12 @@
 # 2.4.0 (2026-10-19): vsechny tri aplikace 2.4.0 - spolecne vydani. Vyzaduje PLC program s DUT
 #   ST_APP_Dataset_Production (od 2.3.0) a ST_APP_Dataset_Testing (Recipe UINT, Microswitch_ID STRING,
 #   NokCategory ARRAY[1..5]). ScadaViewer 2.4.0 maze rozpracovane zakazky jen s DatabaseGateway 2.4.0.
+# 2.4.1 (2026-10-20): jen ScadaViewer 2.4.1 (Nastaveni -> Cas / NTP, nazvy parametru pohonu starsich souboru);
+#   Analyzing a DatabaseGateway zustavaji 2.4.0. Nasadit lze i na stroj s 2.4.0 (skript vymeni vsechny tri).
 
-param([switch]$Rollback, [string]$Version = '2.4.0')
+param([switch]$Rollback, [string]$Version = '2.4.1')
 
-$AppVersions = @{ AdsAnalyzer = '2.4.0'; DatabaseGateway = '2.4.0'; ScadaViewer = '2.4.0' }
+$AppVersions = @{ AdsAnalyzer = '2.4.0'; DatabaseGateway = '2.4.0'; ScadaViewer = '2.4.1' }
 $PlcNote     = 'Bezi na PLC NOVY program? DUT ST_APP_Dataset_Testing: Recipe UINT, Microswitch_ID STRING, NokCategory ARRAY[1..5] (2.4.0) a ST_APP_Dataset_Production: Microswitch_ID STRING, Recipe, SupplierOrder, Sorting (od 2.3.0). DatabaseGateway 2.4.0 se starym programem testy / zakazky neulozi.'
 
 $ErrorActionPreference = 'Stop'
@@ -301,4 +303,6 @@ Log '  1. Logy vsech tri aplikaci: zadne "[SVC] Config: neznamy klic" (Analyzing
 Log '  2. Novy test na stroji (Op5): detail testu ukazuje ID mikrospinace a recepturu, vysledek OK / NOK.'
 Log '  3. Nova zakazka: Databaze -> detail zakazky: graf kategorii (pasy OK / NOK Trafag / NOK Supplier, barvy krabic),'
 Log '     filtr NOK oblasti, udaje zakazky (sarze). Prejimaci test 04_docs/acceptance_test.md body 2.2 a 3.17.'
-Log '  4. Zalohy *.backup_* po overeni smazat.'
+Log '  4. Nastaveni -> Cas / NTP: sluzba Windows Time bezi, NTP server zapnuty, ohlasovani "spolehlivy zdroj" (AnnounceFlags 5),'
+Log '     UDP 123 nasloucha - jinak viz ScadaViewer 04_docs/deployment.md -> Cas PC - NTP server pro IPC.'
+Log '  5. Zalohy *.backup_* po overeni smazat.'

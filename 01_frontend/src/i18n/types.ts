@@ -427,4 +427,62 @@ export interface Translations {
     nasChipTitle: string
     nasHelp: string
   }
+  /** Nastavení → Čas / NTP (components/TimeServerTab.tsx) */
+  time: {
+    tab: string
+    sectionPc: string
+    sectionServer: string
+    sectionSource: string
+    sectionSet: string
+    pcTime: string
+    timeZone: string
+    deviceDiff: string
+    deviceDiffHint: string
+    service: string
+    svcRunning: string
+    svcStopped: string
+    svcNotInstalled: string
+    svcOther: string
+    startAuto: string
+    startManual: string
+    startDisabled: string
+    server: string
+    serverOn: string
+    serverOff: string
+    udp: string
+    udpOn: string
+    udpOff: string
+    announce: string
+    announceReliable: string
+    announceConditional: string
+    announceNever: string
+    addresses: string
+    addressesHint: string
+    source: string
+    synchronized: string
+    syncYes: string
+    syncNo: string
+    stratum: string
+    lastSync: string
+    configured: string
+    details: string
+    warnNoUpstream: string
+    warnNotSynced: string
+    warnUpstream: string
+    setLabel: string
+    setNow: string
+    setBtn: string
+    confirmTitle: string
+    confirmFrom: string
+    confirmTo: string
+    confirmDiff: string
+    confirmWarning: string
+    confirmAck: string
+    setSuccess: string
+    setError: string
+    errPrivilege: string
+    adminOnly: string
+    unsupported: string
+    loadError: string
+  }
 }

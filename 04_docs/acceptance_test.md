@@ -54,6 +54,7 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 | Mazání rozpracované zakázky (In progress) — jen jednotlivě | ❌ | ❌ | ✅ | ✅ | ❌ |
 | „Vyčistit synchronizované" | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Nastavení cest a limitu úložiště | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Nastavení času PC (Nastavení → Čas / NTP; přehled vidí všichni) | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Správa uživatelů | ❌ | ❌ | ✅ (jen nižší role) | ✅ | ❌ |
 | Změna vlastního hesla | ✅ | ✅ | ✅ | ✅ | ✅ |
 
@@ -76,6 +77,7 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 - [ ] XLSX: dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum
 - [ ] Testing detail: všech 5 záložek Signal Data, zoom kolečkem i dvěma prsty, dvojklik = reset, celá obrazovka
 - [ ] Tisk production i testing: zkontrolovat PDF (záhlaví, čísla stran, žádné prázdné stránky, všechny grafy)
+- [ ] Nastavení → Čas / NTP: služba Windows Time běží, NTP server zapnutý, UDP 123 naslouchá, ohlašování „spolehlivý zdroj" (AnnounceFlags 5), adresa PC v síti stroje; IPC po nastavení NTP serveru drží čas PC (porovnat hodiny IPC); admin u stroje nastaví čas (dialog s rozdílem a „Rozumím"), IPC ho převezmou; služba pod servisním účtem bez práva → hláška o secpol (ne pád)
 - [ ] Každá stránka: ikona „?" u nadpisu otevře nápovědu (k čemu stránka slouží, co na ní je) v CS i EN; Esc / × zavře; obsah odpovídá obrazovce
 - [ ] CS/EN přepnout na každé obrazovce, nesmí zůstat nepřeložený text
 - [ ] Světlý / tmavý režim: vše čitelné

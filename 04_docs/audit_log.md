@@ -78,6 +78,44 @@
 
 ---
 
+## [2026-10-20] Release 2.4.1 — ScadaViewer (Čas / NTP, parametry pohonu starších souborů)
+
+| Oblast | Popis |
+|---|---|
+| Verze | ScadaViewer **2.4.1**; Analyzing a DatabaseGateway beze změny od 2.4.0 (ZIPy 2.4.0) |
+| Obsah | Nastavení → Čas / NTP (záznam níže), převod starých názvů parametrů pohonu (záznam níže) |
+| Nasazovací skript | `$Version` 2.4.1, `$AppVersions` AN 2.4.0 / GW 2.4.0 / SV 2.4.1, v závěrečných krocích kontrola Čas / NTP; balíček `06_build/releases/deploy_v2.4.1/` se všemi třemi aktuálními verzemi |
+
+---
+
+## [2026-10-20] Nová funkce — Nastavení → Čas / NTP (čas PC jako NTP server pro IPC)
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | PC u stroje je lokální NTP server pro další IPC — v Nastavení přehled tohoto serveru a možnost nastavit čas |
+| Rozhodnutí uživatele | nastavení jen **ručně zadaným datem a časem**, jen **admin u stroje** (z kanceláře jen přehled) |
+| Backend | `services/time_service.py` (stav w32time ze SCM + registru + `w32tm /query`, štítky CS / EN; nastavení `SetSystemTime` + `SeSystemtimePrivilege`), `api/system_time.py` (`GET` každý přihlášený, `can_set`; `POST` `require_local` + admin; 409 bez práva účtu služby, 422 neplatný čas, 501 není Windows; WARNING log), modely `SystemTimeResponse`, `SetSystemTimeRequest` |
+| Frontend | `components/TimeServerTab.tsx` — nová záložka Nastavení (čas PC v pásmu PC, rozdíl vůči zařízení, služba / NTP server / UDP 123 / ohlašování / adresy, zdroj a synchronizace, detail `w32tm`, nastavení s dialogem a potvrzením rizika); i18n `time.*`; CSS `.time-tab__*`, `.settings-status__dot--warn` |
+| Varování v UI | bez nadřazeného zdroje (vlastní hodiny) · zdroj nastavený, ale nesynchronizováno · AnnounceFlags bez „spolehlivý zdroj" (IPC čas nepřevezmou) · PC synchronizované → ruční čas se přepíše |
+| Nápověda | Nastavení (CS + EN): nová položka „Čas / NTP" |
+| Dokumentace | `deployment.md` → Čas PC — NTP server pro IPC (zapnutí serveru, AnnounceFlags 5, firewall UDP 123, právo „Změna systémového času" pro servisní účet), `architecture.md` fáze 48, `acceptance_test.md`, `CLAUDE.md` |
+| Ověření | pytest 454 (`test_system_time.py` 16 — skutečný SetSystemTime se nevolá), Vitest 195 (`TimeServerTab.test.tsx` 9), tsc 0, lint 0; vizuálně Playwright + Chrome (světlý / tmavý, CS / EN, dialog bez potvrzení); na vývojovém PC jen čtení |
+| Vydání | ScadaViewer **2.4.1** (není v 2.4.0) |
+
+---
+
+## [2026-10-19] Oprava — Testovací parametry starších souborů pod současnými názvy (po vydání 2.4.0)
+
+| Oblast | Popis |
+|---|---|
+| Hlášení | Údaje zakázky → Testovací parametry ukazují Jerk_Up / Jerk_Down místo Acceleration / Deceleration / Jerk jako ve vzorovém souboru |
+| Příčina | soubor `PROD_lkhkj_Marquardt_20261013_130957_DONE.csv` zapsala Gateway 2.3.0 (13. 10.) — tehdy `Actuation_Speed;Acceleration;Jerk_Up;Jerk_Down` (Jerk_Up = Jerk_Down = `Drive.Jerk`, zpomalení se nečetlo); od 16. 10. `Velocity;Acceleration;Deceleration;Jerk`. ScadaViewer bral názvy z hlavičky |
+| Oprava | `csv_repository._modern_drive_params()` v `_order_info`: Actuation_Speed → Velocity, Jerk_Up / Jerk_Down (stejná hodnota) → Jerk, chybějící Deceleration = řádek bez hodnoty („—", nevymýšlí se); různé Jerk_Up / Jerk_Down zůstanou; nový formát beze změny |
+| Ověření | pytest 438 (`test_prod_blocks.test_drive_params_legacy_names`, upravený `test_order_info`); na skutečném souboru: Velocity 0.2 · Acceleration 0.8 · Deceleration — · Jerk 10 |
+| Vydání | ScadaViewer **2.4.1** (není v ZIPu 2.4.0) |
+
+---
+
 ## [2026-10-19] Release 2.4.0 — společné vydání Analyzing + DatabaseGateway + ScadaViewer
 
 | Oblast | Popis |

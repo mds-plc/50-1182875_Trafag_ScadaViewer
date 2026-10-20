@@ -126,7 +126,8 @@ def test_gateway_writer_file(gw_file) -> None:
     assert info["lots"] == ["LOT-A", "LOT-B", "LOT-C"]                  # pořadí výskytu, bez opakování
     tp = {p["key"]: (p["value"], p["unit"]) for p in info["testing_parameters"]}
     # Gateway od 2026-10-16: názvy jako v PLC (Velocity, Acceleration, Deceleration, Jerk); dřív
-    # Actuation_Speed / Jerk_Up / Jerk_Down — ScadaViewer bere názvy z hlavičky, obojí zobrazí
+    # Actuation_Speed / Jerk_Up / Jerk_Down — ScadaViewer starší soubory převede na současné názvy
+    # (csv_repository._modern_drive_params, test_prod_blocks.test_drive_params_legacy_names)
     assert tp == {"velocity": ("200", "mm/s"), "acceleration": ("1", "mm/s2"),
                   "deceleration": ("2", "mm/s2"), "jerk": ("3", "mm/s3"), "max_force": ("4000", "mN"),
                   "resistance_current": ("100", "mA"), "resistance_voltage": ("30", "V"),

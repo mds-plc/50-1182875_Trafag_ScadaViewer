@@ -18,7 +18,7 @@
 5. [Windows služba (NSSM)](#nssm--windows-service) + servisní účet
 6. [NAS](#nas--připojení-přes-firemní-síť)
 7. [Vzdálený přístup z kanceláře](#vzdálený-přístup-z-kanceláře)
-8. [Firewall](#firewall)
+8. [Firewall](#firewall) · [Čas PC — NTP server pro IPC](#čas-pc--ntp-server-pro-ipc)
 9. [HTTPS](#https-volitelné)
 10. [Checklist pro IT](#checklist-pro-it--co-zajistit-před-nasazením) · [Ověřovací checklist](#ověřovací-checklist-po-nasazení)
 11. [Provoz a správa](#provoz-a-správa) · [Řešení problémů](#řešení-problémů)
@@ -43,6 +43,17 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 > že síla je v mN (stovky až tisíce), odpor v mΩ a polohy kolem 7 000–9 300 µm.
 
 ---
+
+## Release 2.4.1 (2026-10-20) — ScadaViewer 2.4.1 (Analyzing a DatabaseGateway 2.4.0)
+
+Balíček `06_build/releases/deploy_v2.4.1/` (`deploy.bat`) — obsahuje **všechny tři aktuální verze**
+(Analyzing 2.4.0, DatabaseGateway 2.4.0, ScadaViewer 2.4.1); nasadit lze na stroj s 2.3.x i 2.4.0 — požadavky
+a kontroly jako u 2.4.0 níže (PLC DUT Testing, prázdná `wip`, cesty NAS Gateway).
+
+| Změna ScadaViewer 2.4.1 | Dopad |
+|---|---|
+| Nastavení → **Čas / NTP** — přehled NTP serveru PC pro IPC (služba Windows Time, NTP server, UDP 123, ohlašování, zdroj, synchronizace) + ruční nastavení času (jen admin u stroje) | po nasazení zkontrolovat, že NTP server je zapnutý a AnnounceFlags = 5 (oddíl [Čas PC — NTP server pro IPC](#čas-pc--ntp-server-pro-ipc)); servisní účet potřebuje právo „Změna systémového času" |
+| Testovací parametry starších souborů (Gateway 2.3.0) pod současnými názvy (Velocity, Acceleration, Deceleration „—", Jerk) | jen zobrazení |
 
 ## Release 2.4.0 (2026-10-19) — společné vydání všech tří aplikací
 
@@ -630,6 +641,35 @@ Po testu na PC: `Remove-NetIPAddress -InterfaceAlias "<karta>" -IPAddress 10.40.
 a `Set-NetIPInterface -InterfaceAlias "<karta>" -Dhcp Enabled`.
 
 S HTTPS přes reverzní proxy (viz níže) místo 8080 povolit 443.
+
+---
+
+## Čas PC — NTP server pro IPC
+
+PC u stroje slouží jako lokální NTP server (služba **Windows Time**) pro další IPC stroje. Stav ukazuje
+ScadaViewer → **Nastavení → Čas / NTP**; tam může **admin u stroje** čas PC i ručně nastavit
+(IPC ho převezmou, dostanou ho časové značky nových záznamů; skok dopředu > 8 h odhlásí uživatele).
+
+**Zapnutí NTP serveru (PowerShell jako správce, jednou):**
+```powershell
+# NTP server zapnout + ohlašovat jako SPOLEHLIVÝ zdroj (5) — bez nadřazeného zdroje by s výchozí
+# hodnotou 10 IPC čas nepřevzaly (PC samo není synchronizované)
+reg add HKLM\SYSTEM\CurrentControlSet\Services\W32Time\TimeProviders\NtpServer /v Enabled /t REG_DWORD /d 1 /f
+reg add HKLM\SYSTEM\CurrentControlSet\Services\W32Time\Config /v AnnounceFlags /t REG_DWORD /d 5 /f
+sc.exe config w32time start= auto
+Restart-Service w32time; w32tm /config /update
+# Firewall: NTP jen ze sítě stroje (rozsah upravit)
+New-NetFirewallRule -DisplayName "NTP server (sit stroje)" -Direction Inbound -Protocol UDP -LocalPort 123 `
+    -RemoteAddress 192.168.1.0/24 -Action Allow
+```
+Na IPC nastavit jako NTP server adresu PC v **síti stroje** (Nastavení → Čas / NTP → Adresy PC).
+Má-li PC nadřazený zdroj (firemní NTP / doména), `w32tm /config /manualpeerlist:"<server>" /syncfromflags:manual /update`
+— ručně nastavený čas se pak při další synchronizaci přepíše.
+
+**Právo služby na změnu času:** služba pod **LocalSystem** ho má. Pod servisním účtem (Krok N3) bez práv správce
+ho přidat: `secpol.msc` → Místní zásady → Přiřazení uživatelských práv → **Změna systémového času** → přidat účet
+(`.\svc_trafag`), pak restart služby ScadaViewer. Bez něj Nastavení → Čas / NTP hlásí „nemá právo měnit systémový čas"
+(HTTP 409); přehled funguje vždy.
 
 ---
 

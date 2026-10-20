@@ -165,6 +165,13 @@ result = await asyncio.wait_for(
   Jiné 401 (špatné heslo) hlavičku mít **nesmí**.
 - Ověření hesla s lockoutem: `_is_locked` / `_record_failure` / `_clear_failures` z `api/auth.py`
 
+## Zásahy do systému PC (čas / NTP) — pravidla
+
+- `services/time_service.py` + `api/system_time.py`: čtení stavu best effort (chyba = `None`, nikdy výjimka),
+  subprocess bez okna s timeoutem a OEM dekódováním, výstup `w32tm` je lokalizovaný → štítky CS i EN.
+- Změna systémového času jen `require_local` + `require_role("admin")`, vždy WARNING v logu; v testech NIKDY
+  skutečný `SetSystemTime` (atrapa `_set_system_time_utc`, vzor `test_system_time.py`).
+
 ## Mazání souborů — pravidla (nerozbíjet)
 
 - Jen lokální soubory a jen u stroje (`require_local`); NAS nikdy (403). Role technician+.

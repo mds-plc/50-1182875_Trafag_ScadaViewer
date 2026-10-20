@@ -318,6 +318,38 @@ def _split_unit(header: str) -> tuple[str, str]:
     return (m['name'].strip(), m['unit'].strip()) if m else (header.strip(), '')
 
 
+def _modern_drive_params(testing: list[dict]) -> list[dict]:
+    """Parametry pohonu ze souborů Gateway 2.3.0 (do 2026-10-15) pod současnými názvy jako v PLC.
+
+    Gateway 2.3.0 zapisovala `Actuation_Speed;Acceleration;Jerk_Up;Jerk_Down` — Jerk_Up a Jerk_Down byly
+    stejná hodnota (`Parameters.Drive.Jerk`), zpomalení (`Drive.Decceleration`) se nečetlo. Od 2.4.0
+    `Velocity;Acceleration;Deceleration;Jerk`. Starý soubor se zobrazí stejně jako nový: Actuation_Speed →
+    Velocity, Jerk_Up / Jerk_Down → Jerk, Deceleration bez hodnoty („—" — nevymýšlí se). Liší-li se
+    Jerk_Up a Jerk_Down (nemělo by nastat), zůstanou oba beze změny. Nový formát se nemění.
+    """
+    by_key = {p['key']: p for p in testing}
+    if 'actuation_speed' not in by_key and 'jerk_up' not in by_key:
+        return testing
+    up, down = by_key.get('jerk_up'), by_key.get('jerk_down')
+    merge_jerk = up is not None and down is not None and up['value'] == down['value'] and 'jerk' not in by_key
+    out: list[dict] = []
+    for p in testing:
+        k = p['key']
+        if k == 'actuation_speed' and 'velocity' not in by_key:
+            out.append({**p, 'key': 'velocity', 'name': 'Velocity'})
+        elif k == 'acceleration':
+            out.append(p)
+            if 'deceleration' not in by_key:
+                out.append({'key': 'deceleration', 'name': 'Deceleration', 'unit': p['unit'], 'value': None})
+        elif merge_jerk and k == 'jerk_up':
+            out.append({**p, 'key': 'jerk', 'name': 'Jerk'})
+        elif merge_jerk and k == 'jerk_down':
+            continue
+        else:
+            out.append(p)
+    return out
+
+
 def _order_info(blocks: dict[str, list[list[str]]]) -> dict:
     """Údaje zakázky z bloků blokového PROD_ souboru (Gateway 2.3.0+) pro detail zakázky.
 
@@ -340,6 +372,7 @@ def _order_info(blocks: dict[str, list[list[str]]]) -> dict:
     for i, h in enumerate(head):
         name, unit = _split_unit(h)
         testing.append({'key': _normalize_key(h), 'name': name, 'unit': unit, 'value': cell(vals, i)})
+    testing = _modern_drive_params(testing)
 
     head, vals = pair('sortingcategories')
     categories: dict | None = None
