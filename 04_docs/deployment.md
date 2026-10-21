@@ -64,6 +64,7 @@ Ověřeno na stanici 2026-10-21 (zakázka `ppjml`, 5 kusů: DF = OF − RF, FPR 
 | Diagram detailu kusu: polohy FP / RP / OP / TTP s hodnotami pod osou; Hystereze: hodnoty bodů v řádku nad grafem | čitelnost |
 | Podbarvení hodnot mimo limity: žlutě Trafag / MD mimo kategorie 1–4 (kat. 5), oranžově výrobce (kat. 6), oranžově se žlutým pruhem obojí | nové rozlišení |
 | Nastavení → Čas / NTP zjednodušeno (shrnutí + jeden důvod, detaily sbalené) | jen zobrazení |
+| `deploy.ps1`: složky aplikací `v<verze>_<datum>-<název>` přejmenuje na novou verzi (`v2.5.0_2026-10-21-…`) a přepíše odkazy — služba NSSM (ImagePath, AppDirectory, Application, parametry, logy), `Config.toml` všech aplikací, `sync_state.json` Gateway, zástupci / `.bat` v Po spuštění a na ploše; rollback vrátí; `-NoRename` vypne | naplánované úlohy se starou cestou skript jen nahlásí — upravit ručně |
 
 ## Release 2.4.1 (2026-10-20) — ScadaViewer 2.4.1 (Analyzing a DatabaseGateway 2.4.0)
 

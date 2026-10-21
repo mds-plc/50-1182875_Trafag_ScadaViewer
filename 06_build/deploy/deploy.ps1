@@ -18,6 +18,14 @@
 #   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
 #      nssm.exe a .bat skripty zustanou beze zmeny.
 #   5b. NSSM (od 2.4.0): AppDirectory bez koncoveho "\", DatabaseGateway AppRotateOnline 1 + AppStopMethodConsole 15000.
+#   5c. Prejmenovani slozek s verzi v nazvu (od 2.5.0, vypnout -NoRename): rodicovska slozka aplikace ve tvaru
+#      v<verze>_<RRRR-MM-DD>-<nazev> (napr. Desktop\v2.1.1_2026-09-28-AdsAnalyzer\ads_analyzer) se prejmenuje na
+#      v<nova verze>_$ReleaseDate-<nazev>. Prepisou se vsechny odkazy na starou cestu: ImagePath sluzby (nssm.exe),
+#      NSSM Application / AppDirectory / AppParameters / AppStdout / AppStderr, Config.toml vsech tri aplikaci
+#      (napr. local_path ScadaViewer do vystupu Gateway), zastupci (.lnk) a .bat / .cmd v Po spusteni a na plose;
+#      naplanovane ulohy se starou cestou jen nahlasi. Zaznam folder_rename.txt v zaloze -> rollback vrati nazev.
+#      Jine rozlozeni (spolecna slozka, nazev bez verze) se neprejmenuje. Selze-li prejmenovani (zamceny soubor),
+#      slozka zustane - nasazeni pokracuje.
 #   6. Spusti AdsAnalyzer -> DatabaseGateway -> ScadaViewer, po 20 s overi, ze vsechny bezi (chyba v configu =
 #      sluzba spadne), a /api/health (hlasena verze ScadaViewer = $Version).
 #
@@ -32,7 +40,9 @@
 #   _Position) - jinak Analyzing hlasi E6 a DatabaseGateway Op1 PlcSymbolError. Nova datova hlavicka CSV (35 sloupcu)
 #   -> rozpracovana zakazka (production\wip) musi byt pred nasazenim uzavrena (kontrola nize zastavi nasazeni).
 
-param([switch]$Rollback, [string]$Version = '2.5.0')
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.5.0')
+
+$ReleaseDate = '2026-10-21'   # datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c
 
 $AppVersions = @{ AdsAnalyzer = '2.5.0'; DatabaseGateway = '2.5.0'; ScadaViewer = '2.5.0' }
 $PlcNote     = 'Bezi na PLC NOVY program (2.5.0)? AnalyzedParams 104 B: Force.DF_DifferentialForce + Position.FPR_FreePositionReturn; MeasuredRecord.Info.Calibration.PositionReference (C, napr. 9400); ST_APP_Recipe_Sorting_Limits_Force.DF_DifferentialForce a _Position.FPR_FreePositionReturn (Limits i Limits_Supplier). Se starym programem Analyzing hlasi E6 a DatabaseGateway zakazku nezalozi.'
@@ -133,6 +143,114 @@ function Check-Health([int]$port) {
     return $null
 }
 
+# --- Prejmenovani slozek s verzi (krok 5c) --------------------------------------------------
+$VersionedFolder = '^v\d+(\.\d+){1,3}_\d{4}-\d{2}-\d{2}-(?<name>.+)$'
+
+# Vsechny zapisy cesty: C:\a\b, C:/a/b a TOML escapovane C:\\a\\b (bez ohledu na velikost pismen)
+function Replace-PathText([string]$text, [string]$old, [string]$new) {
+    if (-not $text) { return $text }
+    $variants = New-Object System.Collections.ArrayList
+    [void]$variants.Add(@{ From = $old;                   To = $new })
+    [void]$variants.Add(@{ From = $old.Replace('\', '/');  To = $new.Replace('\', '/') })
+    [void]$variants.Add(@{ From = $old.Replace('\', '\\'); To = $new.Replace('\', '\\') })
+    foreach ($v in $variants) {
+        $text = [regex]::Replace($text, [regex]::Escape($v.From), $v.To.Replace('$', '$$'), 'IgnoreCase')
+    }
+    return $text
+}
+
+function Get-NssmParam([string]$nssm, [string]$service, [string]$param) {
+    return ((& $nssm get $service $param 2>$null) -join '' -replace "`0", '').Trim()
+}
+
+# Prejmenuje rodicovskou slozku aplikace $from -> $to a prepise odkazy sluzby (ImagePath + NSSM parametry).
+# Sluzba musi byt zastavena. Vraci $true / $false (chyba = slozka zustane, nic se neprepise).
+function Move-AppParent($app, [string]$from, [string]$to) {
+    $svcKey   = "HKLM:\SYSTEM\CurrentControlSet\Services\$($app.Service)"
+    $image    = (Get-ItemProperty -LiteralPath $svcKey -Name ImagePath).ImagePath
+    $params   = @{}
+    foreach ($n in 'Application', 'AppDirectory', 'AppParameters', 'AppStdout', 'AppStderr') {
+        $params[$n] = Get-NssmParam $app.Nssm $app.Service $n
+    }
+    try { Rename-Item -LiteralPath $from -NewName (Split-Path -Leaf $to) -ErrorAction Stop }
+    catch {
+        Log "[VAROVANI] $($app.Service): slozku $from nelze prejmenovat ($($_.Exception.Message)) - zustava, nasazeni pokracuje." 'Yellow'
+        return $false
+    }
+    $newImage = Replace-PathText $image $from $to
+    if ($newImage -ne $image) { Set-ItemProperty -LiteralPath $svcKey -Name ImagePath -Value $newImage }
+    $app.Nssm = Replace-PathText $app.Nssm $from $to
+    foreach ($n in $params.Keys) {
+        $nv = Replace-PathText $params[$n] $from $to
+        if ($params[$n] -and $nv -ne $params[$n]) { & $app.Nssm set $app.Service $n $nv | Out-Null }
+    }
+    $app.Dir = Replace-PathText $app.Dir $from $to
+    Log "  $($app.Service): slozka prejmenovana -> $to (sluzba NSSM prepsana)" 'Green'
+    return $true
+}
+
+# Odkazy mimo sluzbu: Config.toml vsech aplikaci, zastupci a skripty v Po spusteni / na plose, naplanovane ulohy
+function Update-PathReferences($pairs) {
+    if ($pairs.Count -eq 0) { return }
+    foreach ($app in $Apps) {
+        $cfg = Join-Path $app.Dir 'Config.toml'
+        if (-not (Test-Path -LiteralPath $cfg)) { continue }
+        $text = [IO.File]::ReadAllText($cfg)
+        $new  = $text
+        foreach ($p in $pairs) { $new = Replace-PathText $new $p.From $p.To }
+        if ($new -ne $text) {
+            [IO.File]::WriteAllText($cfg, $new, (New-Object Text.UTF8Encoding $false))
+            Log "  $($app.Service): cesty v Config.toml prepsany (zaloha v *.backup_$Stamp)" 'Green'
+        }
+    }
+    # DatabaseGateway sync_state.json (+ .bak) uklada ABSOLUTNI cesty souboru (local_path) - vychozi
+    # local_base_dir = 03_output lezi ve slozce Gateway -> bez prepsani by se nedosynchronizovane soubory nenasly
+    $gwApp  = $Apps | Where-Object { $_.Service -eq 'DatabaseGateway' } | Select-Object -First 1
+    $gwBase = Get-TomlValue (Join-Path $gwApp.Dir 'Config.toml') 'storage' 'local_base_dir'
+    if (-not $gwBase) { $gwBase = '03_output' }
+    if (-not [IO.Path]::IsPathRooted($gwBase)) { $gwBase = Join-Path $gwApp.Dir $gwBase }
+    foreach ($name in 'sync_state.json', 'sync_state.json.bak') {
+        $f = Join-Path $gwBase $name
+        if (-not (Test-Path -LiteralPath $f)) { continue }
+        $text = [IO.File]::ReadAllText($f); $new = $text
+        foreach ($p in $pairs) { $new = Replace-PathText $new $p.From $p.To }
+        if ($new -ne $text) { [IO.File]::WriteAllText($f, $new, (New-Object Text.UTF8Encoding $false)); Log "  DatabaseGateway: cesty v $name prepsany" 'Green' }
+    }
+    $shell = New-Object -ComObject WScript.Shell
+    $dirs  = @('CommonStartup', 'Startup', 'CommonDesktopDirectory', 'Desktop') |
+             ForEach-Object { [Environment]::GetFolderPath($_) } | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    foreach ($d in $dirs) {
+        foreach ($f in Get-ChildItem -LiteralPath $d -File -ErrorAction SilentlyContinue) {
+            if ($f.Extension -eq '.lnk') {
+                $lnk = $shell.CreateShortcut($f.FullName); $changed = $false
+                foreach ($p in $pairs) {
+                    foreach ($prop in 'TargetPath', 'WorkingDirectory', 'Arguments', 'IconLocation') {
+                        $v = $lnk.$prop; $nv = Replace-PathText $v $p.From $p.To
+                        if ($v -and $nv -ne $v) { $lnk.$prop = $nv; $changed = $true }
+                    }
+                }
+                if ($changed) { $lnk.Save(); Log "  zastupce upraven: $($f.FullName)" 'Green' }
+            } elseif ($f.Extension -in '.bat', '.cmd') {
+                $text = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::Default); $new = $text
+                foreach ($p in $pairs) { $new = Replace-PathText $new $p.From $p.To }
+                if ($new -ne $text) { [IO.File]::WriteAllText($f.FullName, $new, [Text.Encoding]::Default); Log "  skript upraven: $($f.FullName)" 'Green' }
+            }
+        }
+    }
+    try {
+        foreach ($t in Get-ScheduledTask -ErrorAction Stop) {
+            foreach ($a in $t.Actions) {
+                $s = "$($a.Execute) $($a.Arguments) $($a.WorkingDirectory)"
+                foreach ($p in $pairs) {
+                    if ($s.IndexOf($p.From, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                        Log "[VAROVANI] Naplanovana uloha '$($t.TaskPath)$($t.TaskName)' odkazuje na $($p.From) - upravte ji rucne (Planovac uloh)." 'Yellow'
+                    }
+                }
+            }
+        }
+    } catch { Log '[INFO] Naplanovane ulohy nelze projit - zkontrolujte rucne.' 'Gray' }
+}
+
 # ---------------------------------------------------------------------------------------------
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { Fail 'Spustte jako spravce (deploy.bat to zaridi sam).' }
@@ -172,6 +290,17 @@ if ($Rollback) {
         Copy-Item -LiteralPath (Join-Path $app.Backup $app.Exe)    -Destination $app.Dir -Force
         Log "  $($app.Service) obnoven (Config.toml beze zmeny - zaloha je v $($app.Backup))" 'Green'
     }
+    # Nasazeni prejmenovalo slozky (folder_rename.txt v zaloze) -> vratit puvodni nazev a odkazy
+    $back = New-Object System.Collections.ArrayList
+    foreach ($app in $Apps) {
+        $rec = Join-Path $app.Backup 'folder_rename.txt'
+        if (-not (Test-Path -LiteralPath $rec)) { continue }
+        $l = @(Get-Content -LiteralPath $rec -Encoding UTF8)
+        if ($l.Count -ge 2 -and (Split-Path $app.Dir) -eq $l[1] -and -not (Test-Path -LiteralPath $l[0])) {
+            if (Move-AppParent $app $l[1] $l[0]) { [void]$back.Add(@{ From = $l[1]; To = $l[0] }) }
+        }
+    }
+    Update-PathReferences $back
     Start-Apps
     Check-Health $port | Out-Null
     Log '=== Rollback hotov ===' 'Cyan'
@@ -236,11 +365,30 @@ if ($local) {
     if ($dl.Count -gt 0) { Log "[INFO] done_local: $($dl.Count) soubor(u) jeste neni na NAS - po startu Gateway se dosynchronizuji." 'Yellow' }
 } else { Log '[VAROVANI] [data] local_path v Config.toml ScadaViewer nenalezen - kontrola wip preskocena.' 'Yellow' }
 
+# Plan prejmenovani slozek (krok 5c) - kontrola pred zastavenim sluzeb
+$Renames = New-Object System.Collections.ArrayList
+if (-not $NoRename) {
+    $parents = @($Apps | ForEach-Object { Split-Path $_.Dir })
+    foreach ($app in $Apps) {
+        $parent = Split-Path $app.Dir
+        $leaf   = Split-Path -Leaf $parent
+        if ($leaf -notmatch $VersionedFolder) { Log "Slozka $parent nema nazev v<verze>_<datum>-<nazev> - neprejmenuje se." 'Gray'; continue }
+        if (@($parents | Where-Object { $_ -eq $parent }).Count -gt 1) { Log "[INFO] $parent sdili vic aplikaci - neprejmenuje se." 'Yellow'; continue }
+        $target = Join-Path (Split-Path $parent) ("v{0}_{1}-{2}" -f $AppVersions[$app.Service], $ReleaseDate, $Matches['name'])
+        if ($target -eq $parent) { Log "$($app.Service): slozka uz ma spravny nazev" 'Gray'; continue }
+        if (Test-Path -LiteralPath $target) { Fail "$($app.Service): cilova slozka $target uz existuje - prejmenujte / smazte ji, nebo spustte s -NoRename." }
+        $app.RenameTo = $target
+        [void]$Renames.Add($app)
+        Log ("Prejmenuje se: {0}  ->  {1}" -f $parent, (Split-Path -Leaf $target)) 'Cyan'
+    }
+}
+
 if ($PlcNote) {
     Log "[PLC] $PlcNote" 'Yellow'
     if (-not (Ask 'PLC program je pripraveny?')) { Log 'Zruseno - nejdriv nahrat program do PLC.'; exit 1 }
 }
-if (-not (Ask "Zastavit sluzby a nasadit v$Version (Analyzing $($AppVersions.AdsAnalyzer), Gateway $($AppVersions.DatabaseGateway), ScadaViewer $($AppVersions.ScadaViewer))?")) { Log 'Zruseno.'; exit 1 }
+$renameText = if ($Renames.Count -gt 0) { " a prejmenovat $($Renames.Count) slozk(y)" } else { '' }
+if (-not (Ask "Zastavit sluzby a nasadit v$Version (Analyzing $($AppVersions.AdsAnalyzer), Gateway $($AppVersions.DatabaseGateway), ScadaViewer $($AppVersions.ScadaViewer))$renameText?")) { Log 'Zruseno.'; exit 1 }
 
 # 3. Rozbaleni do docasne slozky (pred zastavenim - kratsi odstavka)
 $tmp = Join-Path $Here "_unpack_$Stamp"
@@ -259,6 +407,7 @@ Stop-Apps
 foreach ($app in $Apps) {
     $backup = "$($app.Dir).backup_$Stamp"
     New-Item -ItemType Directory -Path $backup | Out-Null
+    $app.Backup = $backup
     Move-Item -LiteralPath (Join-Path $app.Dir '_internal') -Destination $backup
     Move-Item -LiteralPath (Join-Path $app.Dir $app.Exe)    -Destination $backup
     foreach ($f in 'Config.toml', 'users.toml') {
@@ -289,6 +438,19 @@ $gw = $Apps[1]
 & $gw.Nssm set $gw.Service AppRotateOnline 1 | Out-Null
 & $gw.Nssm set $gw.Service AppStopMethodConsole 15000 | Out-Null
 Log '  DatabaseGateway: NSSM AppRotateOnline 1, AppStopMethodConsole 15000' 'Green'
+
+# 5c. Prejmenovani slozek s verzi + prepsani odkazu (sluzby jsou zastavene)
+$done = New-Object System.Collections.ArrayList
+foreach ($app in $Renames) {
+    $from = Split-Path $app.Dir
+    # zaznam pro rollback - zaloha lezi v rodicovske slozce, presune se s ni
+    [IO.File]::WriteAllLines((Join-Path $app.Backup 'folder_rename.txt'), [string[]]@($from, $app.RenameTo))
+    if (Move-AppParent $app $from $app.RenameTo) {
+        [void]$done.Add(@{ From = $from; To = $app.RenameTo })
+        $app.Backup = Replace-PathText $app.Backup $from $app.RenameTo
+    }
+}
+Update-PathReferences $done
 
 # 6. Spustit + overit
 Start-Apps
