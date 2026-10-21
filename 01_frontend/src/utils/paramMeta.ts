@@ -26,6 +26,7 @@ export const PARAM_LABELS: Record<string, string> = {
   of_operatingforce:           'OF',
   rf_realisingforce:           'RF',
   ttf_totaltravelforce:        'TTF',
+  df_differentialforce:        'DF',
   // Distances
   pt_pretravel:                'PT',
   ot_overtravel:               'OvT',
@@ -36,6 +37,7 @@ export const PARAM_LABELS: Record<string, string> = {
   op_operatingposition:        'OP',
   rp_realeasingposition:       'RP',
   ttp_totaltravelposition:     'TTP',
+  fpr_freepositionreturn:      'FPR',
   // Times
   ut_unstabletime:             'UT',
   rt_reversetime:              'RevT',
@@ -73,6 +75,7 @@ export const PARAM_LABELS: Record<string, string> = {
   // Measured info
   measuretime:                 'MeasT',
   meas_ts:                     'MeasTS',
+  positionreference:           'C',
 }
 
 /**
@@ -88,9 +91,10 @@ export const PARAM_LABELS: Record<string, string> = {
  */
 export const PARAM_GROUPS: { id: string; label: string; unit: string; color: string; keys: string[] }[] = [
   { id: 'forces',    label: 'Forces',    unit: 'mN',  color: '#d97706',
-    keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] },
+    keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce', 'df_differentialforce'] },
   { id: 'positions', label: 'Positions', unit: 'µm',  color: '#2563eb',
-    keys: ['fp_freeposition', 'op_operatingposition', 'rp_realeasingposition', 'ttp_totaltravelposition'] },
+    keys: ['fp_freeposition', 'op_operatingposition', 'rp_realeasingposition', 'ttp_totaltravelposition',
+      'fpr_freepositionreturn'] },
   { id: 'travel',    label: 'Travel',    unit: 'µm',  color: '#0891b2',
     keys: ['pt_pretravel', 'ot_overtravel', 'rt_realisingtravel', 'md_movementdifferential', 'tt_totaltravel'] },
   { id: 'times',     label: 'Times',     unit: 'µs',  color: '#059669',
@@ -103,6 +107,10 @@ export const PARAM_GROUPS: { id: string; label: string; unit: string; color: str
       'r_no_releasingposition_neg', 'r_no_releasingposition_pos',
     ] },
 ]
+
+/** Parametry přidané v Analyzing 2.4.0 / DatabaseGateway (2026-10-21) — starší soubory sloupec
+ *  nemají vůbec → tabulky parametrů je u nich vynechají (ne řádek „—"). */
+export const NEWER_PARAM_KEYS: ReadonlySet<string> = new Set(['df_differentialforce', 'fpr_freepositionreturn'])
 
 /** Skupiny vstupních parametrů pro Testing detail (TestingParameters + MeasuredInfo). */
 export const TESTING_INPUT_GROUPS: { id: string; label: string; unit: string; color: string; keys: string[] }[] = [
@@ -161,7 +169,7 @@ export function testingNokState(rec: Record<string, unknown>): {
 }
 
 /** MeasuredInfo sekce — klíče z [MeasuredInfo] bloku CSV. */
-export const MEASUREDINFO_KEYS = ['measuretime', 'meas_ts']
+export const MEASUREDINFO_KEYS = ['measuretime', 'meas_ts', 'positionreference']
 
 /** MeasuredInfo jako skupina pro sdílenou ParamTable (Testing detail). */
 export const MEASUREDINFO_GROUPS: { id: string; label: string; unit: string; color: string; keys: string[] }[] = [
@@ -179,6 +187,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   of_operatingforce:           'Operating Force [mN]',
   rf_realisingforce:           'Releasing Force [mN]',
   ttf_totaltravelforce:        'Total Travel Force [mN]',
+  df_differentialforce:        'Differential Force [mN] (OF − RF)',
   // Distances — dráha mezi body (platí v souřadnicích zákazníka i na stupnici enkodéru starších
   // souborů); vzorec se znaménkem v nápovědě PARAM_DESC
   pt_pretravel:                'Pre-travel [µm] (FP → OP)',
@@ -190,6 +199,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   op_operatingposition:        'Operating Position [µm]',
   rp_realeasingposition:       'Releasing Position [µm]',
   ttp_totaltravelposition:     'Total Travel Position [µm]',
+  fpr_freepositionreturn:      'Free Position Return [µm]',
   // Times
   ut_unstabletime:             'Unstable Time [µs]',
   rt_reversetime:              'Reverse Time [µs]',
@@ -227,6 +237,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   // Measured info
   measuretime:                 'Measurement Duration [s]',
   meas_ts:                     'Measurement Timestamp — PLC clock [unix s]',
+  positionreference:           'Position Reference C [µm] (P = C − x)',
 }
 
 // ── Formátování hodnot — jediný zdroj pro všechny pohledy ────────────────────
@@ -262,6 +273,7 @@ const EXTRA_FORMAT: Record<string, { unit: string; decimals: number }> = {
   limits_distancemax:       { unit: 'mm',    decimals: 3 },
   limits_forcemax:          { unit: 'mN',    decimals: 0 },   // backend převádí [N] → mN
   measuretime:              { unit: 's',     decimals: 1 },
+  positionreference:        { unit: 'µm',    decimals: 1 },   // konstanta C (Gateway od 2026-10-21)
 }
 
 /** Zobrazovací jednotka parametru ('' pro ne-parametry). */
@@ -387,6 +399,8 @@ export const PARAM_DESC: Record<string, string> = {
     'Síla [mN] při uvolnění kontaktu na zpáteční cestě (RP). Spolu s OF definuje silovou hysterezi.',
   ttf_totaltravelforce:
     'Maximální síla [mN] na konci zdvihu (TTP). Nesmí překročit povolenou mez pro daný typ.',
+  df_differentialforce:
+    'Silový diferenciál [mN] — rozdíl síly sepnutí a síly uvolnění (DF = OF − RF), silová hystereze spínače. Starší soubory tento parametr nemají.',
   fp_freeposition:
     'Klidová poloha hmatníku [µm] bez vnější síly — výška nad osou upevňovacích otvorů (jako kóty výkresu; při stlačení klesá). Starší soubory: dráha vozíku od klidové polohy.',
   op_operatingposition:
@@ -395,6 +409,8 @@ export const PARAM_DESC: Record<string, string> = {
     'Poloha [µm] bodu uvolnění kontaktu na zpáteční cestě — výška nad osou upevňovacích otvorů. MD = RP − OP. Starší soubory: stupnice enkodéru (při stlačení roste).',
   ttp_totaltravelposition:
     'Poloha [µm] konce zdvihu — nejhlubší bod stlačení při měření (výška nad osou upevňovacích otvorů). TT = FP − TTP. Starší soubory: stupnice enkodéru (při stlačení roste).',
+  fpr_freepositionreturn:
+    'Volná poloha po návratu [µm] — kde při zpětném chodu síla trvale klesne zpět na nulu (zrcadlo FP, výška nad osou upevňovacích otvorů). U dobrého kusu leží blízko FP. Starší soubory tento parametr nemají.',
   pt_pretravel:
     'Předzdvih [µm] — dráha od FP do OP (PT = FP − OP). Musí být dostatečná pro spolehlivé sepnutí.',
   ot_overtravel:
@@ -458,6 +474,8 @@ export const PARAM_DESC: Record<string, string> = {
     'Celková doba měření [s] — délka záznamu signálu (dopředný i zpětný chod).',
   meas_ts:
     'Čas měření podle hodin PLC (unixový čas) — zobrazen jako datum a čas. Hodiny PLC zatím nejsou synchronizované, čas se může lišit o hodiny až dny; spolehlivý čas testu je v záhlaví (čas uložení z PC).',
+  positionreference:
+    'Kalibrační konstanta C [µm] z PLC — polohy zákazníka se počítají jako P = C − x (x = dráha pohonu). Závisí na startovní poloze pohonu a hrotu. Starší soubory ji nemají (C se pak dopočítá z TTP).',
 }
 
 /** Anglický popis parametru — stejné klíče jako PARAM_DESC (nápověda „?" v režimu EN). */
@@ -468,6 +486,8 @@ export const PARAM_DESC_EN: Record<string, string> = {
     'Force [mN] at which the contact releases on the return stroke (RP). Together with OF it defines the force hysteresis.',
   ttf_totaltravelforce:
     'Maximum force [mN] at the end of travel (TTP). Must not exceed the permitted limit for the switch type.',
+  df_differentialforce:
+    'Differential force [mN] — difference between the operating and the releasing force (DF = OF − RF), the force hysteresis of the switch. Older files do not contain this parameter.',
   fp_freeposition:
     'Rest position of the actuator [µm] without external force — height above the mounting-hole axis (as in the drawing; decreases when actuated). Older files: carriage travel from its rest position.',
   op_operatingposition:
@@ -476,6 +496,8 @@ export const PARAM_DESC_EN: Record<string, string> = {
     'Position [µm] where the contact releases on the return stroke — height above the mounting-hole axis. MD = RP − OP. Older files: encoder scale (increases when actuated).',
   ttp_totaltravelposition:
     'Position [µm] at the end of travel — the deepest point of actuation (height above the mounting-hole axis). TT = FP − TTP. Older files: encoder scale (increases when actuated).',
+  fpr_freepositionreturn:
+    'Free position return [µm] — where the force drops back to zero for good on the return stroke (mirror of FP, height above the mounting-hole axis). For a good piece it lies close to FP. Older files do not contain this parameter.',
   pt_pretravel:
     'Pre-travel [µm] — distance from FP to OP (PT = FP − OP). Must be sufficient for reliable switching.',
   ot_overtravel:
@@ -538,6 +560,8 @@ export const PARAM_DESC_EN: Record<string, string> = {
     'Total measurement time [s] — length of the signal record (forward and return stroke).',
   meas_ts:
     'Measurement time from the PLC clock (Unix time) — shown as date and time. The PLC clock is not synchronised yet and may differ by hours or days; the reliable test time is in the header (saved by the PC).',
+  positionreference:
+    'Calibration constant C [µm] from the PLC — customer positions are calculated as P = C − x (x = drive travel). Depends on the start position of the drive and on the tip. Older files do not contain it (C is then derived from TTP).',
 }
 
 /** Nápověda parametru v jazyce UI; chybí-li anglická verze, vrátí českou. */

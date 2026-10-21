@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import {
   formatParam, hasMeasuredValue, paramUnit, positionScaleOf, ALL_PARAM_KEYS, PARAM_GROUPS,
   PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS, testingNokState, recordOkState,
+  PARAM_DESC_EN, PARAM_LABELS, MEASUREDINFO_KEYS,
 } from '../utils/paramMeta'
 import { CATEGORY_COLORS, categoryColor, categoryTextColor } from '../utils/groupColors'
 
@@ -177,5 +178,28 @@ describe('recordOkState — stejné pravidlo jako backend _record_matches (audit
     expect(recordOkState({ sortingcategory: '7', status: '2' })).toBe('ok')
     expect(recordOkState({ sortingcategory: '0', status: '5' })).toBe('nok')
     expect(recordOkState({ status: '3' })).toBeNull()
+  })
+})
+
+describe('DF, FPR, konstanta C (2026-10-21)', () => {
+  it('DF na konci Forces, FPR na konci Positions; formát a nápověda CS + EN', () => {
+    expect(PARAM_GROUPS.find(g => g.id === 'forces')!.keys.slice(-1)[0]).toBe('df_differentialforce')
+    expect(PARAM_GROUPS.find(g => g.id === 'positions')!.keys.slice(-1)[0]).toBe('fpr_freepositionreturn')
+    expect(formatParam('df_differentialforce', '242.4').text).toBe('242')
+    expect(paramUnit('df_differentialforce')).toBe('mN')
+    expect(formatParam('fpr_freepositionreturn', '9061.54').text).toBe('9061.5')
+    expect(formatParam('fpr_freepositionreturn', '0').text).toBe('—')   // 0 = neurčeno
+    for (const k of ['df_differentialforce', 'fpr_freepositionreturn', 'positionreference']) {
+      expect(PARAM_LABELS[k], k).toBeTruthy()
+      expect(PARAM_DESC[k], k).toBeTruthy()
+      expect(PARAM_DESC_EN[k], k).toBeTruthy()
+    }
+  })
+
+  it('C v sekci Měření (Testing) v µm', () => {
+    expect(MEASUREDINFO_KEYS).toContain('positionreference')
+    expect(formatParam('positionreference', '9400').text).toBe('9400.0')
+    expect(paramUnit('positionreference')).toBe('µm')
+    expect(ALL_PARAM_KEYS).not.toContain('positionreference')          // není měřený parametr kusu
   })
 })

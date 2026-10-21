@@ -6,7 +6,8 @@
  *   columnLabels    — zkratky záhlaví (klik/tap zobrazí tooltip s popisem)
  *   columnTooltips  — anglický popis pro tooltip záhlaví
  *   cellRenderer    — vlastní render buňky; null/undefined = výchozí String(value)
- *   fixedColumns    — sloupce vlevo zůstanou při horizontálním scrollu (position: sticky)
+ *   cellClassName   — doplňková třída buňky (např. podbarvení hodnoty mimo limity — utils/limits.ts)
+ *   fixedColumns   — sloupce vlevo zůstanou při horizontálním scrollu (position: sticky)
  *                     Šířky pevných sloupců musí odpovídat CSS proměnným v components.css.
  *
  *   Výkon: komponenta je `memo` — rodič musí předávat stabilní props (useMemo / useCallback),
@@ -30,12 +31,13 @@ interface Props {
   /** Jednotka zobrazená pod popiskem sloupce (např. key → 'µm') */
   columnUnits?:    (col: string) => string
   cellRenderer?:   (col: string, value: unknown, row: Record<string, unknown>) => ReactNode
+  cellClassName?:  (col: string, value: unknown, row: Record<string, unknown>) => string | undefined
   fixedColumns?:   string[]
 }
 
 function DataTable({
   columns, rows, onRowClick,
-  columnLabels, columnTooltips, columnUnits, cellRenderer, fixedColumns,
+  columnLabels, columnTooltips, columnUnits, cellRenderer, cellClassName, fixedColumns,
 }: Props) {
   const [tooltipCol, setTooltipCol] = useState<string | null>(null)
 
@@ -101,11 +103,12 @@ function DataTable({
               const custom  = cellRenderer?.(c, val, row)
               const fi      = fixedColumns ? fixedColumns.indexOf(c) : -1
               const isFixed = fi >= 0
+              const extra   = cellClassName?.(c, val, row)
               return (
                 <td
                   key={c}
                   data-fixed-index={isFixed ? String(fi) : undefined}
-                  className={`data-table__td${isFixed ? ' data-table__td--fixed' : ''}`}
+                  className={`data-table__td${isFixed ? ' data-table__td--fixed' : ''}${extra ? ` ${extra}` : ''}`}
                 >
                   {custom != null ? custom : String(val)}
                 </td>

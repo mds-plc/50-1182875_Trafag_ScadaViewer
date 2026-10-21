@@ -22,8 +22,9 @@ export interface DiagramProps {
 
 /** Který diagram parametr vysvětluje — klíče mimo mapu (vstupy testu, měření) graf nemají. */
 export const PARAM_DIAGRAM: Readonly<Record<string, 'force' | 'time'>> = {
-  of_operatingforce: 'force', rf_realisingforce: 'force', ttf_totaltravelforce: 'force',
+  of_operatingforce: 'force', rf_realisingforce: 'force', ttf_totaltravelforce: 'force', df_differentialforce: 'force',
   fp_freeposition: 'force', op_operatingposition: 'force', rp_realeasingposition: 'force', ttp_totaltravelposition: 'force',
+  fpr_freepositionreturn: 'force',
   pt_pretravel: 'force', ot_overtravel: 'force', rt_realisingtravel: 'force', md_movementdifferential: 'force', tt_totaltravel: 'force',
   r_nc_operatingposition_neg: 'force', r_nc_operatingposition_pos: 'force',
   r_no_operatingposition_neg: 'force', r_no_operatingposition_pos: 'force',
@@ -42,6 +43,8 @@ const RELATED: Readonly<Record<string, readonly string[]>> = {
   of_operatingforce:       ['op_operatingposition'],
   rf_realisingforce:       ['rp_realeasingposition'],
   ttf_totaltravelforce:    ['ttp_totaltravelposition'],
+  df_differentialforce:    ['of_operatingforce', 'rf_realisingforce', 'op_operatingposition'],   // DF = OF − RF
+  fpr_freepositionreturn:  ['fp_freeposition', 'rp_realeasingposition'],                  // zpětný chod za RP, ≈ FP
   r_nc_operatingposition_neg: ['op_operatingposition'], r_nc_operatingposition_pos: ['op_operatingposition'],
   r_no_operatingposition_neg: ['op_operatingposition'], r_no_operatingposition_pos: ['op_operatingposition'],
   r_nc_releasingposition_neg: ['rp_realeasingposition'], r_nc_releasingposition_pos: ['rp_realeasingposition'],
@@ -125,6 +128,12 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
   const C_DASH   = '#e2e8f0'
   const C_RES    = '#7c3aed'
   const AS = 7
+  // DF / FPR jen u souborů, které je mají (Analyzing 2.4.0+), nebo v grafické nápovědě parametru
+  const hasDF  = 'df_differentialforce' in record || highlight === 'df_differentialforce'
+  const hasFPR = 'fpr_freepositionreturn' in record || highlight === 'fpr_freepositionreturn'
+  // FPR = kde síla na zpětné větvi RP → FP klesne do šumu — schematicky těsně před FP
+  const FPR_x = FP_x + 24
+  const y_FPR = Math.round(y_zero - s * (FPR_x - FP_x))
 
   const POS = [
     { x: FP_x,  l: 'FP',  k: 'fp_freeposition' },
@@ -252,14 +261,22 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
         opacity={h.op('rp_realeasingposition')} />
       <circle cx={RP_x}  cy={y_RP_upper}  r={h.on('rp_realeasingposition') ? 8 : 5} fill="white" stroke={C_RET} strokeWidth={2}
         opacity={h.op('rp_realeasingposition')} />
+      {hasFPR && (
+        <g opacity={h.op('fpr_freepositionreturn')}>
+          <circle cx={FPR_x} cy={y_FPR} r={h.on('fpr_freepositionreturn') ? 7 : 4} fill="white" stroke={C_TRAVEL} strokeWidth={2} />
+          <PointLabel x={FPR_x} y={y_FPR} label={lbl('fpr_freepositionreturn', 'FPR')}
+            value={val('fpr_freepositionreturn')} dx={14} dy={-24} color={C_TRAVEL} />
+        </g>
+      )}
 
       {/* ── Kóty bodů — štítky přímo na křivce ── */}
-      <PointLabel x={FP_x} y={y_zero} label="FP" dx={8} dy={-14} color={C_FWD} opacity={h.op('fp_freeposition')} />
-      <PointLabel x={OP_x} y={y_OF}  label="OP / OF" value={val('of_operatingforce')}
+      {/* vlevo od bodu — vpravo nad FP leží bod FPR (zpětná větev) */}
+      <PointLabel x={FP_x} y={y_zero} label="FP" dx={-42} dy={-14} color={C_FWD} opacity={h.op('fp_freeposition')} />
+      <PointLabel x={OP_x} y={y_OF}  label="OF" value={val('of_operatingforce')}
         dx={10} dy={-6} color={C_FORCE} opacity={h.op('op_operatingposition', 'of_operatingforce')} />
       <PointLabel x={OP_x} y={y_RF}  label="RF" value={val('rf_realisingforce')}
         dx={10} dy={8} color={C_FORCE} opacity={h.op('rf_realisingforce')} />
-      <PointLabel x={TTP_x} y={y_TTF} label="TTP / TTF" value={val('ttf_totaltravelforce')}
+      <PointLabel x={TTP_x} y={y_TTF} label="TTF" value={val('ttf_totaltravelforce')}
         dx={8} dy={-6} color={C_FORCE} opacity={h.op('ttp_totaltravelposition', 'ttf_totaltravelforce')} />
       <g opacity={h.op('rp_realeasingposition')}>
         <text x={RP_x + 8} y={y_RP_upper  + 4} textAnchor="start" fontSize={8.5} fontWeight="700" fill={C_RET} opacity={0.8}>RP↑</text>
@@ -267,10 +284,18 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
       </g>
 
       {/* ── Silový diferenciál ΔF (OF − RF) u OP a na Y-ose ── */}
-      <g opacity={h.op('of_operatingforce', 'rf_realisingforce')}>
+      <g opacity={h.op('of_operatingforce', 'rf_realisingforce', 'df_differentialforce')}>
+        {h.on('df_differentialforce') && (
+          <rect x={OP_x+12} y={y_OF} width={84} height={y_RF - y_OF} rx={4} fill={C_FORCE} opacity={0.1} />
+        )}
         <line x1={OP_x+18} y1={y_OF+4}  x2={OP_x+18} y2={y_RF-4}
-          stroke={C_FORCE} strokeWidth={1.2} markerEnd={`url(#${uid}dfA)`} markerStart={`url(#${uid}dfAR)`} />
-        <text x={OP_x+24} y={(y_OF+y_RF)/2+4} fontSize={9} fill={C_FORCE} fontWeight="700">ΔF</text>
+          stroke={C_FORCE} strokeWidth={h.sw(1.2, 'df_differentialforce')} markerEnd={`url(#${uid}dfA)`} markerStart={`url(#${uid}dfAR)`} />
+        {/* bílý podklad — přes popisek vede dopředná větev smyčky OP → TTP */}
+        {hasDF && <rect x={OP_x+22} y={(y_OF+y_RF)/2-7} width={h.on('df_differentialforce') ? 66 : 56} height={15}
+          rx={3} fill="white" stroke={C_FORCE} strokeWidth={0.5} opacity={0.92} />}
+        <text x={OP_x+26} y={(y_OF+y_RF)/2+4} fontSize={h.on('df_differentialforce') ? 11 : 9} fill={C_FORCE} fontWeight="700">
+          {hasDF ? `${lbl('df_differentialforce', 'DF')} = ${val('df_differentialforce')}` : 'ΔF'}
+        </text>
         <line x1={96} y1={y_OF + 4} x2={96} y2={y_RF - 4}
           stroke={C_FORCE} strokeWidth={1.2} markerEnd={`url(#${uid}dfA)`} markerStart={`url(#${uid}dfAR)`} />
         <text x={103} y={(y_OF + y_RF) / 2 + 4} textAnchor="start" fontSize={8} fontWeight="700" fill={C_FORCE}>ΔF</text>
@@ -281,11 +306,11 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
       {forceDim('of_operatingforce',    52, y_OF,  'OF')}
       {forceDim('rf_realisingforce',    74, y_RF,  'RF')}
 
-      {/* ── Popisky pozic pod X-osou ── */}
+      {/* ── Popisky pozic pod X-osou: zkratka + naměřená poloha [µm] ── */}
       {POS.map(p => (
-        <text key={p.l} x={p.x} y={y_zero+24} textAnchor="middle"
+        <text key={p.l} x={p.x} y={y_zero+22} textAnchor="middle"
           fontSize={h.on(p.k) ? 12 : 10} fontWeight="700" fill={h.on(p.k) ? C_TRAVEL : C_AXIS}
-          opacity={h.op(p.k)}>{p.l}</text>
+          opacity={h.op(p.k)}>{p.l} <tspan fontWeight="400" fontFamily="monospace" fill={C_TRAVEL}>{val(p.k)}</tspan></text>
       ))}
 
       {/* ── Zdvihové kóty pod osou (modrá) — 4 řady dle screen 29 ── */}

@@ -48,7 +48,10 @@ csv_encoding  = "utf-8-sig"
 → `services/repositories/csv_repository.py` čte **4 formáty**: jednodílný, dvoudílný, blokový (production, Gateway 2.3.0+)
   a sekční (testing — `[Metadata]`, `[AnalyzedParameters]`, `[NokInfo]`, …, `[SignalData]`).
   Kontrakt hlídají `02_tests/test_gateway_prod_format.py` + `test_ecosystem_units.py` proti kódu Gateway.
-  Gateway od 2026-10-15 nezapisuje `NokReason`: PROD `[Data]` 32 sloupců, TEST `[NokInfo]` = jen `NokCategory_*` (výsledek = maska; `Status` u testu není).
+  Gateway od 2026-10-15 nezapisuje `NokReason`: TEST `[NokInfo]` = jen `NokCategory_*` (výsledek = maska; `Status` u testu není).
+  Od 2026-10-21 (Analyzing 2.4.0+): PROD `[Data]` 35 sloupců — `DF_DifferentialForce` na konci Force, `FPR_FreePositionReturn`
+  na konci Position, poslední `PositionReference` (= C); TEST `[AnalyzedParameters]` 26 + `PositionReference` v `[MeasuredInfo]`.
+  Rozhraní: `Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`.
 
 ### Složková struktura výstupů DatabaseGateway
 ```

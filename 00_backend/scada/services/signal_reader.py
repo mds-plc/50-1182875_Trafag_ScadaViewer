@@ -302,19 +302,23 @@ def switching_threshold(u_nc: list[float], fp_idx: int | None) -> float:
 def find_key_points(
     analyzed: dict[str, str],
     signal: dict[str, list[float]],
+    position_reference: float | None = None,
 ) -> dict[str, dict]:
-    """Extrahuje klíčové body FP/OP/RP/TTP z AnalyzedParameters + signal dat.
+    """Extrahuje klíčové body FP/OP/RP/TTP (+ FPR) z AnalyzedParameters + signal dat.
 
     Args:
         analyzed: dict z _parse_sectioned() — 'fp_freeposition': '9271.0' atd. (jednotky zákazníka)
         signal: dict ze read_signal_data() — surová (nedecimovaná) data.
+        position_reference: konstanta C [µm] z [MeasuredInfo] souboru (DatabaseGateway od
+            2026-10-21) — None / 0 / NaN = soubor ji nemá → C se dopočítá.
 
     Returns:
-        dict s klíči 'fp', 'op', 'rp', 'ttp', každý obsahuje
+        dict s klíči 'fp', 'op', 'rp', 'ttp' (a 'fpr', má-li soubor FPR), každý obsahuje
         {idx, ts_ms, position, force, source}.
 
     Souřadnice: signál má polohu x na stupnici enkodéru, AnalyzedParameters od 10/2026 polohy
-    zákazníka P = C − x (při stlačení klesají; starší soubory x). C se dopočítá z TTP:
+    zákazníka P = C − x (při stlačení klesají; starší soubory x). C je přímo v souboru (od
+    2026-10-21, stejná hodnota, se kterou počítal Analyzing), jinak se dopočítá z TTP:
     TTP je v Analyzing maximum polohy → C = TTP_P + max(x) (na reálných souborech ≤ 0,5 µm).
     Body se hledají na stupnici enkodéru; 'position' bodu je ve stejných souřadnicích jako
     tabulka parametrů.
@@ -342,8 +346,8 @@ def find_key_points(
         'operatingposition'/'releasingposition' ale jde o odpor, ne pozici.
         """
         for k, v in analyzed.items():
-            if k.startswith('r_'):
-                continue  # skip resistance keys
+            if k.startswith(('r_', 'fpr_')):
+                continue  # odpory (…operatingposition) a FPR (…freepositionreturn) nejsou tyto body
             if key in k:
                 try:
                     val = float(v)
@@ -379,8 +383,11 @@ def find_key_points(
     ttp_val = _get_pos('totaltravelposition')
     scale   = position_scale(fp_val, ttp_val)
     ref: float | None = None
-    if scale == 'customer' and ttp_val is not None:
-        ref = ttp_val + position[ttp_idx]                 # C [µm]
+    if scale == 'customer':
+        if position_reference is not None and math.isfinite(position_reference) and position_reference > 0:
+            ref = float(position_reference)               # C [µm] ze souboru (Gateway od 2026-10-21)
+        elif ttp_val is not None:
+            ref = ttp_val + position[ttp_idx]             # C [µm] dopočtené (starší soubory)
 
     def to_x(p: float) -> float:
         """Poloha z AnalyzedParameters → stupnice enkodéru signálu."""
@@ -441,6 +448,17 @@ def find_key_points(
         rp_idx = _argmin_abs(position, to_x(rp_val), ttp_idx, n)
         points['rp'] = _point(rp_idx)
 
+    # FPR — Free Position Return (od 2026-10-21): zpětný chod, kde síla klesne zpět do šumu
+    # (zrcadlo FP) — leží za RP, hledá se nejbližší poloha k analyzované hodnotě
+    fpr_raw = analyzed.get('fpr_freepositionreturn')
+    try:
+        fpr_val = float(fpr_raw) if fpr_raw not in (None, '') else None
+    except ValueError:
+        fpr_val = None
+    if fpr_val is not None and math.isfinite(fpr_val) and fpr_val != 0.0 and ttp_idx < n - 1:
+        fpr_from = points['rp']['idx'] if 'rp' in points else ttp_idx
+        points['fpr'] = _point(_argmin_abs(position, to_x(fpr_val), fpr_from, n))
+
     points['threshold_v'] = threshold_v              # type: ignore[assignment] — viz docstring
     points['position_scale'] = scale                 # type: ignore[assignment]
     points['position_reference_um'] = ref            # type: ignore[assignment]
@@ -474,9 +492,11 @@ def load_signal(
         try:
             with _parse_sem:
                 with open_shared(path, encoding=encoding, newline='') as f:
-                    analyzed = _parse_sectioned(f, separator).get('analyzedparameters', {})
+                    sections = _parse_sectioned(f, separator)
+                analyzed   = sections.get('analyzedparameters', {})
+                c_file     = _position_reference(sections.get('measuredinfo', {}))
                 raw        = read_signal_data(path, encoding, separator)
-                key_points = find_key_points(analyzed, raw) if raw is not None else {}
+                key_points = find_key_points(analyzed, raw, c_file) if raw is not None else {}
                 params     = _numeric_params(analyzed)
         except BaseException:
             with _cache_lock:
@@ -491,6 +511,15 @@ def load_signal(
                 evicted, _ = _cache.popitem(last=False)
                 _path_locks.pop(evicted, None)
         return raw, key_points, params
+
+
+def _position_reference(measured_info: dict[str, str]) -> float | None:
+    """Konstanta C [µm] z [MeasuredInfo] (sloupec PositionReference, Gateway od 2026-10-21)."""
+    try:
+        c = float(measured_info.get('positionreference') or '')
+    except ValueError:
+        return None
+    return c if math.isfinite(c) and c > 0 else None
 
 
 def _cache_bytes() -> int:

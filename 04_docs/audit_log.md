@@ -5,6 +5,31 @@
 
 ---
 
+## [2026-10-21] DF, FPR a konstanta C — zapracování do DatabaseGateway a ScadaViewer
+
+Podklad: `Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`. Rozhodnutí uživatele: DF / FPR **na konec skupiny**
+(Force / Position); C pro Testing z `MeasuredData`, pro Production z GVL Analyzingu (Production dataset MeasuredData nemá).
+
+| # | Změna | Soubor | Status |
+|---|-------|--------|--------|
+| 1 | Gateway: DF / FPR v PROD `[Data]` a TEST `[AnalyzedParameters]`, C = `PositionReference [um]` (PROD poslední sloupec, TEST `[MeasuredInfo]`), C volitelné | DatabaseGateway `constants.py`, `ads_reader.py`, `models/order.py`, `file_manager.py`, vzory CSV | ✅ |
+| 2 | Signál: C ze souboru místo dopočtu (starší soubory dopočet dál), bod FPR za RP | `services/signal_reader.py` | ✅ |
+| 3 | Chyba objevená při změně: `_get_pos('freeposition')` hledal podřetězcem — sloupec `fpr_freepositionreturn` před FP by FP zaměnil za FPR → přeskočit `fpr_*` | `services/signal_reader.py` | ✅ Opraveno |
+| 4 | DF / FPR v tabulkách parametrů, diagram síla–dráha (DF s hodnotou, bod FPR), grafy Signal Data, C v sekci Měření; starší soubory bez řádků DF / FPR | `paramMeta.ts`, `ParamTable.tsx`, `ParamDiagrams.tsx`, `SignalCharts.tsx` | ✅ |
+| 5 | Nápověda ChartView (diagram, Měření a Výsledky, Signálová data) CS + EN | `i18n/help.*.ts` | ✅ |
+| 6 | Limity třídění DF / FPR (uživatel je doplní do PLC `ST_APP_Recipe_Sorting_Limits_Force` / `_Position`): Gateway `SORTING_LIMIT_PARAMS` 26, `[SortingLimits]` 26 sloupců, vzory CSV; ScadaViewer čte obecně (Údaje zakázky, podbarvení) | DatabaseGateway `models/order.py`; `02_tests/test_gateway_prod_format.py` | ✅ |
+
+| 7 | Kontrola prvního souboru z PLC s novým DUT (`PROD_ppjml_E01389-C_20261021_152504_WIP.csv`): 35 sloupců, DF = OF − RF u všech kusů, FPR ≈ FP (−8 … +19 µm), C = 9400, `[SortingLimits]` 26 sloupců (DF / FPR neaktivní), kategorie 6 u MD < 0 (mimo výrobce 0–100). Podezřelé: `Max_Force` = 10 000 000 mN (ForceMax 10 000 × 1000) | 12.Database | ⚠️ ověřit v receptuře |
+| 8 | Podbarvení rozlišuje Trafag (vč. MD mimo kategorie 1–4 = kat. 5) / výrobce (kat. 6) / obojí (nový druh `both`, barva výrobce + žlutý pruh); tooltip všech porušených mezí | `utils/limits.ts`, `LimitLegend.tsx`, `components.css`, i18n, nápověda | ✅ |
+
+| 9 | Detail kusu (diagram síla–dráha): polohy FP / RP / OP / TTP byly bez hodnot → hodnota pod osou (`FP 9153.6`); štítky sil `OF` / `TTF` místo zavádějícího „OP / OF“, „TTP / TTF“; popisek DF s bílým podkladem (křížila ho větev smyčky); štítek FP vlevo (zakrýval bod FPR) | `components/ParamDiagrams.tsx` | ✅ |
+| 10 | **Chyba z téhož dne:** v grafu Hystereze (Signal Data) komentář na řádku popisku pohltil `fontSize` / `fontWeight` / barvu → šedé velké popisky, FP × FPR a OP × RP přes sebe a přes osu. Oprava: u bodů jen zkratka (`HYST_LABEL_POS`), hodnoty FP / OP / TTP / RP / FPR + OF / RF / TTF / DF + MD v řádku nad grafem. Ověřeno na TEST souboru vygenerovaném skutečným Analyzing + Gateway ze signálu stroje (2026-10-21 15:26) | `components/SignalCharts.tsx` | ✅ Opraveno |
+
+**Celkem:** 10 položek | 9 hotovo | 1 k ověření. Testy backend 465, frontend 209, Gateway 131; tsc / lint 0.
+Nasazení: otevřené zakázky uzavřít před upgradem Gateway; PLC + Analyzing naráz; Gateway až s PLC, které má limity DF / FPR (jinak Op1 PlcSymbolError).
+
+---
+
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
@@ -75,6 +100,32 @@
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
 | B3 | `pdf_metadata.yaml` bez skriptu `build_pdf.bat` | `06_build/pdf/` | [2026-09-24 docs+úklid] |
+
+---
+
+## [2026-10-21] Nová funkce — podbarvení hodnot mimo limity třídění
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | V tabulce lehce podbarvit parametry, které nespadají do svých intervalů |
+| Řešení | Hodnota mimo limity zakázky (`[SortingLimits]`) se podbarví: oranžově mimo limity výrobce (přednost), žlutě mimo limity Trafag; tooltip s mezemi a jednotkou; legenda nad tabulkou jen při výskytu. Tabulka kusů detailu zakázky (i tisk), rozbalený řádek Databáze, tabulka parametrů detailu kusu |
+| Pravidla | hranice vyhovují; neaktivní mez se nekontroluje; „—" (nestanoveno) a prázdné se nepodbarví; ∞ odporu se porovná číselně; starší soubory bez bloků se nepodbarví |
+| Kód | `utils/limits.ts`, `components/LimitLegend.tsx`, `DataTable.cellClassName`, `ParamTable.limits`, `RecordDiagram.limits`, `FileTable`, `ChartView`; i18n `chart.limit*`; CSS `components.css` |
+| Nápověda | Detail zakázky (Tabulka kusů), Detail kusu (Tabulka parametrů), Databáze (Tabulka) — CS + EN |
+| Ověření | Vitest 203 (`limits.test.ts` 6), tsc 0, lint 0; vizuálně světlý / tmavý |
+| Vydání | **není v 2.4.1** |
+
+---
+
+## [2026-10-20] Úprava — zjednodušená záložka Čas / NTP (po vydání 2.4.1)
+
+| Oblast | Popis |
+|---|---|
+| Požadavek | Přehled NTP serveru je příliš složitý |
+| Řešení | Nahoře **shrnutí**: „IPC si mohou brát čas z tohoto PC" / „IPC teď čas z tohoto PC nedostanou" + jeden důvod (první nesplněná podmínka: služba neběží → NTP server vypnutý → UDP 123 nenaslouchá → neohlašuje se jako spolehlivý zdroj) s odkazem na postup; pod tím jen Čas PC (rozdíl vůči zařízení až od 2 s), Zdroj času PC jednou větou, Adresa pro IPC, Nastavit čas PC. Vše ostatní (pásmo, služba, server, UDP, AnnounceFlags, stratum, poslední synchronizace, výstup w32tm) ve sbaleném bloku **Technické podrobnosti** |
+| i18n | nové `time.summaryOk/summaryBad/reason*/fixHint/source*/ipcAddress/technical`; odstraněno `warnNoUpstream`, `warnNotSynced` |
+| Ověření | Vitest 197 (`TimeServerTab.test.tsx` — shrnutí OK / důvod, priorita důvodů, sbalené podrobnosti), tsc 0, lint 0; vizuálně světlý / tmavý, CS / EN |
+| Vydání | **není v 2.4.1** |
 
 ---
 

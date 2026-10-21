@@ -215,6 +215,9 @@ const numericKeys = useMemo(() => {
   = **barvy štítků fyzických třídicích krabic** (1 černá, 2 světle modrá, 3 magenta, 4 zelená, 5 žlutá NOK Trafag,
   6 červeno-oranžová NOK Supplier). TS a CSS měnit jen společně (hlídá `paramMeta.test.ts`). Text na barvě kategorie
   VŽDY `categoryTextColor()` (světle modrá a žlutá = tmavý text); černá potřebuje lem (tmavý režim).
+- **Hodnoty mimo limity třídění** = `utils/limits.ts` (`buildLimitMap(limits, categories)` / `limitViolation` / `limitClass` /
+  `limitTitle`) + `LimitLegend` — v nové tabulce s parametry zakázky použít totéž (DataTable `cellClassName`, ParamTable `limits`).
+  Tři druhy: `trafag` (mimo Trafag nebo MD mimo kategorie 1–4 = kat. 5), `supplier` (kat. 6), `both` (mimo obojí).
 - **Graf rozložení kategorií** = `components/CategoryChart.tsx` (detail zakázky i rozbalený řádek `compact`) — nový
   graf kategorií nepsat znovu; pásy OK / NOK Trafag / NOK Supplier, rozmezí MD z `order_info.sorting_categories`.
 - **Grafy Signal Data** vždy uvnitř `<ZoomPanel>` (zoom osy X, celá obrazovka); render funkce dostane

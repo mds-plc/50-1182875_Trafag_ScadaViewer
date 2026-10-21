@@ -9,9 +9,11 @@
 import React, { useCallback, useState } from 'react'
 import { ChartSpline } from 'lucide-react'
 import { useLang } from '../context/LangContext'
-import { PARAM_LABELS, PARAM_TOOLTIPS, formatParam, paramDesc, paramUnit } from '../utils/paramMeta'
+import { NEWER_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, paramDesc, paramUnit } from '../utils/paramMeta'
 import { PARAM_DIAGRAM } from './ParamDiagrams'
 import ParamExplainModal from './ParamExplainModal'
+import { limitClass, limitTitle, limitViolation } from '../utils/limits'
+import type { LimitMap } from '../utils/limits'
 
 export interface ParamGroup {
   id:    string
@@ -31,9 +33,11 @@ interface Props {
   bare?:  boolean
   /** true = skrýt parametry bez hodnoty (Testing: sekce obsahují jen to, co CSV má) */
   hideMissing?: boolean
+  /** Limity třídění zakázky — hodnota mimo interval se podbarví a dostane tooltip s mezemi (utils/limits.ts) */
+  limits?: LimitMap
 }
 
-export default function ParamTable({ record, groups, title, bare = false, hideMissing = false }: Props) {
+export default function ParamTable({ record, groups, title, bare = false, hideMissing = false, limits }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   // Grafická nápověda: klíč parametru, jehož diagram je otevřený (null = zavřeno)
   const [graphKey, setGraphKey] = useState<string | null>(null)
@@ -54,7 +58,9 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
       </thead>
       <tbody>
         {groups.map(group => {
-          const keys = hideMissing ? group.keys.filter(hasValue) : group.keys
+          // DF / FPR (od 2026-10-21): starší soubor sloupec nemá vůbec → řádek vynechat, ne „—"
+          const keys = hideMissing ? group.keys.filter(hasValue)
+            : group.keys.filter(k => !NEWER_PARAM_KEYS.has(k) || k in record)
           if (keys.length === 0) return null
           return (
             <React.Fragment key={group.id}>
@@ -71,12 +77,14 @@ export default function ParamTable({ record, groups, title, bare = false, hideMi
                 // název bez jednotky: 'Pre-travel [µm] (OP − FP)' → 'Pre-travel (OP − FP)'
                 const name    = (PARAM_TOOLTIPS[k] ?? PARAM_LABELS[k] ?? k).replace(/\s*\[[^\]]*\]/, '')
                 const desc    = paramDesc(k, lang)
+                const viol    = limits ? limitViolation(k, record[k], limits) : null
+                const valTitle = limitTitle(k, viol, t.chart) ?? (f.open ? t.chart.openContact : undefined)
                 return (
                   <React.Fragment key={k}>
                     <tr className={`rd-pt__row${missing ? ' rd-pt__row--missing' : ''}`}>
                       <td className="rd-pt__abbr" style={{ color: group.color }}>{PARAM_LABELS[k] ?? k}</td>
                       <td className="rd-pt__name">{name}</td>
-                      <td className="rd-pt__val" title={f.open ? t.chart.openContact : undefined}>
+                      <td className={`rd-pt__val${viol ? ` ${limitClass(viol)}` : ''}`} title={valTitle}>
                         {missing ? '—' : <>{f.text}{u && !f.open && k !== 'meas_ts' && <span className="rd-pt__unit">{u}</span>}</>}
                       </td>
                       <td className="rd-pt__help-cell">

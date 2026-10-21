@@ -187,13 +187,76 @@ export default function TimeServerTab() {
     }
   }
 
+  // Shrnutí pro obsluhu: dostanou IPC čas z tohoto PC? První nesplněná podmínka = důvod
+  const reason = st.service_state !== 'running' ? t.time.reasonService
+    : st.ntp_server_enabled === false ? t.time.reasonServer
+    : st.udp123_listening === false ? t.time.reasonUdp
+    : st.announce !== 'reliable' && !(st.announce === 'conditional' && st.synchronized) ? t.time.reasonAnnounce
+    : null
+  const sourceSummary = localClock ? t.time.sourceLocal
+    : notSynced ? t.time.sourceNotSynced.replace('{source}', src)
+    : t.time.sourceSynced.replace('{source}', src)
+
   return (
     <div className="time-tab">
-      {/* Čas PC */}
-      <div className="settings-section-header settings-section-header--first"><Clock size={13} />{t.time.sectionPc}</div>
+      {/* Shrnutí — to podstatné na 4 řádcích */}
+      <div className={`time-tab__summary time-tab__summary--${reason ? 'bad' : 'ok'}`} role="status">
+        <Dot level={reason ? 'error' : 'ok'} />
+        <div>
+          <strong>{reason ? t.time.summaryBad : t.time.summaryOk}</strong>
+          {reason && <div className="time-tab__summary-reason">{reason} — {t.time.fixHint}</div>}
+        </div>
+      </div>
       <Row label={t.time.pcTime}>
         <span className="time-tab__clock">{formatPcTime(pcNow, off)}</span>
+        {diffAbs >= 2000 && <>
+          <Dot level={diffAbs < 60_000 ? 'warn' : 'error'} />
+          <span className="time-tab__hint">{t.time.deviceDiff}: {formatDiff(offsetMs, lang)}</span>
+        </>}
       </Row>
+      <Row label={t.time.sectionSource}>
+        <Dot level={localClock || notSynced ? 'warn' : 'ok'} />{sourceSummary}
+      </Row>
+      <Row label={t.time.ipcAddress}>
+        <span className="time-tab__mono">{st.addresses.length ? st.addresses.join(' · ') : '—'}</span>
+      </Row>
+
+      {/* Nastavit čas PC */}
+      <div className="settings-section-header"><Pencil size={13} />{t.time.sectionSet}</div>
+      {!st.can_set ? (
+        <div className="settings-remote-note">{t.time.adminOnly}</div>
+      ) : (
+        <>
+          {upstream && <div className="time-tab__warn" role="note">{t.time.warnUpstream.replace('{source}', src)}</div>}
+          <div className="settings-row">
+            <span className="settings-row__label">{t.time.setLabel}</span>
+            <div className="settings-row__control">
+              <input
+                type="datetime-local"
+                step={1}
+                className="settings-path-input time-tab__input"
+                aria-label={t.time.setLabel}
+                value={input}
+                onChange={e => { inputTouched.current = true; setInput(e.target.value) }}
+              />
+              <button type="button" className="btn btn--secondary btn--sm"
+                onClick={() => { inputTouched.current = false; setInput(toLocalInput(pcNow, off)) }}>
+                {t.time.setNow}
+              </button>
+              <button type="button" className="btn btn--primary btn--sm" disabled={targetMs == null}
+                onClick={() => { setAck(false); setConfirm(true) }}>
+                {t.time.setBtn}
+              </button>
+            </div>
+            <span />
+          </div>
+        </>
+      )}
+
+      {/* Technické podrobnosti — pro servis, výchozí sbalené */}
+      <details className="time-tab__technical">
+        <summary>{t.time.technical}</summary>
+      <div className="settings-section-header"><Clock size={13} />{t.time.sectionPc}</div>
       <Row label={t.time.timeZone}>
         {st.tz_name ?? '—'} (UTC{off >= 0 ? '+' : '−'}{pad(Math.floor(Math.abs(off) / 60))}:{pad(Math.abs(off) % 60)})
       </Row>
@@ -228,8 +291,6 @@ export default function TimeServerTab() {
 
       {/* Zdroj času PC */}
       <div className="settings-section-header"><Radio size={13} />{t.time.sectionSource}</div>
-      {localClock && <div className="time-tab__warn" role="note">{t.time.warnNoUpstream}</div>}
-      {notSynced && <div className="time-tab__warn" role="note">{t.time.warnNotSynced.replace('{source}', src)}</div>}
       <Row label={t.time.source}><span className="time-tab__mono">{src || '—'}</span></Row>
       <Row label={t.time.synchronized}>
         {st.synchronized == null ? '—' : <><Dot level={st.synchronized ? 'ok' : 'warn'} />
@@ -246,38 +307,7 @@ export default function TimeServerTab() {
           <pre>{st.status_text}</pre>
         </details>
       )}
-
-      {/* Nastavit čas PC */}
-      <div className="settings-section-header"><Pencil size={13} />{t.time.sectionSet}</div>
-      {!st.can_set ? (
-        <div className="settings-remote-note">{t.time.adminOnly}</div>
-      ) : (
-        <>
-          {upstream && <div className="time-tab__warn" role="note">{t.time.warnUpstream.replace('{source}', src)}</div>}
-          <div className="settings-row">
-            <span className="settings-row__label">{t.time.setLabel}</span>
-            <div className="settings-row__control">
-              <input
-                type="datetime-local"
-                step={1}
-                className="settings-path-input time-tab__input"
-                aria-label={t.time.setLabel}
-                value={input}
-                onChange={e => { inputTouched.current = true; setInput(e.target.value) }}
-              />
-              <button type="button" className="btn btn--secondary btn--sm"
-                onClick={() => { inputTouched.current = false; setInput(toLocalInput(pcNow, off)) }}>
-                {t.time.setNow}
-              </button>
-              <button type="button" className="btn btn--primary btn--sm" disabled={targetMs == null}
-                onClick={() => { setAck(false); setConfirm(true) }}>
-                {t.time.setBtn}
-              </button>
-            </div>
-            <span />
-          </div>
-        </>
-      )}
+      </details>
 
       {confirm && targetMs != null && (
         <div className="db-overlay" onClick={() => !busy && setConfirm(false)}>

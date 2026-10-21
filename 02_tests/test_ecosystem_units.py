@@ -59,6 +59,8 @@ class _FakePlc:
         self._ct, self._strings = ct, strings
 
     def read_by_name(self, name: str, plc_type=None, return_ctypes: bool = False, **_kw):
+        if name.endswith(".Calibration.PositionReference"):   # C z PLC (Testing i GVL Analyzingu)
+            return C_REF
         for marker in (".AnalyzedParams.", ".AnalyzedParameters."):
             if marker in name:
                 group, field = name.split(marker, 1)[1].split(".")
@@ -172,6 +174,15 @@ def test_production_values_customer_units(ecosystem, client) -> None:
         expect = 9999.9 if mohm > 999.9 else round(mohm, 1)
         assert float(rec[key]) == pytest.approx(expect, abs=0.06)
     assert float(rec["ut_unstabletime"]) == pytest.approx(round(p.Times.UT_UnstableTime), abs=1e-3)
+    # DF / FPR (Analyzing 2.4.0+, 2026-10-21): DF = OF − RF v mN, FPR poloha zákazníka ≈ FP
+    assert float(rec["df_differentialforce"]) == pytest.approx(_f32(ct.Force.DF_DifferentialForce), abs=1e-3)
+    assert float(rec["df_differentialforce"]) == pytest.approx(
+        float(rec["of_operatingforce"]) - float(rec["rf_realisingforce"]), abs=1.0)
+    assert float(rec["fpr_freepositionreturn"]) == pytest.approx(_f32(ct.Position.FPR_FreePositionReturn), abs=1e-3)
+    if float(rec["fpr_freepositionreturn"]) != 0:                     # 0 = neurčeno
+        assert float(rec["fpr_freepositionreturn"]) == pytest.approx(float(rec["fp_freeposition"]), abs=100)
+    # konstanta C z GVL Analyzingu = poslední sloupec [Data]
+    assert float(rec["positionreference"]) == C_REF
 
 
 def test_production_block_format(ecosystem, client) -> None:
@@ -198,12 +209,16 @@ def test_testing_signal_key_points_match_table(ecosystem, client) -> None:
     rec = client.get("/api/data", params=q).json()["records"][0]
     sig = client.get("/api/signal", params={**q, "mode": "overview", "buckets": 500}).json()
     assert sig["position_scale"] == "customer"
-    # C dopočtené ze souboru (TTP + max x) = C z Analyzing (rozdíl jen filtrem / zaokrouhlením)
-    assert sig["position_reference_um"] == pytest.approx(C_REF, abs=2.0)
+    # C přímo ze souboru ([MeasuredInfo] PositionReference, Gateway od 2026-10-21) = C z Analyzing
+    assert rec["positionreference"] == "9500"
+    assert sig["position_reference_um"] == C_REF
     kp = sig["key_points"]
     for k, key in (("fp", "fp_freeposition"), ("ttp", "ttp_totaltravelposition"),
                    ("op", "op_operatingposition"), ("rp", "rp_realeasingposition")):
         assert kp[k]["position"] == pytest.approx(float(rec[key]), abs=5.0), k
+    if float(rec["fpr_freepositionreturn"]) != 0:                     # bod FPR na zpětném chodu
+        assert kp["fpr"]["position"] == pytest.approx(float(rec["fpr_freepositionreturn"]), abs=5.0)
+        assert kp["fpr"]["idx"] > kp["rp"]["idx"]
     # graf v souřadnicích zákazníka: maximum stlačení = nejmenší poloha ≈ TTP
     assert min(v for v in sig["position"] if v is not None) == pytest.approx(
         float(rec["ttp_totaltravelposition"]), abs=2.0)

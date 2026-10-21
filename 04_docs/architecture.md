@@ -1002,7 +1002,8 @@ Kontrakt CSV (DatabaseGateway → ScadaViewer): **jednotka je v hlavičce** a Sc
   s hlavičkami v jednotkách zákazníka). Výjimky pro chybné hlavičky starších souborů (`Electric_Current [A]`
   = mA, `Measuring_BasePeriod [ms]` = µs).
 - **Signál (`signal_reader`)** — `[SignalData]` zůstává surový (x enkodér, N, V, A, Ω), převod podle hlavičky
-  na mN / mA / mΩ. C = TTP_P + max(x) (TTP v Analyzing = maximum polohy; na reálných souborech ≤ 0,5 µm).
+  na mN / mA / mΩ. C = `PositionReference` z `[MeasuredInfo]` (Gateway od 2026-10-21 — fáze 49), u starších
+  souborů C = TTP_P + max(x) (TTP v Analyzing = maximum polohy; na reálných souborech ≤ 0,5 µm).
   Klíčové body se hledají na stupnici enkodéru, `position` bodů i řady v souřadnicích tabulky; odpověď nese
   `position_scale`, `position_reference_um`, pole `force_mn`, `r_nc_mohm`, `r_no_mohm`. X8: TTP = argmax,
   OP od FP.
@@ -1364,12 +1365,62 @@ PC s ScadaViewer slouží jako lokální NTP server (služba Windows Time / w32t
 | Stav | `services/time_service.time_status()` — čas PC (UTC, místní, pásmo), služba W32Time přes SCM (stav, typ spuštění z registru), registr `W32Time\TimeProviders\NtpServer\Enabled`, `Config\AnnounceFlags` (bit 0x1 = spolehlivý zdroj — bez nadřazeného zdroje nutné 5, jinak IPC čas nepřevezmou), `Parameters\Type` / `NtpServer`, `w32tm /query /source` + `/query /status` (štítky CS i EN; Leap Indicator 3 = nesynchronizováno; surový text pro detail), `netstat` UDP 123, IPv4 adresy PC. Vše best effort (chyba = `null`), ~0,1 s |
 | Nastavení | `set_local_time("RRRR-MM-DDTHH:MM[:SS]")` — čas v pásmu PC → UTC → `SetSystemTime` (kernel32) po zapnutí `SeSystemtimePrivilege` (`AdjustTokenPrivileges`); bez práva → `TimePrivilegeError` (409 s návodem secpol), jiný systém → 501; rok 2020–2099 (ochrana proti překlepu) |
 | API | `GET /api/system/time` (každý přihlášený, i vzdáleně; `can_set` = admin+ u stroje na Windows); `POST /api/system/time` — `require_local` + `require_role("admin")` (rozhodnutí uživatele 2026-10-20: jen ruční zadání, jen admin u stroje); změna = WARNING (uživatel, starý → nový čas, rozdíl) |
+| UI (zjednodušeno po 2.4.1) | Nahoře shrnutí „IPC si mohou / nemohou brát čas" + jeden důvod (služba → NTP server → UDP 123 → ohlašování), pod tím Čas PC, Zdroj času PC jednou větou, Adresa pro IPC, Nastavit čas PC; zbytek ve sbaleném bloku Technické podrobnosti. Původní obsah: |
 | UI | `components/TimeServerTab.tsx` — sekce Čas PC (tikající hodiny v pásmu PC, rozdíl vůči zařízení prohlížeče = utc serveru − střed doby dotazu), NTP server pro IPC (služba, server, UDP 123, ohlašování, adresy), Zdroj času PC (varování: bez nadřazeného zdroje / zdroj nastavený, ale nesynchronizováno), Nastavit čas PC (`datetime-local` step 1, předvyplněno časem PC, dialog: teď → nový čas, změna, varování, zaškrtnutí „Rozumím"); obnova 30 s |
 | Dopady změny času | IPC (NTP klienti) převezmou nový čas; časové značky nových CSV ve všech třech aplikacích; relace (`created_at = time.time()`) — skok dopředu > 8 h odhlásí všechny; synchronizuje-li PC ze zdroje, ruční čas se při další synchronizaci přepíše (UI upozorní) |
 
 Testy: `02_tests/test_system_time.py` (16 — skutečný SetSystemTime se nevolá), `TimeServerTab.test.tsx` (9).
 
-**Stav testů po fázi 48:** Backend **454/454**, Frontend **195/195** (25 souborů); `tsc` 0, lint 0.
+#### Podbarvení hodnot mimo limity třídění (2026-10-21)
+
+V tabulce kusů detailu zakázky, v rozbaleném řádku Databáze a v tabulce parametrů detailu kusu se hodnota parametru
+mimo limity třídění zakázky (`order_info.sorting_limits`, blokový PROD_ soubor) **lehce podbarví**: oranžově mimo
+limity **výrobce** (Min_Supplier / Max_Supplier — přednost, = NOK Supplier), žlutě mimo limity **Trafag** (Min / Max,
+= NOK Trafag); barvy = boxy 6 / 5. Tooltip „Mimo limity Trafag: 800–1500 mN". Legenda (`LimitLegend`) nad tabulkou,
+jen když je na stránce aspoň jedno porušení.
+
+| Část | Řešení |
+|---|---|
+| Pravidla | `utils/limits.ts` — `buildLimitMap` (jen aktivní meze), `limitViolation` (hranice vyhovují; „—" = 0 u polohy / síly / odporu a prázdné se nepodbarví; ∞ odporu číselně), `limitClass`, `limitTitle`, `violationKinds` |
+| Tabulky | `DataTable` nový prop `cellClassName` (detail zakázky + tisk), `FileTable` ExpandedRow, `ParamTable` prop `limits` (přes `RecordDiagram`) |
+| Styl | `components.css` `td.limit-cell--trafag / --supplier` (rgba barev boxů, světlý i tmavý režim), `.limit-legend*` |
+| Výkon | `limitMap` přes `useMemo` z údajů zakázky, `cellClassName` přes `useCallback` — `DataTable` (memo) se nepřekresluje zbytečně |
+| Starší soubory | bez bloků (bez `order_info`) → nic se nepodbarví |
+
+**Rozlišení podle kategorií (2026-10-21, přání uživatele):** `trafag` = mimo limity Trafag **nebo** třídicí veličina
+(MD, `order_info.sorting_categories.grouping_value`) mimo intervaly kategorií 1–4 (= kus v kategorii 5), v limitech
+výrobce; `supplier` = mimo limity výrobce, v limitech Trafag (= kategorie 6); **`both`** = mimo výrobce i Trafag —
+barva výrobce + žlutý pruh vlevo (`limit-cell--both`), vlastní položka legendy. Tooltip vypíše všechny porušené meze
+(„Mimo limity výrobce: 0–100 µm · Mimo limity Trafag: 10–100 µm“), kategorie jen bez porušení Trafag.
+`buildLimitMap(limits, categories)` — oba volající (ChartView, FileTable) předávají i kategorie. Ověřeno na skutečném
+souboru `PROD_ppjml_E01389-C_20261021_152504` (kusy kategorie 6: MD −13,7 / −7,2 µm → `both`).
+
+Testy: `limits.test.ts` (8). Vizuálně Playwright + Chrome (kopie vzorové zakázky s hodnotami mimo meze — jen v testovacích datech).
+
+**Stav testů po fázi 48:** Backend **454/454**, Frontend **203/203** (26 souborů); `tsc` 0, lint 0.
+
+### Fáze 49 — DF, FPR a konstanta C z PLC (2026-10-21)
+
+Změna rozhraní Analyzing 2.4.0+ (`Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`, PLC DUT AnalyzedParams 104 B):
+nový parametr síly **DF_DifferentialForce** (= OF − RF, mN), nový parametr polohy **FPR_FreePositionReturn** (volná
+poloha po návratu ≈ FP, µm v souřadnicích zákazníka) a **konstanta C** (`Info.Calibration.PositionReference`, P = C − x)
+v naměřeném záznamu. 0 u DF / FPR = neurčeno.
+
+| Aplikace | Změna |
+|---|---|
+| DatabaseGateway | PROD `[Data]` 35 sloupců: DF na konci Force, FPR na konci Position (rozhodnutí uživatele „na konec skupiny"), poslední `PositionReference [um]` — C čte Op2 z GVL Analyzingu `AnalyzeApp.Out.Data.MeasuredRecord.Info.Calibration` (Production dataset MeasuredData nemá); TEST `[AnalyzedParameters]` 26 sloupců + `[MeasuredInfo]` `PositionReference [um]`; C volitelné (chybí → prázdné pole) |
+| Backend | `signal_reader.find_key_points(…, position_reference)` — C ze souboru má přednost před dopočtem C = TTP + max x (0 / prázdné / NaN → dopočet); `load_signal` čte C z `[MeasuredInfo]` (`_position_reference`); nový klíčový bod **`fpr`** na zpětném chodu za RP; `_get_pos` přeskakuje `fpr_*` (podřetězec `freeposition` by jinak FPR zaměnil za FP); `units._POSITION_NAMES` + FPR (export „[um, encoder]"). CSV čtení beze změny — sloupce podle hlavičky |
+| Frontend | `paramMeta`: DF na konci `forces`, FPR na konci `positions` (zkratky DF / FPR, tooltipy, nápověda CS + EN), `positionreference` = „C" v `MEASUREDINFO_KEYS` (µm, 0,1); `NEWER_PARAM_KEYS` — u starších souborů bez sloupce `ParamTable` řádek vynechá (tabulky kusů / rozbalený řádek skrývají prázdné sloupce už přes `hasMeasuredValue`); `ParamDiagrams`: ΔF → „DF = hodnota" (zvýraznění DF rozsvítí OF / RF), bod FPR na zpětné větvi u FP, `PARAM_DIAGRAM` + `RELATED`; `SignalCharts`: bod FPR (fialový) ve všech grafech, DF / FPR v souhrnu; nápověda stránek ChartView (diagram, Měření a Výsledky, Signálová data) |
+| Limity třídění | `SORTING_LIMIT_PARAMS` v Gateway + DF (Force) a FPR (Position) — PLC je doplní do `ST_APP_Recipe_Sorting_Limits_Force` / `_Position` (Limits i Limits_Supplier, typ `ST_APP_Recipe_Sorting_SingleLimit`); bez nich Op1 (SumRead) skončí PlcSymbolError → **Gateway nasazovat až s tímto PLC**. ScadaViewer limity čte obecně podle hlavičky `[SortingLimits]` — Údaje zakázky, podbarvení hodnot mimo limity (`utils/limits.ts`) i DF / FPR fungují bez další úpravy |
+
+Nasazení: PLC + Analyzing naráz (jinak E6), Gateway a ScadaViewer stejného vydání (starší ScadaViewer DF / FPR jen
+nezobrazí — sloupce čte podle jména); **otevřené zakázky před upgradem Gateway uzavřít** (nová datová hlavička).
+
+Testy: `test_df_fpr_c.py` (11), `test_ecosystem_units.py` (DF = OF − RF, FPR ≈ FP, C z PLC v PROD i TEST, bod FPR),
+`test_gateway_prod_format.py` (vzorové soubory Gateway s DF / FPR / C), `RecordDiagram.test.tsx` (+4), `paramMeta.test.ts` (+2);
+Gateway `test_gateway.py` (+4, 131).
+
+**Stav testů po fázi 49:** Backend **465/465**, Frontend **209/209** (26 souborů); `tsc` 0, lint 0; Gateway 131.
 
 ---
 

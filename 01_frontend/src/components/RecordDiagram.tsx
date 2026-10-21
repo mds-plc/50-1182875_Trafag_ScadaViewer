@@ -10,9 +10,12 @@ import { PARAM_GROUPS } from '../utils/paramMeta'
 import ParamTable from './ParamTable'
 import { ForceTravelDiagram, TimeDiagram } from './ParamDiagrams'
 import { useLang } from '../context/LangContext'
+import type { LimitMap } from '../utils/limits'
 
 interface Props {
   record: Record<string, unknown>
+  /** Limity třídění zakázky — podbarvení hodnot mimo interval v tabulce parametrů (utils/limits.ts) */
+  limits?: LimitMap
 }
 
 // ── NOK info panel ───────────────────────────────────────────────────────────
@@ -69,7 +72,7 @@ function ExpandIcon() {
   )
 }
 
-export default function RecordDiagram({ record }: Props) {
+export default function RecordDiagram({ record, limits }: Props) {
   const { t } = useLang()
   const [maximized, setMaximized] = useState<'force' | 'time' | null>(null)
 
@@ -114,7 +117,7 @@ export default function RecordDiagram({ record }: Props) {
       </div>
 
       <NokPanel record={record} />
-      <ParamTable record={record} groups={PARAM_GROUPS} title={t.chart.paramsTitle} />
+      <ParamTable record={record} groups={PARAM_GROUPS} title={t.chart.paramsTitle} limits={limits} />
 
       {/* Modální overlay — maximalizovaný diagram */}
       {maximized && (

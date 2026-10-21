@@ -142,6 +142,13 @@ export interface Translations {
     filterCategory: string
     filterNok: string
     filterNokHint: string
+    limitTrafag: string
+    limitSupplier: string
+    limitCategory: string
+    limitLegend: string
+    limitLegendTrafag: string
+    limitLegendSupplier: string
+    limitLegendBoth: string
     filterShown: string
     filterClear: string
     filterEmpty: string
@@ -466,8 +473,18 @@ export interface Translations {
     lastSync: string
     configured: string
     details: string
-    warnNoUpstream: string
-    warnNotSynced: string
+    summaryOk: string
+    summaryBad: string
+    reasonService: string
+    reasonServer: string
+    reasonUdp: string
+    reasonAnnounce: string
+    fixHint: string
+    sourceLocal: string
+    sourceSynced: string
+    sourceNotSynced: string
+    ipcAddress: string
+    technical: string
     warnUpstream: string
     setLabel: string
     setNow: string

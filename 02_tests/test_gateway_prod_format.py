@@ -86,8 +86,10 @@ def gw_file(tmp_path_factory):
     limits["MD_MovementDifferential [um]"] = on(105.0, 2.0)
     limits["R_NO_OperatingPosition_Neg [mOhm]"] = on(1000000.0, 1000.0)
     limits["UT_UnstableTime [us]"] = on(3000.0, 0.0)
+    limits["DF_DifferentialForce [mN]"] = on(400.0, 100.0)                   # DF / FPR od 2026-10-21
     supplier = {c: off for c in cols}
     supplier["OF_OperatingForce [mN]"] = on(2500.0, 1000.0)
+    supplier["FPR_FreePositionReturn [um]"] = on(9400.0, 9000.0)
     meta = ProductionMetadata(
         recipe=7, velocity=200.0, acceleration=1.0, deceleration=2.0, jerk=3.0, force_max=4.0, current=100.0, voltage=30.0,
         resistance_limit=off,
@@ -137,7 +139,9 @@ def test_gateway_writer_file(gw_file) -> None:
     assert [(g["group"], g["min"], g["max"]) for g in cats["groups"]] == [
         (1, "18", "30"), (2, "30.1", "60"), (3, "60.1", "80"), (4, "80.1", "100"), (5, None, None), (6, None, None)]
     lim = {l["key"]: l for l in info["sorting_limits"]}
-    assert len(lim) == 24
+    assert len(lim) == 26                                               # vč. DF, FPR
+    assert (lim["df_differentialforce"]["min"], lim["df_differentialforce"]["max"]) == ("100", "400")
+    assert (lim["fpr_freepositionreturn"]["min_supplier"], lim["fpr_freepositionreturn"]["max_supplier"]) == ("9000", "9400")
     assert (lim["of_operatingforce"]["min"], lim["of_operatingforce"]["max"],
             lim["of_operatingforce"]["min_supplier"], lim["of_operatingforce"]["max_supplier"]) == \
            ("1200", "2200", "1000", "2500")
@@ -174,7 +178,7 @@ def test_gateway_sample_files(sample: Path, tmp_path: Path) -> None:
     assert data_keys == {_normalize_key(h) for h in ProductionRecord.csv_header().split(";")}
     info = body["order_info"]
     assert info["recipe"] == "1" and len(info["lots"]) == 6
-    assert len(info["testing_parameters"]) == 8 and len(info["sorting_limits"]) == 24
+    assert len(info["testing_parameters"]) == 8 and len(info["sorting_limits"]) == 26   # + DF, FPR (2026-10-21)
     assert [g["min"] for g in info["sorting_categories"]["groups"]] == ["18", "30.1", "60.1", "80.1", None, None]
 
 
@@ -189,8 +193,10 @@ def test_frontend_knows_every_limit_and_column() -> None:
     assert limit_keys <= fe_keys, limit_keys - fe_keys
     header = {_normalize_key(h) for h in ProductionRecord.csv_header().split(";")}
     meta_cols = {"timestamp", "status", "sortingcategory", "nokreason", "nokcategory_force",
-                 "nokcategory_position", "nokcategory_electric", "nokcategory_times", "nokcategory_process"}
-    assert header - meta_cols == limit_keys                              # limity = měřené sloupce
+                 "nokcategory_position", "nokcategory_electric", "nokcategory_times", "nokcategory_process",
+                 "positionreference"}                                    # konstanta C (2026-10-21)
+    assert header - meta_cols <= fe_keys, header - meta_cols - fe_keys  # každý měřený sloupec má skupinu
+    assert header - meta_cols == limit_keys                              # limity = měřené sloupce (vč. DF, FPR)
 
 @pytest.mark.parametrize("name", ["sample_testing.csv", "sample_testing_CZ.csv", "sample_testing_EN.csv"])
 def test_gateway_testing_sample_verdict(name: str, tmp_path: Path) -> None:

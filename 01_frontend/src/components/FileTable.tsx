@@ -21,6 +21,8 @@ import type { OrderFile } from '../types'
 import type { Location, DataType } from '../hooks/useDatabaseState'
 import { categoryColor, categoryTextColor } from '../utils/groupColors'
 import CategoryChart from './CategoryChart'
+import LimitLegend from './LimitLegend'
+import { buildLimitMap, limitClass, limitTitle, limitViolation, violationKinds } from '../utils/limits'
 import { ALL_PARAM_KEYS, PARAM_LABELS, PARAM_TOOLTIPS, formatParam, hasMeasuredValue, paramUnit, recordOkState } from '../utils/paramMeta'
 import PositionScaleNote from './PositionScaleNote'
 
@@ -83,6 +85,9 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
   // groupCounts + fileExpectedCount přicházejí z API — agregovány přes celý soubor,
   // takže skupinový graf je přesný i při stránkování (nezáleží na aktuální stránce).
   const hasGroups = Object.keys(groupCounts).length > 0
+  // Limity třídění zakázky → podbarvení hodnot mimo interval (utils/limits.ts)
+  const limitMap   = useMemo(() => buildLimitMap(orderInfo?.sorting_limits, orderInfo?.sorting_categories), [orderInfo])
+  const limitKinds = useMemo(() => violationKinds(records, limitMap), [records, limitMap])
 
   // Sloupec group v tabulce — z aktuální stránky záznamů
   const hasGroupCol = useMemo(
@@ -174,6 +179,7 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
 
           {/* Tabulka záznamů */}
           <PositionScaleNote records={records} />
+          <LimitLegend kinds={limitKinds} />
           <div className="db-subtable-wrap">
             <table className="db-subtable">
               <thead>
@@ -256,9 +262,10 @@ function ExpandedRow({ file, location, dataType }: ExpandedRowProps) {
                     })}
                     {activeParams.map(k => {
                       const f = formatParam(k, r[k])
+                      const viol = limitViolation(k, r[k], limitMap)
                       return (
-                        <td key={k} className="db-subtable__td db-subtable__td--param"
-                          title={f.open ? t.chart.openContact : undefined}>
+                        <td key={k} className={`db-subtable__td db-subtable__td--param${viol ? ` ${limitClass(viol)}` : ''}`}
+                          title={limitTitle(k, viol, t.chart) ?? (f.open ? t.chart.openContact : undefined)}>
                           {f.text}
                         </td>
                       )

@@ -67,7 +67,7 @@ describe('RecordDiagram — real production record', () => {
 })
 
 describe('Grafická nápověda parametru (tlačítko grafu v ParamTable)', () => {
-  it('každý analyzovaný parametr (24) má diagram; vstupy testu ne', () => {
+  it('každý analyzovaný parametr (26 vč. DF, FPR) má diagram; vstupy testu ne', () => {
     for (const k of ALL_PARAM_KEYS) expect(PARAM_DIAGRAM[k], k).toBeDefined()
     expect(PARAM_DIAGRAM['drive_velocity']).toBeUndefined()
   })
@@ -98,5 +98,49 @@ describe('Grafická nápověda parametru (tlačítko grafu v ParamTable)', () =>
     const groupOf = (label: string) => Array.from(container.querySelectorAll('svg text'))
       .find(t => t.textContent === label)?.closest('g')
     for (const l of ['OpT', 'UT', 'RevT', 'BT']) expect(groupOf(l)?.getAttribute('opacity'), l).toBe('1')
+  })
+})
+
+describe('DF a FPR (Analyzing 2.4.0+, Gateway od 2026-10-21)', () => {
+  const NEW = { ...RECORD, df_differentialforce: '130', fpr_freepositionreturn: '9268.4' }
+
+  it('starší záznam bez DF / FPR: tabulka je vynechá, diagram ukáže jen ΔF bez hodnoty a bez FPR', () => {
+    const { container } = render(<LangProvider><RecordDiagram record={RECORD} /></LangProvider>)
+    const abbrs = Array.from(container.querySelectorAll('.rd-pt__abbr')).map(c => c.textContent)
+    expect(abbrs).not.toContain('DF')
+    expect(abbrs).not.toContain('FPR')
+    const texts = svgTexts(container)
+    expect(texts).toContain('ΔF')
+    expect(texts.some(t => t.startsWith('FPR'))).toBe(false)
+  })
+
+  it('nový záznam: DF a FPR v tabulce i v diagramu s hodnotou', () => {
+    const { container } = render(<LangProvider><RecordDiagram record={NEW} /></LangProvider>)
+    const cells = Array.from(container.querySelectorAll('.rd-pt__val')).map(c => c.textContent ?? '')
+    expect(cells).toContain('130mN')
+    expect(cells).toContain('9268.4µm')
+    const texts = svgTexts(container)
+    expect(texts).toContain('DF = 130')
+    expect(texts).toContain('FPR = 9268.4')
+  })
+
+  it('DF / FPR = 0 (Analyzing neurčil) → „—"', () => {
+    const { container } = render(<LangProvider><RecordDiagram
+      record={{ ...NEW, df_differentialforce: '0', fpr_freepositionreturn: '0' }} /></LangProvider>)
+    const rows = Array.from(container.querySelectorAll('.rd-pt__row'))
+    const valOf = (abbr: string) => rows.find(r => r.querySelector('.rd-pt__abbr')?.textContent === abbr)
+      ?.querySelector('.rd-pt__val')?.textContent
+    expect(valOf('DF')).toBe('—')
+    expect(valOf('FPR')).toBe('—')
+  })
+
+  it('zvýraznění DF rozsvítí OF a RF, FPR rozsvítí FP', () => {
+    const { container } = render(<LangProvider><ForceTravelDiagram record={NEW} highlight="df_differentialforce" /></LangProvider>)
+    const groupOf = (label: string) => Array.from(container.querySelectorAll('svg text'))
+      .find(t => t.textContent === label)?.closest('g')
+    for (const l of ['DF = 130', 'OF', 'RF']) expect(groupOf(l)?.getAttribute('opacity'), l).toBe('1')
+    const { container: c2 } = render(<LangProvider><ForceTravelDiagram record={NEW} highlight="fpr_freepositionreturn" /></LangProvider>)
+    const fpr = Array.from(c2.querySelectorAll('svg text')).find(t => t.textContent === 'FPR = 9268.4')
+    expect(fpr?.closest('g')?.getAttribute('opacity')).toBe('1')
   })
 })

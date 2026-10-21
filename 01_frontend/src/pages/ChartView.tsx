@@ -34,6 +34,9 @@ import { usePrintMode } from '../hooks/usePrintMode'
 import RecordFilterBar from '../components/RecordFilterBar'
 import OrderInfoPanel from '../components/OrderInfoPanel'
 import CategoryChart from '../components/CategoryChart'
+import LimitLegend from '../components/LimitLegend'
+import { buildLimitMap, limitClass, limitTitle, limitViolation, violationKinds } from '../utils/limits'
+import type { LimitMap, LimitTexts } from '../utils/limits'
 import PageHelp from '../components/PageHelp'
 import type { SortOrder, StatusFilter } from '../components/RecordFilterBar'
 import type { NokArea } from '../types'
@@ -234,12 +237,14 @@ function OrderSummary({ record, t, children }: {
  *  - status / sortingcategory → OK/NOK badge, badge kategorie (barva boxu)
  *  - nokcategory_* → ✓ / !
  *  - měřené parametry → formatParam (jednotné formátování, mΩ, ∞ pro rozepnutý kontakt)
- *  Status OK/NOK = recordOkState() (paramMeta.ts) — stejné pravidlo jako filtr na serveru. */
-function makeChartCellRenderer(openLabel: string) {
-  return (col: string, value: unknown, row: Record<string, unknown>) => renderChartCell(col, value, row, openLabel)
+ *  Status OK/NOK = recordOkState() (paramMeta.ts) — stejné pravidlo jako filtr na serveru.
+ *  Hodnota mimo limity třídění dostane tooltip s mezemi (podbarvení buňky = cellClassName, utils/limits.ts). */
+function makeChartCellRenderer(openLabel: string, limits: LimitMap, texts: LimitTexts) {
+  return (col: string, value: unknown, row: Record<string, unknown>) => renderChartCell(col, value, row, openLabel, limits, texts)
 }
 
-function renderChartCell(col: string, value: unknown, row: Record<string, unknown>, openLabel: string) {
+function renderChartCell(col: string, value: unknown, row: Record<string, unknown>, openLabel: string,
+                         limits: LimitMap, texts: LimitTexts) {
   const v = String(value ?? '')
   if (col === 'timestamp') return formatDateTime(v, true)
   if (col === 'status') {
@@ -256,7 +261,8 @@ function renderChartCell(col: string, value: unknown, row: Record<string, unknow
   }
   if (paramUnit(col)) {
     const f = formatParam(col, value)
-    return f.open ? <span title={openLabel}>{f.text}</span> : f.text
+    const title = limitTitle(col, limitViolation(col, value, limits), texts) ?? (f.open ? openLabel : undefined)
+    return title ? <span title={title}>{f.text}</span> : f.text
   }
   return null
 }
@@ -403,7 +409,14 @@ export default function ChartView() {
     return cols.length >= 1 ? cols : FIXED_COLS
   }, [records, activeTab])
 
-  const cellRenderer = useMemo(() => makeChartCellRenderer(t.chart.openContact), [t])
+  // Limity třídění z údajů zakázky → podbarvení a tooltip hodnot mimo interval (utils/limits.ts)
+  const limitMap = useMemo(() => buildLimitMap(heroInfo?.sorting_limits, heroInfo?.sorting_categories), [heroInfo])
+  const cellRenderer = useMemo(
+    () => makeChartCellRenderer(t.chart.openContact, limitMap, { limitTrafag: t.chart.limitTrafag, limitSupplier: t.chart.limitSupplier, limitCategory: t.chart.limitCategory }),
+    [t, limitMap])
+  const cellClassName = useCallback(
+    (col: string, value: unknown) => limitClass(limitViolation(col, value, limitMap)), [limitMap])
+  const limitKinds = useMemo(() => violationKinds(records, limitMap), [records, limitMap])
 
   // Klik na kus → detail záznamu (useCallback: DataTable je memo — inline funkce by ji překreslovala)
   const openRecord = useCallback((row: Record<string, unknown>) => {
@@ -480,7 +493,7 @@ export default function ChartView() {
             </OrderSummary>
 
             <PositionScaleNote records={[record]} />
-            <RecordDiagram record={record} />
+            <RecordDiagram record={record} limits={limitMap} />
           </>
         )}
 
@@ -614,6 +627,7 @@ export default function ChartView() {
               {filterActive && records.length === 0 && (
                 <p className="cv-rec-filter__empty">{t.chart.filterEmpty}</p>
               )}
+              <LimitLegend kinds={limitKinds} />
               <DataTable
                 columns={tableColumns}
                 rows={records}
@@ -621,6 +635,7 @@ export default function ChartView() {
                 columnTooltips={PARAM_TOOLTIPS}
                 columnUnits={paramUnit}
                 cellRenderer={cellRenderer}
+                cellClassName={cellClassName}
                 fixedColumns={FIXED_COLS}
                 onRowClick={openRecord}
               />
@@ -667,6 +682,7 @@ export default function ChartView() {
                       columnTooltips={PARAM_TOOLTIPS}
                       columnUnits={paramUnit}
                       cellRenderer={cellRenderer}
+                      cellClassName={cellClassName}
                     />
                   </div>
                 )

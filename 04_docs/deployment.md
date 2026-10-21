@@ -44,6 +44,27 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.5.0 (2026-10-21) — společné vydání všech tří aplikací (DF, FPR, konstanta C)
+
+**Analyzing 2.5.0 + DatabaseGateway 2.5.0 + ScadaViewer 2.5.0 + nový PLC program se nasazují SPOLEČNĚ** — balíček
+`ScadaViewer/06_build/releases/deploy_v2.5.0/` (`deploy.bat`; zálohy, kontroly, rollback). Podklad změny rozhraní:
+`Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`.
+
+**PLC (nutné před nasazením):** `ST_APP_Mod_Analyzing_AnalyzedResults_Params` 104 B (`Force.DF_DifferentialForce`,
+`Position.FPR_FreePositionReturn`), `ST_APP_Mod_Measuring_MeasuredRecord_Info.Calibration.PositionReference` (C) a limity
+třídění `ST_APP_Recipe_Sorting_Limits_Force.DF_DifferentialForce` / `_Position.FPR_FreePositionReturn` (Limits i
+Limits_Supplier). Se starým programem: Analyzing E6, DatabaseGateway Op1 PlcSymbolError.
+**Rozpracovaná zakázka musí být uzavřená** — nová datová hlavička; `deploy.ps1` s neprázdnou `production\wip` skončí.
+Ověřeno na stanici 2026-10-21 (zakázka `ppjml`, 5 kusů: DF = OF − RF, FPR ≈ FP, C = 9400).
+
+| Změna ScadaViewer 2.5.0 | Dopad |
+|---|---|
+| DF (konec skupiny Forces) a FPR (konec Positions) v tabulkách parametrů, diagramu síla–dráha (DF s hodnotou, bod FPR) a grafech Signal Data (bod FPR); starší soubory bez řádků DF / FPR | jen zobrazení |
+| Konstanta C ze souboru (`PositionReference`) pro souřadnice grafů — starší soubory dopočet C = TTP + max x | grafy přesně na stupnici Analyzingu |
+| Diagram detailu kusu: polohy FP / RP / OP / TTP s hodnotami pod osou; Hystereze: hodnoty bodů v řádku nad grafem | čitelnost |
+| Podbarvení hodnot mimo limity: žlutě Trafag / MD mimo kategorie 1–4 (kat. 5), oranžově výrobce (kat. 6), oranžově se žlutým pruhem obojí | nové rozlišení |
+| Nastavení → Čas / NTP zjednodušeno (shrnutí + jeden důvod, detaily sbalené) | jen zobrazení |
+
 ## Release 2.4.1 (2026-10-20) — ScadaViewer 2.4.1 (Analyzing a DatabaseGateway 2.4.0)
 
 Balíček `06_build/releases/deploy_v2.4.1/` (`deploy.bat`) — obsahuje **všechny tři aktuální verze**

@@ -53,20 +53,34 @@ describe('time helpers (PC time zone, not browser)', () => {
 })
 
 describe('TimeServerTab', () => {
-  it('shows NTP server status and warns about no upstream source / conditional announce', async () => {
+  it('summary: IPCs get no time — first failing condition is the reason (announce without upstream)', async () => {
     apiFetch.mockReturnValue(json(STATUS))
     render(<TimeServerTab />, { wrapper: Wrapper })
-    expect(await screen.findByText(/Enabled — IPCs can take the time/)).toBeInTheDocument()
-    expect(screen.getByText(/has no upstream time source/)).toBeInTheDocument()
-    expect(screen.getByText(/set AnnounceFlags = 5/)).toBeInTheDocument()
-    expect(screen.getByText('192.168.1.5')).toBeInTheDocument()
+    expect(await screen.findByText('The IPCs currently get no time from this PC')).toBeInTheDocument()
+    expect(screen.getByText(/does not announce itself as a reliable time source/)).toBeInTheDocument()
+    expect(screen.getByText('Own clock of the PC (no upstream source)')).toBeInTheDocument()
+    expect(screen.getAllByText('192.168.1.5').length).toBeGreaterThan(0)
+    // technické podrobnosti jsou ve sbaleném bloku
+    expect(screen.getByText('Technical details').closest('details')).not.toHaveAttribute('open')
   })
 
-  it('configured source that does not sync → its own warning, not "no upstream"', async () => {
+  it('summary OK: service, server, UDP and reliable announce', async () => {
+    apiFetch.mockReturnValue(json({ ...STATUS, announce: 'reliable', announce_flags: 5 }))
+    render(<TimeServerTab />, { wrapper: Wrapper })
+    expect(await screen.findByText('The IPCs can take their time from this PC')).toBeInTheDocument()
+  })
+
+  it('reason priority: stopped service wins over everything else', async () => {
+    apiFetch.mockReturnValue(json({ ...STATUS, service_state: 'stopped', ntp_server_enabled: false }))
+    render(<TimeServerTab />, { wrapper: Wrapper })
+    expect(await screen.findByText(/the Windows Time service is not running/)).toBeInTheDocument()
+    expect(screen.queryByText(/the NTP server is disabled/)).toBeNull()
+  })
+
+  it('configured source that does not sync → shown in the source row', async () => {
     apiFetch.mockReturnValue(json({ ...STATUS, sync_type: 'NTP', source: 'time.windows.com,0x9', synchronized: false }))
     render(<TimeServerTab />, { wrapper: Wrapper })
-    expect(await screen.findByText(/configured but is not synchronized/)).toBeInTheDocument()
-    expect(screen.queryByText(/has no upstream time source/)).toBeNull()
+    expect(await screen.findByText(/time\.windows\.com,0x9 configured but not synchronized/)).toBeInTheDocument()
   })
 
   it('without permission only the overview, no input', async () => {

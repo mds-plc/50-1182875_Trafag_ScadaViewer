@@ -88,7 +88,7 @@ def scale_text(value: str | None, factor: float) -> str | None:
 #: Rozepnutý kontakt v exportu — jednotně jako Analyzing / PLC (starší soubory mají 1 000 000 Ω = 10⁹ mΩ)
 OPEN_CONTACT_EXPORT = "9999.9"
 _POSITION_NAMES = frozenset({"fp_freeposition", "op_operatingposition", "rp_realeasingposition",
-                             "ttp_totaltravelposition"})
+                             "ttp_totaltravelposition", "fpr_freepositionreturn"})
 
 
 def export_value(header: str, value: str | None) -> str:

@@ -389,3 +389,27 @@
   .ph-btn,
   .ph-overlay { display: none !important; }
 }
+
+/* LIMITY TŘÍDĚNÍ — hodnota parametru mimo interval (utils/limits.ts): lehké podbarvení buňky.
+   Barvy = boxy 5 (žlutá, NOK Trafag) a 6 (červeno-oranžová, NOK Supplier) z CATEGORY_COLORS;
+   td + dvě třídy = vyšší specifičnost než zebra / hover řádku */
+td.limit-cell.limit-cell--trafag   { background-color: rgba(250, 204, 21, 0.28); }
+td.limit-cell.limit-cell--supplier { background-color: rgba(234, 88, 12, 0.22); }
+/* mimo výrobce i Trafag: barva výrobce + žlutý pruh vlevo (rozliší se i od samotného výrobce) */
+td.limit-cell.limit-cell--both     { background-color: rgba(234, 88, 12, 0.30); box-shadow: inset 4px 0 0 rgba(234, 179, 8, 0.95); }
+td.limit-cell { font-weight: var(--font-weight-semibold); }
+
+.limit-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-2) 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+.limit-legend__item { display: inline-flex; align-items: center; gap: var(--space-1); }
+.limit-legend__swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--color-border); }
+.limit-legend__swatch--trafag   { background: rgba(250, 204, 21, 0.45); }
+.limit-legend__swatch--supplier { background: rgba(234, 88, 12, 0.38); }
+.limit-legend__swatch--both     { background: rgba(234, 88, 12, 0.45); box-shadow: inset 4px 0 0 rgba(234, 179, 8, 0.95); }

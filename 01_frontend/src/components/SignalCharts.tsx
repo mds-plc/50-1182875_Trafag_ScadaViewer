@@ -63,12 +63,18 @@ const C = {
   grid:     'var(--color-border)',
   muted:    '#9ca3af',
 }
-const KP_COLORS: Record<string, string> = { fp: '#1e88e5', op: '#43a047', ttp: '#e53935', rp: '#fb8c00' }
-const KP_ORDER = ['fp', 'op', 'ttp', 'rp'] as const
-const KP_LABELS: Record<string, string> = { fp: 'FP', op: 'OP', ttp: 'TTP', rp: 'RP' }
+// FPR (volná poloha po návratu, od 2026-10-21) — jen u souborů, které ji mají (backend vrátí bod 'fpr')
+const KP_COLORS: Record<string, string> = { fp: '#1e88e5', op: '#43a047', ttp: '#e53935', rp: '#fb8c00', fpr: '#8e24aa' }
+const KP_ORDER = ['fp', 'op', 'ttp', 'rp', 'fpr'] as const
+const KP_LABELS: Record<string, string> = { fp: 'FP', op: 'OP', ttp: 'TTP', rp: 'RP', fpr: 'FPR' }
+/** Strana popisku bodu v grafu Hystereze (síla × poloha): FP ≈ FPR a OP ≈ RP leží těsně u sebe */
+const HYST_LABEL_POS: Record<string, 'top' | 'bottom' | 'left' | 'right'> = {
+  fp: 'top', fpr: 'right', op: 'top', rp: 'bottom', ttp: 'left',
+}
 /** Klíč polohy v AnalyzedParameters pro bod */
 const KP_PARAM: Record<string, string> = {
   fp: 'fp_freeposition', op: 'op_operatingposition', ttp: 'ttp_totaltravelposition', rp: 'rp_realeasingposition',
+  fpr: 'fpr_freepositionreturn',
 }
 const BAND = { ut: '#f59e0b', revt: '#6366f1', bt: '#ef4444' }
 
@@ -476,8 +482,12 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
       {show('hysteresis') && (
         <div className="sig-hysteresis sig-section">
           {printTitle('hysteresis')}
+          {/* Hodnoty bodů a sil z analýzy — u bodů v grafu jen zkratka (FP ≈ FPR, OP ≈ RP leží těsně u sebe) */}
           <div className="sig-chips">
-            {(['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] as const)
+            {KP_ORDER.filter(k => P[KP_PARAM[k]] != null).map(k => (
+              <span key={k} className="sig-chip" style={{ color: KP_COLORS[k] }}><b>{KP_LABELS[k]}</b> {um(P[KP_PARAM[k]])}</span>
+            ))}
+            {(['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce', 'df_differentialforce'] as const)
               .filter(k => P[k] != null)
               .map(k => <span key={k} className="sig-chip"><b>{PARAM_LABELS[k]}</b> {milliNewton(P[k])}</span>)}
             {P.md_movementdifferential != null && (
@@ -510,8 +520,9 @@ export default function SignalCharts({ fileId, location, fileType, printAll = fa
                 <ReferenceDot key={`h-${k}`} x={kp[k].position} y={kp[k].force as number} r={6}
                   fill={KP_COLORS[k]} stroke="#fff" strokeWidth={1.5}
                   label={{
-                    value: `${KP_LABELS[k]}  ${um(kp[k].position)} · ${milliNewton(kp[k].force)}`,
-                    position: k === 'ttp' ? 'left' : k === 'rp' ? 'bottom' : 'top', fontSize: 10, fontWeight: 700, fill: KP_COLORS[k],
+                    // jen zkratka — hodnoty v řádku nad grafem; FP / FPR a OP / RP na opačné strany bodu
+                    value: KP_LABELS[k], fontSize: 11, fontWeight: 700, fill: KP_COLORS[k],
+                    position: HYST_LABEL_POS[k] ?? 'top',
                   }} />
               ))}
             </LineChart>
@@ -643,8 +654,9 @@ function TimingLegend({ params: P }: { params: Record<string, number> }) {
 // ── Souhrn výsledků analýzy (reference: rámeček „VYSLEDKY ANALYZY") ─────────
 
 const SUMMARY_GROUPS: { unit: string; keys: string[] }[] = [
-  { unit: 'µm', keys: ['fp_freeposition', 'op_operatingposition', 'ttp_totaltravelposition', 'rp_realeasingposition'] },
-  { unit: 'mN', keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce'] },
+  { unit: 'µm', keys: ['fp_freeposition', 'op_operatingposition', 'ttp_totaltravelposition', 'rp_realeasingposition',
+    'fpr_freepositionreturn'] },
+  { unit: 'mN', keys: ['of_operatingforce', 'rf_realisingforce', 'ttf_totaltravelforce', 'df_differentialforce'] },
   { unit: 'µm', keys: ['pt_pretravel', 'ot_overtravel', 'rt_realisingtravel', 'tt_totaltravel', 'md_movementdifferential'] },
   { unit: 'µs', keys: ['ot_operatingtime', 'rt_reversetime', 'bt_bouncetime', 'ut_unstabletime'] },
 ]
