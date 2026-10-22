@@ -233,6 +233,14 @@ const numericKeys = useMemo(() => {
 - **Tisk:** styly v bloku „PROTOKOL" na konci `styles/chart.css`; obrazovkové prvky `cv-screen-only`,
   tiskové `cv-print-only`; ověřit PDF přes Playwright `page.pdf()` (testovací server s fiktivním ADS).
 
+## Klávesnice na obrazovce (kiosk) — nerozbíjet
+
+Na PC u stroje je systémová klávesnice zakázaná; `components/OnScreenKeyboard.tsx` (v `AppShell`) se objeví u každého
+textového pole automaticky. Nové pole: běžný `<input>` (text / search / password / number) s `onChange` funguje bez úprav;
+pole, kde klávesnice být nemá, `data-osk="off"`. Klávesnice píše nativním setterem + `input` — nepoužívat v polích
+logiku jen na `keydown` znaků (Enter klávesnice posílá `keydown` Enter + `form.requestSubmit()`). z-index 3000 —
+nové překryvy držet pod ním. Režim: `utils/oskMode.ts` (Nastavení → Předvolby).
+
 ## Kontrola kódu — `npm run lint`
 
 ESLint (`01_frontend/eslint.config.mjs`) hlídá `rules-of-hooks` (chyba), `exhaustive-deps`,

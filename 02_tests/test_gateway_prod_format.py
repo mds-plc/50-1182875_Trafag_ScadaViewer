@@ -139,7 +139,7 @@ def test_gateway_writer_file(gw_file) -> None:
     assert [(g["group"], g["min"], g["max"]) for g in cats["groups"]] == [
         (1, "18", "30"), (2, "30.1", "60"), (3, "60.1", "80"), (4, "80.1", "100"), (5, None, None), (6, None, None)]
     lim = {l["key"]: l for l in info["sorting_limits"]}
-    assert len(lim) == 26                                               # vč. DF, FPR
+    assert len(lim) == 28                                               # vč. DF, FPR, R_NC/NO_Static
     assert (lim["df_differentialforce"]["min"], lim["df_differentialforce"]["max"]) == ("100", "400")
     assert (lim["fpr_freepositionreturn"]["min_supplier"], lim["fpr_freepositionreturn"]["max_supplier"]) == ("9000", "9400")
     assert (lim["of_operatingforce"]["min"], lim["of_operatingforce"]["max"],
@@ -178,7 +178,7 @@ def test_gateway_sample_files(sample: Path, tmp_path: Path) -> None:
     assert data_keys == {_normalize_key(h) for h in ProductionRecord.csv_header().split(";")}
     info = body["order_info"]
     assert info["recipe"] == "1" and len(info["lots"]) == 6
-    assert len(info["testing_parameters"]) == 8 and len(info["sorting_limits"]) == 26   # + DF, FPR (2026-10-21)
+    assert len(info["testing_parameters"]) == 8 and len(info["sorting_limits"]) == 28   # + DF, FPR (10-21), R_NC/NO_Static (10-22)
     assert [g["min"] for g in info["sorting_categories"]["groups"]] == ["18", "30.1", "60.1", "80.1", None, None]
 
 

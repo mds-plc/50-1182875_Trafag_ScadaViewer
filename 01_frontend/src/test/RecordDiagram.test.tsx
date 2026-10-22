@@ -144,3 +144,19 @@ describe('DF a FPR (Analyzing 2.4.0+, Gateway od 2026-10-21)', () => {
     expect(fpr?.closest('g')?.getAttribute('opacity')).toBe('1')
   })
 })
+
+describe('Statické odpory (2026-10-22)', () => {
+  it('starší záznam bez sloupce: řádky ani box Static nejsou; nový: v tabulce i v diagramu', () => {
+    const { container: old } = render(<LangProvider><RecordDiagram record={RECORD} /></LangProvider>)
+    expect(Array.from(old.querySelectorAll('.rd-pt__abbr')).map(c => c.textContent)).not.toContain('R NC stat')
+    expect(svgTexts(old)).not.toContain('Static [mΩ]')
+    const rec = { ...RECORD, r_nc_static: '25.1', r_no_static: '7.5' }
+    const { container } = render(<LangProvider><RecordDiagram record={rec} /></LangProvider>)
+    const cells = Array.from(container.querySelectorAll('.rd-pt__val')).map(c => c.textContent ?? '')
+    expect(cells).toContain('25.1mΩ')
+    expect(cells).toContain('7.5mΩ')
+    const texts = svgTexts(container)
+    expect(texts).toContain('Static [mΩ]')
+    expect(texts).toContain('25.1')
+  })
+})

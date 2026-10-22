@@ -20,6 +20,7 @@ import Sidebar      from './components/Sidebar'
 import Topbar       from './components/Topbar'
 import LoginOverlay from './components/LoginOverlay'
 import LoadingSpinner from './components/LoadingSpinner'
+import OnScreenKeyboard from './components/OnScreenKeyboard'
 import Database  from './pages/Database'
 
 // Code-splitting — hlavní stránka (Database) je v úvodním bundlu, ostatní se načítají
@@ -48,7 +49,7 @@ function PlcAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, isRemote } = useAuth()
   const { t } = useLang()
   const { pathname } = useLocation()
   const online = useBackendOnline()
@@ -73,6 +74,8 @@ function AppShell() {
         </div>
       )}
       {!isLoggedIn && <LoginOverlay />}
+      {/* Kiosk: systémová klávesnice je zakázaná → vlastní na obrazovce (předvolba Automaticky = jen u stroje) */}
+      <OnScreenKeyboard enabledAuto={!isRemote} />
       <div className="app">
         <Sidebar />
         <Topbar />

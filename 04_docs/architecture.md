@@ -1422,6 +1422,42 @@ Gateway `test_gateway.py` (+4, 131).
 
 **Stav testů po fázi 49:** Backend **465/465**, Frontend **209/209** (26 souborů); `tsc` 0, lint 0; Gateway 131.
 
+### Fáze 50 — statické odpory R_NC_Static / R_NO_Static (2026-10-22)
+
+Změna rozhraní Analyzing (`Analyzing/04_docs/interface_2026-10-22_R_Static.md`, AnalyzedParams 104 → **112 B**):
+na konci skupiny Electric `R_NC_Static` a `R_NO_Static` [mΩ] — největší odpor sepnutého kontaktu ve vodivém stavu
+mimo přepnutí (okraj 50 µm, bez izolovaných špiček); 0 = neurčeno, 9999,9 = nad 999,9 mΩ. Zákazník: ≤ 600 mΩ.
+
+| Aplikace | Změna |
+|---|---|
+| DatabaseGateway | PROD `[Data]` 35 → 37 sloupců a TEST `[AnalyzedParameters]` 26 → 28 (`R_NC_Static [mOhm]`, `R_NO_Static [mOhm]` za `R_NO_ReleasingPosition_Pos`); `[SortingLimits]` 26 → 28 — oba sloupce z jediné meze statického odporu `Electric.Rezistance` (Trafag `Limits`, výrobce `Limits_Supplier`; vlastní pole v PLC limitech nejsou, `Resistance_Limit` v `[TestingParameters]` zůstává) |
+| ScadaViewer — backend | beze změny (sloupce podle hlavičky, `units.export_value` bere `r_*` jako odpor — 9999,9 v XLSX) |
+| ScadaViewer — frontend | `paramMeta`: konec skupiny `electric` (`R NC stat` / `R NO stat`, tooltip, nápověda CS + EN), `NEWER_PARAM_KEYS` (starší soubory bez řádku); `formatParam` jako ostatní odpory (∞, 0 → „—“); diagram síla–dráha: box **Static [mΩ]** (NC / NO), `PARAM_DIAGRAM` + `RELATED`; limity / podbarvení automaticky |
+
+Testy: Gateway +4 (135), `test_ecosystem_units` (statické odpory z Analyzingu přes Gateway), `test_gateway_prod_format` (28 limitů),
+`paramMeta.test.ts` +1, `RecordDiagram.test.tsx` +1.
+
+**Stav testů po fázi 50:** Backend **465/465**, Frontend **213/213**; `tsc` 0, lint 0; Gateway 135.
+
+### Fáze 51 — klávesnice na obrazovce pro kiosk (2026-10-22)
+
+Na PC u stroje je v kiosku systémová (dotyková) klávesnice zakázaná — nešlo psát do hledání zakázky, přihlášení
+ani nastavení. Řešení: vlastní komponenta (bez knihovny — žádná závislost / `npm audit`, offline, česká QWERTZ
+s diakritikou, klávesy pro dotyk, vzhled aplikace; integraci s řízenými poli by stejně bylo nutné psát i s knihovnou).
+
+| Část | Řešení |
+|---|---|
+| `components/OnScreenKeyboard.tsx` | globální v `AppShell` (i nad přihlášením); `focusin` na textovém poli (`isOskField`: text, search, password, number, email, url, tel; ne datum / checkbox / jen pro čtení / `data-osk="off"`) → zobrazit, `focusout` mimo textové pole → skrýt, pole odstraněné z DOM → skrýt |
+| Psaní | do skutečného pole: nativní setter `value` + událost `input` → React `onChange` (řízená pole, hledání s prodlevou 350 ms); vložení na místo kurzoru / přepsání výběru, `maxLength`; klávesy `preventDefault` na `pointerdown` → fokus a kurzor zůstanou v poli |
+| Rozložení | písmena (CZ QWERTZ, řádek čísel, řádek diakritiky ě š č ř ž ý á í é ú ů, Shift — dvojklep = trvale), symboly (?123), číselné pro `type=number`; ⌫ podržením opakuje, ← → kurzor, Enter = `keydown` Enter + `form.requestSubmit()` + skrýt, ⌄ skrýt |
+| Režim (`utils/oskMode.ts`) | Nastavení → Předvolby: **Automaticky** (výchozí — jen na PC u stroje, `!isRemote`), Zapnuto, Vypnuto; localStorage `scada_osk_mode`, změna okamžitě (událost `scada:osk-mode`) |
+| Styl (`styles/osk.css`) | spodní okraj, max. 1100 px (číselná 420 px), z-index 3000 (nad dialogy a přihlášením), klávesy ≥ 52 px; `body.osk-open` odsadí obsah / přihlášení zdola, pole se posune do středu |
+
+Testy: `OnScreenKeyboard.test.tsx` (9). Ověřeno v Chrome (1920×1080, dotyk, světlý i tmavý režim): hledání zakázky
+„1268“ (hledání se spustí, fokus zůstane), přihlášení jménem a heslem + Enter.
+
+**Stav testů po fázi 51:** Frontend **222/222** (27 souborů); `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

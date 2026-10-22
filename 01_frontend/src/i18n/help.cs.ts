@@ -38,7 +38,7 @@ export const helpCs: Translations['help'] = {
       title: 'Detail kusu',
       intro: 'Všechny naměřené hodnoty jednoho kusu z výroby a jejich grafické znázornění. Slouží k posouzení, proč kus skončil v dané kategorii.',
       items: [
-        { title: 'Diagram síla – dráha', text: 'Schéma hysterezní smyčky mikrospínače s hodnotami tohoto kusu: polohy (FP, OP, RP, TTP a u novějších souborů FPR — volná poloha po návratu), síly (OF, RF, TTF, silový diferenciál DF), dráhy (PT, OvT, RvT, MD, TT) a odpory kontaktů v bodech přepnutí. Ikonou lze zvětšit.' },
+        { title: 'Diagram síla – dráha', text: 'Schéma hysterezní smyčky mikrospínače s hodnotami tohoto kusu: polohy (FP, OP, RP, TTP a u novějších souborů FPR — volná poloha po návratu), síly (OF, RF, TTF, silový diferenciál DF), dráhy (PT, OvT, RvT, MD, TT), odpory kontaktů v bodech přepnutí a u novějších souborů statický odpor sepnutých kontaktů NC / NO (box Static). Ikonou lze zvětšit.' },
         { title: 'Časový diagram', text: 'Průběh napětí kontaktů NC a NO při přepnutí (jako na osciloskopu) s časy UT, RevT, BT a OpT v měřítku.' },
         { title: 'NOK kategorie', text: 'Ve kterých oblastech (síla, poloha, elektrika, časy, proces) kus nevyhověl.' },
         { title: 'Tabulka parametrů', text: 'Zkratka, název, hodnota a jednotka. „?" zobrazí popis a výpočet parametru, ikona grafu ukáže parametr zvýrazněný v diagramu. „—" = hodnota nestanovena, ∞ = rozepnutý kontakt. Hodnoty mimo limity třídění zakázky jsou lehce podbarvené — žlutě mimo limity Trafag nebo MD mimo kategorie 1–4 (NOK Trafag), oranžově mimo limity výrobce (NOK Supplier), oranžově se žlutým pruhem mimo obojí; po najetí se ukážou meze.' },
@@ -61,7 +61,7 @@ export const helpCs: Translations['help'] = {
       title: 'Nastavení',
       intro: 'Předvolby zobrazení, stav připojení k PLC a úložištím, čas PC (NTP server pro IPC) a správa uživatelů.',
       items: [
-        { title: 'Předvolby', text: 'Jazyk, světlý / tmavý režim, počet souborů na stránce a interval automatického obnovení. Ukládají se v tomto prohlížeči.' },
+        { title: 'Předvolby', text: 'Jazyk, světlý / tmavý režim, počet souborů na stránce, interval automatického obnovení a klávesnice na obrazovce (kiosk bez systémové klávesnice — Automaticky = jen u stroje). Ukládají se v tomto prohlížeči.' },
         { title: 'Připojení', text: 'Stav serveru, PLC (ADS) a lokálního úložiště a NAS. Administrátor u stroje zde mění cesty k datům a limit lokálního úložiště.' },
         { title: 'Čas / NTP', text: 'PC u stroje slouží jako NTP server pro další IPC. Nahoře je hned vidět, zda si IPC mohou brát čas z tohoto PC (a když ne, proč), čas PC, odkud ho PC bere a adresa, kterou nastavit na IPC. Administrátor u stroje může čas PC ručně nastavit — převezmou ho IPC i časové značky nových záznamů. Údaje pro servis jsou ve sbalených Technických podrobnostech.' },
         { title: 'Uživatelé', text: 'Jen pro administrátora: přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá.' },

@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.5.0"
+    ├── __init__.py            ← __version__ = "2.6.0"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -138,6 +138,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── OrderInfoPanel.tsx ← údaje zakázky z blokového PROD_ souboru — rozbalovací řádky se souhrnem: Šarže / Testovací parametry / Kategorie / Limity
     │   ├── StorageBar.tsx     ← kompaktní ukazatel lokálního úložiště v hlavičce Database (vedle Lokální/Vzdálená) + dialog čištění; krok 2 = bez ověření s potvrzením rizika
     │   ├── TimeServerTab.tsx  ← Nastavení → Čas / NTP: čas PC (tiká), rozdíl vůči zařízení, NTP server pro IPC, zdroj času, ruční nastavení (admin u stroje, potvrzení rizika)
+    │   ├── OnScreenKeyboard.tsx ← klávesnice na obrazovce (kiosk bez systémové): CZ QWERTZ + diakritika, symboly, číselná; píše do aktivního pole (nativní setter + input → onChange), předvolba Automaticky (u stroje) / Zapnuto / Vypnuto
     │   ├── LimitLegend.tsx    ← legenda podbarvení hodnot mimo limity (žlutě Trafag, oranžově výrobce) — nad tabulkou kusů a v rozbaleném řádku
     │   ├── OrderTimelineChart.tsx ← časový průběh zakázky: řada KPI (doba, průměr/medián, prodlevy, ks/h) + graf vyrobených kusů v čase
     │   └── Topbar.tsx         ← horní lišta: název + chip(PLC) + chip(úložiště / NAS, jen warning/critical) + chip(user) + CS/EN + chip(datetime)
@@ -172,6 +173,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── orderTimeline.ts    ← statistiky časového průběhu zakázky, kumulativní řada, formatDuration;
     │   │                         normalizeClockShift (konec letního času 25. 10., zpětné posuny hodin)
     │   ├── groupColors.ts      ← CATEGORY_COLORS / categoryColor() / categoryTextColor() — jediná paleta boxů 1–6 = barvy štítků třídicích krabic (= .db-cat-badge v CSS)
+    │   ├── oskMode.ts          ← režim klávesnice na obrazovce (localStorage `scada_osk_mode`, událost `scada:osk-mode`, `useOskMode`)
     │   ├── limits.ts           ← limity třídění z order_info.sorting_limits → podbarvení hodnot mimo interval (výrobce > Trafag, hranice vyhovují, „—" ne), tooltip s mezemi, druhy pro legendu
     │   ├── apiFetch.ts         ← fetch wrapper pro autentizovaná volání; 401 + WWW-Authenticate → odhlášení
     │   ├── downloadOriginal.ts ← stažení originálního CSV (GET /api/files/{id}/download)
@@ -194,6 +196,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── settings.css       ← .settings-* — záložky, řádky, folder picker, uživatelé
     │   ├── info.css           ← .info-*
     │   ├── signal-charts.css  ← .sig-* — záložky, gridy, subploty signálových grafů
+    │   ├── osk.css            ← .osk* — klávesnice na obrazovce (z-index 3000, klávesy ≥ 52 px), body.osk-open odsadí stránku
     │   ├── overview.css       ← .ov-* — ⏸ odpojený Overview
     │   └── wip.css            ← ⏸ odpojená WIP stránka
     └── types/
@@ -544,7 +547,7 @@ encoding   = "utf-8-sig"
 | `Microswitch_Name` | ✅ | ✅ | `microswitch_name` | typ mikrospínače (zobrazován jako "Microswitch type") |
 | `Group` / `SortingCategory [-]` | ✅ (opt.) | — | `group` / `sortingcategory` | kategorie třídění 1–6 (Gateway zapisuje `SortingCategory`, starší soubory `Group`) |
 | `Expected_Count` | ✅ (opt.) | — | `expected_count` | plánovaný počet vzorků v zakázce |
-| *(AnalyzedParams, 26)* | ✅ | ✅ | lowercase | `[mN]`, `[um]`, `[mOhm]`, `[us]` (od 10/2026; starší `[N]`, `[Ohm]` převádí `units.py`) — `CsvRecordModel(extra='allow')`; od 2026-10-21 + `DF_DifferentialForce` (konec Force) a `FPR_FreePositionReturn` (konec Position), starší soubory je nemají |
+| *(AnalyzedParams, 28)* | ✅ | ✅ | lowercase | `[mN]`, `[um]`, `[mOhm]`, `[us]` (od 10/2026; starší `[N]`, `[Ohm]` převádí `units.py`) — `CsvRecordModel(extra='allow')`; od 2026-10-21 + `DF_DifferentialForce` (konec Force) a `FPR_FreePositionReturn` (konec Position), od 2026-10-22 + `R_NC_Static` / `R_NO_Static` (konec Electric); starší soubory je nemají |
 | `PositionReference` | ✅ (poslední sloupec `[Data]`) | ✅ (`[MeasuredInfo]`) | `positionreference` | konstanta C [µm] (P = C − x) od 2026-10-21; prázdné = PLC ji neposlalo → grafy dopočtou C = TTP + max x |
 
 > CsvRepository normalizuje klíče (`_normalize_key`: lowercase + odstranění `[jednotka]`).
@@ -830,13 +833,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
 | Testy — backend | ✅ | `pytest 02_tests/ -v` — **465 testů** (regrese auditů `test_audit_20261010/11/15.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 26 souborů) — **209 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 27 souborů) — **222 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -847,6 +850,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Klávesnice na obrazovce pro kiosk (Fáze 51, 2026-10-22) | ✅ | `OnScreenKeyboard` (vlastní, bez knihovny — offline, CZ QWERTZ + diakritika, dotyk) — objeví se po klepnutí do textového pole (hledání zakázky, přihlášení, nastavení), Enter odešle formulář; Nastavení → Předvolby: Automaticky (jen u stroje) / Zapnuto / Vypnuto; `data-osk="off"` pole vynechá — viz architecture.md fáze 51 (necommitnuto) |
+| Statické odpory R_NC_Static / R_NO_Static (Fáze 50, 2026-10-22) | ✅ | Gateway PROD `[Data]` 37 / TEST 28 / limity 28; ScadaViewer skupina Electric + box Static v diagramu síla–dráha — viz architecture.md fáze 50 (necommitnuto) |
 | DF, FPR a konstanta C z PLC (Fáze 49, 2026-10-21) | ✅ | Gateway: PROD `[Data]` 35 sloupců (DF za TTF, FPR za TTP, `PositionReference` = C z GVL Analyzingu na konci), TEST `[AnalyzedParameters]` 26 + C v `[MeasuredInfo]`; ScadaViewer: DF / FPR v tabulkách parametrů (starší soubory bez řádku — `NEWER_PARAM_KEYS`), diagram síla–dráha (DF s hodnotou, bod FPR), Signal Data bod FPR, C ze souboru místo dopočtu; limity třídění DF / FPR (`[SortingLimits]` 26 sloupců — Gateway vyžaduje PLC s nimi, jinak Op1 PlcSymbolError) — viz architecture.md fáze 49, `test_df_fpr_c.py` |
 | Hledání zakázky + formát Gateway 2.4.0 (Fáze 47, 2026-10-16) | ✅ | Database → Production (Lokální i Vzdálená): hledání části čísla / názvu zakázky na serveru (`/api/files?q=`, bez diakritiky a velikosti písmen, i `wip[]` / `hidden_by_filter`), během hledání se datumový filtr neuplatní, debounce 350 ms, sessionStorage; NAS: výpis 15 s v paměti, hledání v paměti (100 000 ≈ 0,2 s), dopočet jen stránky; TEST `[Metadata]` s Recipe + ID (SAP) v detailu testu; PROD `[TestingParameters]` nové názvy (generické); opravy revize E16–E20 — + grafická nápověda parametru (tlačítko grafu vedle „?" → diagram se zvýrazněným parametrem, `ParamDiagrams` / `ParamExplainModal`) + nápověda každé stránky (`PageHelp`, ikona u nadpisu, hlídá hook + test) + Údaje zakázky jako rozbalovací řádky (50 šarží) + ikona detailu zakázky v přehledu + oprava přilepené hlavičky podtabulky + **smazání rozpracované zakázky adminem** (s potvrzením rizika; Gateway smazaný WIP pozná — nasazovat spolu) + **graf kategorií** `CategoryChart` (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD) + **paleta kategorií = barvy štítků krabic** (`groupColors.ts`) + kategorie 6 = „NOK Supplier" + **filtr kusů podle NOK oblasti** (Force / Position / Electric / Times / Process, `/api/data?nok=`, maska v `_OrderIndex.nok`, počty `nok_counts`) — viz architecture.md fáze 47, návod `how_to_extend.md` § 13 |
 | Hloubková analýza + opravy (Fáze 46, 2026-10-15) | ✅ | 38 nálezů Q1–Q38: NOK test podle masky NokCategory v [NokInfo], NasProbe (NAS pool), výpadek NAS ≠ prázdný archiv, cesty v Config.toml ověřené tomllib, mazání done_local jen admin+, řazení podle ID bez kaskády dopočtu, migrace cache 3→4 bez ztráty `known`, order_info jedním čtením + strop 200 MB, opakování PLC loginu, daemon pool (rychlé zastavení služby), jedno pravidlo OK/NOK (`recordOkState`); zaplnění NAS, údaje zakázky, sloupec ID mikrospínače — viz audit_log 2026-10-15 |
@@ -887,7 +892,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 9. Zpevnění ekosystému (hodnocení 2026-09-26, `project_reviews.md`): společná specifikace formátu CSV
    + verze v souboru + test napříč aplikacemi, časové značky s časovou zónou, stav DatabaseGateway
    ve ScadaViewer, heslo k NAS mimo git
-10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13; ~~Release 2.3.0~~ (blokový PROD_ soubor, řazení kusů) — 2026-10-13; ~~Release 2.4.0~~ (společný — Analyzing, DatabaseGateway, ScadaViewer; fáze 46–47) — 2026-10-19; ~~Release 2.4.1~~ (ScadaViewer — Čas / NTP, parametry pohonu) — 2026-10-20; ~~Release 2.5.0~~ (společný — DF, FPR, C, podbarvení limitů) — 2026-10-21
+10. ~~Release 2.1.1~~ — hotovo 2026-10-10 (fáze 35–39); ~~Release 2.2.0~~ (společný, jednotky zákazníka) — 2026-10-13; ~~Release 2.3.0~~ (blokový PROD_ soubor, řazení kusů) — 2026-10-13; ~~Release 2.4.0~~ (společný — Analyzing, DatabaseGateway, ScadaViewer; fáze 46–47) — 2026-10-19; ~~Release 2.4.1~~ (ScadaViewer — Čas / NTP, parametry pohonu) — 2026-10-20; ~~Release 2.5.0~~ (společný — DF, FPR, C, podbarvení limitů) — 2026-10-21; ~~Release 2.6.0~~ (společný — statické odpory, max_cycles 60 000, klávesnice na obrazovce) — 2026-10-22
 11. Škálování (audit 2026-10-10 S1–S5, `roadmap.md` → 6.): podsložky `Production/RRRR/MM/` na NAS
     (s DatabaseGateway), počet kusů v souboru při uzavření zakázky, retence archivu (Trafag),
     nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje

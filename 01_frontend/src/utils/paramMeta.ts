@@ -52,6 +52,8 @@ export const PARAM_LABELS: Record<string, string> = {
   r_no_operatingposition_pos:  'R NOo+',
   r_no_releasingposition_neg:  'R NOr−',
   r_no_releasingposition_pos:  'R NOr+',
+  r_nc_static:                 'R NC stat',
+  r_no_static:                 'R NO stat',
   // NOK diagnostics
   nokreason:                   'NOK',
   nokcategory_force:           'NOK F',
@@ -105,12 +107,14 @@ export const PARAM_GROUPS: { id: string; label: string; unit: string; color: str
       'r_nc_releasingposition_neg', 'r_nc_releasingposition_pos',
       'r_no_operatingposition_neg', 'r_no_operatingposition_pos',
       'r_no_releasingposition_neg', 'r_no_releasingposition_pos',
+      'r_nc_static', 'r_no_static',                      // statický odpor (Analyzing, od 2026-10-22)
     ] },
 ]
 
 /** Parametry přidané v Analyzing 2.4.0 / DatabaseGateway (2026-10-21) — starší soubory sloupec
  *  nemají vůbec → tabulky parametrů je u nich vynechají (ne řádek „—"). */
-export const NEWER_PARAM_KEYS: ReadonlySet<string> = new Set(['df_differentialforce', 'fpr_freepositionreturn'])
+export const NEWER_PARAM_KEYS: ReadonlySet<string> = new Set(['df_differentialforce', 'fpr_freepositionreturn',
+  'r_nc_static', 'r_no_static'])   // statické odpory od 2026-10-22
 
 /** Skupiny vstupních parametrů pro Testing detail (TestingParameters + MeasuredInfo). */
 export const TESTING_INPUT_GROUPS: { id: string; label: string; unit: string; color: string; keys: string[] }[] = [
@@ -214,6 +218,8 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   r_no_operatingposition_pos:  'NO — Operating Position Pos [mΩ]',
   r_no_releasingposition_neg:  'NO — Releasing Position Neg [mΩ]',
   r_no_releasingposition_pos:  'NO — Releasing Position Pos [mΩ]',
+  r_nc_static:                 'NC — Static Resistance (closed, outside switching) [mΩ]',
+  r_no_static:                 'NO — Static Resistance (closed, outside switching) [mΩ]',
   // NOK diagnostics
   nokreason:                   'NOK Reason Code',
   nokcategory_force:           'NOK Category — Force',
@@ -445,6 +451,10 @@ export const PARAM_DESC: Record<string, string> = {
     'Odpor [mΩ] kontaktu NO těsně před přepnutím v bodě RP (zpětný chod) — NO je ještě sepnutý, očekává se nízká hodnota (jednotky mΩ).',
   r_no_releasingposition_pos:
     'Odpor [mΩ] kontaktu NO těsně po přepnutí v bodě RP — NO je rozepnutý, očekává se ∞ (nad 999,9 mΩ).',
+  r_nc_static:
+    'Statický odpor [mΩ] sepnutého kontaktu NC — největší odpor ve vodivém stavu mimo přepnutí (od začátku měření do 50 µm před OP a od 50 µm za RP do konce, bez izolovaných špiček). Zákazník: ≤ 600 mΩ. Vysoká hodnota = opotřebený / znečištěný kontakt nebo vadné kontaktování měření. Starší soubory tento parametr nemají.',
+  r_no_static:
+    'Statický odpor [mΩ] sepnutého kontaktu NO — největší odpor ve vodivém stavu mimo přepnutí (od 50 µm za sepnutím do 50 µm před rozepnutím). Zákazník: ≤ 600 mΩ. Vysoká hodnota = špatně sepnutý kontakt nebo vadné kontaktování měření. Starší soubory tento parametr nemají.',
   // ── Vstupní parametry testu (Testing — [TestingParameters], [MeasuredInfo]) ──
   drive_distance:
     'Dráha pohonu [mm] — jak daleko pohon při testu mikrospínač stlačí (délka zdvihu).',
@@ -532,6 +542,10 @@ export const PARAM_DESC_EN: Record<string, string> = {
     'Resistance [mΩ] of the NO contact just before switching at RP (return stroke) — NO is still closed, a low value is expected (a few mΩ).',
   r_no_releasingposition_pos:
     'Resistance [mΩ] of the NO contact just after switching at RP — NO is open, ∞ is expected (above 999.9 mΩ).',
+  r_nc_static:
+    'Static resistance [mΩ] of the closed NC contact — the highest resistance in the conducting state outside switching (from the start of the measurement to 50 µm before OP and from 50 µm after RP to the end, without isolated spikes). Customer: ≤ 600 mΩ. A high value = worn / dirty contact or faulty measurement contacting. Older files do not contain this parameter.',
+  r_no_static:
+    'Static resistance [mΩ] of the closed NO contact — the highest resistance in the conducting state outside switching (from 50 µm after closing to 50 µm before opening). Customer: ≤ 600 mΩ. A high value = poorly closed contact or faulty measurement contacting. Older files do not contain this parameter.',
   drive_distance:
     'Drive distance [mm] — how far the drive actuates the microswitch during the test (stroke length).',
   drive_velocity:

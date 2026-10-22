@@ -203,3 +203,19 @@ describe('DF, FPR, konstanta C (2026-10-21)', () => {
     expect(ALL_PARAM_KEYS).not.toContain('positionreference')          // není měřený parametr kusu
   })
 })
+
+describe('Statické odpory R_NC_Static / R_NO_Static (2026-10-22)', () => {
+  it('na konci skupiny Electric, mΩ 0,1, ∞ nad 999,9, 0 = „—"', () => {
+    const el = PARAM_GROUPS.find(g => g.id === 'electric')!.keys
+    expect(el.slice(-2)).toEqual(['r_nc_static', 'r_no_static'])
+    expect(formatParam('r_nc_static', '25.14').text).toBe('25.1')
+    expect(paramUnit('r_no_static')).toBe('mΩ')
+    expect(formatParam('r_nc_static', '9999.9')).toEqual({ text: '∞', open: true })
+    expect(formatParam('r_no_static', '0').text).toBe('—')
+    for (const k of ['r_nc_static', 'r_no_static']) {
+      expect(PARAM_LABELS[k], k).toBeTruthy()
+      expect(PARAM_DESC[k], k).toBeTruthy()
+      expect(PARAM_DESC_EN[k], k).toBeTruthy()
+    }
+  })
+})

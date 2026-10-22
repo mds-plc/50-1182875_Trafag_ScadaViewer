@@ -38,7 +38,7 @@ export const helpEn: Translations['help'] = {
       title: 'Piece detail',
       intro: 'All measured values of one production piece and their graphical representation. Use it to see why the piece ended up in its category.',
       items: [
-        { title: 'Force – travel diagram', text: 'Schematic hysteresis loop of the microswitch with the values of this piece: positions (FP, OP, RP, TTP and, in newer files, FPR — free position return), forces (OF, RF, TTF, differential force DF), travels (PT, OvT, RvT, MD, TT) and contact resistances at the switching points. The icon enlarges it.' },
+        { title: 'Force – travel diagram', text: 'Schematic hysteresis loop of the microswitch with the values of this piece: positions (FP, OP, RP, TTP and, in newer files, FPR — free position return), forces (OF, RF, TTF, differential force DF), travels (PT, OvT, RvT, MD, TT), contact resistances at the switching points and, in newer files, the static resistance of the closed NC / NO contacts (Static box). The icon enlarges it.' },
         { title: 'Time diagram', text: 'Voltage of the NC and NO contacts during switching (like an oscilloscope) with the UT, RevT, BT and OpT times to scale.' },
         { title: 'NOK categories', text: 'In which areas (force, position, electric, times, process) the piece failed.' },
         { title: 'Parameter table', text: 'Abbreviation, name, value and unit. "?" shows the description and calculation of the parameter, the chart icon shows the parameter highlighted in the diagram. "—" = value not determined, ∞ = open contact. Values outside the sorting limits of the order are lightly tinted — yellow outside Trafag limits or MD outside categories 1–4 (NOK Trafag), orange outside supplier limits (NOK Supplier), orange with a yellow bar outside both; hover to see the limits.' },
@@ -61,7 +61,7 @@ export const helpEn: Translations['help'] = {
       title: 'Settings',
       intro: 'Display preferences, connection status of the PLC and storages, PC time (NTP server for IPCs) and user management.',
       items: [
-        { title: 'Preferences', text: 'Language, light / dark mode, files per page and auto-refresh interval. Stored in this browser.' },
+        { title: 'Preferences', text: 'Language, light / dark mode, files per page, auto-refresh interval and the on-screen keyboard (kiosk without a system keyboard — Automatic = only at the machine). Stored in this browser.' },
         { title: 'Connection', text: 'Status of the server, PLC (ADS), local storage and NAS. An administrator at the machine changes the data paths and the local storage limit here.' },
         { title: 'Time / NTP', text: 'The PC at the machine serves as the NTP server for the other IPCs. The top shows at a glance whether the IPCs can take their time from this PC (and if not, why), the PC time, where the PC takes it from and the address to set on the IPCs. An administrator at the machine can set the PC time manually — the IPCs and the timestamps of new records take it over. Data for service are in the collapsed Technical details.' },
         { title: 'Users', text: 'Administrators only: add and remove users, change passwords. A user can have at most the same role as the person creating them.' },

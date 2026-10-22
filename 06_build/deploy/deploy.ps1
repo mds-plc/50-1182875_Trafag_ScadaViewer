@@ -18,6 +18,7 @@
 #   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
 #      nssm.exe a .bat skripty zustanou beze zmeny.
 #   5b. NSSM (od 2.4.0): AppDirectory bez koncoveho "\", DatabaseGateway AppRotateOnline 1 + AppStopMethodConsole 15000.
+#   5d. (od 2.6.0) [measurement] max_cycles v Config.toml Analyzingu a Gateway >= $MinMaxCycles (buffer PLC), jinak nastavi.
 #   5c. Prejmenovani slozek s verzi v nazvu (od 2.5.0, vypnout -NoRename): rodicovska slozka aplikace ve tvaru
 #      v<verze>_<RRRR-MM-DD>-<nazev> (napr. Desktop\v2.1.1_2026-09-28-AdsAnalyzer\ads_analyzer) se prejmenuje na
 #      v<nova verze>_$ReleaseDate-<nazev>. Prepisou se vsechny odkazy na starou cestu: ImagePath sluzby (nssm.exe),
@@ -39,13 +40,19 @@
 #   AnalyzedParams 104 B (DF, FPR), Info.Calibration a limity trideni DF / FPR (ST_APP_Recipe_Sorting_Limits_Force /
 #   _Position) - jinak Analyzing hlasi E6 a DatabaseGateway Op1 PlcSymbolError. Nova datova hlavicka CSV (35 sloupcu)
 #   -> rozpracovana zakazka (production\wip) musi byt pred nasazenim uzavrena (kontrola nize zastavi nasazeni).
+# 2.6.0 (2026-10-22): vsechny tri aplikace 2.6.0 - spolecne vydani. Staticke odpory R_NC_Static / R_NO_Static
+#   (AnalyzedParams 112 B, mez = Limits.Electric.Rezistance), max_cycles 60000 (zaznam 30 s, krok 5d), klavesnice
+#   na obrazovce (kiosk), prejmenovani slozek s verzi (krok 5c). Nova datova hlavicka CSV (37 sloupcu) -> wip prazdna.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.5.0')
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.0')
 
-$ReleaseDate = '2026-10-21'   # datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c
+$ReleaseDate = '2026-10-22'   # datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c
+# [measurement] max_cycles v Config.toml Analyzingu a Gateway musi byt >= velikost bufferu v PLC (cMEASURING_MAX_CYCLES);
+# nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
+$MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.5.0'; DatabaseGateway = '2.5.0'; ScadaViewer = '2.5.0' }
-$PlcNote     = 'Bezi na PLC NOVY program (2.5.0)? AnalyzedParams 104 B: Force.DF_DifferentialForce + Position.FPR_FreePositionReturn; MeasuredRecord.Info.Calibration.PositionReference (C, napr. 9400); ST_APP_Recipe_Sorting_Limits_Force.DF_DifferentialForce a _Position.FPR_FreePositionReturn (Limits i Limits_Supplier). Se starym programem Analyzing hlasi E6 a DatabaseGateway zakazku nezalozi.'
+$AppVersions = @{ AdsAnalyzer = '2.6.0'; DatabaseGateway = '2.6.0'; ScadaViewer = '2.6.0' }
+$PlcNote     = 'Bezi na PLC NOVY program (2.6.0)? AnalyzedParams 112 B: Electric.R_NC_Static + R_NO_Static (na konci Electric), z 2.5.0 DF / FPR / Info.Calibration.PositionReference a limity trideni DF / FPR; cMEASURING_MAX_CYCLES = 60000. Se starym programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi.'
 
 $ErrorActionPreference = 'Stop'
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -157,6 +164,26 @@ function Replace-PathText([string]$text, [string]$old, [string]$new) {
         $text = [regex]::Replace($text, [regex]::Escape($v.From), $v.To.Replace('$', '$$'), 'IgnoreCase')
     }
     return $text
+}
+
+# Zapis hodnoty klice v sekci TOML (radek "klic = hodnota  # komentar" - komentar zustane); klic chybi -> pridat za
+# hlavicku sekce. Kodovani UTF-8 bez BOM (jako aplikace). Vraci $true pri zmene.
+function Set-TomlValue([string]$file, [string]$section, [string]$key, [string]$value) {
+    $lines = [System.Collections.Generic.List[string]]([IO.File]::ReadAllLines($file))
+    $in = $false; $head = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $t = $lines[$i].Trim()
+        if ($t -match '^\[(.+)\]$') { $in = ($Matches[1].Trim() -eq $section); if ($in) { $head = $i }; continue }
+        if ($in -and $t -match ('^' + [regex]::Escape($key) + '(\s*=\s*)([^#]*?)(\s*#.*)?$')) {
+            $lines[$i] = $lines[$i].Substring(0, $lines[$i].IndexOf($key)) + $key + $Matches[1] + $value + $Matches[3]
+            [IO.File]::WriteAllLines($file, $lines, (New-Object Text.UTF8Encoding $false))
+            return $true
+        }
+    }
+    if ($head -lt 0) { return $false }
+    $lines.Insert($head + 1, "$key = $value")
+    [IO.File]::WriteAllLines($file, $lines, (New-Object Text.UTF8Encoding $false))
+    return $true
 }
 
 function Get-NssmParam([string]$nssm, [string]$service, [string]$param) {
@@ -330,6 +357,17 @@ if (-not $c -or [double]::Parse($c, [Globalization.CultureInfo]::InvariantCultur
 }
 Log "Analyzing position_reference_um = $c" 'Green'
 
+# max_cycles (Analyzing + Gateway) - mensi nez buffer PLC orizne zaznam mereni; uprava az po zaloze (krok 5d)
+$CycleFix = New-Object System.Collections.ArrayList
+foreach ($app in $Apps[0..1]) {
+    $cfg = Join-Path $app.Dir 'Config.toml'
+    $mcv = Get-TomlValue $cfg 'measurement' 'max_cycles'
+    $mcn = 0; [void][int]::TryParse(("$mcv" -replace '_', ''), [ref]$mcn)
+    if ($mcn -ge $MinMaxCycles) { Log "$($app.Service) max_cycles = $mcn" 'Green'; continue }
+    Log "[UPRAVA] $($app.Service) Config.toml [measurement] max_cycles = '$mcv' -> $MinMaxCycles (PLC cMEASURING_MAX_CYCLES, zaznam 30 s)" 'Yellow'
+    [void]$CycleFix.Add($app)
+}
+
 # DatabaseGateway 2.4.0: s vyplnenym [server] host musi production_path / testing_path lezet pod \\host\share,
 # jinak sluzba nenastartuje (audit 2026-10-18 - upload pod jinym nazvem serveru by sel bez prihlaseni)
 $gwCfg  = Join-Path $Apps[1].Dir 'Config.toml'
@@ -439,6 +477,13 @@ $gw = $Apps[1]
 & $gw.Nssm set $gw.Service AppStopMethodConsole 15000 | Out-Null
 Log '  DatabaseGateway: NSSM AppRotateOnline 1, AppStopMethodConsole 15000' 'Green'
 
+# 5d. max_cycles v Config.toml (Config.toml je zalohovany v *.backup_$Stamp)
+foreach ($app in $CycleFix) {
+    $cfg = Join-Path $app.Dir 'Config.toml'
+    if (Set-TomlValue $cfg 'measurement' 'max_cycles' "$MinMaxCycles") { Log "  $($app.Service): max_cycles = $MinMaxCycles" 'Green' }
+    else { Log "[VAROVANI] $($app.Service): sekce [measurement] v $cfg nenalezena - max_cycles nastavte rucne." 'Yellow' }
+}
+
 # 5c. Prejmenovani slozek s verzi + prepsani odkazu (sluzby jsou zastavene)
 $done = New-Object System.Collections.ArrayList
 foreach ($app in $Renames) {
@@ -471,10 +516,12 @@ Log 'Dalsi kroky (rucne):'
 Log '  1. Logy vsech tri aplikaci: zadne "[SVC] Config: neznamy klic" (Analyzing) ani chyby pri startu.'
 Log '  2. Novy test na stroji (Op5): detail testu ukazuje ID mikrospinace a recepturu, vysledek OK / NOK,'
 Log '     v Mereni konstantu C, ve Vysledcich DF a FPR, v Signal Data bod FPR (Hystereze: hodnoty v radku nad grafem).'
-Log '     Log Analyzingu po pripojeni: "In.Data.AnalyzedParams: 104 B - souhlasi", zadne E6 / W8.'
+Log '     Log Analyzingu po pripojeni: "In.Data.AnalyzedParams: 112 B - souhlasi", zadne E6 / W8.'
+Log '     Vysledky testu: staticke odpory R NC stat / R NO stat (dobry kus pod ~50 mOhm), diagram kusu: box Static.'
 Log '  3. Nova zakazka: Databaze -> detail zakazky: graf kategorii (pasy OK / NOK Trafag / NOK Supplier, barvy krabic),'
 Log '     filtr NOK oblasti, udaje zakazky (sarze, limity DF / FPR), podbarveni mimo limity (Trafag / vyrobce / oboji),'
 Log '     detail kusu: polohy FP / RP / OP / TTP s hodnotami, bod FPR, DF. Prejimaci test 04_docs/acceptance_test.md body 2.2 a 3.17.'
 Log '  4. Nastaveni -> Cas / NTP: sluzba Windows Time bezi, NTP server zapnuty, ohlasovani "spolehlivy zdroj" (AnnounceFlags 5),'
 Log '     UDP 123 nasloucha - jinak viz ScadaViewer 04_docs/deployment.md -> Cas PC - NTP server pro IPC.'
-Log '  5. Zalohy *.backup_* po overeni smazat.'
+Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nastaveni -> Predvolby: Automaticky).'
+Log '  6. Zalohy *.backup_* po overeni smazat.'

@@ -275,6 +275,11 @@ export interface Translations {
     helpTheme:           string
     helpPerPage:         string
     helpRefresh:         string
+    prefsOsk:            string
+    prefsOskAuto:        string
+    prefsOskOn:          string
+    prefsOskOff:         string
+    helpOsk:             string
     helpAds:             string
     helpNetId:           string
     helpPort:            string
@@ -435,6 +440,19 @@ export interface Translations {
     nasHelp: string
   }
   /** Nastavení → Čas / NTP (components/TimeServerTab.tsx) */
+  /** Klávesnice na obrazovce (kiosk) */
+  osk: {
+    label:     string
+    space:     string
+    enter:     string
+    hide:      string
+    backspace: string
+    shift:     string
+    left:      string
+    right:     string
+    symbols:   string
+    letters:   string
+  }
   time: {
     tab: string
     sectionPc: string

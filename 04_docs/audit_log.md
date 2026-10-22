@@ -5,6 +5,38 @@
 
 ---
 
+## [2026-10-22] Klávesnice na obrazovce pro kiosk
+
+Požadavek: v kiosku je systémová klávesnice zakázaná → nešlo hledat zakázky. Nová `components/OnScreenKeyboard.tsx`
+(vlastní, bez knihovny), `utils/oskMode.ts`, `styles/osk.css`, předvolba v Nastavení → Předvolby (Automaticky = jen
+u stroje / Zapnuto / Vypnuto), nápověda Nastavení CS + EN. Testy 9 (frontend 222), ověřeno v Chrome s dotykem. Necommitnuto.
+
+---
+
+## [2026-10-22] Test ekosystému — nové funkce 2.5.0 + statické odpory (Analyzing, DatabaseGateway, ScadaViewer)
+
+| Úroveň | Výsledek |
+|---|---|
+| Testové sady | Analyzing 126, DatabaseGateway 135, ScadaViewer 465 (test napříč aplikacemi bez přeskočení), frontend 213; tsc / lint / `npm audit` 0 |
+| Symboly Gateway × exporty DUT z PLC (XML) | 278 / 290 rozloženo až na koncový typ, vč. všech nových (DF, FPR, C Testing + GVL Analyzingu, R_NC/NO_Static, mez Rezistance Trafag + výrobce). 12 = limity DF / FPR — export `ST_APP_Recipe_Sorting_Limits_Force/Position.xml` je z 13. 10. (starší než úprava PLC); soubor ze stroje 21. 10. je obsahuje → **exporty DUT limitů v Gateway 05_user_data obnovit** |
+| Řetězec na datech stroje | 50 signálů 20.–22. 10. → Analyzing (`run_analysis`, `build_plc_struct`) → Gateway (AdsReader + FileManager Op1–Op3, Op5) → ScadaViewer API: hodnoty = PLC REAL u všech kusů, DF = OF − RF (odchylka 0), C = 9400, `[Data]` 37 / `[SortingLimits]` 28, meze statických odporů z Rezistance (600 / 800), filtr NOK, XLSX, signál (C ze souboru, bod FPR za RP, hystereze) — 0 chyb |
+| Statické odpory podle dne | 20. 10. (upadlý vodič COM): NC 9999,9 / NO ~930 mΩ, 19/19 nad 600; 21. 10.: NC medián 25 (max 235), NO 8; 22. 10.: NC 18 (max 74), NO 7,5 |
+| UI (Chrome) | detail zakázky (záložky, podbarvení Trafag / obojí, legenda, limity DF / statických odporů v Údajích zakázky), detail kusu (∞ / 927,4 mΩ podbarvené, FPR „—“, box Static, polohy s hodnotami), detail testu (C v Měření, DF / FPR / statické odpory, Signal Data souhrn) — bez chyb v konzoli |
+| Deploy skript | přejmenování složek + rollback nanečisto — OK |
+| K prověření v Analyzingu | FPR neurčeno (0) u 7 kusů z 20. 10. (porucha měření); FPR − FP = −118,9 µm u `signal_20261021_134939` (ostatní −27 … +20 µm) |
+
+---
+
+## [2026-10-22] Statické odpory R_NC_Static / R_NO_Static — zapracování do DatabaseGateway a ScadaViewer
+
+Podklad: `Analyzing/04_docs/interface_2026-10-22_R_Static.md` (AnalyzedParams 112 B). Gateway: PROD `[Data]` 37 sloupců,
+TEST `[AnalyzedParameters]` 28, `[SortingLimits]` 28 (obě meze z `Electric.Rezistance` — PLC má jednu mez
+statického odporu pro NC i NO); vzorové CSV. ScadaViewer: skupina Electric, diagram (box Static),
+nápověda. Testy backend 465, frontend 213, Gateway 135. **Nasazení:** nové PLC DUT + Analyzing naráz (jinak E6),
+rozpracované zakázky uzavřít (nová hlavička). Necommitnuto, nevydáno.
+
+---
+
 ## [2026-10-21] DF, FPR a konstanta C — zapracování do DatabaseGateway a ScadaViewer
 
 Podklad: `Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`. Rozhodnutí uživatele: DF / FPR **na konec skupiny**

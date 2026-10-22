@@ -44,6 +44,24 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.0 (2026-10-22) — společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce)
+
+**Analyzing 2.6.0 + DatabaseGateway 2.6.0 + ScadaViewer 2.6.0 + nový PLC program se nasazují SPOLEČNĚ** — balíček
+`ScadaViewer/06_build/releases/deploy_v2.6.0/` (`deploy.bat`). Podklad: `Analyzing/04_docs/interface_2026-10-22_R_Static.md`.
+
+**PLC:** `ST_APP_Mod_Analyzing_AnalyzedResults_Params` **112 B** (`Electric.R_NC_Static`, `R_NO_Static` na konci Electric),
+`cMEASURING_MAX_CYCLES = 60000` (záznam 30 s); mez statického odporu = existující `Limits.Electric.Rezistance`
+(+ `Limits_Supplier`), nová pole v limitech nejsou. Se starým programem Analyzing E6.
+**Rozpracovaná zakázka musí být uzavřená** (nová datová hlavička, 37 sloupců). `deploy.ps1` nastaví `max_cycles = 60000`
+v Config.toml Analyzingu i Gateway na stroji (Config se jinak nepřepisuje) a přejmenuje složky s verzí v názvu.
+
+| Změna ScadaViewer 2.6.0 | Dopad |
+|---|---|
+| Statické odpory `R NC stat` / `R NO stat` (skupina Electric), box **Static** v diagramu síla–dráha, podbarvení nad mezí `Rezistance` | starší soubory bez řádků |
+| **Klávesnice na obrazovce** (kiosk se zakázanou systémovou klávesnicí) — hledání zakázky, přihlášení, nastavení; Nastavení → Předvolby: Automaticky (jen u stroje) / Zapnuto / Vypnuto | po nasazení vyzkoušet hledání v kiosku |
+| `deploy.ps1`: přejmenování složek `v<verze>_<datum>-<název>` (+ NSSM, Config.toml, `sync_state.json`, zástupci), kontrola / nastavení `max_cycles` | `-NoRename` vypne přejmenování |
+| Signál až 600 000 vzorků (30 s) — ověřeno: načtení 2,4 s, cache 43 MB / soubor | beze změny kódu |
+
 ## Release 2.5.0 (2026-10-21) — společné vydání všech tří aplikací (DF, FPR, konstanta C)
 
 **Analyzing 2.5.0 + DatabaseGateway 2.5.0 + ScadaViewer 2.5.0 + nový PLC program se nasazují SPOLEČNĚ** — balíček

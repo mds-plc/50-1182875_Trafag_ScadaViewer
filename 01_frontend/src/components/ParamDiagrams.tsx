@@ -30,6 +30,7 @@ export const PARAM_DIAGRAM: Readonly<Record<string, 'force' | 'time'>> = {
   r_no_operatingposition_neg: 'force', r_no_operatingposition_pos: 'force',
   r_nc_releasingposition_neg: 'force', r_nc_releasingposition_pos: 'force',
   r_no_releasingposition_neg: 'force', r_no_releasingposition_pos: 'force',
+  r_nc_static: 'force', r_no_static: 'force',
   ut_unstabletime: 'time', rt_reversetime: 'time', bt_bouncetime: 'time', ot_operatingtime: 'time',
 }
 
@@ -49,6 +50,8 @@ const RELATED: Readonly<Record<string, readonly string[]>> = {
   r_no_operatingposition_neg: ['op_operatingposition'], r_no_operatingposition_pos: ['op_operatingposition'],
   r_nc_releasingposition_neg: ['rp_realeasingposition'], r_nc_releasingposition_pos: ['rp_realeasingposition'],
   r_no_releasingposition_neg: ['rp_realeasingposition'], r_no_releasingposition_pos: ['rp_realeasingposition'],
+  r_nc_static:             ['fp_freeposition', 'op_operatingposition', 'rp_realeasingposition'],   // NC sepnutý: před OP, za RP
+  r_no_static:             ['op_operatingposition', 'rp_realeasingposition'],                       // NO sepnutý: OP … RP
   ot_operatingtime:        ['ut_unstabletime', 'rt_reversetime', 'bt_bouncetime'],     // OpT = UT + RevT + BT
 }
 
@@ -131,6 +134,7 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
   // DF / FPR jen u souborů, které je mají (Analyzing 2.4.0+), nebo v grafické nápovědě parametru
   const hasDF  = 'df_differentialforce' in record || highlight === 'df_differentialforce'
   const hasFPR = 'fpr_freepositionreturn' in record || highlight === 'fpr_freepositionreturn'
+  const hasStatic = 'r_nc_static' in record || highlight === 'r_nc_static' || highlight === 'r_no_static'
   // FPR = kde síla na zpětné větvi RP → FP klesne do šumu — schematicky těsně před FP
   const FPR_x = FP_x + 24
   const y_FPR = Math.round(y_zero - s * (FPR_x - FP_x))
@@ -329,6 +333,23 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
         ncN: 'r_nc_operatingposition_neg', ncP: 'r_nc_operatingposition_pos',
         noN: 'r_no_operatingposition_neg', noP: 'r_no_operatingposition_pos',
       }, OP_x, y_OF - 10)}
+
+      {/* Statický odpor sepnutých kontaktů mimo přepnutí (od 2026-10-22) */}
+      {hasStatic && (
+        <g opacity={h.op('r_nc_static', 'r_no_static')}>
+          <rect x={612} y={22} width={150} height={44} rx={4} fill="white" stroke={C_RES}
+            strokeWidth={h.sw(1, 'r_nc_static', 'r_no_static')} opacity={0.95} />
+          <rect x={612} y={22} width={150} height={15} rx={4} fill={C_RES} opacity={0.13} />
+          <text x={618} y={33} fontSize={9} fontWeight="700" fill={C_RES}>Static [mΩ]</text>
+          {([['r_nc_static', 'NC', 618], ['r_no_static', 'NO', 690]] as const).map(([k, l, x]) => (
+            <g key={k} opacity={h.active && !h.on(k) ? 0.35 : 1}>
+              {h.on(k) && <rect x={x - 3} y={47} width={68} height={12} rx={2} fill={C_RES} opacity={0.18} />}
+              <text x={x} y={56} fontSize={8.5} fontWeight="700" fill={C_RES}>{l}</text>
+              <text x={x + 18} y={56} fontSize={8.5} fill="#374151" fontFamily="monospace">{val(k)}</text>
+            </g>
+          ))}
+        </g>
+      )}
 
       {/* Legenda */}
       <g opacity={h.ctx}>

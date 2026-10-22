@@ -12,6 +12,7 @@ import { useAuth }     from '../context/AuthContext'
 import { useStorage }  from '../context/StorageContext'
 import { useTheme }    from '../hooks/useTheme'
 import { useSettings } from '../hooks/useSettings'
+import { setOskMode, useOskMode } from '../utils/oskMode'
 import LoadingSpinner  from '../components/LoadingSpinner'
 import PageHelp        from '../components/PageHelp'
 import TimeServerTab   from '../components/TimeServerTab'
@@ -499,6 +500,7 @@ export default function Settings() {
   const { addToast }         = useToast()
   const { dark, toggle: toggleTheme } = useTheme()
   const { perPage, setPerPage, refreshMs, setRefreshMs } = useSettings()
+  const oskMode = useOskMode()
   const { token, role, isRemote } = useAuth()
 
   const isAdmin = ['admin', 'manufacturer'].includes(role ?? '')
@@ -774,6 +776,22 @@ export default function Settings() {
                 </div>
               </div>
               <HelpButton id="refresh" text={t.settings.helpRefresh} {...hp} />
+            </div>
+
+            <div className="settings-row">
+              <span className="settings-row__label">{t.settings.prefsOsk}</span>
+              <div className="settings-row__control">
+                <div className="settings-toggle-group">
+                  {([['auto', t.settings.prefsOskAuto], ['on', t.settings.prefsOskOn], ['off', t.settings.prefsOskOff]] as const).map(([m, l]) => (
+                    <button
+                      key={m}
+                      className={`settings-toggle-btn${oskMode === m ? ' settings-toggle-btn--active' : ''}`}
+                      onClick={() => setOskMode(m)}
+                    >{l}</button>
+                  ))}
+                </div>
+              </div>
+              <HelpButton id="osk" text={t.settings.helpOsk} {...hp} />
             </div>
           </>
         )}

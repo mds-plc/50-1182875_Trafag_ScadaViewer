@@ -181,6 +181,10 @@ def test_production_values_customer_units(ecosystem, client) -> None:
     assert float(rec["fpr_freepositionreturn"]) == pytest.approx(_f32(ct.Position.FPR_FreePositionReturn), abs=1e-3)
     if float(rec["fpr_freepositionreturn"]) != 0:                     # 0 = neurčeno
         assert float(rec["fpr_freepositionreturn"]) == pytest.approx(float(rec["fp_freeposition"]), abs=100)
+    # statické odpory (Analyzing, AnalyzedParams 112 B, 2026-10-22): mΩ 0,1, 0 = neurčeno
+    for key, field in (("r_nc_static", "R_NC_Static"), ("r_no_static", "R_NO_Static")):
+        assert float(rec[key]) == pytest.approx(_f32(getattr(ct.Electric, field)), abs=1e-3), key
+        assert 0 <= float(rec[key]) <= 9999.9
     # konstanta C z GVL Analyzingu = poslední sloupec [Data]
     assert float(rec["positionreference"]) == C_REF
 
