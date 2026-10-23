@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.6.0"
+    ├── __init__.py            ← __version__ = "2.6.1"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -833,7 +833,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.1** — 2026-10-23, Analyzing 2.6.1 + ScadaViewer 2.6.1 (záložka Electric, šířky sloupců), Gateway 2.6.0; balíček `deploy_v2.6.1`); předtím **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |

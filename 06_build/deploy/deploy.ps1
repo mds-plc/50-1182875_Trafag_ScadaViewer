@@ -21,7 +21,7 @@
 #   5d. (od 2.6.0) [measurement] max_cycles v Config.toml Analyzingu a Gateway >= $MinMaxCycles (buffer PLC), jinak nastavi.
 #   5c. Prejmenovani slozek s verzi v nazvu (od 2.5.0, vypnout -NoRename): rodicovska slozka aplikace ve tvaru
 #      v<verze>_<RRRR-MM-DD>-<nazev> (napr. Desktop\v2.1.1_2026-09-28-AdsAnalyzer\ads_analyzer) se prejmenuje na
-#      v<nova verze>_$ReleaseDate-<nazev>. Prepisou se vsechny odkazy na starou cestu: ImagePath sluzby (nssm.exe),
+#      v<nova verze>_<datum z $AppDates>-<nazev>. Prepisou se vsechny odkazy na starou cestu: ImagePath sluzby (nssm.exe),
 #      NSSM Application / AppDirectory / AppParameters / AppStdout / AppStderr, Config.toml vsech tri aplikaci
 #      (napr. local_path ScadaViewer do vystupu Gateway), zastupci (.lnk) a .bat / .cmd v Po spusteni a na plose;
 #      naplanovane ulohy se starou cestou jen nahlasi. Zaznam folder_rename.txt v zaloze -> rollback vrati nazev.
@@ -43,15 +43,19 @@
 # 2.6.0 (2026-10-22): vsechny tri aplikace 2.6.0 - spolecne vydani. Staticke odpory R_NC_Static / R_NO_Static
 #   (AnalyzedParams 112 B, mez = Limits.Electric.Rezistance), max_cycles 60000 (zaznam 30 s, krok 5d), klavesnice
 #   na obrazovce (kiosk), prejmenovani slozek s verzi (krok 5c). Nova datova hlavicka CSV (37 sloupcu) -> wip prazdna.
+# 2.6.1 (2026-10-23): Analyzing 2.6.1 (robustni detekce FP), ScadaViewer 2.6.1 (zalozka Electric ukazuje vsechny
+#   odpory, sirky sloupcu); DatabaseGateway zustava 2.6.0. Pozadavky na PLC jako 2.6.0 (AnalyzedParams 112 B).
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.0')
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.1')
 
-$ReleaseDate = '2026-10-22'   # datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c
+# Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
+# (stejna verze i datum) se tak neprejmenuje znovu
+$AppDates = @{ AdsAnalyzer = '2026-10-23'; DatabaseGateway = '2026-10-22'; ScadaViewer = '2026-10-23' }
 # [measurement] max_cycles v Config.toml Analyzingu a Gateway musi byt >= velikost bufferu v PLC (cMEASURING_MAX_CYCLES);
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.0'; DatabaseGateway = '2.6.0'; ScadaViewer = '2.6.0' }
+$AppVersions = @{ AdsAnalyzer = '2.6.1'; DatabaseGateway = '2.6.0'; ScadaViewer = '2.6.1' }
 $PlcNote     = 'Bezi na PLC NOVY program (2.6.0)? AnalyzedParams 112 B: Electric.R_NC_Static + R_NO_Static (na konci Electric), z 2.5.0 DF / FPR / Info.Calibration.PositionReference a limity trideni DF / FPR; cMEASURING_MAX_CYCLES = 60000. Se starym programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi.'
 
 $ErrorActionPreference = 'Stop'
@@ -412,7 +416,7 @@ if (-not $NoRename) {
         $leaf   = Split-Path -Leaf $parent
         if ($leaf -notmatch $VersionedFolder) { Log "Slozka $parent nema nazev v<verze>_<datum>-<nazev> - neprejmenuje se." 'Gray'; continue }
         if (@($parents | Where-Object { $_ -eq $parent }).Count -gt 1) { Log "[INFO] $parent sdili vic aplikaci - neprejmenuje se." 'Yellow'; continue }
-        $target = Join-Path (Split-Path $parent) ("v{0}_{1}-{2}" -f $AppVersions[$app.Service], $ReleaseDate, $Matches['name'])
+        $target = Join-Path (Split-Path $parent) ("v{0}_{1}-{2}" -f $AppVersions[$app.Service], $AppDates[$app.Service], $Matches['name'])
         if ($target -eq $parent) { Log "$($app.Service): slozka uz ma spravny nazev" 'Gray'; continue }
         if (Test-Path -LiteralPath $target) { Fail "$($app.Service): cilova slozka $target uz existuje - prejmenujte / smazte ji, nebo spustte s -NoRename." }
         $app.RenameTo = $target

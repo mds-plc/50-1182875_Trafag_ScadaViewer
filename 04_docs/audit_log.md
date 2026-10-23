@@ -5,6 +5,18 @@
 
 ---
 
+## [2026-10-23] Detail zakázky — záložka Electric neukazovala všechny odpory
+
+| # | Nález | Oprava | Soubor |
+|---|-------|--------|--------|
+| 1 | Záložka parametrů skrývala sloupec, kde mají všechny kusy ∞ (`hasMeasuredValue`) — přechodové odpory rozepnutého kontaktu (NO− / NC+ v OP, NC− / NO+ v RP) jsou podle definice vždy ∞ → v Electric jen 4–6 z 8–10 odporů | záložka ukazuje každý parametr, který soubor má; skryje jen sloupec prázdný ve všech kusech | `pages/ChartView.tsx` |
+| 2 | Šířky sloupců: Electric (10 odporů) ~2 020 px na obrazovce kiosku ~1 630 px → posouvání | NOK oblasti 72 px (jen ikona), parametry 88 px → 1 612 px; čas 220 px beze změny (sticky `left` v components.css) | `components/DataTable.tsx` |
+
+Rozbalený řádek Databáze (`FileTable`) sloupce samých ∞ dál skrývá (všechny skupiny najednou — šetří šířku). Ověřeno v Chrome
+1920 × 1080 na zakázce `ppjml`; frontend 222 testů. Necommitnuto.
+
+---
+
 ## [2026-10-22] Klávesnice na obrazovce pro kiosk
 
 Požadavek: v kiosku je systémová klávesnice zakázaná → nešlo hledat zakázky. Nová `components/OnScreenKeyboard.tsx`

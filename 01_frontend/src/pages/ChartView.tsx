@@ -18,7 +18,7 @@ import { exportFileXlsx } from '../utils/exportXlsx'
 import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import {
   PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
-  MEASUREDINFO_KEYS, MEASUREDINFO_GROUPS, formatParam, hasMeasuredValue, paramUnit,
+  MEASUREDINFO_KEYS, MEASUREDINFO_GROUPS, formatParam, paramUnit,
   testingNokState, recordOkState,
 } from '../utils/paramMeta'
 import { formatDateTime } from '../utils/formatting'
@@ -399,13 +399,11 @@ export default function ChartView() {
     if (records.length === 0) return FIXED_COLS
     const existingKeys = new Set(Object.keys(records[0]))
     const tab = TABLE_TABS.find(t => t.id === activeTab)!
+    // Záložka ukazuje VŠECHNY parametry skupiny, které soubor má — i sloupec samých ∞ (přechodové odpory
+    // rozepnutého kontaktu: NO− / NC+ v OP, NC− / NO+ v RP jsou podle definice vždy ∞). Skrýt jen sloupec,
+    // který je ve všech kusech prázdný (parametr neurčen / starší soubor).
     const cols = [...FIXED_COLS, ...tab.keys].filter(k =>
-      existingKeys.has(k) &&
-      (FIXED_COLS.includes(k)
-        ? records.some(r => r[k] != null && String(r[k]) !== '')
-        // měřené parametry: skrýt sloupec, kde není žádná měřená hodnota (vše prázdné nebo ∞)
-        : hasMeasuredValue(k, records))
-    )
+      existingKeys.has(k) && records.some(r => r[k] != null && String(r[k]).trim() !== ''))
     return cols.length >= 1 ? cols : FIXED_COLS
   }, [records, activeTab])
 

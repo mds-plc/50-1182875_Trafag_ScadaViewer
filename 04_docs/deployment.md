@@ -44,6 +44,18 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.1 (2026-10-23) — Analyzing 2.6.1, ScadaViewer 2.6.1 (DatabaseGateway 2.6.0)
+
+Balíček `06_build/releases/deploy_v2.6.1/` (`deploy.bat`) — **všechny tři aktuální verze**; požadavky a kontroly jako
+u 2.6.0 níže (PLC AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES = 60000`, prázdná `wip`). Lze nasadit na stroj s 2.3.x–2.6.0.
+
+| Změna | Dopad |
+|---|---|
+| Analyzing: robustní detekce FP — nula a šum síly z celého volného pohybu (nové volitelné klíče `times_method`, `bounce_settle_samples` s výchozími hodnotami) | Config.toml na stroji beze změny |
+| ScadaViewer: detail zakázky — záložka Electric ukazuje všechny odpory (i sloupce samých ∞ — přechodové odpory rozepnutého kontaktu) | dřív chyběly 4 z 8–10 odporů |
+| ScadaViewer: užší sloupce NOK oblastí (72 px) a parametrů (88 px) — Electric s 10 odpory bez posouvání na kiosku 1920 px | jen zobrazení |
+| `deploy.ps1`: datum v názvu složky podle aplikace (`$AppDates`) — nezměněný Gateway se nepřejmenuje znovu | — |
+
 ## Release 2.6.0 (2026-10-22) — společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce)
 
 **Analyzing 2.6.0 + DatabaseGateway 2.6.0 + ScadaViewer 2.6.0 + nový PLC program se nasazují SPOLEČNĚ** — balíček

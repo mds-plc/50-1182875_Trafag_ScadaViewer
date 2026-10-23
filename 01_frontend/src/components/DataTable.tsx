@@ -17,10 +17,12 @@ import { memo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 /** Pevné šířky fixed sloupců — MUSÍ odpovídat left hodnotám v components.css. */
-const FIXED_COL_WIDTHS = ['220px', '76px', '76px']
+// čas · kategorie · stav (sticky — left 220 / 296 px v components.css) · 5× NOK oblast (jen ikona, 72 px).
+// Záložka Electric (až 10 odporů): 220 + 2×76 + 5×72 + 10×88 = 1612 px → vejde se na kiosk 1920 px bez posouvání.
+const FIXED_COL_WIDTHS = ['220px', '76px', '76px', '72px', '72px', '72px', '72px', '72px']
 
 /** Šířka parametrických sloupců (nefixních) — sloupce se řadí zleva od dělicí čáry. */
-const PARAM_COL_WIDTH = '110px'
+const PARAM_COL_WIDTH = '88px'
 
 interface Props {
   columns:         string[]
