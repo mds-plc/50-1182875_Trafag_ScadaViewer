@@ -62,6 +62,17 @@ def _host_header_ok(request: Request) -> bool:
         return False
 
 
+#: users.toml se nepodařilo přečíst — zápis by soubor přepsal jen nouzovým adminem (A26-42)
+USERS_FILE_ERROR_DETAIL = ("users.toml nelze přečíst — změny uživatelů jsou zablokované, aby se nepřepsal. "
+                           "Opravte soubor ručně (záloha users.toml.bak) a restartujte službu.")
+
+
+def ensure_users_writable(request: Request) -> None:
+    """HTTP 409, pokud se users.toml při startu nepodařilo přečíst (A26-42)."""
+    if getattr(request.app.state, "users_read_error", False):
+        raise HTTPException(status_code=409, detail=USERS_FILE_ERROR_DETAIL)
+
+
 def is_local_client(request: Request) -> bool:
     """
     Klient „u stroje" — adresa odesílatele je v server.local_clients (IP nebo CIDR)

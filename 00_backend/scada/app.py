@@ -129,9 +129,10 @@ def _build_csp(frontend_dist: Path) -> str:
 
 from scada import __version__
 from scada.logging_setup import request_id_var
-from scada.config import AppConfig, load_users
+from scada.config import AppConfig, load_users_checked
 from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, storage, system_time
 from scada.api.auth import find_default_password_users
+from scada.api.dependencies import is_local_client
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
 from scada.services.files_watcher import FilesWatcher
@@ -258,6 +259,10 @@ class _RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if not path.startswith("/api/") or path in ("/api/health", "/api/status"):
             return await call_next(request)
+        # Kiosk u stroje (local_clients) mimo limit — polling počtů kusů, obnova po files_changed a zoom grafů
+        # (mode=range) ho ve špičce přesáhnou a obsluha by viděla „HTTP 429". Přihlášení chrání lockout. A26-40
+        if is_local_client(request):
+            return await call_next(request)
 
         ip  = request.client.host if request.client else "unknown"
         now = time.monotonic()
@@ -310,7 +315,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         app.state.config       = cfg
         app.state.config_path  = config_path   # pro zápis Config.toml
         app.state.users_path   = users_path    # pro zápis users.toml
-        app.state.users        = load_users(users_path, cfg.auth)
+        app.state.users, app.state.users_read_error = load_users_checked(users_path, cfg.auth)
         app.state.sessions: dict[str, dict] = {}   # token → {username, role, display_name}
         # Účty s výchozím heslem „admin" (Config.toml.example) — /api/health + odmítnutí vzdáleného přihlášení (A26-18)
         app.state.default_password_users = await asyncio.to_thread(find_default_password_users, app.state.users)

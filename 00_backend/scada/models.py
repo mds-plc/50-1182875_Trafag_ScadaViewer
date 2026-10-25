@@ -258,6 +258,7 @@ class HealthChecks(BaseModel):
     local_storage: bool   # True pokud lokální disk s daty existuje
     ads:           bool   # True pokud ADS spojení s PLC je aktivní
     default_password: bool = False   # některý účet má výchozí heslo „admin" (A26-18)
+    users_file_error: bool = False   # users.toml nečitelný → nouzový admin, změny uživatelů zablokované (A26-42)
 
 
 class HealthResponse(BaseModel):
@@ -399,9 +400,16 @@ class CleanupResponse(BaseModel):
 # /api/files/batch-delete — hromadné mazání souborů
 # ======================================================================
 
+class BatchDeleteItem(BaseModel):
+    """Položka hromadného mazání — sync určí kopii, leží-li soubor v done_local i done_remote (A26-43)."""
+    file_id: str
+    sync:    Literal['done_local', 'done_remote'] | None = None
+
+
 class BatchDeleteRequest(BaseModel):
     """Tělo požadavku POST /api/files/batch-delete."""
-    file_ids:  list[str] = Field(max_length=200)   # max 200 souborů najednou (DoS prevence)
+    file_ids:  list[str] = Field(default_factory=list, max_length=200)   # max 200 souborů najednou (DoS prevence)
+    items:     list[BatchDeleteItem] = Field(default_factory=list, max_length=200)   # s kopií (A26-43); má přednost
     location:  str
     file_type: str = Field(alias="type")
 

@@ -586,7 +586,8 @@ class TestRateLimit:
             ),
         )
         limited_app = _create_app(cfg, rate_limit=3)
-        with TestClient(limited_app) as c:
+        # Vzdálený klient (kancelář) — kiosk u stroje je z limitu vyjmutý (A26-40)
+        with TestClient(limited_app, client=("10.45.124.77", 51000)) as c:
             _inject_session(limited_app)
             c.headers.update({"Authorization": f"Bearer {_TEST_TOKEN}"})
             yield c
@@ -617,6 +618,16 @@ class TestRateLimit:
             limited_client.get("/api/files")
         body = limited_client.get("/api/files").json()
         assert "detail" in body
+
+    def test_a26_40_machine_client_exempt_from_rate_limit(self, tmp_path: Path) -> None:
+        """Kiosk u stroje (local_clients) nemá limit — polling + zoom grafů nesmí skončit „HTTP 429"."""
+        from scada.app import create_app as _create_app
+        _, cfg = make_app(tmp_path)
+        app = _create_app(cfg, rate_limit=3)
+        with TestClient(app, client=("127.0.0.1", 50000)) as c:
+            _inject_session(app)
+            c.headers.update({"Authorization": f"Bearer {_TEST_TOKEN}"})
+            assert all(c.get("/api/files").status_code == 200 for _ in range(10))
 
     def test_health_exempt_from_rate_limit(self, limited_client) -> None:
         """/api/health a /api/status nejsou rate limitovány (NSSM watchdog whitelist)."""

@@ -131,6 +131,8 @@ describe('testing input parameters', () => {
     expect(paramUnit('limits_forcemax')).toBe('mN')
     expect(formatParam('measuretime', '18.4').text).toBe('18.4')
     expect(formatParam('meas_ts', '1789912600').text).toMatch(/2026/)
+    // A26-34: TwinCAT posílá místní čas jako unix → bez posunu o pásmo (TEST_Marquardt_20261022_104217: Timestamp 10:42:15)
+    expect(formatParam('meas_ts', '1792665725').text).toMatch(/22\. ?10\. ?2026.*10:42:05/)
   })
 
   it('every analyzed parameter has Czech help', () => {

@@ -417,13 +417,12 @@ export default function ChartView() {
   const limitKinds = useMemo(() => violationKinds(records, limitMap), [records, limitMap])
 
   // Klik na kus → detail záznamu (useCallback: DataTable je memo — inline funkce by ji překreslovala)
-  const openRecord = useCallback((row: Record<string, unknown>) => {
-    const withinPage = records.findIndex(r => r.timestamp === row.timestamp)
-    if (withinPage < 0) return
+  // Pozice řádku z DataTable — dřív findIndex podle času: dva kusy se stejným časem = otevřel se první (A26-44)
+  const openRecord = useCallback((row: Record<string, unknown>, withinPage: number) => {
     // Při filtru / řazení od nejnovějšího nese záznam `_idx` = pořadí v celé zakázce (ze serveru)
     const absIdx = row._idx != null ? Number(row._idx) : (tablePage - 1) * RECORDS_PER_PAGE + withinPage
     navigate(`/chart?file=${encodeURIComponent(fileId)}&location=${location}&type=${fileType}&record=${absIdx}`)
-  }, [records, tablePage, fileId, location, fileType, navigate])
+  }, [tablePage, fileId, location, fileType, navigate])
   // Obecné sloupce podle jazyka (PARAM_LABELS jsou odborné zkratky — jazykově neutrální)
   const colLabels = useMemo(() => ({
     ...PARAM_LABELS,

@@ -616,11 +616,17 @@ class CsvRepository:
         self._known: dict[str, tuple[int, int, str | None, str, str | None]] = {}
         self._dirty_known: dict[str, tuple] = {}
         self._dirty_lock = threading.Lock()
+        # Vyzvednutí dávky i zápis do SQLite naráz — dvě vlákna (skenování, dopočet) by jinak mohla zapsat v opačném
+        # pořadí a starší řádek přepsat novější (record_count NULL → soubor z NAS se znovu stahuje). A26-41
+        self._flush_lock = threading.Lock()
         self._store = _MetaStore(cache_file) if cache_file is not None else None
         self._load_store()
         # Index otevřených zakázek: cesta → ((mtime_ns, size), _OrderIndex) — LRU s limitem paměti
         self._index_cache: OrderedDict[Path, tuple[tuple[int, int], _OrderIndex]] = OrderedDict()
         self._index_lock = threading.Lock()
+        # Stavba indexu jednoho souboru naráz — kiosk + kancelář / XLSX nad stejnou nenacachovanou zakázkou by ji
+        # jinak stavěly dvakrát (2× CPU a stovky MB RAM); druhý počká a vezme hotový index (A26-39)
+        self._build_locks: dict[Path, threading.Lock] = {}
         # Jedno skenování složky naráz — souběžné požadavky (auto-refresh, files_changed, druhé okno)
         # počkají na výsledek / dostanou poslední známý stav místo dalšího čtení
         self._scan_locks: dict[str, threading.Lock] = {}
@@ -694,13 +700,14 @@ class CsvRepository:
     def _flush(self) -> None:
         if self._store is None:
             return
-        with self._dirty_lock:
-            if not (self._dirty or self._dirty_known):
-                return
-            dirty, self._dirty = self._dirty, {}
-            known, self._dirty_known = self._dirty_known, {}
-        self._store.write([r for r in dirty.values() if r is not None],
-                          [k for k, r in dirty.items() if r is None], list(known.values()))
+        with self._flush_lock:
+            with self._dirty_lock:
+                if not (self._dirty or self._dirty_known):
+                    return
+                dirty, self._dirty = self._dirty, {}
+                known, self._dirty_known = self._dirty_known, {}
+            self._store.write([r for r in dirty.values() if r is not None],
+                              [k for k, r in dirty.items() if r is None], list(known.values()))
 
     # ------------------------------------------------------------------
     # Skenování složek
@@ -1366,14 +1373,25 @@ class CsvRepository:
             if hit is not None and hit[0] == sig:
                 self._index_cache.move_to_end(path)
                 return hit[1]
-        ix = self._build_index(path, st.st_size)
-        if ix is not None and ix.nbytes <= _INDEX_CACHE_BYTES:
-            with self._index_lock:
-                self._index_cache[path] = (sig, ix)
-                self._index_cache.move_to_end(path)
-                while (len(self._index_cache) > _INDEX_CACHE_FILES
-                       or sum(v[1].nbytes for v in self._index_cache.values()) > _INDEX_CACHE_BYTES):
-                    self._index_cache.popitem(last=False)
+            build_lock = self._build_locks.setdefault(path, threading.Lock())
+        with build_lock:
+            with self._index_lock:                      # mezitím ho postavil jiný požadavek
+                hit = self._index_cache.get(path)
+                if hit is not None and hit[0] == sig:
+                    self._index_cache.move_to_end(path)
+                    return hit[1]
+            try:
+                ix = self._build_index(path, st.st_size)
+                if ix is not None and ix.nbytes <= _INDEX_CACHE_BYTES:
+                    with self._index_lock:
+                        self._index_cache[path] = (sig, ix)
+                        self._index_cache.move_to_end(path)
+                        while (len(self._index_cache) > _INDEX_CACHE_FILES
+                               or sum(v[1].nbytes for v in self._index_cache.values()) > _INDEX_CACHE_BYTES):
+                            self._index_cache.popitem(last=False)
+            finally:
+                with self._index_lock:
+                    self._build_locks.pop(path, None)
         return ix
 
     def _build_index(self, path: Path, size: int = 0) -> _OrderIndex | None:

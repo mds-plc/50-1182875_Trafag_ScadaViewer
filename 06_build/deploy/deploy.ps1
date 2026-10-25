@@ -173,7 +173,9 @@ function Check-Health([int]$port) {
 # --- Prejmenovani slozek s verzi (krok 5c) --------------------------------------------------
 $VersionedFolder = '^v\d+(\.\d+){1,3}_\d{4}-\d{2}-\d{2}-(?<name>.+)$'
 
-# Vsechny zapisy cesty: C:\a\b, C:/a/b a TOML escapovane C:\\a\\b (bez ohledu na velikost pismen)
+# Vsechny zapisy cesty: C:\a\b, C:/a/b a TOML escapovane C:\\a\\b (bez ohledu na velikost pismen).
+# Jen cela slozka: za cestou nesmi pokracovat nazev (pismeno, cislice, _ - .) - jinak by "...-AdsAnalyzer"
+# prepsalo i "...-AdsAnalyzer_old" (audit A26-46).
 function Replace-PathText([string]$text, [string]$old, [string]$new) {
     if (-not $text) { return $text }
     $variants = New-Object System.Collections.ArrayList
@@ -181,7 +183,7 @@ function Replace-PathText([string]$text, [string]$old, [string]$new) {
     [void]$variants.Add(@{ From = $old.Replace('\', '/');  To = $new.Replace('\', '/') })
     [void]$variants.Add(@{ From = $old.Replace('\', '\\'); To = $new.Replace('\', '\\') })
     foreach ($v in $variants) {
-        $text = [regex]::Replace($text, [regex]::Escape($v.From), $v.To.Replace('$', '$$'), 'IgnoreCase')
+        $text = [regex]::Replace($text, [regex]::Escape($v.From) + '(?![\w.\-])', $v.To.Replace('$', '$$'), 'IgnoreCase')
     }
     return $text
 }
@@ -352,8 +354,12 @@ function Update-PathReferences($pairs) {
         if ($new -ne $text) { [IO.File]::WriteAllText($f, $new, (New-Object Text.UTF8Encoding $false)); Log "  DatabaseGateway: cesty v $name prepsany" 'Green' }
     }
     $shell = New-Object -ComObject WScript.Shell
-    $dirs  = @('CommonStartup', 'Startup', 'CommonDesktopDirectory', 'Desktop') |
-             ForEach-Object { [Environment]::GetFolderPath($_) } | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    # Po spusteni a plocha VSECH profilu - kiosk muze bezet pod jinym uctem nez spravce, ktery skript spousti (A26-46)
+    $profileDirs = @(Get-ChildItem -LiteralPath (Join-Path $env:SystemDrive 'Users') -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { (Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'),
+                         (Join-Path $_.FullName 'Desktop') })
+    $dirs  = @(@('CommonStartup', 'Startup', 'CommonDesktopDirectory', 'Desktop') | ForEach-Object { [Environment]::GetFolderPath($_) }) +
+             $profileDirs | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
     foreach ($d in $dirs) {
         foreach ($f in Get-ChildItem -LiteralPath $d -File -ErrorAction SilentlyContinue) {
             if ($f.Extension -eq '.lnk') {
@@ -436,6 +442,8 @@ if ($Rollback) {
     }
     if (@($Apps | Where-Object { $_.Backup }).Count -eq 0) { Fail 'Neni co obnovit (zadna zaloha s exe).' }
     if (-not (Ask 'Obnovit predchozi verzi?')) { Log 'Zruseno.'; exit 1 }
+    # Config.toml ze zalohy - vrati i max_cycles (krok 5d) a cesty; vychozi ne (rucni zmeny po nasazeni zustanou). A26-46
+    $restoreCfg = Ask 'Obnovit i Config.toml ze zalohy (max_cycles, cesty - zmeny po nasazeni se ztrati)?'
     Stop-Apps
     foreach ($app in $Apps) {
         if (-not $app.Backup) { continue }
@@ -443,7 +451,7 @@ if ($Rollback) {
         Remove-Item -LiteralPath (Join-Path $app.Dir $app.Exe) -Force -ErrorAction SilentlyContinue
         Copy-Item -LiteralPath (Join-Path $app.Backup '_internal') -Destination $app.Dir -Recurse -Force
         Copy-Item -LiteralPath (Join-Path $app.Backup $app.Exe)    -Destination $app.Dir -Force
-        Log "  $($app.Service) obnoven (Config.toml beze zmeny - zaloha je v $($app.Backup))" 'Green'
+        Log "  $($app.Service) obnoven (exe + _internal; zaloha $($app.Backup))" 'Green'
     }
     # Nasazeni prejmenovalo slozky (folder_rename.txt v zaloze) -> vratit puvodni nazev a odkazy
     $back = New-Object System.Collections.ArrayList
@@ -453,10 +461,21 @@ if ($Rollback) {
         if (-not (Test-Path -LiteralPath $rec)) { continue }
         $l = @(Get-Content -LiteralPath $rec -Encoding UTF8)
         if ($l.Count -ge 2 -and (Split-Path $app.Dir) -eq $l[1] -and -not (Test-Path -LiteralPath $l[0])) {
-            if (Move-AppParent $app $l[1] $l[0]) { [void]$back.Add(@{ From = $l[1]; To = $l[0] }) }
+            if (Move-AppParent $app $l[1] $l[0]) {
+                [void]$back.Add(@{ From = $l[1]; To = $l[0] })
+                $app.Backup = Replace-PathText $app.Backup $l[1] $l[0]     # zaloha se presunula se slozkou
+            }
         }
     }
     Update-PathReferences $back
+    if ($restoreCfg) {
+        # Kopie z doby nasazeni (pred krokem 5d / 5c) = puvodni stav vcetne cest - prepise i Update-PathReferences
+        foreach ($app in $Apps) {
+            if (-not $app.Backup) { continue }
+            $cfg = Join-Path $app.Backup 'Config.toml'
+            if (Test-Path -LiteralPath $cfg) { Copy-Item -LiteralPath $cfg -Destination $app.Dir -Force; Log "  $($app.Service): Config.toml obnoven ze zalohy" 'Green' }
+        }
+    }
     Start-Apps
     Check-Health $port | Out-Null
     if ($stampR) { Move-Item -LiteralPath $marker -Destination (Join-Path $Here "last_deploy_rolledback_$stampR.txt") -Force }
@@ -651,6 +670,9 @@ $gw = $Apps[1]
 & $gw.Nssm set $gw.Service AppRotateOnline 1 | Out-Null
 & $gw.Nssm set $gw.Service AppStopMethodConsole 15000 | Out-Null
 Log '  DatabaseGateway: NSSM AppRotateOnline 1, AppStopMethodConsole 15000' 'Green'
+# Analyzing: rotace stdout logu i za behu (starsi nssm_install.bat ji nenastavoval - log rostl do restartu), A26-47
+& $Apps[0].Nssm set $Apps[0].Service AppRotateOnline 1 | Out-Null
+Log '  AdsAnalyzer: NSSM AppRotateOnline 1' 'Green'
 
 # 5d. max_cycles v Config.toml (Config.toml je zalohovany v *.backup_$Stamp)
 foreach ($app in $CycleFix) {

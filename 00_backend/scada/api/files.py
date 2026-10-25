@@ -182,10 +182,11 @@ async def batch_delete_files(
     reader: DataReader = request.app.state.csv_reader
     allow_unsynced = _may_delete_unsynced(session)
     deleted, failed, errors = 0, 0, []
-    for fid in body.file_ids:
+    targets = [(i.file_id, i.sync) for i in body.items] or [(fid, None) for fid in body.file_ids]
+    for fid, sync in targets:
         try:
             result = await run_io(body.location, reader.delete_file, fid, body.location, body.file_type,
-                                  allow_unsynced)
+                                  allow_unsynced, sync=sync)
         except (OSError, PermissionError) as exc:
             log.error("[API]   batch-delete %s I/O chyba: %s", fid, exc)
             failed += 1

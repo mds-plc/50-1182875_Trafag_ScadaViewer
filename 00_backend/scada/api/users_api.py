@@ -18,7 +18,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada.api.auth import _clear_failures, _is_locked, _record_failure, track_default_password
-from scada.api.dependencies import REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, is_local_client, require_auth, require_local, require_role
+from scada.api.dependencies import (REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, ensure_users_writable, is_local_client,
+                                    require_auth, require_local, require_role)
 from scada.config import VALID_ROLES, UserEntry, hash_password, save_users, verify_password
 from scada.models import ChangeUserPasswordRequest, CreateUserRequest, UserModel
 
@@ -40,6 +41,11 @@ async def _persist(request: Request, previous: list[UserEntry]) -> None:
     users_path = getattr(request.app.state, 'users_path', None)
     if users_path is None:
         return
+    try:
+        ensure_users_writable(request)
+    except HTTPException:
+        request.app.state.users = previous
+        raise
     try:
         await asyncio.to_thread(save_users, request.app.state.users, users_path)
     except OSError as exc:

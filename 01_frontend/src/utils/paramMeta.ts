@@ -318,9 +318,11 @@ export function formatParam(key: string, raw: unknown): FormattedParam {
   const group = KEY_GROUP[key]
   const n = Number(raw)
   if (key === 'meas_ts' && !isNaN(n) && n > 0) {
-    // unixový čas [s] → datum a čas (cs-CZ)
+    // unixový čas [s] → datum a čas (cs-CZ). TwinCAT ho posílá v MÍSTNÍM čase PLC uloženém jako unix
+    // (ověřeno: Meas_TS = [Metadata] Timestamp) → formátovat jako UTC, jinak +1–2 h (A26-34)
     return { text: new Date(n * 1000).toLocaleString('cs-CZ', {
       day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZone: 'UTC',
     }), open: false }
   }
   const extra = EXTRA_FORMAT[key]

@@ -333,7 +333,17 @@ export function useDatabaseState() {
       const res = await apiFetch('/api/files/batch-delete', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ file_ids: ids, location, type: dataType }),
+        // Každá kopie zvlášť (sync) — soubor v done_local i done_remote (nedokončený přesun v Gateway) má dva řádky
+        // se stejným ID; bez sync by technik dostal chybu i u synchronizované kopie (A26-43)
+        body: JSON.stringify({
+          items: files
+            .filter(f => ids.includes(f.file_id))
+            .map(f => ({
+              file_id: f.file_id,
+              sync: f.sync_status === 'done_local' || f.sync_status === 'done_remote' ? f.sync_status : null,
+            })),
+          location, type: dataType,
+        }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as { deleted: number; failed: number; errors?: { error: string }[] }

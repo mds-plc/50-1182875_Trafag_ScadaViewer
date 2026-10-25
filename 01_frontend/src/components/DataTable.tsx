@@ -27,7 +27,8 @@ const PARAM_COL_WIDTH = '88px'
 interface Props {
   columns:         string[]
   rows:            Record<string, unknown>[]
-  onRowClick?:     (row: Record<string, unknown>) => void
+  /** Klik na řádek — `index` = pozice v `rows` (kusy se stejným časem rozliší jen index, A26-44) */
+  onRowClick?:     (row: Record<string, unknown>, index: number) => void
   columnLabels?:   Record<string, string>
   columnTooltips?: Record<string, string>
   /** Jednotka zobrazená pod popiskem sloupce (např. key → 'µm') */
@@ -94,11 +95,11 @@ function DataTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {rows.map((row, i) => (
           <tr
-            key={columns.map(c => String(row[c] ?? '')).join('\x00')}
+            key={`${i}\x00${columns.map(c => String(row[c] ?? '')).join('\x00')}`}
             className={`data-table__row${onRowClick ? ' data-table__row--clickable' : ''}`}
-            onClick={() => onRowClick?.(row)}
+            onClick={() => onRowClick?.(row, i)}
           >
             {columns.map(c => {
               const val     = row[c] ?? ''

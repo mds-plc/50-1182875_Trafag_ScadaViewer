@@ -19,7 +19,7 @@ export const helpCs: Translations['help'] = {
         { title: 'Od – do', text: 'Datumový filtr podle vzniku zakázky, výchozí jsou poslední 2 dny. Když filtr nic nenajde, nabídne přechod na den s nejnovějšími daty.' },
         { title: 'Tabulka', text: 'Klik na záhlaví sloupce řadí. Klik na řádek zakázky (nebo šipka) rozbalí přehled kusů a rozložení kategorií; ikona grafu otevře detail zakázky rovnou, bez rozbalení. CSV / XLSX stáhne celou zakázku. V rozbaleném přehledu kusů jsou hodnoty mimo limity třídění lehce podbarvené. „…" u počtu kusů = počet se právě dopočítává. Rozpracovaná zakázka je zvýrazněná nahoře.' },
         { title: 'Sync', text: 'In progress = zakázka se právě vyrábí. Local = uloženo jen na tomto PC, čeká na odeslání na NAS. Synced = už je i na NAS.' },
-        { title: 'Mazání', text: 'Jednotlivě nebo hromadně (zaškrtnutím). Soubor, který ještě není na NAS (Local), smí smazat jen administrátor — data by se nenávratně ztratila. Rozpracovanou zakázku (In progress) smí smazat jen administrátor, jednotlivě a po potvrzení rizika; vyrábí-li ji stroj dál, další kus PLC odmítne. Z NAS se nemaže nikdy. Z kanceláře je stránka jen pro prohlížení.' },
+        { title: 'Mazání', text: 'Jednotlivě nebo hromadně (zaškrtnutím) — technik a výše, operátor nemaže. Soubor, který ještě není na NAS (Local), smí smazat jen administrátor — data by se nenávratně ztratila. Rozpracovanou zakázku (In progress) smí smazat jen administrátor, jednotlivě a po potvrzení rizika; vyrábí-li ji stroj dál, další kus PLC odmítne. Z NAS se nemaže nikdy. Z kanceláře je stránka jen pro prohlížení.' },
       ],
     },
     order: {

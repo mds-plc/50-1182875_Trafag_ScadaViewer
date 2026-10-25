@@ -57,6 +57,22 @@ describe('OnScreenKeyboard', () => {
     expect(input.selectionStart).toBe(2)
   })
 
+  it('podržení ⌫ dvěma prsty: po puštění mazání skončí (A26-38)', () => {
+    vi.useFakeTimers()
+    try {
+      setup()
+      for (const c of 'abcdefghij') press(c)
+      act(() => { fireEvent.pointerDown(key('Smazat znak')) })      // 1. prst
+      act(() => { fireEvent.pointerDown(key('Smazat znak')) })      // 2. prst — dřív osiřelý interval
+      act(() => { fireEvent.pointerUp(key('Smazat znak')) })
+      const after = value()
+      act(() => { vi.advanceTimersByTime(3000) })
+      expect(value()).toBe(after)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('Shift jednou = jedno velké písmeno, dvakrát = trvale', () => {
     setup()
     press('Velká písmena (dvojklep = trvale)'); press('A'); press('b')

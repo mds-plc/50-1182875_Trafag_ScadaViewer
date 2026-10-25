@@ -32,7 +32,7 @@ GVL_BASE = "GV_IO_ADS_API.DatabaseGatewayApp"
 SYM: dict[str, str] = { "in_ready": f"{GVL_BASE}.In.Status.Ready", ... }
 ```
 → ScadaViewer `constants.py` přebírá **vzor** (`GVL_… + SYM dict`), ale má **vlastní GVL**
-  `GV_IO_ADS_API.ScadaViewerApp` — 23 Out symbolů (mode, zakázka, boxy 1–6, `plc_operator_login`)
+  `GV_IO_ADS_API.ScadaViewerApp` — 24 Out symbolů (mode, zakázka, boxy 1–6, `plc_operator_login`)
   + 2 In symboly (`sv_heartbeat`, `sv_ready`). Struktura GVL: `05_user_data/plc_communication/*.xml`.
 
 ### CSV formát dat

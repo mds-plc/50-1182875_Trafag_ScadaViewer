@@ -36,11 +36,11 @@ import re
 import secrets
 import time
 
-from scada.api.dependencies import SESSION_TTL_SECS, is_local_client
+from scada.api.dependencies import SESSION_TTL_SECS, USERS_FILE_ERROR_DETAIL, is_local_client
 
 from fastapi import APIRouter, HTTPException, Request
 
-from scada.config import hash_password, save_users, verify_password
+from scada.config import atomic_write_text, hash_password, save_users, verify_password
 from scada.models import ChangePasswordRequest, ClientInfoResponse, LoginRequest, LoginResponse, LogoutRequest
 
 router = APIRouter()
@@ -132,7 +132,7 @@ def _update_config_file(config_path, new_hash: str) -> bool:
                 )
             else:
                 new_text = text.rstrip() + f'\n\n[auth]\npassword_hash = "{new_hash}"\n'
-        config_path.write_text(new_text, encoding='utf-8')
+        atomic_write_text(config_path, new_text)    # dřív write_text — pád uprostřed = poškozený Config.toml (A26-45)
         return True
     except OSError as exc:
         log.error("[AUTH]  nelze zapsat Config.toml: %s", exc)
@@ -351,6 +351,9 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
     config_path = getattr(request.app.state, 'config_path', None)
 
     if users_path and users_path.exists():
+        if getattr(request.app.state, "users_read_error", False):
+            user.password_hash = old_hash
+            raise HTTPException(status_code=409, detail=USERS_FILE_ERROR_DETAIL)
         try:
             await asyncio.to_thread(save_users, users, users_path)
         except OSError as exc:

@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada import __version__
 from scada.api.dependencies import require_auth, require_local, require_role
+from scada.config import atomic_write_text
 from scada.services.io_pool import NasBusyError, run_io
 from scada.models import (
     ConfigAuthInfo,
@@ -68,9 +69,7 @@ async def get_config(request: Request) -> ConfigResponse:
 def _atomic_write_text(path: Path, text: str) -> None:
     """Zapíše soubor atomicky (tmp + os.replace) — výpadek napájení uprostřed zápisu nesmí
     nechat poškozený Config.toml (aplikace by po restartu nenastartovala)."""
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(path, text)    # + fsync (A26-45)
 
 
 def _clean_path(raw: str) -> str:

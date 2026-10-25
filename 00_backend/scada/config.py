@@ -157,6 +157,22 @@ def _toml_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """
+    Atomický zápis textového souboru: .tmp → flush + fsync → os.replace (A26-45).
+
+    Bez fsync může výpadek proudu po os.replace nechat pod správným názvem prázdný soubor (data ještě
+    v cache Windows) — Config.toml / users.toml by byl nečitelný a služba nenastartovala.
+    """
+    import os
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def save_users(users: list[UserEntry], path: Path) -> None:
     """
     Zapíše seznam uživatelů do users.toml.
@@ -173,18 +189,30 @@ def save_users(users: list[UserEntry], path: Path) -> None:
         lines.append(f'password_hash = "{_toml_escape(u.password_hash)}"\n')
         lines.append(f'role         = "{_toml_escape(u.role)}"\n')
         lines.append("\n")
-    tmp = path.with_suffix(".toml.tmp")
-    tmp.write_text("".join(lines), encoding="utf-8")
-    os.replace(tmp, path)   # atomické na stejném filesystému (Windows i POSIX)
+    # Záloha předchozí verze (ruční obnova při chybě) — A26-42
+    if path.exists():
+        try:
+            import shutil
+            shutil.copy2(path, path.with_name(path.name + ".bak"))
+        except OSError as exc:
+            log.warning("[CFG]   záloha %s selhala: %s", path.name, exc)
+    atomic_write_text(path, "".join(lines))
     log.info("[CFG]   uloženo %d uživatelů do %s", len(users), path)
 
 
 def load_users(users_path: Path | None, fallback_auth: AuthConfig) -> list[UserEntry]:
+    """Načte uživatele (viz load_users_checked); příznak nečitelného souboru zahodí."""
+    return load_users_checked(users_path, fallback_auth)[0]
+
+
+def load_users_checked(users_path: Path | None, fallback_auth: AuthConfig) -> tuple[list[UserEntry], bool]:
     """
-    Načte seznam uživatelů z users.toml.
+    Načte seznam uživatelů z users.toml → (uživatelé, soubor_nečitelný).
 
     Pokud soubor neexistuje nebo je prázdný → fallback:
     jeden uživatel 'admin' z Config.toml [auth].
+    soubor_nečitelný = True: users.toml existuje, ale nejde přečíst → fallback a zápis uživatelů se zablokuje
+    (první změna by soubor přepsala jen nouzovým adminem a ostatní účty by zmizely — A26-42).
     """
     if users_path is not None and users_path.exists():
         try:
@@ -206,12 +234,18 @@ def load_users(users_path: Path | None, fallback_auth: AuthConfig) -> list[UserE
                 ))
             if users:
                 log.info("[CFG]   načteno %d uživatelů z %s", len(users), users_path)
-                return users
+                return users, False
         except Exception as exc:
-            log.error("[CFG]   chyba při čtení %s: %s — fallback na Config.toml [auth]", users_path, exc)
+            log.error("[CFG]   chyba při čtení %s: %s — fallback na Config.toml [auth]; změny uživatelů "
+                      "zablokovány, dokud se soubor neopraví (záloha %s.bak)", users_path, exc, users_path.name)
+            return _fallback_user(fallback_auth), True
 
     # Fallback — jeden admin z Config.toml [auth]
     log.info("[CFG]   users.toml nenalezeno nebo prázdné — fallback na Config.toml [auth]")
+    return _fallback_user(fallback_auth), False
+
+
+def _fallback_user(fallback_auth: AuthConfig) -> list[UserEntry]:
     return [UserEntry(
         username=fallback_auth.username,
         display_name=fallback_auth.username,

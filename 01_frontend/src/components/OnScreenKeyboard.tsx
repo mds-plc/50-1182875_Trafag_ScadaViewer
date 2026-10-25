@@ -128,6 +128,8 @@ export default function OnScreenKeyboard({ enabledAuto }: Props) {
     clearTimeout(repeatRef.current.delay); clearInterval(repeatRef.current.every); repeatRef.current = {}
   }, [])
   useEffect(() => stopRepeat, [stopRepeat])
+  // Pole se změnilo / zmizelo během podržení ⌫ → klávesnice se skryje a pointerup nepřijde; opakování zastavit (A26-38)
+  useEffect(() => { stopRepeat() }, [field, stopRepeat])
 
   const insert = useCallback((text: string) => {
     if (!field) return
@@ -217,6 +219,7 @@ export default function OnScreenKeyboard({ enabledAuto }: Props) {
                 aria-label={aria[key]}
                 onPointerDown={e => {
                   e.preventDefault()            // fokus zůstane v poli
+                  stopRepeat()                  // druhý prst na ⌫ by přepsal časovač a první by mazal navždy (A26-38)
                   press(key)
                   if (key === '{bksp}') {       // podržení ⌫ = opakování
                     repeatRef.current.delay = setTimeout(() => {

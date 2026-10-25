@@ -55,7 +55,16 @@ describe('useDatabaseState — výběr pro hromadné mazání (F1)', () => {
     const { result } = renderHook(() => useDatabaseState(), { wrapper })
     act(() => { result.current.selectAll() })
     await act(async () => { await result.current.batchDelete() })
-    const body = JSON.parse(mockApiFetch.mock.calls[0][1].body as string) as { file_ids: string[] }
-    expect(body.file_ids.sort()).toEqual(['a_DONE.csv', 'b_DONE.csv'])
+    const body = JSON.parse(mockApiFetch.mock.calls[0][1].body as string) as { items: { file_id: string }[] }
+    expect(body.items.map(i => i.file_id).sort()).toEqual(['a_DONE.csv', 'b_DONE.csv'])
+  })
+
+  it('soubor v done_local i done_remote → obě kopie s vlastní složkou (A26-43)', async () => {
+    mockFiles = [file('a_DONE.csv'), { ...file('a_DONE.csv'), sync_status: 'done_remote' } as OrderFile]
+    const { result } = renderHook(() => useDatabaseState(), { wrapper })
+    act(() => { result.current.toggleSelect('a_DONE.csv') })
+    await act(async () => { await result.current.batchDelete() })
+    const body = JSON.parse(mockApiFetch.mock.calls[0][1].body as string) as { items: { file_id: string; sync: string }[] }
+    expect(body.items.map(i => i.sync).sort()).toEqual(['done_local', 'done_remote'])
   })
 })
