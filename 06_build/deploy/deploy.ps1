@@ -295,6 +295,26 @@ function Reset-MovedAcl([string]$dir) {
     if ($LASTEXITCODE -ne 0) { Log "[VAROVANI] Prava $dir se nepodarilo prevzit od nadrazene slozky (icacls $LASTEXITCODE)." 'Yellow' }
 }
 
+# Soubory v presunutych slozkach, na ktere miri zastupce / skript z Po spusteni nebo plochy (plni Update-PathReferences)
+$script:HelperTargets = New-Object System.Collections.ArrayList
+
+# Kiosk po prihlaseni bezi s omezenymi pravy (UAC) - clenstvi v Administrators se neuplatni, do C:\apps by nesmel.
+# Pomocnym .bat / .cmd (kiosk_start, open_browser - jen oteviraji Chrome, nic citliveho) povolit Users jen spusteni
+# TOHOTO souboru (Windows u prime cesty nekontroluje prava nadrazenych slozek - Bypass traverse checking).
+# Config.toml a zbytek slozky zustanou zavrene. Zastupce na exe jen nahlasit - server bezi jako sluzba.
+function Grant-HelperExecute {
+    foreach ($t in @($script:HelperTargets | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $t -PathType Leaf)) { continue }
+        if ([IO.Path]::GetExtension($t) -in '.bat', '.cmd') {
+            & icacls $t /grant '*S-1-5-32-545:(RX)' | Out-Null
+            if ($LASTEXITCODE -eq 0) { Log "  $t : Users smi spustit (kiosk / zastupce po prihlaseni)" 'Green' }
+            else { Log "[VAROVANI] Prava pro spusteni $t se nepodarilo nastavit - kiosk po startu PC zkontrolujte." 'Yellow' }
+        } else {
+            Log "[VAROVANI] Zastupce / skript spousti primo $t - pod beznym uctem nepujde; aplikace bezi jako sluzba, zastupce smazte." 'Yellow'
+        }
+    }
+}
+
 # Selhani po zastaveni sluzeb (krok 5-5c): vratit presuny slozek, exe + _internal a Config.toml ze zalohy (audit A26-04)
 function Restore-AfterFailure($donePairs) {
     $back = New-Object System.Collections.ArrayList
@@ -371,10 +391,20 @@ function Update-PathReferences($pairs) {
                     }
                 }
                 if ($changed) { $lnk.Save(); Log "  zastupce upraven: $($f.FullName)" 'Green' }
+                foreach ($p in $pairs) {
+                    if ($lnk.TargetPath -and $lnk.TargetPath.StartsWith("$($p.To)\", [StringComparison]::OrdinalIgnoreCase)) {
+                        [void]$script:HelperTargets.Add($lnk.TargetPath)
+                    }
+                }
             } elseif ($f.Extension -in '.bat', '.cmd') {
                 $text = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::Default); $new = $text
                 foreach ($p in $pairs) { $new = Replace-PathText $new $p.From $p.To }
                 if ($new -ne $text) { [IO.File]::WriteAllText($f.FullName, $new, [Text.Encoding]::Default); Log "  skript upraven: $($f.FullName)" 'Green' }
+                foreach ($p in $pairs) {
+                    foreach ($m in [regex]::Matches($new, [regex]::Escape($p.To) + '\\[^"\r\n]+?\.(bat|cmd|exe)', 'IgnoreCase')) {
+                        [void]$script:HelperTargets.Add($m.Value)
+                    }
+                }
             }
         }
     }
@@ -696,6 +726,7 @@ foreach ($app in $Renames) {
     }
 }
 Update-PathReferences $done
+if ($MoveTo) { Grant-HelperExecute }    # kiosk / zastupce z Po spusteni po presunu do C:\apps (UAC)
 
 } catch {
     $err = $_
