@@ -25,6 +25,7 @@ Napojení:
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -130,6 +131,7 @@ from scada import __version__
 from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users
 from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, storage, system_time
+from scada.api.auth import find_default_password_users
 from scada.services.ads_monitor import AdsMonitor
 from scada.services.file_service import FileService
 from scada.services.files_watcher import FilesWatcher
@@ -310,6 +312,11 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         app.state.users_path   = users_path    # pro zápis users.toml
         app.state.users        = load_users(users_path, cfg.auth)
         app.state.sessions: dict[str, dict] = {}   # token → {username, role, display_name}
+        # Účty s výchozím heslem „admin" (Config.toml.example) — /api/health + odmítnutí vzdáleného přihlášení (A26-18)
+        app.state.default_password_users = await asyncio.to_thread(find_default_password_users, app.state.users)
+        if app.state.default_password_users:
+            log.error("[APP]   Účet %s má VÝCHOZÍ heslo — změňte ho (Nastavení → Uživatelé); vzdálené přihlášení "
+                      "s ním je zablokované.", ", ".join(sorted(app.state.default_password_users)))
         log.info("[APP]   ScadaViewer start")
         try:
             await monitor.start()

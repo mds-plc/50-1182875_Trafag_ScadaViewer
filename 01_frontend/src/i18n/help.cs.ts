@@ -64,7 +64,7 @@ export const helpCs: Translations['help'] = {
         { title: 'Předvolby', text: 'Jazyk, světlý / tmavý režim, počet souborů na stránce, interval automatického obnovení a klávesnice na obrazovce (kiosk bez systémové klávesnice — Automaticky = jen u stroje). Ukládají se v tomto prohlížeči.' },
         { title: 'Připojení', text: 'Stav serveru, PLC (ADS) a lokálního úložiště a NAS. Administrátor u stroje zde mění cesty k datům a limit lokálního úložiště.' },
         { title: 'Čas / NTP', text: 'PC u stroje slouží jako NTP server pro další IPC. Nahoře je hned vidět, zda si IPC mohou brát čas z tohoto PC (a když ne, proč), čas PC, odkud ho PC bere a adresa, kterou nastavit na IPC. Administrátor u stroje může čas PC ručně nastavit — převezmou ho IPC i časové značky nových záznamů. Údaje pro servis jsou ve sbalených Technických podrobnostech.' },
-        { title: 'Uživatelé', text: 'Jen pro administrátora: přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá.' },
+        { title: 'Uživatelé', text: 'Jen pro administrátora: přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá. Účet s výchozím heslem „admin" se z kanceláře nepřihlásí a aplikace dole vyzve ke změně hesla. Přihlášení heslem na PC u stroje skončí po 15 minutách nečinnosti.' },
       ],
     },
     info: {

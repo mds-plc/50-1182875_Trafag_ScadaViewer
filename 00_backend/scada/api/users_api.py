@@ -17,7 +17,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from scada.api.auth import _clear_failures, _is_locked, _record_failure
+from scada.api.auth import _clear_failures, _is_locked, _record_failure, track_default_password
 from scada.api.dependencies import REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, is_local_client, require_auth, require_local, require_role
 from scada.config import VALID_ROLES, UserEntry, hash_password, save_users, verify_password
 from scada.models import ChangeUserPasswordRequest, CreateUserRequest, UserModel
@@ -104,6 +104,7 @@ async def create_user(
     previous = _snapshot(request)
     request.app.state.users.append(new_user)
     await _persist(request, previous)
+    track_default_password(request.app.state, new_user.username, body.password)
 
     log.info("[USERS] přidán uživatel %r role=%r (tvůrce: %r)", new_user.username, new_user.role, session["username"])
     return UserModel(username=new_user.username, display_name=new_user.display_name, role=new_user.role)
@@ -142,6 +143,7 @@ async def delete_user(
     previous = _snapshot(request)
     request.app.state.users = [u for u in users if u.username != username]
     await _persist(request, previous)
+    track_default_password(request.app.state, username, None)
 
     # Odhlásit smazaného uživatele — token by jinak platil dál až do TTL (8 h)
     sessions  = request.app.state.sessions
@@ -214,6 +216,7 @@ async def change_user_password(
     previous = _snapshot(request)
     target.password_hash = new_hash
     await _persist(request, previous)
+    track_default_password(request.app.state, username, body.new_password)
 
     # Pokud si admin mění heslo jiného uživatele, nezneplatňovat všechny sessions
     # Pokud si mění vlastní heslo, zneplatní všechny (jako v /auth/change-password)

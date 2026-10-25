@@ -513,13 +513,26 @@ def load_signal(
         return raw, key_points, params
 
 
+#: Platný rozsah C [µm] — stejný jako Analyzing (Config.toml [measurement] position_reference_min_um / _max_um).
+#: C z PLC mimo rozsah Analyzing nepoužije (polohy počítá se zálohou, W8), ale Gateway ho do souboru zapíše
+#: surový → grafy by posunuly osu polohy proti tabulce. Mimo rozsah = jako starší soubor (C = TTP + max x). A26-17
+_C_MIN_UM = 8000.0
+_C_MAX_UM = 11000.0
+
+
 def _position_reference(measured_info: dict[str, str]) -> float | None:
-    """Konstanta C [µm] z [MeasuredInfo] (sloupec PositionReference, Gateway od 2026-10-21)."""
+    """Konstanta C [µm] z [MeasuredInfo] (sloupec PositionReference, Gateway od 2026-10-21); mimo rozsah None."""
     try:
         c = float(measured_info.get('positionreference') or '')
     except ValueError:
         return None
-    return c if math.isfinite(c) and c > 0 else None
+    if not math.isfinite(c) or c <= 0:
+        return None
+    if not _C_MIN_UM <= c <= _C_MAX_UM:
+        log.warning("[CSV]   PositionReference %.1f µm mimo rozsah %.0f–%.0f (Analyzing ho nepoužil) — "
+                    "C se dopočte z TTP + max x.", c, _C_MIN_UM, _C_MAX_UM)
+        return None
+    return c
 
 
 def _cache_bytes() -> int:

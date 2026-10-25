@@ -36,6 +36,8 @@ export default function LoginOverlay() {
       const result = await login(username, password)
       if (result === 'invalid') setError(t.login.errorCredentials)
       if (result === 'error')   setError(t.login.errorServer)
+      if (result === 'default-remote') setError(t.login.errorDefaultRemote)
+      if (result === 'locked')  setError(t.login.errorLocked)
       // 'ok' → AuthContext nastaví isLoggedIn = true → overlay zmizí
     } finally {
       setIsLoading(false)

@@ -211,6 +211,7 @@ class LoginResponse(BaseModel):
     token:        str
     role:         str   # operator | technician | admin | manufacturer
     display_name: str
+    default_password: bool = False   # účet má výchozí heslo „admin" → UI vyzve ke změně (A26-18)
 
 
 class ClientInfoResponse(BaseModel):
@@ -256,6 +257,7 @@ class HealthChecks(BaseModel):
     """Dílčí kontroly zdraví aplikace (vnořený objekt v HealthResponse)."""
     local_storage: bool   # True pokud lokální disk s daty existuje
     ads:           bool   # True pokud ADS spojení s PLC je aktivní
+    default_password: bool = False   # některý účet má výchozí heslo „admin" (A26-18)
 
 
 class HealthResponse(BaseModel):

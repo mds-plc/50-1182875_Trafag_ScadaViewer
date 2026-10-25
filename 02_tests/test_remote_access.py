@@ -158,3 +158,43 @@ def test_z1_dns_rebinding_host_header(make_client, host: str, local: bool) -> No
     assert (c.post("/api/auth/plc-login", headers={"Host": host}).status_code == 200) is local
     r = c.post("/api/storage/cleanup", headers={"Host": host})
     assert (r.status_code == 403) is not local
+
+
+# ── A26-18 — výchozí heslo „admin" ─────────────────────────────────────────────
+
+def _with_default_admin(c: TestClient) -> TestClient:
+    from scada.api.auth import find_default_password_users
+    c.app.state.users[0].password_hash = hash_password("admin")
+    c.app.state.default_password_users = find_default_password_users(c.app.state.users)
+    return c
+
+
+def test_a26_18_remote_login_with_default_password_refused(make_client) -> None:
+    """Z kanceláře se účet s výchozím heslem nepřihlásí (403) — jinak by převzal admina a změnil mu heslo."""
+    remote = _with_default_admin(make_client(client=_REMOTE))
+    r = remote.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert r.status_code == 403 and "výchozí heslo" in r.json()["detail"]
+    # jiný účet s vlastním heslem vzdáleně projde
+    assert remote.post("/api/auth/login", json={"username": "tech", "password": "pw-tech"}).status_code == 200
+
+
+def test_a26_18_local_login_flags_default_password_and_health(make_client) -> None:
+    """U stroje přihlášení projde s příznakem default_password; /api/health hlásí výchozí heslo, po změně ne."""
+    local = _with_default_admin(make_client())
+    r = local.post("/api/auth/login", json={"username": "admin", "password": "admin"})
+    assert r.status_code == 200 and r.json()["default_password"] is True
+    assert local.get("/api/health").json()["checks"]["default_password"] is True
+    token = r.json()["token"]
+    r = local.post("/api/auth/change-password",
+                   json={"token": token, "current_password": "admin", "new_password": "Nove-Heslo-2026"})
+    assert r.status_code == 204
+    assert local.get("/api/health").json()["checks"]["default_password"] is False
+    r = local.post("/api/auth/login", json={"username": "tech", "password": "pw-tech"})
+    assert r.json()["default_password"] is False
+
+
+def test_a26_18_startup_detects_default_password() -> None:
+    from scada.api.auth import find_default_password_users
+    users = [UserEntry("a", "A", hash_password("admin"), "admin"), UserEntry("b", "B", hash_password("x"), "operator")]
+    assert find_default_password_users(users) == {"a"}
+

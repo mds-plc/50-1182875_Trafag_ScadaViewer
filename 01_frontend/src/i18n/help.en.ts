@@ -64,7 +64,7 @@ export const helpEn: Translations['help'] = {
         { title: 'Preferences', text: 'Language, light / dark mode, files per page, auto-refresh interval and the on-screen keyboard (kiosk without a system keyboard — Automatic = only at the machine). Stored in this browser.' },
         { title: 'Connection', text: 'Status of the server, PLC (ADS), local storage and NAS. An administrator at the machine changes the data paths and the local storage limit here.' },
         { title: 'Time / NTP', text: 'The PC at the machine serves as the NTP server for the other IPCs. The top shows at a glance whether the IPCs can take their time from this PC (and if not, why), the PC time, where the PC takes it from and the address to set on the IPCs. An administrator at the machine can set the PC time manually — the IPCs and the timestamps of new records take it over. Data for service are in the collapsed Technical details.' },
-        { title: 'Users', text: 'Administrators only: add and remove users, change passwords. A user can have at most the same role as the person creating them.' },
+        { title: 'Users', text: 'Administrators only: add and remove users, change passwords. A user can have at most the same role as the person creating them. An account with the default password "admin" cannot sign in remotely and the app shows a prompt at the bottom to change it. A password sign-in on the machine PC ends after 15 minutes of inactivity.' },
       ],
     },
     info: {

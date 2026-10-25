@@ -6,7 +6,7 @@
  *   Neznámé cesty jsou přesměrovány na /.
  */
 import { lazy, Suspense, useEffect, useRef } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { LangProvider } from './context/LangContext'
 import { PlcProvider, usePlcConnection } from './context/PlcContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -37,7 +37,7 @@ function preloadPages(): void {
 }
 import { useBackendOnline } from './hooks/useBackendOnline'
 import { useLang } from './context/LangContext'
-import { WifiOff } from 'lucide-react'
+import { KeyRound, WifiOff } from 'lucide-react'
 
 /** Čte PLC přihlášení z kontextu — musí být uvnitř PlcProvider. Předá i to, zda je prohlížeč
  *  na PC u stroje (vzdáleně bez PLC auto-loginu, jen prohlížení). */
@@ -49,9 +49,10 @@ function PlcAuth({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell() {
-  const { isLoggedIn, isRemote } = useAuth()
+  const { isLoggedIn, isRemote, defaultPassword } = useAuth()
   const { t } = useLang()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const online = useBackendOnline()
   usePlcWatcher()
   // Nová stránka začíná nahoře; Zpět vrátí pozici (např. v tabulce záznamů zakázky)
@@ -74,6 +75,12 @@ function AppShell() {
         </div>
       )}
       {!isLoggedIn && <LoginOverlay />}
+      {isLoggedIn && defaultPassword && (
+        <button type="button" className="default-pw-banner" role="alert" onClick={() => navigate('/settings')}>
+          <KeyRound size={15} />
+          {t.login.defaultPasswordBanner}
+        </button>
+      )}
       {/* Kiosk: systémová klávesnice je zakázaná → vlastní na obrazovce (předvolba Automaticky = jen u stroje) */}
       <OnScreenKeyboard enabledAuto={!isRemote} />
       <div className="app">

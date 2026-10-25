@@ -355,6 +355,9 @@ export interface Translations {
     errorCredentials: string
     errorServer: string
     sessionExpired: string
+    errorDefaultRemote: string
+    errorLocked: string
+    defaultPasswordBanner: string
     localAccess: string
     signOut: string
     remoteHint: string

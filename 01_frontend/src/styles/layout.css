@@ -25,6 +25,28 @@
   animation: offline-slide-in 0.25s ease;
 }
 
+/* Účet s výchozím heslem (A26-18) — dole, pod klávesnicí na obrazovce (z-index 3000), klik = Nastavení */
+.default-pw-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: var(--color-warning);
+  color: #ffffff;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
 @keyframes offline-slide-in {
   from { transform: translateY(-100%); opacity: 0; }
   to   { transform: translateY(0);     opacity: 1; }
@@ -68,7 +90,7 @@
     overflow: visible !important;
   }
   html { font-size: 13px !important; }
-  .sidebar, .topbar, .toast-container, .offline-banner { display: none !important; }
+  .sidebar, .topbar, .toast-container, .offline-banner, .default-pw-banner { display: none !important; }
   .app { display: block !important; }
   .content { margin: 0; padding: 8px; }
 }

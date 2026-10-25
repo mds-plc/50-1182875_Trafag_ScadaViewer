@@ -159,6 +159,10 @@ function Check-Health([int]$port) {
         try {
             $h = Invoke-RestMethod -Uri $url -TimeoutSec 5
             Log ("  status={0}  version={1}  local_storage={2}  ads={3}" -f $h.status, $h.version, $h.checks.local_storage, $h.checks.ads) 'Cyan'
+            if ($h.checks.default_password) {
+                # A26-18: ucet s vychozim heslem "admin" - z kancelare se neprihlasi, ale u stroje ano
+                Log '[VAROVANI] ScadaViewer: ucet s VYCHOZIM heslem (admin) - zmente ho: Nastaveni -> Uzivatele.' 'Yellow'
+            }
             return $h
         } catch { Start-Sleep -Seconds 2 }
     }
@@ -202,8 +206,19 @@ function Set-TomlValue([string]$file, [string]$section, [string]$key, [string]$v
     return $true
 }
 
+# Parametr NSSM sluzby - primo z registru (Services\<svc>\Parameters, Unicode). `nssm get` vypisuje UTF-16, ktere
+# PS 5.1 cte jako ANSI (diakritika v ceste se poskodi) a stderr s $ErrorActionPreference Stop muze skript ukoncit
+# (audit A26-21). Hodnota v registru chybi -> fallback na `nssm get` s potlacenymi chybami.
 function Get-NssmParam([string]$nssm, [string]$service, [string]$param) {
-    return ((& $nssm get $service $param 2>$null) -join '' -replace "`0", '').Trim()
+    $key = "HKLM:\SYSTEM\CurrentControlSet\Services\$service\Parameters"
+    try {
+        $v = (Get-ItemProperty -LiteralPath $key -Name $param -ErrorAction Stop).$param
+        if ($null -ne $v) { return (@($v) -join ' ').Trim() }
+    } catch { }
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { return ((& $nssm get $service $param 2>$null) -join '' -replace "`0", '').Trim() }
+    finally { $ErrorActionPreference = $old }
 }
 
 # Prejmenuje / presune rodicovskou slozku aplikace $from -> $to (cela cesta, stejny disk) a prepise odkazy sluzby
@@ -247,6 +262,11 @@ function Get-ServiceAccounts {
 # (plna) a ucty sluzeb (zapis - logy, data, Config.toml / users.toml z UI). Users ZADNY pristup: Config.toml obsahuje
 # heslo k NAS a hash admina (i kopie v zalohach *.backup_*); kiosk ani obsluha slozku aplikaci nepotrebuji (audit A26-06).
 # SID misto nazvu skupin (lokalizovany Windows).
+# Rozpracovane zakazky (*_WIP.csv) - pred nasazenim musi byt production\wip prazdna (nova hlavicka CSV)
+function Get-WipFiles([string]$localPath) {
+    return @(Get-ChildItem -LiteralPath (Join-Path $localPath 'production\wip') -File -Filter '*.csv' -ErrorAction SilentlyContinue)
+}
+
 function New-AppsRoot([string]$root) {
     New-Item -ItemType Directory -Path $root | Out-Null
     $grants = @('*S-1-5-32-544:(OI)(CI)F', '*S-1-5-18:(OI)(CI)F') + @(Get-ServiceAccounts | ForEach-Object { "${_}:(OI)(CI)M" })
@@ -376,7 +396,7 @@ Log "Log: $LogFile"
 # 1. Slozky aplikaci podle NSSM
 foreach ($app in $Apps) {
     $app.Nssm = Get-Nssm $app.Service
-    $raw = ((& $app.Nssm get $app.Service AppDirectory) -join '' -replace "`0", '').Trim()
+    $raw = Get-NssmParam $app.Nssm $app.Service 'AppDirectory'
     $app.DirRaw = $raw
     $dir = $raw.Trim('"').TrimEnd('\')
     if (-not (Test-Path -LiteralPath (Join-Path $dir $app.Exe))) { Fail "$($app.Service): $($app.Exe) neni v $dir" }
@@ -500,7 +520,11 @@ if ($gwHost) {
 $local = Get-TomlValue $svCfg 'data' 'local_path'
 if ($local) {
     if (-not [IO.Path]::IsPathRooted($local)) { $local = Join-Path $sv.Dir $local }
-    $wip = @(Get-ChildItem -LiteralPath (Join-Path $local 'production\wip') -File -ErrorAction SilentlyContinue)
+    # Neexistujici slozka by se tvarila jako "wip prazdna" (A26-20)
+    if (-not (Test-Path -LiteralPath (Join-Path $local 'production'))) {
+        Fail "Datova slozka $local\production neexistuje - zkontrolujte [data] local_path v Config.toml ScadaViewer."
+    }
+    $wip = Get-WipFiles $local
     $dl  = @(Get-ChildItem -LiteralPath (Join-Path $local 'production\done_local') -File -ErrorAction SilentlyContinue) +
            @(Get-ChildItem -LiteralPath (Join-Path $local 'testing\done_local') -File -ErrorAction SilentlyContinue)
     if ($wip.Count -gt 0) {
@@ -569,6 +593,19 @@ foreach ($app in $Apps) {
 
 # 4. Zastavit
 Stop-Apps
+
+# Kontrola wip znovu az se zastavenou Gateway: behem dotazu vyse mohla obsluha zalozit zakazku (Op1) a nova
+# Gateway by do WIP se starou hlavickou kusy nepridala (A26-20). Nic jeste neni vymenene -> spustit a skoncit.
+if ($local) {
+    $wipNow = Get-WipFiles $local
+    if ($wipNow.Count -gt 0) {
+        Log "[CHYBA] Behem pripravy vznikla rozpracovana zakazka: $($wipNow.Name -join ', ') - nasazeni preruseno, nic nevymeneno." 'Red'
+        Log '        Uzavrete ji na PLC (Op3) a spustte deploy.bat znovu. Sluzby se spousti zpet.' 'Red'
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        Start-Apps
+        exit 1
+    }
+}
 
 # Zaznam nasazeni pro rollback.bat - obnovuje jen zalohy s timto razitkem (audit A26-05)
 Set-Content -LiteralPath (Join-Path $Here 'last_deploy.txt') -Value $Stamp -Encoding ASCII

@@ -68,3 +68,8 @@ def test_position_reference_from_measured_info() -> None:
     assert _position_reference({"positionreference": ""}) is None          # PLC C neposlalo
     assert _position_reference({"positionreference": "0"}) is None
     assert _position_reference({}) is None
+    # A26-17: mimo rozsah Analyzingu (8000–11000 µm) se C nepoužije — Analyzing počítal se zálohou
+    assert _position_reference({"positionreference": "5000"}) is None
+    assert _position_reference({"positionreference": "12000"}) is None
+    assert _position_reference({"positionreference": "8000"}) == 8000.0
+    assert _position_reference({"positionreference": "11000"}) == 11000.0

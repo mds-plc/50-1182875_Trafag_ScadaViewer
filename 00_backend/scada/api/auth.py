@@ -139,6 +139,26 @@ def _update_config_file(config_path, new_hash: str) -> bool:
         return False
 
 
+#: Výchozí heslo z Config.toml.example — účet s ním se z kanceláře nepřihlásí a UI vyzve ke změně (A26-18)
+DEFAULT_PASSWORD = "admin"
+
+
+def find_default_password_users(users) -> set[str]:
+    """Účty s výchozím heslem (PBKDF2 — volat mimo event loop, ~100 ms / účet)."""
+    return {u.username for u in users if u.password_hash and verify_password(DEFAULT_PASSWORD, u.password_hash)}
+
+
+def track_default_password(state, username: str, new_password: str | None) -> None:
+    """Po změně hesla / vytvoření / smazání účtu (None) aktualizuje app.state.default_password_users."""
+    users = getattr(state, "default_password_users", None)
+    if users is None:
+        users = state.default_password_users = set()
+    if new_password == DEFAULT_PASSWORD:
+        users.add(username)
+    else:
+        users.discard(username)
+
+
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request) -> LoginResponse:
     """
@@ -187,6 +207,14 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
         raise HTTPException(status_code=401, detail="Neplatné přihlašovací údaje")
 
     _clear_failures(client_ip)
+    default_pw = body.password == DEFAULT_PASSWORD
+    if default_pw and not is_local_client(request):
+        # Výchozí heslo zná každý — z kanceláře by se kdokoli přihlásil jako admin a vzdáleně si změnil
+        # „vlastní" heslo (skutečný admin zamčen). Změna hesla jen u stroje. A26-18
+        log.warning("[AUTH]  odmítnuto vzdálené přihlášení s výchozím heslem: username=%r ip=%r",
+                    found_user.username, client_ip)
+        raise HTTPException(status_code=403,
+                            detail="Účet má výchozí heslo — přihlášení na dálku není povoleno. Změňte heslo u stroje.")
     token        = secrets.token_urlsafe(32)
     session_info = {
         "username":    found_user.username,
@@ -198,7 +226,10 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
 
     log.info("[AUTH]  přihlášen: %r role=%r (sessions celkem: %d)",
              found_user.username, found_user.role, len(request.app.state.sessions))
-    return LoginResponse(token=token, role=found_user.role, display_name=found_user.display_name)
+    if default_pw:
+        log.warning("[AUTH]  %r se přihlásil výchozím heslem — změňte ho (Nastavení → Uživatelé)", found_user.username)
+    return LoginResponse(token=token, role=found_user.role, display_name=found_user.display_name,
+                         default_password=default_pw)
 
 
 @router.post("/auth/plc-login", response_model=LoginResponse)
@@ -332,6 +363,8 @@ async def change_password(body: ChangePasswordRequest, request: Request) -> None
             raise HTTPException(status_code=500, detail="Heslo nelze uložit (Config.toml) — zkuste to znovu")
         # Synchronizuj i in-memory AuthConfig (legacy cesta)
         request.app.state.config.auth.password_hash = new_hash
+
+    track_default_password(request.app.state, username, body.new_password)
 
     # Zneplatni jen session tokeny daného uživatele (ne ostatní přihlášené uživatele)
     sessions   = request.app.state.sessions

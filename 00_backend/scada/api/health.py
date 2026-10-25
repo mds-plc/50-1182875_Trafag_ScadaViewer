@@ -55,5 +55,6 @@ async def get_health(request: Request) -> HealthResponse:
     return HealthResponse(
         status=overall,
         version=__version__,
-        checks={"local_storage": local_ok, "ads": monitor.connected},
+        checks={"local_storage": local_ok, "ads": monitor.connected,
+                "default_password": bool(getattr(request.app.state, "default_password_users", ()))},
     )

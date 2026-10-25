@@ -22,7 +22,7 @@
  *   useAuth()                                  — AuthContextType: isLoggedIn, token, role,
  *                                                username, displayName, login(), logout()
  *   AuthContextType                            — TypeScript interface hodnoty kontextu
- *   LoginResult                                — 'ok' | 'invalid' | 'error'
+ *   LoginResult                                — 'ok' | 'invalid' | 'default-remote' | 'locked' | 'error'
  *
  * Napojení:
  *   Závisí na: API /api/auth/{login,plc-login,logout}, sessionStorage
@@ -39,11 +39,17 @@ const TOKEN_KEY    = 'scada_auth_token'
 const USERNAME_KEY = 'scada_auth_user'
 const ROLE_KEY     = 'scada_auth_role'
 const DISPLAY_KEY  = 'scada_auth_display'
+const DEFAULT_PW_KEY = 'scada_auth_default_pw'
+
+/** Lokální přihlášení u stroje skončí po této době bez dotyku / klávesy (A26-19). */
+export const LOCAL_IDLE_MS = 15 * 60 * 1000
+const IDLE_CHECK_MS = 15_000
 
 // Musí odpovídat ROLE_LEVELS v api/dependencies.py
 const VALID_ROLES = new Set(['operator', 'technician', 'admin', 'manufacturer'])
 
-export type LoginResult = 'ok' | 'invalid' | 'error'
+/** 'default-remote' = HTTP 403, účet s výchozím heslem z kanceláře (A26-18); 'locked' = HTTP 429 (lockout 10 min) */
+export type LoginResult = 'ok' | 'invalid' | 'default-remote' | 'locked' | 'error'
 
 export interface AuthContextType {
   isLoggedIn:   boolean
@@ -59,7 +65,9 @@ export interface AuthContextType {
   sessionExpired: boolean
   /** true = prohlížeč není na PC u stroje (GET /api/auth/client) — jen prohlížení, bez PLC auto-loginu */
   isRemote: boolean
-  /** POST /api/auth/login; vrátí 'ok', 'invalid' (HTTP 401) nebo 'error' při síťové chybě */
+  /** true = lokálně přihlášený účet má výchozí heslo „admin" — UI vyzve ke změně (A26-18) */
+  defaultPassword: boolean
+  /** POST /api/auth/login; vrátí 'ok', 'invalid' (401), 'default-remote' (403), 'locked' (429) nebo 'error' */
   login:  (username: string, password: string) => Promise<LoginResult>
   logout: () => void
 }
@@ -93,6 +101,7 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
   const [username,     setUsername]     = useState<string | null>(() => sessionStorage.getItem(USERNAME_KEY))
   const [role,         setRole]         = useState<string | null>(() => sessionStorage.getItem(ROLE_KEY))
   const [displayName,  setDisplayName]  = useState<string | null>(() => sessionStorage.getItem(DISPLAY_KEY))
+  const [defaultPassword, setDefaultPassword] = useState(() => sessionStorage.getItem(DEFAULT_PW_KEY) === '1')
 
   // PLC login — pouze v paměti
   const [plcToken,       setPlcToken]       = useState<string | null>(null)
@@ -200,6 +209,8 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
         body:    JSON.stringify({ username: user.trim(), password }),
       })
       if (res.status === 401) return 'invalid'
+      if (res.status === 403) return 'default-remote'
+      if (res.status === 429) return 'locked'
       if (!res.ok)            return 'error'
 
       const data: unknown = await res.json()
@@ -209,6 +220,9 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
       sessionStorage.setItem(USERNAME_KEY, user.trim())
       sessionStorage.setItem(ROLE_KEY,     data.role)
       sessionStorage.setItem(DISPLAY_KEY,  data.display_name)
+      const isDefault = (data as { default_password?: unknown }).default_password === true
+      if (isDefault) sessionStorage.setItem(DEFAULT_PW_KEY, '1'); else sessionStorage.removeItem(DEFAULT_PW_KEY)
+      setDefaultPassword(isDefault)
       setSessionExpired(false)
       setLocalToken(data.token)
       setLocalLogin(true)
@@ -227,6 +241,8 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
     sessionStorage.removeItem(USERNAME_KEY)
     sessionStorage.removeItem(ROLE_KEY)
     sessionStorage.removeItem(DISPLAY_KEY)
+    sessionStorage.removeItem(DEFAULT_PW_KEY)
+    setDefaultPassword(false)
     setLocalToken(null)
     setLocalLogin(false)
     setUsername(null)
@@ -252,6 +268,33 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
       }).catch(() => { /* token vyprší při restartu serveru */ })
     }
   }
+  // Aktuální logout pro časovač nečinnosti / PLC odhlášení (bez re-registrace efektů)
+  const logoutRef = useRef(logout)
+  logoutRef.current = logout
+
+  // Lokální přihlášení (heslem) na PC u stroje: konec po LOCAL_IDLE_MS nečinnosti — admin / technik
+  // přihlášený kvůli údržbě by jinak nechal práva další směně až 8 h (TTL serveru). PLC login a vzdálený
+  // přístup beze změny. Odhlášení operátora v PLC záměrně NEspouští (příznak spadne i při výpadku ADS —
+  // právě tehdy se admin přihlašuje kvůli údržbě). A26-19
+  const lastActivityRef = useRef(Date.now())
+  useEffect(() => {
+    if (!localLogin || clientLocal !== true) return
+    lastActivityRef.current = Date.now()
+    const touch = (): void => { lastActivityRef.current = Date.now() }
+    const events = ['pointerdown', 'keydown', 'wheel'] as const
+    events.forEach(ev => window.addEventListener(ev, touch, { passive: true }))
+    const timer = setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= LOCAL_IDLE_MS) {
+        clearInterval(timer)          // odhlásit jen jednou (stav se promítne až po renderu)
+        logoutRef.current()
+        setSessionExpired(true)
+      }
+    }, IDLE_CHECK_MS)
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, touch))
+      clearInterval(timer)
+    }
+  }, [localLogin, clientLocal])
 
   // lokální session má přednost před PLC; PLC příznak sám nestačí — bez tokenu
   // by UI vypadalo přihlášené, ale všechna API volání by vracela 401
@@ -271,6 +314,7 @@ export function AuthProvider({ children, plcLoggedIn, clientLocal = true }: Prop
       token,
       sessionExpired,
       isRemote: clientLocal === false,
+      defaultPassword: localLogin && defaultPassword,
       login,
       logout,
     }}>

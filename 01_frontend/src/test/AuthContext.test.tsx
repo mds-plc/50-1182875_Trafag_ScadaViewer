@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { AuthProvider, useAuth } from '../context/AuthContext'
+import { AuthProvider, LOCAL_IDLE_MS, useAuth } from '../context/AuthContext'
 import { UNAUTHORIZED_EVENT } from '../utils/apiFetch'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -62,6 +62,72 @@ afterEach(() => {
 // ── Testy ─────────────────────────────────────────────────────────────────────
 
 describe('AuthContext', () => {
+
+  // ── A26-19 — lokální přihlášení u stroje skončí po nečinnosti ─────────────────
+
+  it('local login at the machine → logged out after LOCAL_IDLE_MS without activity (A26-19)', async () => {
+    vi.useFakeTimers()
+    try {
+      mockLoginSuccess('t-idle', 'admin', 'Admin')
+      const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() })
+      await act(async () => { await result.current.login('admin', 'pw') })
+      expect(result.current.isLoggedIn).toBe(true)
+      // aktivita v polovině → odpočet znovu
+      act(() => { vi.advanceTimersByTime(LOCAL_IDLE_MS / 2) })
+      act(() => { window.dispatchEvent(new Event('pointerdown')) })
+      act(() => { vi.advanceTimersByTime(LOCAL_IDLE_MS / 2 + 20_000) })
+      expect(result.current.isLoggedIn).toBe(true)
+      mockLogoutSuccess()
+      act(() => { vi.advanceTimersByTime(LOCAL_IDLE_MS) })
+      expect(result.current.isLoggedIn).toBe(false)
+      expect(result.current.sessionExpired).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('remote client → no idle logout (read-only anyway) (A26-19)', async () => {
+    vi.useFakeTimers()
+    try {
+      mockLoginSuccess('t-rem', 'admin', 'Admin')
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <AuthProvider plcLoggedIn={false} clientLocal={false}>{children}</AuthProvider>
+      )
+      const { result } = renderHook(() => useAuth(), { wrapper })
+      await act(async () => { await result.current.login('admin', 'pw') })
+      act(() => { vi.advanceTimersByTime(LOCAL_IDLE_MS * 2) })
+      expect(result.current.isLoggedIn).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ── A26-18 — výchozí heslo, 403 / 429 ─────────────────────────────────────────
+
+  it('login() HTTP 403 → "default-remote", HTTP 429 → "locked" (A26-18 / A26-40)', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() })
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({}) } as Response)
+    let r!: string
+    await act(async () => { r = await result.current.login('admin', 'admin') })
+    expect(r).toBe('default-remote')
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) } as Response)
+    await act(async () => { r = await result.current.login('admin', 'x') })
+    expect(r).toBe('locked')
+    expect(result.current.isLoggedIn).toBe(false)
+  })
+
+  it('login() with default_password → defaultPassword=true until logout (A26-18)', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true, status: 200,
+      json: async () => ({ token: 't-def', role: 'admin', display_name: 'Admin', default_password: true }),
+    } as Response)
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() })
+    await act(async () => { await result.current.login('admin', 'admin') })
+    expect(result.current.defaultPassword).toBe(true)
+    mockLogoutSuccess()
+    act(() => result.current.logout())
+    expect(result.current.defaultPassword).toBe(false)
+  })
 
   // ── Výchozí stav ────────────────────────────────────────────────────────────
 
