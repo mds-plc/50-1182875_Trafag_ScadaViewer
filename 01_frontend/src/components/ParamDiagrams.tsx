@@ -375,6 +375,56 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
 // Časová osa je v MĚŘÍTKU skutečných hodnot záznamu (0 = OP), jako mřížka osciloskopu.
 // Průběhy jsou schematické (produkční záznam nemá surový signál) — tvar hran a zákmitů je
 // ilustrativní, polohy hran a délky úseků odpovídají naměřeným časům.
+// Výjimka: úsek kratší než MIN_SEGMENT_PX (RevT stovky ms vedle UT / BT 0,2 ms) by se slil
+// do svislé čáry → dostane minimální šířku, delší úseky se zkrátí („//" na ose, dílky jen v událostech).
+
+/** Minimální šířka úseku UT / RevT / BT [px] — kratší by v diagramu splynul se svislou čarou. */
+const MIN_SEGMENT_PX = 64
+
+/**
+ * Po částech lineární časová osa: úseky mezi `knots` [µs] úměrně délce, ale každý vnitřní úsek
+ * (UT, RevT, BT) aspoň MIN_SEGMENT_PX. `compressed` = úseky zkrácené pod skutečné měřítko
+ * (prázdné = osa v měřítku).
+ */
+export function timeScale(knots: number[], x0: number, x1: number) {
+  const n = knots.length - 1
+  const len = knots.slice(1).map((t, i) => Math.max(0, t - knots[i]))
+  // Okraje (před OP / za BT) a úsek nulové délky bez minima — nulový úsek nesmí udělat mezeru
+  const minPx = len.map((l, i): number => (i === 0 || i === n - 1 || l <= 0 ? 0 : MIN_SEGMENT_PX))
+  const width = x1 - x0
+  const px = new Array<number>(n).fill(0)
+  const fixed = new Array<boolean>(n).fill(false)
+  // Opakovaně: úseky, které by vyšly pod minimum, zafixovat na minimu, zbytek rozdělit úměrně
+  for (let iter = 0; iter < n; iter++) {
+    const freeLen = len.reduce((s, l, i) => (fixed[i] ? s : s + l), 0)
+    const freePx  = width - minPx.reduce((s, m, i) => (fixed[i] ? s + m : s), 0)
+    let changed = false
+    for (let i = 0; i < n; i++) {
+      if (fixed[i]) { px[i] = minPx[i]; continue }
+      px[i] = freeLen > 0 ? (len[i] / freeLen) * freePx : freePx / n
+      if (px[i] < minPx[i]) { fixed[i] = true; changed = true }
+    }
+    if (!changed) break
+  }
+  const anyFixed = fixed.some(Boolean)
+  const compressed: [number, number][] = anyFixed
+    ? knots.slice(1).map((t, i) => [knots[i], t] as [number, number])
+        // značku „//" jen u výrazně dlouhého úseku — krátký zkrácený úsek by ji měl zbytečně
+        .filter((_, i) => !fixed[i] && len[i] > 0 && i > 0 && i < n - 1 && px[i] >= 2 * MIN_SEGMENT_PX)
+    : []
+  const edges = [x0]
+  for (const p of px) edges.push(edges[edges.length - 1] + p)
+  const x = (tUs: number) => {
+    if (tUs <= knots[0]) return x0
+    for (let i = 0; i < n; i++) {
+      if (tUs <= knots[i + 1]) {
+        return len[i] > 0 ? edges[i] + ((tUs - knots[i]) / len[i]) * px[i] : edges[i + 1]
+      }
+    }
+    return x1
+  }
+  return { x, compressed }
+}
 
 /** Zákmity NO během BT: [podíl šířky BT, úroveň 0 = LOW … 1 = HIGH] — schematický tvar. */
 const NO_BOUNCES: [number, number][] = [
@@ -416,10 +466,10 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
   const pre  = Math.max(OPT * 0.15, 150)
   const post = Math.max(OPT * 0.15, 150)
   const tMin = -pre, tMax = OPT + post
-  const x = (tUs: number) => X0 + ((tUs - tMin) / (tMax - tMin)) * (X1 - X0)
-
   const tOp = 0, tUt = UT, tNo = UT + REV, tEnd = OPT
+  const { x, compressed } = timeScale([tMin, tOp, tUt, tNo, tEnd, tMax], X0, X1)
   const xOp = x(tOp), xUt = x(tUt), xNo = x(tNo), xEnd = x(tEnd)
+  const scaled = compressed.length === 0
 
   // U_NC: LOW → v OP zaoblený náběh (UT) → HIGH
   const ncPath = [
@@ -441,8 +491,21 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
   const n = rawStep / mag
   const stepMs = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag
   const ticks: number[] = []
-  for (let v = Math.ceil(tMin / 1000 / stepMs) * stepMs; v <= tMax / 1000 + 1e-9; v += stepMs) ticks.push(v)
-  const fmtTick = (v: number) => (stepMs < 1 ? v.toFixed(stepMs < 0.1 ? 2 : 1) : v.toFixed(0))
+  if (scaled) {
+    for (let v = Math.ceil(tMin / 1000 / stepMs) * stepMs; v <= tMax / 1000 + 1e-9; v += stepMs) ticks.push(v)
+  } else {
+    // Zkrácená osa: rovnoměrné dílky by lhaly → dílky jen v okamžicích událostí
+    for (const tUs of [tOp, tUt, tNo, tEnd]) if (!ticks.includes(tUs / 1000)) ticks.push(tUs / 1000)
+  }
+  const fmtTick = scaled
+    ? (v: number) => (stepMs < 1 ? v.toFixed(stepMs < 0.1 ? 2 : 1) : v.toFixed(0))
+    : (v: number) => {
+        // Přesnost podle velikosti, ale tak, aby se sousední události lišily (426,55 / 426,75 ms)
+        const round = (w: number, d: number) => (Math.round(w * 10 ** d) / 10 ** d).toFixed(d)   // 21.95.toFixed(1) = „21.9"
+        let d = Math.abs(v) < 10 ? 2 : Math.abs(v) < 100 ? 1 : 0
+        while (d < 2 && ticks.some(w => w !== v && round(w, d) === round(v, d))) d++
+        return round(v, d)
+      }
 
   const R1 = 290, R2 = 330, R3 = 380       // řady kót: UT + BT, RevT, OpT
   const dim = (xa: number, xb: number, y: number, key: string, fallback: string) => (
@@ -472,7 +535,7 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
       </defs>
 
       {/* ── Mřížka + úrovně napětí ── */}
-      {ticks.map(v => (
+      {scaled && ticks.map(v => (
         <line key={`g${v}`} x1={x(v * 1000)} y1={Y_HIGH - 20} x2={x(v * 1000)} y2={Y_AXIS} stroke={C_GRID} strokeWidth={1} />
       ))}
       {[Y_HIGH, (Y_HIGH + Y_LOW) / 2, Y_LOW].map(y => (
@@ -495,7 +558,20 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
           <text x={x(v * 1000)} y={Y_AXIS + 17} textAnchor="middle" fontSize={9} fill={C_AXIS}>{fmtTick(v)}</text>
         </g>
       ))}
-      <text x={X1} y={Y_AXIS + 30} textAnchor="end" fontSize={10} fill={C_AXIS}>t [ms] · 0 = OP</text>
+      {/* Zkrácené úseky: značka přerušení osy „//" */}
+      {compressed.map(([ta, tb]) => {
+        const xm = (x(ta) + x(tb)) / 2
+        return (
+          <g key={`brk${ta}`} stroke={C_AXIS} strokeWidth={1.3}>
+            <rect x={xm - 6} y={Y_AXIS - 4} width={12} height={8} fill="var(--color-surface, #fff)" stroke="none" />
+            <line x1={xm - 7} y1={Y_AXIS + 5} x2={xm - 1} y2={Y_AXIS - 5} />
+            <line x1={xm + 1} y1={Y_AXIS + 5} x2={xm + 7} y2={Y_AXIS - 5} />
+          </g>
+        )
+      })}
+      <text x={X1} y={Y_AXIS + 30} textAnchor="end" fontSize={10} fill={C_AXIS}>
+        t [ms] · 0 = OP{scaled ? '' : ` · ${t.chart.switchTimesAxisCompressed}`}
+      </text>
 
       {/* ── Události ── */}
       {[

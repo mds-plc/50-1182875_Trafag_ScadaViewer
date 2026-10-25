@@ -39,7 +39,7 @@ export const helpCs: Translations['help'] = {
       intro: 'Všechny naměřené hodnoty jednoho kusu z výroby a jejich grafické znázornění. Slouží k posouzení, proč kus skončil v dané kategorii.',
       items: [
         { title: 'Diagram síla – dráha', text: 'Schéma hysterezní smyčky mikrospínače s hodnotami tohoto kusu: polohy (FP, OP, RP, TTP a u novějších souborů FPR — volná poloha po návratu), síly (OF, RF, TTF, silový diferenciál DF), dráhy (PT, OvT, RvT, MD, TT), odpory kontaktů v bodech přepnutí a u novějších souborů statický odpor sepnutých kontaktů NC / NO (box Static). Ikonou lze zvětšit.' },
-        { title: 'Časový diagram', text: 'Průběh napětí kontaktů NC a NO při přepnutí (jako na osciloskopu) s časy UT, RevT, BT a OpT v měřítku.' },
+        { title: 'Časový diagram', text: 'Průběh napětí kontaktů NC a NO při přepnutí (jako na osciloskopu) s časy UT, RevT, BT a OpT v měřítku. Je-li jeden úsek mnohem delší než ostatní, osa se zkrátí (značka „//") a krátké úseky zůstanou čitelné — hodnoty v kótách platí vždy.' },
         { title: 'NOK kategorie', text: 'Ve kterých oblastech (síla, poloha, elektrika, časy, proces) kus nevyhověl.' },
         { title: 'Tabulka parametrů', text: 'Zkratka, název, hodnota a jednotka. „?" zobrazí popis a výpočet parametru, ikona grafu ukáže parametr zvýrazněný v diagramu. „—" = hodnota nestanovena, ∞ = rozepnutý kontakt. Hodnoty mimo limity třídění zakázky jsou lehce podbarvené — žlutě mimo limity Trafag nebo MD mimo kategorie 1–4 (NOK Trafag), oranžově mimo limity výrobce (NOK Supplier), oranžově se žlutým pruhem mimo obojí; po najetí se ukážou meze.' },
         { title: 'Zpět a tisk', text: 'Zpět vrátí do detailu zakázky na stejné místo. Tisk vytvoří protokol kusu A4.' },

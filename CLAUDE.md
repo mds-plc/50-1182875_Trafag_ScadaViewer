@@ -237,6 +237,7 @@ CLAUDE.md                  ← tento soubor
 ├── architecture.md            ← tok dat, vrstvy, CSV formáty, výkon, API, provider strom, časová osa fází
 ├── audit_log.md               ← záznamy auditů (/audit) + přehled otevřených nálezů
 ├── deployment.md              ← průvodce nasazením a aktualizací (exe / Python / NSSM / HTTPS)
+├── it_ot_requirements.md      ← podklad pro Trafag IT dle směrnice OT: sítě, porty, účty, software, stav bodů, otázky
 ├── how_to_extend.md           ← návody: ADS symbol, endpoint, stránka, CSV sloupec, i18n…
 ├── roadmap.md                 ← stav, otázky pro Trafag, definice „hotovo"
 ├── project_reviews.md         ← průběžná hodnocení profesionality projektu
@@ -925,6 +926,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 |--------|-------|
 | `04_docs/roadmap.md` | **Plán dodělávek** — sprinty, acceptance criteria, otázky pro Trafag; aktualizovat při každé změně stavu |
 | `04_docs/deployment.md` | **Průvodce produkčním nasazením** — exe / Python / NSSM / HTTPS / firewall / ověřovací checklist / troubleshooting |
+| `04_docs/it_ot_requirements.md` | **Podklad pro Trafag IT** (směrnice IT zdrojů v OT) — dvě oddělené sítě, porty, účty Windows, whitelist, matice shody, otázky |
 | `04_docs/architecture.md` | Detailní popis architektury, datového toku, API formátů |
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
 | `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |

@@ -27,6 +27,15 @@
 #      naplanovane ulohy se starou cestou jen nahlasi. Zaznam folder_rename.txt v zaloze -> rollback vrati nazev.
 #      Jine rozlozeni (spolecna slozka, nazev bez verze) se neprejmenuje. Selze-li prejmenovani (zamceny soubor),
 #      slozka zustane - nasazeni pokracuje.
+#      Presun mimo profil uzivatele (od 2026-10-23, smernice Trafag pro OT - lokalni ucet admin se ma vypnout): lezi-li
+#      aplikace v C:\Users\..., skript nabidne presun do $DefaultAppsRoot (-MoveTo <slozka> jinam, -NoMove vypne).
+#      Rodicovska slozka se presune i s prejmenovanim, odkazy se prepisou stejne jako u prejmenovani; nova
+#      $DefaultAppsRoot dostane prava jen Administrators + SYSTEM (plna) a ucty sluzeb (zapis), Users zadna -
+#      Config.toml obsahuje heslo k NAS a hash admina. Presunute slozky prevezmou prava od ni (icacls /reset).
+#   Selhani v krocich 5-5c (od 2026-10-25, audit A26-04): skript vrati presuny slozek, exe + _internal a Config.toml
+#      ze zalohy, spusti sluzby a skonci chybou - bezi predchozi verze.
+#   Rollback (A26-05): last_deploy.txt v balicku = razitko posledniho nasazeni; rollback obnovi jen zalohy s nim
+#      (aplikace bez takove zalohy se jen restartuje). Bez zaznamu (starsi nasazeni) musi byt zalohy ze stejneho behu.
 #   6. Spusti AdsAnalyzer -> DatabaseGateway -> ScadaViewer, po 20 s overi, ze vsechny bezi (chyba v configu =
 #      sluzba spadne), a /api/health (hlasena verze ScadaViewer = $Version).
 #
@@ -46,7 +55,10 @@
 # 2.6.1 (2026-10-23): Analyzing 2.6.1 (robustni detekce FP), ScadaViewer 2.6.1 (zalozka Electric ukazuje vsechny
 #   odpory, sirky sloupcu); DatabaseGateway zustava 2.6.0. Pozadavky na PLC jako 2.6.0 (AnalyzedParams 112 B).
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.1')
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.1', [string]$MoveTo = '', [switch]$NoMove)
+
+# Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
+$DefaultAppsRoot = Join-Path $env:SystemDrive 'apps'
 
 # Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
 # (stejna verze i datum) se tak neprejmenuje znovu
@@ -194,8 +206,8 @@ function Get-NssmParam([string]$nssm, [string]$service, [string]$param) {
     return ((& $nssm get $service $param 2>$null) -join '' -replace "`0", '').Trim()
 }
 
-# Prejmenuje rodicovskou slozku aplikace $from -> $to a prepise odkazy sluzby (ImagePath + NSSM parametry).
-# Sluzba musi byt zastavena. Vraci $true / $false (chyba = slozka zustane, nic se neprepise).
+# Prejmenuje / presune rodicovskou slozku aplikace $from -> $to (cela cesta, stejny disk) a prepise odkazy sluzby
+# (ImagePath + NSSM parametry). Sluzba musi byt zastavena. Vraci $true / $false (chyba = slozka zustane, nic se neprepise).
 function Move-AppParent($app, [string]$from, [string]$to) {
     $svcKey   = "HKLM:\SYSTEM\CurrentControlSet\Services\$($app.Service)"
     $image    = (Get-ItemProperty -LiteralPath $svcKey -Name ImagePath).ImagePath
@@ -203,9 +215,12 @@ function Move-AppParent($app, [string]$from, [string]$to) {
     foreach ($n in 'Application', 'AppDirectory', 'AppParameters', 'AppStdout', 'AppStderr') {
         $params[$n] = Get-NssmParam $app.Nssm $app.Service $n
     }
-    try { Rename-Item -LiteralPath $from -NewName (Split-Path -Leaf $to) -ErrorAction Stop }
-    catch {
-        Log "[VAROVANI] $($app.Service): slozku $from nelze prejmenovat ($($_.Exception.Message)) - zustava, nasazeni pokracuje." 'Yellow'
+    try {
+        $toParent = Split-Path $to
+        if (-not (Test-Path -LiteralPath $toParent)) { New-Item -ItemType Directory -Path $toParent | Out-Null }
+        [IO.Directory]::Move($from, $to)   # prejmenovani i presun na stejnem disku (Move-Item v PS 5.1 neumi cesty 8.3)
+    } catch {
+        Log "[VAROVANI] $($app.Service): slozku $from nelze presunout / prejmenovat ($($_.Exception.Message)) - zustava, nasazeni pokracuje." 'Yellow'
         return $false
     }
     $newImage = Replace-PathText $image $from $to
@@ -216,8 +231,77 @@ function Move-AppParent($app, [string]$from, [string]$to) {
         if ($params[$n] -and $nv -ne $params[$n]) { & $app.Nssm set $app.Service $n $nv | Out-Null }
     }
     $app.Dir = Replace-PathText $app.Dir $from $to
-    Log "  $($app.Service): slozka prejmenovana -> $to (sluzba NSSM prepsana)" 'Green'
+    Log "  $($app.Service): slozka $from -> $to (sluzba NSSM prepsana)" 'Green'
     return $true
+}
+
+# Ucty sluzeb, ktere nejsou systemove (LocalSystem ma pristup vzdy) - ".\svc" -> "POCITAC\svc" pro icacls
+function Get-ServiceAccounts {
+    $system = 'LocalSystem', 'NT AUTHORITY\SYSTEM', 'NT AUTHORITY\LocalService', 'NT AUTHORITY\NetworkService', ''
+    return @($Apps | ForEach-Object { "$($_.Account)" } | Where-Object { $system -notcontains $_ } |
+             ForEach-Object { if ($_.StartsWith('.\')) { "$env:COMPUTERNAME\$($_.Substring(2))" } else { $_ } } |
+             Select-Object -Unique)
+}
+
+# Nova spolecna slozka aplikaci: bez dedenych prav z C:\ (tam ma Authenticated Users zapis). Jen Administrators + SYSTEM
+# (plna) a ucty sluzeb (zapis - logy, data, Config.toml / users.toml z UI). Users ZADNY pristup: Config.toml obsahuje
+# heslo k NAS a hash admina (i kopie v zalohach *.backup_*); kiosk ani obsluha slozku aplikaci nepotrebuji (audit A26-06).
+# SID misto nazvu skupin (lokalizovany Windows).
+function New-AppsRoot([string]$root) {
+    New-Item -ItemType Directory -Path $root | Out-Null
+    $grants = @('*S-1-5-32-544:(OI)(CI)F', '*S-1-5-18:(OI)(CI)F') + @(Get-ServiceAccounts | ForEach-Object { "${_}:(OI)(CI)M" })
+    & icacls $root /inheritance:r /grant:r @grants | Out-Null
+    if ($LASTEXITCODE -ne 0) { Log "[VAROVANI] Prava slozky $root se nepodarilo nastavit (icacls $LASTEXITCODE) - zkontrolujte rucne." 'Yellow' }
+    else { Log "  $root vytvorena: Administrators + SYSTEM plna prava$(if (Get-ServiceAccounts) { ', ucty sluzeb zapis' }), Users bez pristupu" 'Green' }
+}
+
+# Existujici cilova slozka: upozornit, ma-li k ni pristup kazdy uzivatel (heslo v Config.toml by bylo citelne)
+function Test-AppsRootAcl([string]$root) {
+    $open = 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-545'      # Everyone, Authenticated Users, Users
+    $acl  = Get-Acl -LiteralPath $root
+    $hits = @($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' -and
+             $open -contains $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value })
+    if ($hits.Count -gt 0) {
+        Log "[VAROVANI] $root je pristupna vsem uzivatelum ($(@($hits | ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique) -join ', ')) -" 'Yellow'
+        Log '           Config.toml (heslo k NAS, hash admina) by byl citelny. Doporuceno: icacls <slozka> /inheritance:r ...' 'Yellow'
+    }
+}
+
+# Po presunu do nove slozky: prevzit prava od ni (presun na stejnem disku si nese puvodni ACL z profilu uzivatele)
+function Reset-MovedAcl([string]$dir) {
+    & icacls $dir /reset /T /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { Log "[VAROVANI] Prava $dir se nepodarilo prevzit od nadrazene slozky (icacls $LASTEXITCODE)." 'Yellow' }
+}
+
+# Selhani po zastaveni sluzeb (krok 5-5c): vratit presuny slozek, exe + _internal a Config.toml ze zalohy (audit A26-04)
+function Restore-AfterFailure($donePairs) {
+    $back = New-Object System.Collections.ArrayList
+    for ($i = $donePairs.Count - 1; $i -ge 0; $i--) {
+        $p = $donePairs[$i]; $app = $p.App
+        try {
+            if (Move-AppParent $app $p.To $p.From) {
+                [void]$back.Add(@{ From = $p.To; To = $p.From })
+                if ($app.Backup) { $app.Backup = Replace-PathText $app.Backup $p.To $p.From }
+            }
+        } catch { Log "[CHYBA] $($app.Service): slozku $($p.To) se nepodarilo vratit ($($_.Exception.Message)) - vratte rucne." 'Red' }
+    }
+    try { Update-PathReferences $back } catch { Log "[CHYBA] Odkazy na cesty se nepodarilo vratit: $($_.Exception.Message)" 'Red' }
+    foreach ($app in $Apps) {
+        $b = $app.Backup
+        if (-not $b -or -not (Test-Path -LiteralPath $b)) { continue }
+        try {
+            foreach ($item in '_internal', $app.Exe) {
+                $saved = Join-Path $b $item
+                if (-not (Test-Path -LiteralPath $saved)) { continue }     # do zalohy se jeste nepresunulo = puvodni na miste
+                $cur = Join-Path $app.Dir $item
+                if (Test-Path -LiteralPath $cur) { Remove-Item -LiteralPath $cur -Recurse -Force }
+                Move-Item -LiteralPath $saved -Destination $app.Dir
+            }
+            $cfg = Join-Path $b 'Config.toml'
+            if (Test-Path -LiteralPath $cfg) { Copy-Item -LiteralPath $cfg -Destination $app.Dir -Force }
+            Log "  $($app.Service): predchozi verze obnovena ze zalohy" 'Green'
+        } catch { Log "[CHYBA] $($app.Service): obnova ze zalohy $b selhala ($($_.Exception.Message)) - obnovte rucne." 'Red' }
+    }
 }
 
 # Odkazy mimo sluzbu: Config.toml vsech aplikaci, zastupci a skripty v Po spusteni / na plose, naplanovane ulohy
@@ -297,7 +381,9 @@ foreach ($app in $Apps) {
     $dir = $raw.Trim('"').TrimEnd('\')
     if (-not (Test-Path -LiteralPath (Join-Path $dir $app.Exe))) { Fail "$($app.Service): $($app.Exe) neni v $dir" }
     $app.Dir = $dir
-    Log ("{0,-16} {1}" -f $app.Service, $dir)
+    $acct = (Get-CimInstance Win32_Service -Filter "Name='$($app.Service)'").StartName
+    $app.Account = $acct
+    Log ("{0,-16} {1}   (ucet sluzby: {2})" -f $app.Service, $dir, $acct)
 }
 $sv     = $Apps[2]
 $svCfg  = Join-Path $sv.Dir 'Config.toml'
@@ -305,16 +391,34 @@ $port   = Get-TomlValue $svCfg 'server' 'port'; if (-not $port) { $port = 8080 }
 
 # ---------------------------------------------------------------------------------------------
 if ($Rollback) {
+    # Zalohy jen z JEDNOHO nasazeni (last_deploy.txt) - jinak by aplikace, u ktere posledni nasazeni nedobehlo,
+    # vzala zalohu o verzi starsi a vznikl by mix verzi (audit A26-05)
+    $marker = Join-Path $Here 'last_deploy.txt'
+    $stampR = if (Test-Path -LiteralPath $marker) { "$(Get-Content -LiteralPath $marker -Encoding UTF8 -TotalCount 1)".Trim() } else { '' }
+    if ($stampR) { Log "Posledni nasazeni z tohoto balicku: $stampR" } else { Log '[INFO] last_deploy.txt chybi (starsi nasazeni) - zalohy musi byt ze stejneho behu.' 'Yellow' }
     foreach ($app in $Apps) {
-        $b = Get-ChildItem -LiteralPath (Split-Path $app.Dir) -Directory -Filter ((Split-Path -Leaf $app.Dir) + '.backup_*') |
-             Sort-Object Name -Descending | Select-Object -First 1
-        if (-not $b) { Fail "$($app.Service): zadna zaloha $($app.Dir).backup_* nenalezena." }
-        $app.Backup = $b.FullName
-        Log "$($app.Service): obnovim z $($b.FullName)"
+        $all = @(Get-ChildItem -LiteralPath (Split-Path $app.Dir) -Directory -Filter ((Split-Path -Leaf $app.Dir) + '.backup_*') |
+                 Sort-Object Name -Descending)
+        $b = if ($stampR) { $all | Where-Object { $_.Name.EndsWith(".backup_$stampR") } | Select-Object -First 1 } else { $all | Select-Object -First 1 }
+        if ($b -and -not (Test-Path -LiteralPath (Join-Path $b.FullName $app.Exe))) {
+            Log "$($app.Service): zaloha $($b.Name) neobsahuje $($app.Exe) (nasazeni ji nevymenilo / uz obnoveno) - zustava, jen se restartuje." 'Yellow'
+            $b = $null
+        } elseif (-not $b) {
+            if (-not $stampR) { Fail "$($app.Service): zadna zaloha $($app.Dir).backup_* nenalezena." }
+            Log "$($app.Service): zaloha z nasazeni $stampR neni - aplikace se nemenila, jen se restartuje." 'Yellow'
+        }
+        $app.Backup = if ($b) { $b.FullName } else { $null }
+        if ($b) { Log "$($app.Service): obnovim z $($b.FullName)" }
     }
-    if (-not (Ask 'Obnovit predchozi verzi vsech tri aplikaci?')) { Log 'Zruseno.'; exit 1 }
+    if (-not $stampR) {
+        $stamps = @($Apps | Where-Object { $_.Backup } | ForEach-Object { ($_.Backup -split '\.backup_')[-1] } | Select-Object -Unique)
+        if ($stamps.Count -gt 1) { Fail "Zalohy aplikaci jsou z ruznych nasazeni ($($stamps -join ', ')) - rollback by vratil mix verzi. Obnovte rucne." }
+    }
+    if (@($Apps | Where-Object { $_.Backup }).Count -eq 0) { Fail 'Neni co obnovit (zadna zaloha s exe).' }
+    if (-not (Ask 'Obnovit predchozi verzi?')) { Log 'Zruseno.'; exit 1 }
     Stop-Apps
     foreach ($app in $Apps) {
+        if (-not $app.Backup) { continue }
         Remove-Item -LiteralPath (Join-Path $app.Dir '_internal') -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath (Join-Path $app.Dir $app.Exe) -Force -ErrorAction SilentlyContinue
         Copy-Item -LiteralPath (Join-Path $app.Backup '_internal') -Destination $app.Dir -Recurse -Force
@@ -324,6 +428,7 @@ if ($Rollback) {
     # Nasazeni prejmenovalo slozky (folder_rename.txt v zaloze) -> vratit puvodni nazev a odkazy
     $back = New-Object System.Collections.ArrayList
     foreach ($app in $Apps) {
+        if (-not $app.Backup) { continue }
         $rec = Join-Path $app.Backup 'folder_rename.txt'
         if (-not (Test-Path -LiteralPath $rec)) { continue }
         $l = @(Get-Content -LiteralPath $rec -Encoding UTF8)
@@ -334,6 +439,7 @@ if ($Rollback) {
     Update-PathReferences $back
     Start-Apps
     Check-Health $port | Out-Null
+    if ($stampR) { Move-Item -LiteralPath $marker -Destination (Join-Path $Here "last_deploy_rolledback_$stampR.txt") -Force }
     Log '=== Rollback hotov ===' 'Cyan'
     exit 0
 }
@@ -407,29 +513,48 @@ if ($local) {
     if ($dl.Count -gt 0) { Log "[INFO] done_local: $($dl.Count) soubor(u) jeste neni na NAS - po startu Gateway se dosynchronizuji." 'Yellow' }
 } else { Log '[VAROVANI] [data] local_path v Config.toml ScadaViewer nenalezen - kontrola wip preskocena.' 'Yellow' }
 
-# Plan prejmenovani slozek (krok 5c) - kontrola pred zastavenim sluzeb
+# Presun z profilu uzivatele (krok 5c) - smernice Trafag pro OT: lokalni ucet admin se vypne / omezi
+$profiles = Join-Path $env:SystemDrive 'Users'
+$inProfile = @($Apps | Where-Object { $_.Dir.StartsWith("$profiles\", [StringComparison]::OrdinalIgnoreCase) })
+if (-not $MoveTo -and -not $NoMove -and $inProfile.Count -gt 0) {
+    Log "[INFO] Aplikace lezi v profilu uzivatele ($(Split-Path (Split-Path $inProfile[0].Dir)))." 'Yellow'
+    Log "       Smernice Trafag pro OT pocita s vypnutim / omezenim lokalniho uctu admin - doporuceny presun do $DefaultAppsRoot." 'Yellow'
+    if (Ask "Presunout aplikace do $DefaultAppsRoot (sluzby, Config.toml, zastupci se prepisou; rollback vrati)?") { $MoveTo = $DefaultAppsRoot }
+}
+if ($MoveTo) {
+    $MoveTo = $MoveTo.TrimEnd('\')
+    if (-not [IO.Path]::IsPathRooted($MoveTo)) { Fail "-MoveTo musi byt cela cesta (napr. $DefaultAppsRoot)." }
+    if (Test-Path -LiteralPath $MoveTo -PathType Leaf) { Fail "$MoveTo je soubor, ne slozka." }
+}
+
+# Plan prejmenovani / presunu slozek (krok 5c) - kontrola pred zastavenim sluzeb
 $Renames = New-Object System.Collections.ArrayList
-if (-not $NoRename) {
-    $parents = @($Apps | ForEach-Object { Split-Path $_.Dir })
-    foreach ($app in $Apps) {
-        $parent = Split-Path $app.Dir
-        $leaf   = Split-Path -Leaf $parent
-        if ($leaf -notmatch $VersionedFolder) { Log "Slozka $parent nema nazev v<verze>_<datum>-<nazev> - neprejmenuje se." 'Gray'; continue }
-        if (@($parents | Where-Object { $_ -eq $parent }).Count -gt 1) { Log "[INFO] $parent sdili vic aplikaci - neprejmenuje se." 'Yellow'; continue }
-        $target = Join-Path (Split-Path $parent) ("v{0}_{1}-{2}" -f $AppVersions[$app.Service], $AppDates[$app.Service], $Matches['name'])
-        if ($target -eq $parent) { Log "$($app.Service): slozka uz ma spravny nazev" 'Gray'; continue }
-        if (Test-Path -LiteralPath $target) { Fail "$($app.Service): cilova slozka $target uz existuje - prejmenujte / smazte ji, nebo spustte s -NoRename." }
-        $app.RenameTo = $target
-        [void]$Renames.Add($app)
-        Log ("Prejmenuje se: {0}  ->  {1}" -f $parent, (Split-Path -Leaf $target)) 'Cyan'
+$parents = @($Apps | ForEach-Object { Split-Path $_.Dir })
+foreach ($app in $Apps) {
+    $parent = Split-Path $app.Dir
+    $leaf   = Split-Path -Leaf $parent
+    $newLeaf = $leaf
+    if (-not $NoRename) {
+        if ($leaf -match $VersionedFolder) {
+            $newLeaf = "v{0}_{1}-{2}" -f $AppVersions[$app.Service], $AppDates[$app.Service], $Matches['name']
+        } else { Log "Slozka $parent nema nazev v<verze>_<datum>-<nazev> - neprejmenuje se." 'Gray' }
     }
+    $newRoot = if ($MoveTo) { $MoveTo } else { Split-Path $parent }
+    $target  = Join-Path $newRoot $newLeaf
+    if ($target -eq $parent) { if ($newLeaf -ne $leaf -or $MoveTo) { Log "$($app.Service): slozka uz je na miste ($parent)" 'Gray' }; continue }
+    if (@($parents | Where-Object { $_ -eq $parent }).Count -gt 1) { Log "[INFO] $parent sdili vic aplikaci - neprejmenuje / nepresune se (presunte rucne)." 'Yellow'; continue }
+    if ((Split-Path -Qualifier $parent) -ne (Split-Path -Qualifier $target)) { Fail "$($app.Service): presun na jiny disk ($target) skript neumi - zvolte -MoveTo na disku $(Split-Path -Qualifier $parent)." }
+    if (Test-Path -LiteralPath $target) { Fail "$($app.Service): cilova slozka $target uz existuje - prejmenujte / smazte ji, nebo spustte s -NoRename / -NoMove." }
+    $app.RenameTo = $target
+    [void]$Renames.Add($app)
+    Log ("Presune / prejmenuje se: {0}  ->  {1}" -f $parent, $target) 'Cyan'
 }
 
 if ($PlcNote) {
     Log "[PLC] $PlcNote" 'Yellow'
     if (-not (Ask 'PLC program je pripraveny?')) { Log 'Zruseno - nejdriv nahrat program do PLC.'; exit 1 }
 }
-$renameText = if ($Renames.Count -gt 0) { " a prejmenovat $($Renames.Count) slozk(y)" } else { '' }
+$renameText = if ($Renames.Count -gt 0) { " a presunout / prejmenovat $($Renames.Count) slozk(y)" } else { '' }
 if (-not (Ask "Zastavit sluzby a nasadit v$Version (Analyzing $($AppVersions.AdsAnalyzer), Gateway $($AppVersions.DatabaseGateway), ScadaViewer $($AppVersions.ScadaViewer))$renameText?")) { Log 'Zruseno.'; exit 1 }
 
 # 3. Rozbaleni do docasne slozky (pred zastavenim - kratsi odstavka)
@@ -444,6 +569,15 @@ foreach ($app in $Apps) {
 
 # 4. Zastavit
 Stop-Apps
+
+# Zaznam nasazeni pro rollback.bat - obnovuje jen zalohy s timto razitkem (audit A26-05)
+Set-Content -LiteralPath (Join-Path $Here 'last_deploy.txt') -Value $Stamp -Encoding ASCII
+$done = New-Object System.Collections.ArrayList
+$rootExisted = $MoveTo -and (Test-Path -LiteralPath $MoveTo)
+
+# Kroky 5-5c: jakakoli chyba (zamek Defenderu, plny disk ...) -> vratit predchozi stav a spustit sluzby;
+# bez toho by sluzby zustaly zastavene a aplikace napul vymenene - stroj by nemeril (audit A26-04)
+try {
 
 # 5. Zaloha + vymena
 foreach ($app in $Apps) {
@@ -488,18 +622,44 @@ foreach ($app in $CycleFix) {
     else { Log "[VAROVANI] $($app.Service): sekce [measurement] v $cfg nenalezena - max_cycles nastavte rucne." 'Yellow' }
 }
 
-# 5c. Prejmenovani slozek s verzi + prepsani odkazu (sluzby jsou zastavene)
-$done = New-Object System.Collections.ArrayList
+# 5c. Prejmenovani / presun slozek + prepsani odkazu (sluzby jsou zastavene)
+if ($MoveTo -and $Renames.Count -gt 0 -and -not $rootExisted) { New-AppsRoot $MoveTo }
+elseif ($MoveTo -and $Renames.Count -gt 0) { Test-AppsRootAcl $MoveTo }
 foreach ($app in $Renames) {
     $from = Split-Path $app.Dir
     # zaznam pro rollback - zaloha lezi v rodicovske slozce, presune se s ni
     [IO.File]::WriteAllLines((Join-Path $app.Backup 'folder_rename.txt'), [string[]]@($from, $app.RenameTo))
     if (Move-AppParent $app $from $app.RenameTo) {
-        [void]$done.Add(@{ From = $from; To = $app.RenameTo })
+        [void]$done.Add(@{ From = $from; To = $app.RenameTo; App = $app })
         $app.Backup = Replace-PathText $app.Backup $from $app.RenameTo
+        # presun z profilu do nove slozky: prava prevzit od ni (vc. zaloh s kopii Config.toml) - A26-06
+        if ($MoveTo -and (Split-Path $from) -ne (Split-Path $app.RenameTo)) { Reset-MovedAcl $app.RenameTo }
     }
 }
 Update-PathReferences $done
+
+} catch {
+    $err = $_
+    Log "[CHYBA] Nasazeni selhalo po zastaveni sluzeb: $($err.Exception.Message)" 'Red'
+    Log '        Vracim predchozi stav (slozky, exe, _internal, Config.toml) a spoustim sluzby ...' 'Yellow'
+    Restore-AfterFailure $done
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Start-Apps
+    Check-Health $port | Out-Null
+    Log "[CHYBA] Nasazeni v$Version NEPROBEHLO - bezi predchozi verze. Pricinu najdete vyse; log: $LogFile" 'Red'
+    exit 1
+}
+
+if ($MoveTo) {
+    # Cesty do profilu mimo presunute slozky (napr. export do Dokumentu) presun neprepise - po vypnuti uctu by chybely
+    foreach ($app in $Apps) {
+        $cfg = Join-Path $app.Dir 'Config.toml'
+        if (-not (Test-Path -LiteralPath $cfg)) { continue }
+        $hits = @(Select-String -LiteralPath $cfg -Pattern ([regex]::Escape($profiles) -replace '\\\\', '[\\/]+') -Encoding UTF8 |
+                  Where-Object { $_.Line.Trim() -notmatch '^#' })
+        foreach ($h in $hits) { Log "[VAROVANI] $($app.Service) Config.toml radek $($h.LineNumber) odkazuje do profilu uzivatele: $($h.Line.Trim())" 'Yellow' }
+    }
+}
 
 # 6. Spustit + overit
 Start-Apps

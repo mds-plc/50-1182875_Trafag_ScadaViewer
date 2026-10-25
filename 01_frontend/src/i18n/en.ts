@@ -219,6 +219,7 @@ export const en: Translations = {
     nokCategories: 'NOK categories',
     forceTravelAria: 'Force–travel hysteresis diagram',
     switchTimesAria: 'Contact switching times — U_NC and U_NO voltage',
+    switchTimesAxisCompressed: 'axis compressed — segments not to scale',
   },
   settings: {
     title:           'Settings',

@@ -761,6 +761,10 @@ nssm start   Caddy
 
 ## Checklist pro IT — co zajistit před nasazením
 
+> Úplný podklad podle směrnice Trafag pro IT v prostředí OT (komunikace, účty, software, stav bodů směrnice,
+> otázky pro IT): **`04_docs/it_ot_requirements.md`**. Přesun aplikací z profilu `admin` do `C:\apps` nabízí
+> nasazovací skript (`06_build/deploy/README.md`).
+
 - [ ] **Pevná adresa PC u stroje ve firemní síti** — DNS jméno, nebo rezervace v DHCP, nebo pevná IP
 - [ ] **Kancelář → PC u stroje:** průchod na TCP **8080** (VLAN / směrování)
 - [ ] **PC u stroje → NAS:** průchod na TCP **445**

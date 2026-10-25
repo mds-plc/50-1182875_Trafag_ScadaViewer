@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { LangProvider } from '../context/LangContext'
 import RecordDiagram from '../components/RecordDiagram'
-import { ForceTravelDiagram, PARAM_DIAGRAM, TimeDiagram } from '../components/ParamDiagrams'
+import { ForceTravelDiagram, PARAM_DIAGRAM, TimeDiagram, timeScale } from '../components/ParamDiagrams'
 import { ALL_PARAM_KEYS } from '../utils/paramMeta'
 
 // Klíče po _normalize_key (lowercase, bez [jednotky]) — hodnoty v jednotkách zákazníka
@@ -158,5 +158,38 @@ describe('Statické odpory (2026-10-22)', () => {
     const texts = svgTexts(container)
     expect(texts).toContain('Static [mΩ]')
     expect(texts).toContain('25.1')
+  })
+})
+
+describe('TimeDiagram — time axis scale', () => {
+  it('keeps the axis to scale when segments are comparable', () => {
+    const { x, compressed } = timeScale([-150, 0, 1000, 2000, 3000, 3150], 0, 660)
+    expect(compressed).toEqual([])
+    expect(x(1000) - x(0)).toBeCloseTo(200)
+    expect(x(3000) - x(2000)).toBeCloseTo(200)
+  })
+
+  it('short UT / BT next to a long RevT get a minimum width (no vertical line)', () => {
+    // Real record (ctvrtektest1): UT 200, RevT 21 550, BT 200 µs
+    const UT = 200, REV = 21550, BT = 200, OPT = UT + REV + BT
+    const { x, compressed } = timeScale([-OPT * 0.15, 0, UT, UT + REV, OPT, OPT * 1.15], 90, 790)
+    expect(x(UT) - x(0)).toBeGreaterThanOrEqual(60)
+    expect(x(OPT) - x(UT + REV)).toBeGreaterThanOrEqual(60)
+    expect(compressed).toEqual([[UT, UT + REV]])
+    expect(x(OPT * 1.15)).toBeCloseTo(790)
+  })
+
+  it('a zero-length segment does not leave a gap', () => {
+    const { x } = timeScale([-150, 0, 200, 200, 700, 850], 0, 700)
+    expect(x(200)).toBeLessThan(x(700))
+    expect(x(700) - x(200)).toBeGreaterThanOrEqual(60)
+  })
+
+  it('compressed axis is labelled and shows event ticks only', () => {
+    const rec = { ...RECORD, rt_reversetime: '21550', ot_operatingtime: '21950' }
+    const { container } = render(<LangProvider><TimeDiagram record={rec} /></LangProvider>)
+    const texts = svgTexts(container)
+    expect(texts.some(t => t.includes('not to scale') || t.includes('v měřítku'))).toBe(true)
+    expect(texts).toEqual(expect.arrayContaining(['0.00', '0.20', '21.8', '22.0']))
   })
 })

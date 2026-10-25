@@ -236,6 +236,7 @@ export interface Translations {
     nokCategories: string
     forceTravelAria: string
     switchTimesAria: string
+    switchTimesAxisCompressed: string
   }
   settings: {
     title: string
