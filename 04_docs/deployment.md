@@ -51,6 +51,11 @@ PLC přihlášení (příznak `UserLoggedIn` = jen nejvyšší autorita na PLC) 
 smazat rozpracovanou zakázku, mazat Local, uživatelé, čas, cesty (jen u stroje). Práva končí okamžitě s odhlášením na PLC
 nebo výpadkem ADS. **Ověřit na PLC, že `UserLoggedIn` opravdu nastavuje jen nejvyšší úroveň oprávnění.**
 
+**Rozpracovaná zakázka nasazení neblokuje** (od 2.6.4): `deploy.ps1` má `$WipBlocksDeploy` — `$false` u vydání bez změny
+hlavičky CSV (neprázdná `production\wip` = jen varování, zakázka po nasazení pokračuje; nasazovat, když stroj neměří —
+Gateway je 1–2 min zastavená), `$true` u vydání, které mění hlavičku CSV (zastaví jako dřív; zakázku lze uzavřít i ve
+ScadaViewer → Dokončit zakázku). Přesun databáze (krok 5e) se s rozpracovanou zakázkou přeskočí.
+
 ---
 
 ## Release 2.6.3 (2026-10-26) — ScadaViewer: ruční dokončení rozpracované zakázky

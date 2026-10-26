@@ -12,7 +12,7 @@
 #   1. Najde slozky aplikaci podle NSSM sluzeb (AppDirectory) - nic se nehada.
 #   2. Kontroly PRED jakoukoli zmenou: Config.toml existuji, Analyzing ma position_reference_um > 0,
 #      DatabaseGateway: cesty na NAS lezi pod \\host\share (od 2.4.0 jinak nenastartuje),
-#      production/wip je prazdna, done_local (upozorneni).
+#      production/wip je prazdna (jen kdyz vydani meni hlavicku CSV - $WipBlocksDeploy; jinak upozorneni), done_local (upozorneni).
 #   3. Zastavi ScadaViewer -> DatabaseGateway -> AdsAnalyzer.
 #   4. Stary exe + _internal\ PRESUNE do <slozka>.backup_<cas>\ (+ kopie Config.toml / users.toml).
 #   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
@@ -78,6 +78,10 @@ $AppDates = @{ AdsAnalyzer = '2026-10-26'; DatabaseGateway = '2026-10-26'; Scada
 $MinMaxCycles = 60000
 
 $AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.4' }
+# Meni vydani datovou hlavicku CSV (sloupce [Data])? $true = rozpracovana zakazka (production\wip) nasazeni ZASTAVI
+# (Gateway by do WIP se starou hlavickou kusy nepridala). $false = jen upozorneni, zakazka po nasazeni pokracuje.
+# 2.6.3 / 2.6.4: format CSV beze zmeny -> $false.
+$WipBlocksDeploy = $false
 $PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji).'
 
 $ErrorActionPreference = 'Stop'
@@ -623,12 +627,17 @@ if ($local) {
     $wip = Get-WipFiles $local
     $dl  = @(Get-ChildItem -LiteralPath (Join-Path $local 'production\done_local') -File -ErrorAction SilentlyContinue) +
            @(Get-ChildItem -LiteralPath (Join-Path $local 'testing\done_local') -File -ErrorAction SilentlyContinue)
-    if ($wip.Count -gt 0) {
-        # 2.5.0: nova datova hlavicka (DF, FPR, PositionReference) - Gateway do WIP se starou hlavickou kus neprida
+    if ($wip.Count -gt 0 -and $WipBlocksDeploy) {
+        # Vydani meni datovou hlavicku CSV - Gateway do WIP se starou hlavickou kus neprida
         Log "[CHYBA] production\wip obsahuje $($wip.Count) soubor(u): $($wip.Name -join ', ')" 'Red'
-        Log '        Rozpracovanou zakazku nejdriv uzavrete na PLC (Op3) - DatabaseGateway 2.5.0 do souboru se starou' 'Red'
-        Log '        hlavickou (bez DF / FPR / PositionReference) dalsi kusy neprida. Potom spustte deploy.bat znovu.' 'Red'
+        Log '        Toto vydani meni hlavicku CSV - rozpracovanou zakazku nejdriv uzavrete na PLC (Op3)' 'Red'
+        Log '        nebo ve ScadaViewer (Databaze -> In progress -> Dokoncit zakazku). Potom spustte deploy.bat znovu.' 'Red'
         exit 1
+    } elseif ($wip.Count -gt 0) {
+        # Format CSV beze zmeny - rozpracovana zakazka nasazeni neblokuje (sluzby se jen kratce zastavi)
+        Log "[VAROVANI] production\wip obsahuje $($wip.Count) soubor(u): $($wip.Name -join ', ')" 'Yellow'
+        Log '        Format CSV se nemeni - zakazka po nasazeni pokracuje. Behem nasazeni (cca 1-2 min) stroj kusy' 'Yellow'
+        Log '        neulozi (Gateway zastavena) - nasazujte, kdyz stroj nemeri.' 'Yellow'
     } else { Log 'production\wip je prazdna' 'Green' }
     if ($dl.Count -gt 0) { Log "[INFO] done_local: $($dl.Count) soubor(u) jeste neni na NAS - po startu Gateway se dosynchronizuji." 'Yellow' }
 } else { Log '[VAROVANI] [data] local_path v Config.toml ScadaViewer nenalezen - kontrola wip preskocena.' 'Yellow' }
@@ -684,6 +693,9 @@ if (-not $NoMoveData -and $dataInApp.Count -eq 0 -and
         Log "[INFO] ScadaViewer local_path ($local) a Gateway local_base_dir ($dataDir) se lisi - presun databaze se preskoci." 'Yellow'
     } elseif (-not (Test-Path -LiteralPath $dataDir)) {
         Log "[INFO] Lokalni databaze $dataDir neexistuje - presun se preskoci." 'Yellow'
+    } elseif ((Get-WipFiles $dataDir).Count -gt 0) {
+        # Rozpracovanou zakazku nepresouvat pod rukama (kontrola wip je od 2.6.3 jen upozorneni)
+        Log "[INFO] V databazi je rozpracovana zakazka (production\wip) - presun databaze se preskoci (pristi nasazeni)." 'Yellow'
     } else {
         if (-not $MoveDataTo) {
             Log "[INFO] Lokalni databaze lezi v profilu uzivatele: $dataDir" 'Yellow'
@@ -727,7 +739,7 @@ Stop-Apps
 
 # Kontrola wip znovu az se zastavenou Gateway: behem dotazu vyse mohla obsluha zalozit zakazku (Op1) a nova
 # Gateway by do WIP se starou hlavickou kusy nepridala (A26-20). Nic jeste neni vymenene -> spustit a skoncit.
-if ($local) {
+if ($local -and $WipBlocksDeploy) {
     $wipNow = Get-WipFiles $local
     if ($wipNow.Count -gt 0) {
         Log "[CHYBA] Behem pripravy vznikla rozpracovana zakazka: $($wipNow.Name -join ', ') - nasazeni preruseno, nic nevymeneno." 'Red'
@@ -811,6 +823,11 @@ Update-PathReferences $done
 if ($MoveTo) { Grant-HelperExecute }    # kiosk / zastupce z Po spusteni po presunu do C:\apps (UAC)
 
 # 5e. Lokalni databaze z profilu uzivatele do vlastni slozky (zaznam pro rollback v zaloze Gateway)
+if ($DataMove -and (Get-WipFiles $DataMove.From).Count -gt 0) {
+    # Zakazka vznikla behem pripravy (pred zastavenim Gateway) - databazi ted nepresouvat
+    Log '[INFO] Behem pripravy vznikla rozpracovana zakazka - presun databaze se preskoci (pristi nasazeni).' 'Yellow'
+    $DataMove = $null
+}
 if ($DataMove) { Invoke-DataMove $DataMove $Apps[1].Backup }
 
 } catch {
