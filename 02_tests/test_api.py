@@ -942,7 +942,7 @@ class TestPlcLogin:
     """
 
     def test_plc_logged_in_returns_token(self, client) -> None:
-        """plc_operator_login=True → 200 + token role=operator."""
+        """plc_operator_login=True → 200 + token role=admin (nejvyšší autorita na PLC, 2026-10-26)."""
         c, _ = client
         c.app.state.monitor.current_values["plc_operator_login"] = True
         r = c.post("/api/auth/plc-login")
@@ -950,8 +950,8 @@ class TestPlcLogin:
         body = r.json()
         assert "token" in body
         assert isinstance(body["token"], str) and len(body["token"]) > 10
-        assert body["role"] == "operator"
-        assert body["display_name"] == "PLC Operátor"
+        assert body["role"] == "admin"
+        assert body["display_name"] == "PLC Admin"
 
     def test_plc_not_logged_in_returns_403(self, client) -> None:
         """plc_operator_login=False → 403."""
@@ -968,14 +968,39 @@ class TestPlcLogin:
         assert r.status_code == 403
 
     def test_plc_token_stored_in_sessions(self, client) -> None:
-        """Vrácený token musí být uložen v app.state.sessions s role=operator."""
+        """Vrácený token musí být uložen v app.state.sessions s role=admin a příznakem plc."""
         c, _ = client
         c.app.state.monitor.current_values["plc_operator_login"] = True
         token = c.post("/api/auth/plc-login").json()["token"]
         session = c.app.state.sessions.get(token)
         assert session is not None
-        assert session["role"] == "operator"
+        assert session["role"] == "admin"
         assert session["username"] == "plc_operator"
+        assert session["plc"] is True
+
+    def test_plc_session_ends_when_plc_logs_out(self, client) -> None:
+        """PLC session platí jen, dokud PLC hlásí přihlášení — pak 401 + WWW-Authenticate a session pryč."""
+        c, _ = client
+        values = c.app.state.monitor.current_values
+        values["plc_operator_login"] = True
+        token = c.post("/api/auth/plc-login").json()["token"]
+        auth = {"Authorization": f"Bearer {token}"}
+        assert c.get("/api/users", headers=auth).status_code == 200          # admin endpoint
+        values["plc_operator_login"] = False                                  # odhlášení na PLC / výpadek ADS
+        r = c.get("/api/users", headers=auth)
+        assert r.status_code == 401 and r.headers.get("www-authenticate") == "Bearer"
+        assert token not in c.app.state.sessions
+        values["plc_operator_login"] = True                                   # nové přihlášení na PLC
+        assert c.get("/api/users", headers=auth).status_code == 401          # starý token už neplatí
+
+    def test_plc_username_reserved(self, client) -> None:
+        """Lokální uživatel se jménem PLC přihlášení nejde založit (zaměnil by se se session PLC)."""
+        c, _ = client
+        c.app.state.monitor.current_values["plc_operator_login"] = True
+        token = c.post("/api/auth/plc-login").json()["token"]
+        r = c.post("/api/users", headers={"Authorization": f"Bearer {token}"},
+                   json={"username": "plc_operator", "display_name": "X", "password": "pw-123456", "role": "operator"})
+        assert r.status_code == 409
 
 
 # ======================================================================

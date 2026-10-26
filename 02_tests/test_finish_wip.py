@@ -93,6 +93,18 @@ def test_plc_unknown_requires_confirmation(tmp_path: Path) -> None:
         c.__exit__(None, None, None)
 
 
+def test_plc_login_can_finish(tmp_path: Path) -> None:
+    """PLC přihlášení = nejvyšší autorita na PLC → role admin, smí dokončit zakázku (2026-10-26)."""
+    c, app, base = _setup(tmp_path)
+    try:
+        app.state.monitor.current_values["plc_operator_login"] = True
+        c.headers["Authorization"] = "Bearer " + c.post("/api/auth/plc-login").json()["token"]
+        assert _finish(c, confirm=True).status_code == 200
+        assert (base / "done_local" / DONE).exists()
+    finally:
+        c.__exit__(None, None, None)
+
+
 def test_technician_and_remote_forbidden(tmp_path: Path) -> None:
     c, _, base = _setup(tmp_path, role="technician")
     try:

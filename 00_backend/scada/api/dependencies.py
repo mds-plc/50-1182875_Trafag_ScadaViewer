@@ -7,7 +7,7 @@ FastAPI dependencies pro autentizaci a autorizaci.
 Zodpovědnost:
   - require_auth: extrahuje Bearer token z Authorization hlavičky, ověří ho
     vůči app.state.sessions a zkontroluje TTL (8 hodin). Expired tokeny se
-    odstraní z dict (lazy GC).
+    odstraní z dict (lazy GC). PLC session (role admin) navíc jen, dokud PLC hlásí přihlášení.
   - require_role(min_role): továrna — vrátí Depends funkci která ověří minimální roli.
   - is_local_client / require_local: rozliší klienta „u stroje" (server.local_clients,
     výchozí 127.0.0.1 / ::1) od vzdáleného přístupu — vzdáleně jen prohlížení.
@@ -125,6 +125,12 @@ ROLE_LEVELS: dict[str, int] = {
     "manufacturer": 3,
 }
 
+# PLC přihlášení (Out.Status.UserLoggedIn) — příznak nastaví jen nejvyšší autorita přihlášená na PLC,
+# proto role admin (rozhodnutí uživatele 2026-10-26). Session má "plc": True a platí jen, dokud příznak trvá.
+PLC_USERNAME:     str = "plc_operator"
+PLC_ROLE:         str = "admin"
+PLC_DISPLAY_NAME: str = "PLC Admin"
+
 # Platnost session tokenu — 8 hodin. Expired tokeny se odstraní lazy při každém požadavku.
 # Pro SCADA terminál (kiosk) je 8 h dostatečné; PLC auto-login se obnoví automaticky.
 SESSION_TTL_SECS: int = 8 * 3600
@@ -178,6 +184,16 @@ async def require_auth(
     if now - created_at > SESSION_TTL_SECS:
         sessions.pop(token, None)
         raise HTTPException(status_code=401, detail="Relace vypršela — přihlaste se znovu", headers=_WWW_AUTH)
+
+    # PLC session (role admin) platí jen, dokud PLC hlásí přihlášení — odhlášení na stroji nebo výpadek ADS
+    # (clear_symbols) ji okamžitě ukončí i bez odhlášení z prohlížeče (zavřená karta, spadlý kiosk)
+    if session.get("plc"):
+        monitor = getattr(request.app.state, "monitor", None)
+        values  = getattr(monitor, "current_values", None) or {}
+        if not values.get("plc_operator_login"):
+            sessions.pop(token, None)
+            log.info("[AUTH]  PLC session ukončena — PLC už nehlásí přihlášení")
+            raise HTTPException(status_code=401, detail="Přihlášení na PLC skončilo", headers=_WWW_AUTH)
 
     # Aktivní GC — periodický sweep všech expired sessions
     _gc_counter += 1

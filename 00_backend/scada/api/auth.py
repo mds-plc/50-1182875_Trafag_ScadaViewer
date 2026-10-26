@@ -11,7 +11,8 @@ Zodpovědnost:
     JEN z PC u stroje (server.local_clients) — jinak by přihlášení obsluhy na terminálu
     otevřelo přístup každému prohlížeči v síti (vzdálený uživatel se přihlašuje heslem).
   - client: veřejné — {local} pro frontend (vzdálený přístup = jen prohlížení).
-    Vydá token s rolí "operator"; token žije jen v paměti prohlížeče (ne sessionStorage).
+    PLC login vydá token s rolí "admin" (příznak nastaví jen nejvyšší autorita na PLC), platný jen dokud
+    PLC příznak trvá; token žije jen v paměti prohlížeče (ne sessionStorage).
   - logout: invaliduje token v app.state.sessions (fire-and-forget, vždy 204).
   - change-password: ověří aktuální heslo, přepíše hash v users.toml / Config.toml
     a invaliduje VŠECHNY aktivní sessions (bezpečnostní opatření po změně hesla).
@@ -19,7 +20,7 @@ Zodpovědnost:
 
 Rozhraní:
   POST /api/auth/login           → LoginResponse { token, role, display_name }
-  POST /api/auth/plc-login       → LoginResponse { token, role="operator", display_name } / 403 (vzdálený klient)
+  POST /api/auth/plc-login       → LoginResponse { token, role="admin", display_name } / 403 (vzdálený klient)
   GET  /api/auth/client          → ClientInfoResponse { local }
   POST /api/auth/logout          → 204 (vždy, i pro neznámý token)
   POST /api/auth/change-password → 204 / 400 / 401
@@ -36,7 +37,9 @@ import re
 import secrets
 import time
 
-from scada.api.dependencies import SESSION_TTL_SECS, USERS_FILE_ERROR_DETAIL, is_local_client
+from scada.api.dependencies import (
+    PLC_DISPLAY_NAME, PLC_ROLE, PLC_USERNAME, SESSION_TTL_SECS, USERS_FILE_ERROR_DETAIL, is_local_client,
+)
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -241,8 +244,12 @@ async def plc_login(request: Request) -> LoginResponse:
     ADS monitor musí evidovat UserLoggedIn = True v current_values; pokud ne,
     přihlášení selže (ADS výpadek nebo operátor není přihlášen na terminálu).
 
+    Role **admin** (rozhodnutí uživatele 2026-10-26): PLC příznak nastaví jen nejvyšší autorita přihlášená
+    na PLC. Session je vázaná na příznak (`plc: True`) — `require_auth` ji zneplatní, jakmile příznak spadne
+    (odhlášení na PLC, výpadek ADS), takže práva admina nepřežijí odhlášení na stroji.
+
     Returns:
-        LoginResponse — session token s rolí 'operator' a display_name 'PLC Operátor'.
+        LoginResponse — session token s rolí 'admin' a display_name 'PLC Admin'.
 
     Raises:
         HTTPException(403): ADS není připojeno nebo PLC příznak není nastaven.
@@ -256,16 +263,17 @@ async def plc_login(request: Request) -> LoginResponse:
 
     token        = secrets.token_urlsafe(32)
     session_info = {
-        "username":    "plc_operator",
-        "role":        "operator",
-        "display_name": "PLC Operátor",
+        "username":    PLC_USERNAME,
+        "role":        PLC_ROLE,
+        "display_name": PLC_DISPLAY_NAME,
         "created_at":  time.time(),
+        "plc":         True,          # platí jen, dokud PLC hlásí přihlášení (require_auth)
     }
     request.app.state.sessions[token] = session_info
 
-    log.info("[AUTH]  PLC přihlášení: plc_operator (sessions celkem: %d)",
-             len(request.app.state.sessions))
-    return LoginResponse(token=token, role="operator", display_name="PLC Operátor")
+    log.info("[AUTH]  PLC přihlášení: %s role=%s (sessions celkem: %d)",
+             PLC_USERNAME, PLC_ROLE, len(request.app.state.sessions))
+    return LoginResponse(token=token, role=PLC_ROLE, display_name=PLC_DISPLAY_NAME)
 
 
 @router.get("/auth/client", response_model=ClientInfoResponse)

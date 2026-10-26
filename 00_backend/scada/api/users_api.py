@@ -18,7 +18,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from scada.api.auth import _clear_failures, _is_locked, _record_failure, track_default_password
-from scada.api.dependencies import (REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, ensure_users_writable, is_local_client,
+from scada.api.dependencies import (PLC_USERNAME, REMOTE_READ_ONLY_DETAIL, ROLE_LEVELS, ensure_users_writable,
+                                    is_local_client,
                                     require_auth, require_local, require_role)
 from scada.config import VALID_ROLES, UserEntry, hash_password, save_users, verify_password
 from scada.models import ChangeUserPasswordRequest, CreateUserRequest, UserModel
@@ -93,6 +94,8 @@ async def create_user(
     username = body.username.strip()
     if any(u.username == username for u in users):          # po strip — jinak „ technik" = duplicita
         raise HTTPException(status_code=409, detail=f"Uživatel {username!r} již existuje")
+    if username == PLC_USERNAME:                             # vyhrazeno pro PLC přihlášení (role admin)
+        raise HTTPException(status_code=409, detail=f"Jméno {username!r} je vyhrazené pro PLC přihlášení")
 
     # Ověření: role nového uživatele nesmí být vyšší než role tvůrce
     # (admin nemůže vytvořit manufacturer)

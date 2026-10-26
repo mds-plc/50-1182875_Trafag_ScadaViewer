@@ -1476,6 +1476,23 @@ Testy: `test_finish_wip.py` (5), `FinishWipModal.test.tsx` (2), `FileTable.test.
 
 **Stav testů po fázi 52:** Backend **481/481**, Frontend **237/237** (28 souborů); `tsc` 0, lint 0.
 
+### Fáze 53 — PLC přihlášení s právy administrátora (2026-10-26, verze 2.6.4)
+
+Příznak `Out.Status.UserLoggedIn` nastaví PLC jen pro nejvyšší autoritu přihlášenou na stroji (sdělení uživatele) —
+PLC přihlášení proto dostane roli **admin** (dřív operator): dokončení / smazání rozpracované zakázky, mazání Local,
+uživatelé, čas, cesty — vše jen u stroje jako dřív.
+
+| Část | Řešení |
+|---|---|
+| `api/auth.py` `plc-login` | role `PLC_ROLE` = admin, `display_name` „PLC Admin“, session `plc: True` (konstanty v `dependencies.py`) |
+| `require_auth` | PLC session ověří při KAŽDÉM požadavku `monitor.current_values["plc_operator_login"]` — spadlý příznak (odhlášení na PLC, výpadek ADS → `clear_symbols`) session smaže a vrátí 401 + `WWW-Authenticate` (frontend PLC token zahodí). Práva admina tak nepřežijí odhlášení na stroji ani při zavřené kartě |
+| `users_api.py` | jméno `plc_operator` nelze použít pro lokálního uživatele (409) |
+| Frontend | beze změny kódu — roli bere z odpovědi serveru; nápověda Databáze a Nastavení CS / EN |
+
+Testy: `test_api.py` (role, konec session po odhlášení na PLC, vyhrazené jméno), `test_finish_wip.py` (PLC přihlášení dokončí zakázku).
+
+**Stav testů po fázi 53:** Backend **484/484**, Frontend **237/237**; `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

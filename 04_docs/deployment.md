@@ -44,6 +44,15 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.4 (2026-10-26) — ScadaViewer: PLC přihlášení s právy administrátora
+
+Balíček `06_build/releases/deploy_v2.6.4/` — Analyzing a DatabaseGateway 2.6.2, ScadaViewer 2.6.4 (obsahuje i 2.6.3).
+PLC přihlášení (příznak `UserLoggedIn` = jen nejvyšší autorita na PLC) má ve ScadaViewer roli **admin** — dokončit /
+smazat rozpracovanou zakázku, mazat Local, uživatelé, čas, cesty (jen u stroje). Práva končí okamžitě s odhlášením na PLC
+nebo výpadkem ADS. **Ověřit na PLC, že `UserLoggedIn` opravdu nastavuje jen nejvyšší úroveň oprávnění.**
+
+---
+
 ## Release 2.6.3 (2026-10-26) — ScadaViewer: ruční dokončení rozpracované zakázky
 
 Balíček `06_build/releases/deploy_v2.6.3/` (`deploy.bat`) — **Analyzing a DatabaseGateway 2.6.2 beze změny**, ScadaViewer 2.6.3.

@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-10-26] PLC přihlášení s právy administrátora (ScadaViewer 2.6.4)
+
+Přání uživatele: funkce admina (dokončení / smazání rozpracované zakázky…) i při přihlášení přes PLC — příznak
+`UserLoggedIn` přijde jen při přihlášení nejvyšší autority na PLC. Rozhodnutí: plná práva admina. Detail: `architecture.md` fáze 53.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ℹ️ INFO | `plc-login` → role admin, session `plc: True` | `api/auth.py`, `api/dependencies.py` | ✅ Hotovo |
+| 2 | ⚠️ MEDIUM | Admin session z PLC nesmí přežít odhlášení na PLC (dřív ji rušil jen frontend — zavřená karta = token 8 h) → `require_auth` ověřuje příznak při každém požadavku | `api/dependencies.py` | ✅ Opraveno |
+| 3 | 🔵 LOW | Lokální uživatel `plc_operator` by se zaměnil se session PLC → jméno vyhrazené (409) | `api/users_api.py` | ✅ Opraveno |
+| 4 | ℹ️ INFO | Předpoklad: PLC nastavuje `UserLoggedIn` jen pro nejvyšší úroveň — ověřit v PLC programu | PLC | ⬜ Ověřit |
+
+Testy: backend 484, frontend 237.
+
+---
+
 ## [2026-10-26] Ruční dokončení rozpracované zakázky (ScadaViewer 2.6.3)
 
 Přání uživatele: zakázka uzavřená na stroji, ale ponechaná v `production/wip/` (výpadek proudu před Op3), nešla dostat
