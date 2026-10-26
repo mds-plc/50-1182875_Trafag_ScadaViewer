@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-10-26] Ruční dokončení rozpracované zakázky (ScadaViewer 2.6.3)
+
+Přání uživatele: zakázka uzavřená na stroji, ale ponechaná v `production/wip/` (výpadek proudu před Op3), nešla dostat
+na NAS ani v ní pokračovat. Rozhodnutí: admin u stroje ji uzavře z Databáze; zakázku, kterou PLC hlásí jako běžící,
+uzavřít nejde vůbec; bez spojení s PLC jen se zaškrtnutím „Rozumím, zakázka na stroji neběží". Gateway beze změny
+(`register_untracked` + `_wip_path`). Detail: `architecture.md` fáze 52.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ℹ️ INFO | `POST /api/files/{id}/finish` — wip → done_local (odříznutí neúplného řádku, fsync, os.replace), 409 running / plc_unknown / exists / busy | `api/files.py`, `csv_repository.py`, `file_service.py` | ✅ Hotovo |
+| 2 | ℹ️ INFO | Tlačítko + `FinishWipModal` + toasty + nápověda Databáze CS / EN | `FileTable.tsx`, `FinishWipModal.tsx`, `useDatabaseState.ts`, `help.*.ts` | ✅ Hotovo |
+
+Testy: backend 481, frontend 237; `tsc` 0, lint 0.
+
+---
+
 ## [2026-10-25] Celkový audit ekosystému A26 — Analyzing, DatabaseGateway, ScadaViewer
 
 Rozsah: vydání 2.6.1 (AN 2.6.1, GW 2.6.0, SV 2.6.1) + necommitnuté změny (GW logování Rejected, SV `timeScale`,

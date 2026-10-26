@@ -1458,6 +1458,24 @@ Testy: `OnScreenKeyboard.test.tsx` (9). Ověřeno v Chrome (1920×1080, dotyk, s
 
 **Stav testů po fázi 51:** Frontend **222/222** (27 souborů); `tsc` 0, lint 0.
 
+### Fáze 52 — ruční dokončení rozpracované zakázky (2026-10-26, verze 2.6.3)
+
+Zakázka, která na stroji skončila, ale neuzavřela se (výpadek proudu, chyba PLC před Op3), zůstávala v `production/wip/`
+navždy — na NAS se nedostala a pokračovat v ní nešlo (Op1 stejné zakázky DatabaseGateway odmítne). Admin ji teď
+uzavře z Databáze. **DatabaseGateway beze změny** — soubor v `done_local/` převezme sama (`register_untracked`,
+každých 30 s soubory starší 60 s) a nahraje na NAS; smazaný / přesunutý WIP pozná (`_wip_path` → Op2 / Op3 Rejected).
+
+| Část | Řešení |
+|---|---|
+| `POST /api/files/{id}/finish` (`api/files.py`) | `require_local` + `require_role("admin")`; jen `*_WIP.csv` production lokálně (jinak 400 / 403 / 404) |
+| Pojistka proti běžící zakázce | ADS připojeno a PLC hlásí `order_valid` + `order_name` = číslo zakázky z názvu souboru → **409 `running`** (nejde obejít); ADS odpojeno → **409 `plc_unknown`**, dokud tělo nenese `plc_unknown_confirmed: true` |
+| `CsvRepository.finish_wip` | neúplný poslední řádek odříznout (`_truncate_partial_line`, jako Gateway) + `fsync` → `os.replace` do `done_local/…_DONE.csv` (nikdy kopie); DONE stejného jména v done_local / done_remote → 409 `exists`; soubor drží Gateway → opakování, pak 409 `busy`; WARNING v logu s uživatelem |
+| Frontend | `FileTable`: tlačítko se zatržítkem u řádku In progress (admin u stroje, za košem — ostatní tlačítka zůstanou na místě); `FinishWipModal` (bez spojení s PLC zaškrtnutí „Rozumím, zakázka na stroji neběží"); `useDatabaseState.finishWip` (toasty podle `detail.code`); nápověda Databáze CS + EN |
+
+Testy: `test_finish_wip.py` (5), `FinishWipModal.test.tsx` (2), `FileTable.test.tsx` (+1), `useDatabaseState.test.tsx` (+2).
+
+**Stav testů po fázi 52:** Backend **481/481**, Frontend **237/237** (28 souborů); `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

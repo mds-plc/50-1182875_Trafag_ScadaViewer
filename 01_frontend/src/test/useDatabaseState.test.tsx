@@ -12,6 +12,7 @@ import type { OrderFile } from '../types'
 
 let mockFiles: OrderFile[] = []
 const mockApiFetch = vi.fn()
+const mockAddToast = vi.fn()
 
 vi.mock('../hooks/useData', () => ({
   useRemoteStatus: () => true,
@@ -20,7 +21,7 @@ vi.mock('../hooks/useData', () => ({
     total: mockFiles.length, pages: 1, loading: false, error: null, fetchFiles: vi.fn(),
   }),
 }))
-vi.mock('../context/ToastContext', () => ({ useToast: () => ({ addToast: vi.fn() }) }))
+vi.mock('../context/ToastContext', () => ({ useToast: () => ({ addToast: mockAddToast }) }))
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 't', isRemote: false }) }))
 vi.mock('../utils/apiFetch', () => ({ apiFetch: (...a: unknown[]) => mockApiFetch(...a) }))
 
@@ -66,5 +67,31 @@ describe('useDatabaseState — výběr pro hromadné mazání (F1)', () => {
     await act(async () => { await result.current.batchDelete() })
     const body = JSON.parse(mockApiFetch.mock.calls[0][1].body as string) as { items: { file_id: string; sync: string }[] }
     expect(body.items.map(i => i.sync).sort()).toEqual(['done_local', 'done_remote'])
+  })
+})
+
+describe('useDatabaseState — dokončení rozpracované zakázky (2026-10-26)', () => {
+  const wip = { ...file('PROD_A_E1_20261026_090000_WIP.csv'), sync_status: 'wip' } as OrderFile
+
+  it('pošle POST /finish s potvrzením a ohlásí úspěch', async () => {
+    mockFiles = []
+    mockApiFetch.mockResolvedValue({ ok: true, json: async () => ({ file_id: 'x_DONE.csv' }) })
+    const { result } = renderHook(() => useDatabaseState(), { wrapper })
+    act(() => { result.current.setFinishTarget(wip) })
+    await act(async () => { await result.current.finishWip(wip, true) })
+    const [url, init] = mockApiFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/api/files/PROD_A_E1_20261026_090000_WIP.csv/finish?location=local&type=production')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ plc_unknown_confirmed: true })
+    expect(result.current.finishTarget).toBeNull()
+    expect(mockAddToast).toHaveBeenLastCalledWith(expect.stringMatching(/NAS/), 'success')
+  })
+
+  it('zakázka běží na stroji (409 running) → varování', async () => {
+    mockFiles = []
+    mockApiFetch.mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: { code: 'running' } }) })
+    const { result } = renderHook(() => useDatabaseState(), { wrapper })
+    await act(async () => { await result.current.finishWip(wip, false) })
+    expect(mockAddToast).toHaveBeenLastCalledWith(expect.stringMatching(/running on the machine|běží na stroji/), 'warning')
   })
 })

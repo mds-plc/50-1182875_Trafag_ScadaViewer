@@ -8,7 +8,7 @@
  *   - Spravuje filtry (location, dataType, dateFrom, dateTo), stránkování a řazení.
  *   - Orchestruje auto-refresh (useFiles + setInterval s refreshMs z useSettings).
  *   - Dokud server dopočítává počty kusů (counts_pending), ptá se znovu po COUNTS_RETRY_MS.
- *   - Implementuje akce: downloadCsv, downloadXlsx, deleteFile, batchDelete.
+ *   - Implementuje akce: downloadCsv, downloadXlsx, deleteFile, batchDelete, finishWip.
  *   - Spravuje výběr souborů (selectedIds, toggleSelect, selectAll, clearSelect)
  *     a potvrzovací dialog pro batch-delete (batchConfirm).
  *   - Registruje klávesové zkratky (F5 = refresh, Escape = zavřít expand/modal).
@@ -23,7 +23,8 @@
  *   Závisí na: hooks/{useFiles, useRemoteStatus, useKeyShortcuts, useSettings},
  *              context/{ToastContext, LangContext, AuthContext},
  *              utils/{downloadOriginal, exportXlsx} (XLSX sestavuje server)
- *   Volá: DELETE /api/files/{id}, POST /api/files/batch-delete, GET /api/files/{id}/xlsx (export)
+ *   Volá: DELETE /api/files/{id}, POST /api/files/batch-delete, POST /api/files/{id}/finish (dokončit
+ *         rozpracovanou zakázku), GET /api/files/{id}/xlsx (export)
  *   Používáno: pages/Database.tsx
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -161,6 +162,7 @@ export function useDatabaseState() {
   const [page,         setPage]         = useState(1)
   const [expandedId,   setExpandedId]   = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OrderFile | null>(null)
+  const [finishTarget, setFinishTarget] = useState<OrderFile | null>(null)
   const [storedSortBy, setSortByRaw]    = useState<string>(() => _lsGet('sortBy', 'created_at', isString))
   // Testing nemá sloupce Zakázka / ID — uložené řazení podle nich by bylo neviditelné (audit Q6)
   const sortBy = dataType === 'testing' && PRODUCTION_ONLY_SORT.has(storedSortBy) ? 'created_at' : storedSortBy
@@ -266,7 +268,7 @@ export function useDatabaseState() {
   // F5 = ruční refresh, Escape = zavřít expand + modal
   useKeyShortcuts({
     F5:     () => fetchFiles(),
-    Escape: () => { setExpandedId(null); setDeleteTarget(null) },
+    Escape: () => { setExpandedId(null); setDeleteTarget(null); setFinishTarget(null) },
   })
 
   const downloadCsv = useCallback((file: OrderFile): void => {
@@ -308,6 +310,42 @@ export function useDatabaseState() {
       addToast(t.db.deleteError, 'danger')
     }
   }, [addToast, fetchFiles, t.db.deleteBusy, t.db.deleteError, t.db.deleteSuccess, t.db.deleteUnsyncedForbidden, t.db.deleteWipForbidden, token])
+
+  // Ruční dokončení rozpracované zakázky (admin u stroje): wip → done_local, Gateway ji nahraje na NAS.
+  // Běžící zakázku server odmítne (409 running); bez spojení s PLC chce potvrzení (409 plc_unknown).
+  const finishWip = useCallback(async (file: OrderFile, plcUnknownConfirmed: boolean): Promise<void> => {
+    setFinishTarget(null)
+    try {
+      const res = await apiFetch(
+        `/api/files/${encodeURIComponent(file.file_id)}/finish?location=${file.location}&type=${file.type}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ plc_unknown_confirmed: plcUnknownConfirmed }),
+        },
+      )
+      if (res.ok) {
+        addToast(t.db.finishWipSuccess, 'success')
+        fetchFiles()
+        return
+      }
+      let code = ''
+      if (res.status === 409) {
+        try {
+          const body = await res.json() as { detail?: { code?: string } }
+          code = body.detail?.code ?? ''
+        } catch { /* bez těla */ }
+      }
+      addToast(code === 'running' ? t.db.finishWipRunning
+        : code === 'exists' ? t.db.finishWipExists
+        : code === 'busy' ? t.db.finishWipBusy
+        : code === 'plc_unknown' ? t.db.finishWipPlcUnknown
+        : t.db.finishWipError, code ? 'warning' : 'danger')
+      if (code === 'exists' || res.status === 404) fetchFiles()
+    } catch {
+      addToast(t.db.finishWipError, 'danger')
+    }
+  }, [addToast, fetchFiles, t.db, token])
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -387,6 +425,7 @@ export function useDatabaseState() {
     showSync, totalRecords,
     readOnly: isRemote,   // vzdálený přístup — bez mazání (server ho stejně odmítne)
     deleteFile, downloadCsv, downloadXlsx,
+    finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   }
 }

@@ -330,6 +330,30 @@ class FileService:
         return 'ok'
 
     # ------------------------------------------------------------------
+    # Ruční dokončení rozpracované zakázky
+    # ------------------------------------------------------------------
+
+    def finish_wip(self, file_id: str, location: str = 'local', file_type: str = 'production') -> tuple[str, str | None]:
+        """
+        Rozpracovanou zakázku (wip/*_WIP.csv) přesune do done_local/ jako uzavřenou (admin, rozhodnutí 2026-10-26).
+
+        Returns: (výsledek, file_id DONE souboru)
+          'ok' · 'not_found' · 'not_wip' (jen *_WIP.csv production) · 'remote_forbidden' · 'exists' (DONE už je)
+        """
+        if location != 'local':
+            return 'remote_forbidden', None
+        if not file_id.endswith('_WIP.csv') or file_type != 'production':
+            return 'not_wip', None
+        path = self._repo.resolve_path(file_id, location, file_type)
+        if path is None or not path.exists():
+            return 'not_found', None
+        try:
+            dst = self._repo.finish_wip(path)
+        except FileExistsError:
+            return 'exists', None
+        return 'ok', dst.name
+
+    # ------------------------------------------------------------------
     # Časový průběh zakázky
     # ------------------------------------------------------------------
 

@@ -372,6 +372,12 @@
   color: var(--color-danger);
 }
 
+/* Dokončit rozpracovanou zakázku (admin u stroje) */
+.db-icon-btn--finish:hover {
+  background: var(--color-success-muted);
+  color: var(--color-success);
+}
+
 .db-empty {
   padding: var(--space-10) var(--space-4);
   text-align: center;

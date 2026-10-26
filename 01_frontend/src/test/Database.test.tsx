@@ -83,7 +83,14 @@ const defaultState = {
   batchDelete:    vi.fn(),
   batchConfirm:   false,
   setBatchConfirm: vi.fn(),
+  finishTarget:   null,
+  setFinishTarget: vi.fn(),
+  finishWip:      vi.fn(),
 }
+
+vi.mock('../context/PlcContext', () => ({
+  usePlcConnection: () => ({ connected: true, adsConnected: true, plcLoggedIn: false }),
+}))
 
 vi.mock('../hooks/useDatabaseState', () => ({
   useDatabaseState: vi.fn(() => defaultState),

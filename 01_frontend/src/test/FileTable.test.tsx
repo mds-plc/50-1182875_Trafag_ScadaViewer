@@ -302,6 +302,32 @@ describe('FileTable', () => {
     expect(onDeleteRequest).toHaveBeenCalledWith(WIP)
   })
 
+  it('admin: WIP row has a "Finish order" button; other rows and non-admins do not (2026-10-26)', () => {
+    const onFinishRequest = vi.fn()
+    const { container, unmount } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} wip={[WIP]} total={1} canDeleteWip onFinishRequest={onFinishRequest} />
+      </Wrapper>
+    )
+    expect(container.querySelectorAll('.db-icon-btn--finish')).toHaveLength(1)
+    fireEvent.click(container.querySelector('tr.db-row--wip .db-icon-btn--finish')!)
+    expect(onFinishRequest).toHaveBeenCalledWith(WIP)
+    unmount()
+    const r2 = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} wip={[WIP]} onFinishRequest={onFinishRequest} />
+      </Wrapper>
+    )
+    expect(r2.container.querySelector('.db-icon-btn--finish')).toBeNull()
+    r2.unmount()
+    const r3 = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} wip={[WIP]} canDeleteWip readOnly onFinishRequest={onFinishRequest} />
+      </Wrapper>
+    )
+    expect(r3.container.querySelector('.db-icon-btn--finish')).toBeNull()
+  })
+
   it('WIP row keeps action buttons aligned with other rows (placeholder instead of delete)', () => {
     const { container } = render(
       <Wrapper>

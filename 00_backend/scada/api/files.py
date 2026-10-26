@@ -43,8 +43,10 @@ from fastapi.responses import Response, StreamingResponse
 
 from scada.services.io_pool import NasBusyError, run_io
 from scada.api.dependencies import ROLE_LEVELS, require_auth, require_local, require_role
-from scada.models import BatchDeleteRequest, BatchDeleteResult, FilesResponse, OrderFileModel
+from scada.models import (BatchDeleteRequest, BatchDeleteResult, FilesResponse, FinishWipRequest, FinishWipResult,
+                          OrderFileModel)
 from scada.services.protocols import DataReader
+from scada.services.repositories.csv_repository import order_id_from_name
 from scada.services.shared_open import open_shared
 
 router = APIRouter()
@@ -164,6 +166,58 @@ async def delete_file(
         raise HTTPException(status_code=403, detail="Soubor ještě není na NAS — smazat ho smí jen administrátor")
     if result == 'not_found':
         raise HTTPException(status_code=404, detail="Soubor nenalezen")
+
+
+@router.post("/files/{file_id}/finish", response_model=FinishWipResult, dependencies=[Depends(require_local)])
+async def finish_wip(
+    file_id:   str,
+    request:   Request,
+    body:      FinishWipRequest | None = None,
+    location:  str = Query('local',      alias="location"),
+    file_type: str = Query('production', alias="type"),
+    session:   dict = Depends(require_role("admin")),
+) -> FinishWipResult:
+    """
+    Ručně dokončí rozpracovanou zakázku — wip/…_WIP.csv → done_local/…_DONE.csv (rozhodnutí uživatele 2026-10-26).
+
+    Pro zakázku, kterou stroj neuzavřel (Op3 nepřišla). Jen admin u stroje. Zakázku, která podle PLC právě
+    běží (Order.Valid + Order.Name = číslo zakázky), dokončit NELZE (409 `running`). Bez spojení s PLC jen
+    s potvrzením (`plc_unknown_confirmed`, jinak 409 `plc_unknown`). Gateway soubor převezme a odešle na NAS
+    sama; další kus do dokončené zakázky odmítne (Rejected).
+    """
+    order_id = order_id_from_name(file_id)
+    monitor  = request.app.state.monitor
+    if monitor.connected:
+        vals = monitor.current_values
+        if vals.get("order_valid") and order_id and str(vals.get("order_name", "")).strip() == order_id:
+            raise HTTPException(status_code=409, detail={
+                "code": "running", "message": f"Zakázka {order_id} právě běží na stroji — nejdřív ji ukončete na PLC."})
+    elif not (body and body.plc_unknown_confirmed):
+        raise HTTPException(status_code=409, detail={
+            "code": "plc_unknown", "message": "Spojení s PLC není — potvrďte, že zakázka na stroji neběží."})
+
+    reader: DataReader = request.app.state.csv_reader
+    try:
+        result, done_id = await run_io(location, reader.finish_wip, file_id, location, file_type)
+    except PermissionError as exc:
+        log.warning("[API]   POST /api/files/%s/finish — soubor se používá: %s", file_id, exc)
+        raise HTTPException(status_code=409, detail={
+            "code": "busy", "message": "Soubor právě používá DatabaseGateway — zkuste to znovu"}) from exc
+    except OSError as exc:
+        log.error("[API]   POST /api/files/%s/finish I/O chyba: %s", file_id, exc)
+        raise HTTPException(status_code=503, detail=f"Úložiště dočasně nedostupné: {exc}") from exc
+    if result == 'remote_forbidden':
+        raise HTTPException(status_code=403, detail="Vzdálené soubory nelze měnit")
+    if result == 'not_wip':
+        raise HTTPException(status_code=400, detail="Dokončit lze jen rozpracovanou zakázku (…_WIP.csv)")
+    if result == 'not_found':
+        raise HTTPException(status_code=404, detail="Soubor nenalezen")
+    if result == 'exists':
+        raise HTTPException(status_code=409, detail={
+            "code": "exists", "message": "Uzavřený soubor stejného jména už existuje — vyřešte ručně"})
+    log.warning("[API]   rozpracovaná zakázka %s dokončena ručně (%s, PLC %s): %s → %s", order_id,
+                session.get("username", "?"), "připojeno" if monitor.connected else "NEPŘIPOJENO", file_id, done_id)
+    return FinishWipResult(file_id=done_id)
 
 
 @router.post("/files/batch-delete", response_model=BatchDeleteResult, dependencies=[Depends(require_local)])

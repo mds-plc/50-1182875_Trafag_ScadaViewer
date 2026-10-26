@@ -400,6 +400,16 @@ class CleanupResponse(BaseModel):
 # /api/files/batch-delete — hromadné mazání souborů
 # ======================================================================
 
+class FinishWipRequest(BaseModel):
+    """Tělo POST /api/files/{file_id}/finish — potvrzení, když stav PLC není známý (ADS odpojeno)."""
+    plc_unknown_confirmed: bool = False
+
+
+class FinishWipResult(BaseModel):
+    """Odpověď POST /api/files/{file_id}/finish."""
+    file_id: str          # nový název — …_DONE.csv v done_local/
+
+
 class BatchDeleteItem(BaseModel):
     """Položka hromadného mazání — sync určí kopii, leží-li soubor v done_local i done_remote (A26-43)."""
     file_id: str

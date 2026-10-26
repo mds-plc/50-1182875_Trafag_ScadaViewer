@@ -11,7 +11,7 @@
  */
 import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Trash2, BarChart2, Download } from 'lucide-react'
+import { ChevronDown, Trash2, BarChart2, Download, CircleCheckBig } from 'lucide-react'
 import { useFileRecords, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import LoadingSpinner from './LoadingSpinner'
@@ -356,6 +356,8 @@ interface Props {
   readOnly?:        boolean
   /** Admin+ smí smazat rozpracovanou zakázku (jednotlivě, dialog s potvrzením rizika; ne hromadně) */
   canDeleteWip?:    boolean
+  /** Ruční dokončení rozpracované zakázky (admin u stroje, jako canDeleteWip) — tlačítko jen u řádků In progress */
+  onFinishRequest?: (file: OrderFile) => void
 }
 
 export default function FileTable({
@@ -365,7 +367,7 @@ export default function FileTable({
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
   sortBy, sortDir, onSort,
   selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, readOnly = false,
-  canDeleteWip = false,
+  canDeleteWip = false, onFinishRequest,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
@@ -505,6 +507,17 @@ export default function FileTable({
                 onClick={() => onDeleteRequest(file)}
               >
                 <Trash2 size={18} />
+              </button>
+            )}
+            {/* Dokončit rozpracovanou zakázku — až za košem, ať ostatní tlačítka zůstanou ve všech řádcích na místě */}
+            {isWip && !readOnly && canDeleteWip && onFinishRequest && (
+              <button
+                className="db-icon-btn db-icon-btn--finish"
+                title={t.db.finishWip}
+                aria-label={`${t.db.finishWip}: ${file.order_id ?? file.file_id}`}
+                onClick={() => onFinishRequest(file)}
+              >
+                <CircleCheckBig size={18} />
               </button>
             )}
           </td>

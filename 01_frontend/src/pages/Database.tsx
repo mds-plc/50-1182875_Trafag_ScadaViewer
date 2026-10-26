@@ -11,6 +11,8 @@ import { useLang } from '../context/LangContext'
 import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
 import DeleteModal from '../components/DeleteModal'
+import FinishWipModal from '../components/FinishWipModal'
+import { usePlcConnection } from '../context/PlcContext'
 import PageHelp from '../components/PageHelp'
 import StorageBar  from '../components/StorageBar'
 import NasStorageBar from '../components/NasStorageBar'
@@ -35,8 +37,10 @@ export default function Database() {
     remoteAvailable,
     showSync, totalRecords, readOnly,
     deleteFile, downloadCsv, downloadXlsx,
+    finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   } = useDatabaseState()
+  const { adsConnected } = usePlcConnection()
   const selectedUnsynced = files.filter(f => selectedIds.has(f.file_id) && f.sync_status === 'done_local').length
 
   return (
@@ -200,6 +204,7 @@ export default function Database() {
           onBatchDelete={() => setBatchConfirm(true)}
           readOnly={readOnly}
           canDeleteWip={canDeleteUnsynced}
+          onFinishRequest={setFinishTarget}
         />
       </div>
 
@@ -210,6 +215,16 @@ export default function Database() {
           canDeleteUnsynced={canDeleteUnsynced}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => { void deleteFile(deleteTarget) }}
+        />
+      )}
+
+      {/* Ruční dokončení rozpracované zakázky (admin u stroje) */}
+      {finishTarget && (
+        <FinishWipModal
+          target={finishTarget}
+          plcUnknown={!adsConnected}
+          onCancel={() => setFinishTarget(null)}
+          onConfirm={confirmed => { void finishWip(finishTarget, confirmed) }}
         />
       )}
 

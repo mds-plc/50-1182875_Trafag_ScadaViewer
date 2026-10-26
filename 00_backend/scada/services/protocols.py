@@ -70,6 +70,10 @@ class DataReader(Protocol):
         file_type: str = 'production',
     ) -> Path | None: ...
 
+    def finish_wip(self, file_id: str, location: str = 'local', file_type: str = 'production') -> tuple[str, str | None]:
+        """Ručně dokončí rozpracovanou zakázku (wip → done_local); viz FileService.finish_wip."""
+        ...
+
     def delete_file(
         self,
         file_id:   str,

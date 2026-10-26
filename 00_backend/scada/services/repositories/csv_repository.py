@@ -87,6 +87,33 @@ _DELETE_DELAY_S       = 0.2
 # Název souboru od DatabaseGateway: PROD_{zakázka}_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv,
 # TEST_{typ}_{RRRRMMDD}_{HHMMSS}_DONE.csv; starší soubory bez prefixu PROD_.
 # Typ spínače bez podtržítka; kdyby ho zakázka / typ měly, přesné hodnoty doplní dopočet z metadat.
+def order_id_from_name(name: str) -> str | None:
+    """Číslo zakázky z názvu PROD_{zakázka}_{typ}_{datum}_{čas}_DONE|WIP.csv (None = jiný formát)."""
+    m = _NAME_PROD.match(name)
+    return m.group('order') if m else None
+
+
+def _truncate_partial_line(f, name: str) -> None:
+    """Odřízne neukončený poslední řádek binárně otevřeného souboru (r+b) — stejně jako DatabaseGateway."""
+    size = f.seek(0, os.SEEK_END)
+    if size == 0:
+        return
+    f.seek(size - 1)
+    if f.read(1) == b"\n":
+        return
+    pos, block = size, 1 << 16
+    while pos > 0:
+        start = max(0, pos - block)
+        f.seek(start)
+        chunk = f.read(pos - start)
+        nl = chunk.rfind(b"\n")
+        if nl >= 0:
+            f.truncate(start + nl + 1)
+            log.warning("[CSV]   %s končil neúplným řádkem (%d B) — odříznut.", name, size - (start + nl + 1))
+            return
+        pos = start
+
+
 _NAME_PROD = re.compile(r'^(?:PROD_)?(?P<order>.+)_(?P<switch>[^_]+)_(?P<d>\d{8})_(?P<t>\d{6})_(?:DONE|WIP)\.csv$')
 _NAME_TEST = re.compile(r'^(?:TEST_)?(?P<switch>.+)_(?P<d>\d{8})_(?P<t>\d{6})_DONE\.csv$')
 
@@ -1184,6 +1211,39 @@ class CsvRepository:
         if sync_status is not None:
             meta['sync_status'] = sync_status
         return meta
+
+    def finish_wip(self, path: Path) -> Path:
+        """
+        Ručně dokončí rozpracovanou zakázku: wip/…_WIP.csv → done_local/…_DONE.csv (jako Op3 v DatabaseGateway).
+
+        Neúplný poslední řádek (výpadek proudu při zápisu kusu) se odřízne, data na disk (fsync), pak atomický
+        přesun ve svazku (os.replace — nikdy kopie). Gateway soubor v done_local/ převezme do fronty pro NAS sama
+        (register_untracked, do ~1,5 min); chybějící WIP pozná a další kus zakázky odmítne (Rejected).
+        Gateway drží soubor (zápis kusu) → krátké opakování, trvalý zámek → PermissionError (API 409).
+
+        Raises:
+            FileExistsError: DONE soubor stejného jména už existuje (done_local / done_remote).
+        """
+        done_name = path.name[: -len('_WIP.csv')] + '_DONE.csv'
+        base = path.parent.parent
+        dst = base / 'done_local' / done_name
+        if dst.exists() or (base / 'done_remote' / done_name).exists():
+            raise FileExistsError(done_name)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(_DELETE_ATTEMPTS):
+            try:
+                with open(path, 'r+b') as f:
+                    _truncate_partial_line(f, path.name)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(path, dst)
+                break
+            except PermissionError:
+                if attempt == _DELETE_ATTEMPTS - 1:
+                    raise
+                time.sleep(_DELETE_DELAY_S)
+        log.warning("[CSV]   rozpracovaná zakázka dokončena ručně: %s → done_local/%s", path.name, done_name)
+        return dst
 
     def delete_file(self, path: Path) -> None:
         """Smaže CSV soubor z lokálního úložiště.

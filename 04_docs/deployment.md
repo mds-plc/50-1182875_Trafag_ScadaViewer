@@ -44,6 +44,18 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.3 (2026-10-26) — ScadaViewer: ruční dokončení rozpracované zakázky
+
+Balíček `06_build/releases/deploy_v2.6.3/` (`deploy.bat`) — **Analyzing a DatabaseGateway 2.6.2 beze změny**, ScadaViewer 2.6.3.
+Formát CSV ani PLC beze změny; lze nasadit přímo na 2.6.2.
+
+| Změna | Dopad |
+|---|---|
+| Databáze → řádek In progress → tlačítko **Dokončit zakázku** (jen admin u stroje) | zakázku, která se na stroji neuzavřela (výpadek proudu), uzavře se všemi naměřenými kusy; Gateway ji do pár minut nahraje na NAS |
+| Zakázku, kterou PLC hlásí jako běžící, dokončit nejde; bez spojení s PLC nutné potvrzení obsluhy | pokračovat v dokončené zakázce nelze (další kus PLC odmítne — Rejected) |
+
+---
+
 ## Release 2.6.2 (2026-10-26) — společné vydání, opravy celkového auditu A26
 
 Balíček `06_build/releases/deploy_v2.6.2/` (`deploy.bat`) — Analyzing, DatabaseGateway a ScadaViewer 2.6.2. **Formát CSV

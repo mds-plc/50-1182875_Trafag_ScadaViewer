@@ -57,8 +57,10 @@
 # 2.6.2 (2026-10-26): vsechny tri aplikace 2.6.2 - opravy celkoveho auditu A26 (fsync, kus bez mereni = odpory 9999,9,
 #   vychozi heslo, odhlaseni po necinnosti, Op5 pri vypadku ADS, heartbeat, misto na disku ...). Format CSV beze zmeny.
 #   Pozadavky na PLC jako 2.6.0; Gateway nove posila WarningCode 2 (test bez signalu) a 3 (malo mista na disku).
+# 2.6.3 (2026-10-26): jen ScadaViewer 2.6.3 - admin u stroje muze dokoncit rozpracovanou zakazku (Databaze ->
+#   In progress -> Dokoncit zakazku). Analyzing a DatabaseGateway zustavaji 2.6.2, PLC ani format CSV beze zmeny.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.2', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.3', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -73,8 +75,8 @@ $AppDates = @{ AdsAnalyzer = '2026-10-26'; DatabaseGateway = '2026-10-26'; Scada
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.2' }
-$PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Novinka 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji).'
+$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.3' }
+$PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji).'
 
 $ErrorActionPreference = 'Stop'
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -861,4 +863,6 @@ Log '     UDP 123 nasloucha - jinak viz ScadaViewer 04_docs/deployment.md -> Cas
 Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nastaveni -> Predvolby: Automaticky).'
 Log '  6. 2.6.2: ScadaViewer -> Nastaveni -> Uzivatele: zmenit vychozi heslo admin (pruh dole); prihlaseni heslem u stroje'
 Log '     konci po 15 min necinnosti; Info -> verze 2.6.2. Heslo k NAS zmenit (stare je v historii gitu Gateway).'
-Log '  7. Zalohy *.backup_* po overeni smazat.'
+Log '  7. 2.6.3: Databaze -> radek In progress -> tlacitko Dokoncit zakazku (jen admin u stroje) - jen u zakazky,'
+Log '     ktera na stroji skoncila a neuzavrela se. Info -> verze ScadaViewer 2.6.3.'
+Log '  8. Zalohy *.backup_* po overeni smazat.'

@@ -94,6 +94,16 @@ export interface Translations {
     deleteWipConfirm: string
     deleteWipForbidden: string
     deleteBusy: string
+    finishWip: string
+    finishWipTitle: string
+    finishWipBody: string
+    finishWipPlcUnknown: string
+    finishWipConfirm: string
+    finishWipSuccess: string
+    finishWipRunning: string
+    finishWipExists: string
+    finishWipBusy: string
+    finishWipError: string
     batchUnsyncedCount: string
     rangeRecords: string
     clearFilter: string
