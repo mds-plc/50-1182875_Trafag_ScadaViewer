@@ -58,10 +58,13 @@
 #   vychozi heslo, odhlaseni po necinnosti, Op5 pri vypadku ADS, heartbeat, misto na disku ...). Format CSV beze zmeny.
 #   Pozadavky na PLC jako 2.6.0; Gateway nove posila WarningCode 2 (test bez signalu) a 3 (malo mista na disku).
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.2', [string]$MoveTo = '', [switch]$NoMove)
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.2', [string]$MoveTo = '', [switch]$NoMove,
+      [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
 $DefaultAppsRoot = Join-Path $env:SystemDrive 'apps'
+# Cil presunu lokalni databaze (Gateway local_base_dir = ScadaViewer local_path) z profilu uzivatele (krok 5e)
+$DefaultDataRoot = Join-Path $env:SystemDrive 'Data'
 
 # Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
 # (stejna verze i datum) se tak neprejmenuje znovu
@@ -318,9 +321,32 @@ function Grant-HelperExecute {
     }
 }
 
-# Selhani po zastaveni sluzeb (krok 5-5c): vratit presuny slozek, exe + _internal a Config.toml ze zalohy (audit A26-04)
+# Krok 5e: lokalni databaze z profilu uzivatele do vlastni slozky (sluzby zastavene). Slozka se presune (stejny disk =
+# prejmenovani, okamzite i u velkych dat), Update-PathReferences prepise Config.toml vsech aplikaci (Gateway
+# local_base_dir, ScadaViewer local_path) i plne cesty v sync_state.json. Zaznam data_move.txt v zaloze Gateway -> rollback.
+$script:DataMoved = $false
+function Invoke-DataMove($move, [string]$recordDir) {
+    if (-not (Test-Path -LiteralPath $move.Root)) { New-AppsRoot $move.Root } else { Test-AppsRootAcl $move.Root }
+    if ($recordDir) { [IO.File]::WriteAllLines((Join-Path $recordDir 'data_move.txt'), [string[]]@($move.From, $move.To)) }
+    [IO.Directory]::Move($move.From, $move.To)
+    $script:DataMoved = $true
+    Reset-MovedAcl $move.To
+    $pairs = New-Object System.Collections.ArrayList
+    [void]$pairs.Add(@{ From = $move.From; To = $move.To })
+    Update-PathReferences $pairs
+    Log "  Lokalni databaze: $($move.From) -> $($move.To) (Config.toml Gateway + ScadaViewer, sync_state.json prepsany)" 'Green'
+}
+
+# Selhani po zastaveni sluzeb (krok 5-5e): vratit presuny slozek, exe + _internal a Config.toml ze zalohy (audit A26-04)
 function Restore-AfterFailure($donePairs) {
     $back = New-Object System.Collections.ArrayList
+    if ($script:DataMoved -and $DataMove -and (Test-Path -LiteralPath $DataMove.To) -and -not (Test-Path -LiteralPath $DataMove.From)) {
+        try {
+            [IO.Directory]::Move($DataMove.To, $DataMove.From)
+            [void]$back.Add(@{ From = $DataMove.To; To = $DataMove.From })
+            Log "  Lokalni databaze vracena do $($DataMove.From)" 'Green'
+        } catch { Log "[CHYBA] Databazi $($DataMove.To) se nepodarilo vratit ($($_.Exception.Message)) - vratte rucne do $($DataMove.From)." 'Red' }
+    }
     for ($i = $donePairs.Count - 1; $i -ge 0; $i--) {
         $p = $donePairs[$i]; $app = $p.App
         try {
@@ -500,6 +526,20 @@ if ($Rollback) {
             }
         }
     }
+    # Nasazeni presunulo lokalni databazi (data_move.txt v zaloze Gateway) -> vratit
+    if ($Apps[1].Backup) {
+        $rec = Join-Path $Apps[1].Backup 'data_move.txt'
+        if (Test-Path -LiteralPath $rec) {
+            $l = @(Get-Content -LiteralPath $rec -Encoding UTF8)
+            if ($l.Count -ge 2 -and (Test-Path -LiteralPath $l[1]) -and -not (Test-Path -LiteralPath $l[0])) {
+                try {
+                    [IO.Directory]::Move($l[1], $l[0])
+                    [void]$back.Add(@{ From = $l[1]; To = $l[0] })
+                    Log "  Lokalni databaze vracena: $($l[1]) -> $($l[0])" 'Green'
+                } catch { Log "[CHYBA] Databazi $($l[1]) se nepodarilo vratit ($($_.Exception.Message)) - vratte rucne." 'Red' }
+            }
+        }
+    }
     Update-PathReferences $back
     if ($restoreCfg) {
         # Kopie z doby nasazeni (pred krokem 5d / 5c) = puvodni stav vcetne cest - prepise i Update-PathReferences
@@ -626,11 +666,46 @@ foreach ($app in $Apps) {
     Log ("Presune / prejmenuje se: {0}  ->  {1}" -f $parent, $target) 'Cyan'
 }
 
+# Plan presunu lokalni databaze (krok 5e) - jen lezi-li v profilu uzivatele (nebo -MoveDataTo) a ne ve slozce aplikace
+$DataMove = $null
+$gwCfgPath = Join-Path $Apps[1].Dir 'Config.toml'
+$dataDir   = Get-TomlValue $gwCfgPath 'storage' 'local_base_dir'
+if (-not $dataDir) { $dataDir = '03_output' }
+if (-not [IO.Path]::IsPathRooted($dataDir)) { $dataDir = Join-Path $Apps[1].Dir $dataDir }
+$dataDir = $dataDir.TrimEnd('\')
+$dataInApp = @($Apps | Where-Object { $dataDir.StartsWith("$(Split-Path $_.Dir)\", [StringComparison]::OrdinalIgnoreCase) })
+if (-not $NoMoveData -and $dataInApp.Count -eq 0 -and
+    ($MoveDataTo -or $dataDir.StartsWith("$profiles\", [StringComparison]::OrdinalIgnoreCase))) {
+    if ($local -and $local.TrimEnd('\') -ne $dataDir) {
+        Log "[INFO] ScadaViewer local_path ($local) a Gateway local_base_dir ($dataDir) se lisi - presun databaze se preskoci." 'Yellow'
+    } elseif (-not (Test-Path -LiteralPath $dataDir)) {
+        Log "[INFO] Lokalni databaze $dataDir neexistuje - presun se preskoci." 'Yellow'
+    } else {
+        if (-not $MoveDataTo) {
+            Log "[INFO] Lokalni databaze lezi v profilu uzivatele: $dataDir" 'Yellow'
+            Log "       Po vypnuti / omezeni uctu (smernice Trafag pro OT) by byla ohrozena - doporuceny presun do $DefaultDataRoot." 'Yellow'
+            if (Ask "Presunout lokalni databazi do $DefaultDataRoot (Config.toml Gateway + ScadaViewer a sync_state.json se prepisou; rollback vrati)?") {
+                $MoveDataTo = $DefaultDataRoot
+            }
+        }
+        if ($MoveDataTo) {
+            $dataRoot = $MoveDataTo.TrimEnd('\')
+            if (-not [IO.Path]::IsPathRooted($dataRoot)) { Fail "-MoveDataTo musi byt cela cesta (napr. $DefaultDataRoot)." }
+            $target = Join-Path $dataRoot (Split-Path -Leaf $dataDir)
+            if ((Split-Path -Qualifier $dataDir) -ne (Split-Path -Qualifier $target)) { Fail "Presun databaze na jiny disk ($target) skript neumi - zvolte cil na disku $(Split-Path -Qualifier $dataDir)." }
+            if (Test-Path -LiteralPath $target) { Fail "Cilova slozka databaze $target uz existuje - prejmenujte / smazte ji, nebo spustte s -NoMoveData." }
+            $DataMove = @{ From = $dataDir; To = $target; Root = $dataRoot }
+            Log ("Presune se lokalni databaze: {0}  ->  {1}" -f $dataDir, $target) 'Cyan'
+        }
+    }
+}
+
 if ($PlcNote) {
     Log "[PLC] $PlcNote" 'Yellow'
     if (-not (Ask 'PLC program je pripraveny?')) { Log 'Zruseno - nejdriv nahrat program do PLC.'; exit 1 }
 }
 $renameText = if ($Renames.Count -gt 0) { " a presunout / prejmenovat $($Renames.Count) slozk(y)" } else { '' }
+if ($DataMove) { $renameText += " a presunout lokalni databazi do $($DataMove.To)" }
 if (-not (Ask "Zastavit sluzby a nasadit v$Version (Analyzing $($AppVersions.AdsAnalyzer), Gateway $($AppVersions.DatabaseGateway), ScadaViewer $($AppVersions.ScadaViewer))$renameText?")) { Log 'Zruseno.'; exit 1 }
 
 # 3. Rozbaleni do docasne slozky (pred zastavenim - kratsi odstavka)
@@ -730,6 +805,9 @@ foreach ($app in $Renames) {
 }
 Update-PathReferences $done
 if ($MoveTo) { Grant-HelperExecute }    # kiosk / zastupce z Po spusteni po presunu do C:\apps (UAC)
+
+# 5e. Lokalni databaze z profilu uzivatele do vlastni slozky (zaznam pro rollback v zaloze Gateway)
+if ($DataMove) { Invoke-DataMove $DataMove $Apps[1].Backup }
 
 } catch {
     $err = $_

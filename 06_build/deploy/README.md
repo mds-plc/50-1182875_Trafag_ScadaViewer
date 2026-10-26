@@ -19,6 +19,13 @@ práva od ní. Existující cílovou složku přístupnou všem skript nahlásí
 a bez přesunu: `-NoMove`. Zbylé cesty do profilu v `Config.toml` (např. export mimo složku aplikace) skript nahlásí jako varování.
 Skript na začátku vypíše i účet, pod kterým služby běží (podklad pro Trafag IT).
 
+**Přesun lokální databáze (od 2026-10-26):** leží-li složka dat (Gateway `[storage] local_base_dir` = ScadaViewer
+`[data] local_path`, dnes `C:\Users\admin\Desktop\DtbLoc`) v profilu uživatele, skript nabídne přesun do `C:\Data`
+(`C:\Data\DtbLoc`). Po zastavení služeb složku přesune (stejný disk = okamžité přejmenování), přepíše cestu v `Config.toml`
+Gateway i ScadaViewer a plné cesty v `sync_state.json`; práva jako `C:\apps`. Selhání → vrátí se; `rollback.bat` přesun
+vrátí (`data_move.txt` v záloze Gateway). Jiný cíl (jen na stejném disku): `-MoveDataTo C:\jinam`;
+bez dotazu a bez přesunu: `-NoMoveData`. Databáze ve složce aplikace (výchozí `03_output`) se přesouvá s aplikací.
+
 **Selhání a rollback (od 2026-10-25, audit A26-04 / A26-05):** chyba po zastavení služeb (zámek antiviru, plný disk …)
 → skript sám vrátí přesuny složek, exe, `_internal` a `Config.toml` ze zálohy, spustí služby a skončí chybou (běží
 předchozí verze). `last_deploy.txt` v balíčku = razítko posledního nasazení; `rollback.bat` obnoví jen zálohy s ním

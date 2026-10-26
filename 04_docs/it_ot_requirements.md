@@ -93,7 +93,8 @@ před předáním změníme.
 - Instalační balíčky všech verzí archivujeme (`06_build/releases`), nasazení skriptem s rollbackem.
 - Aktualizace: bezpečnostní kontrola závislostí při každém vydání (`npm audit`, pevné verze knihoven);
   nové verze nasazujeme po dohodě s IT a provozem.
-- **Antivirus:** prosíme výjimku pro skenování za běhu na datovou složku (`C:\apps\…\03_output`) —
+- **Antivirus:** prosíme výjimku pro skenování za běhu na složku lokální databáze (`C:\Data\DtbLoc` — nasazovací skript
+  ji tam přesune z profilu admin; dosud `C:\Users\admin\Desktop\DtbLoc`) —
   aplikace průběžně zapisují a přesouvají CSV soubory; zámek skeneru dokáže zápis zdržet.
 
 ## 6. Vzdálená správa dodavatele (volitelné)
