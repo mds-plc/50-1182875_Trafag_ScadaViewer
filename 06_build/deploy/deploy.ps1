@@ -54,21 +54,24 @@
 #   na obrazovce (kiosk), prejmenovani slozek s verzi (krok 5c). Nova datova hlavicka CSV (37 sloupcu) -> wip prazdna.
 # 2.6.1 (2026-10-23): Analyzing 2.6.1 (robustni detekce FP), ScadaViewer 2.6.1 (zalozka Electric ukazuje vsechny
 #   odpory, sirky sloupcu); DatabaseGateway zustava 2.6.0. Pozadavky na PLC jako 2.6.0 (AnalyzedParams 112 B).
+# 2.6.2 (2026-10-26): vsechny tri aplikace 2.6.2 - opravy celkoveho auditu A26 (fsync, kus bez mereni = odpory 9999,9,
+#   vychozi heslo, odhlaseni po necinnosti, Op5 pri vypadku ADS, heartbeat, misto na disku ...). Format CSV beze zmeny.
+#   Pozadavky na PLC jako 2.6.0; Gateway nove posila WarningCode 2 (test bez signalu) a 3 (malo mista na disku).
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.1', [string]$MoveTo = '', [switch]$NoMove)
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.2', [string]$MoveTo = '', [switch]$NoMove)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
 $DefaultAppsRoot = Join-Path $env:SystemDrive 'apps'
 
 # Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
 # (stejna verze i datum) se tak neprejmenuje znovu
-$AppDates = @{ AdsAnalyzer = '2026-10-23'; DatabaseGateway = '2026-10-22'; ScadaViewer = '2026-10-23' }
+$AppDates = @{ AdsAnalyzer = '2026-10-26'; DatabaseGateway = '2026-10-26'; ScadaViewer = '2026-10-26' }
 # [measurement] max_cycles v Config.toml Analyzingu a Gateway musi byt >= velikost bufferu v PLC (cMEASURING_MAX_CYCLES);
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.1'; DatabaseGateway = '2.6.0'; ScadaViewer = '2.6.1' }
-$PlcNote     = 'Bezi na PLC NOVY program (2.6.0)? AnalyzedParams 112 B: Electric.R_NC_Static + R_NO_Static (na konci Electric), z 2.5.0 DF / FPR / Info.Calibration.PositionReference a limity trideni DF / FPR; cMEASURING_MAX_CYCLES = 60000. Se starym programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi.'
+$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.2' }
+$PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Novinka 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji).'
 
 $ErrorActionPreference = 'Stop'
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -778,4 +781,6 @@ Log '     detail kusu: polohy FP / RP / OP / TTP s hodnotami, bod FPR, DF. Preji
 Log '  4. Nastaveni -> Cas / NTP: sluzba Windows Time bezi, NTP server zapnuty, ohlasovani "spolehlivy zdroj" (AnnounceFlags 5),'
 Log '     UDP 123 nasloucha - jinak viz ScadaViewer 04_docs/deployment.md -> Cas PC - NTP server pro IPC.'
 Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nastaveni -> Predvolby: Automaticky).'
-Log '  6. Zalohy *.backup_* po overeni smazat.'
+Log '  6. 2.6.2: ScadaViewer -> Nastaveni -> Uzivatele: zmenit vychozi heslo admin (pruh dole); prihlaseni heslem u stroje'
+Log '     konci po 15 min necinnosti; Info -> verze 2.6.2. Heslo k NAS zmenit (stare je v historii gitu Gateway).'
+Log '  7. Zalohy *.backup_* po overeni smazat.'

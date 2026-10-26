@@ -44,6 +44,24 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.2 (2026-10-26) — společné vydání, opravy celkového auditu A26
+
+Balíček `06_build/releases/deploy_v2.6.2/` (`deploy.bat`) — Analyzing, DatabaseGateway a ScadaViewer 2.6.2. **Formát CSV
+beze změny**, požadavky na PLC jako 2.6.0 (AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES = 60000`). Lze nasadit na stroj s 2.3.x–2.6.1.
+Podrobnosti: `04_docs/audit_log.md` → „[2026-10-25] Celkový audit ekosystému A26", poznámky `RELEASE_NOTES_v2.6.2.md`.
+
+| Změna | Dopad |
+|---|---|
+| Gateway: `fsync` před přejmenováním souboru a před Done | výpadek proudu neztratí zakázku |
+| Gateway: Op5 při výpadku ADS nic neuloží (PLC zopakuje), opakovaný test bez duplikátu; neplatné měření → **WarningCode 2** | PLC: zobrazit kód 2 obsluze |
+| Gateway: volné místo pod `[storage] min_free_gb` (2 GB) → **WarningCode 3**; heartbeat bliká jen při živé hlavní smyčce | PLC: zobrazit kód 3; watchdog pozná zaseknutí |
+| Gateway: `Config.toml` mimo git a release ZIP (jen `.example`) | při nasazení Config.toml na stroji beze změny (deploy ho nekopíruje) |
+| Analyzing: kus bez měření (W1 / W3 / W5) → odpory 9999,9 (dřív 0 = ideální kontakt); Run↑ maže předchozí výsledek | kus bez měření nikdy neprojde limitem odporu |
+| Analyzing: export signálů se přeskočí pod `export_min_free_gb` (10 GB) | disk sdílený s Gateway se nezaplní |
+| ScadaViewer: výchozí heslo „admin" — vzdáleně nepřihlásí, u stroje pruh „změňte heslo"; přihlášení heslem u stroje končí po 15 min nečinnosti | po nasazení změnit heslo admina |
+| ScadaViewer: nečitelný users.toml se nepřepíše (změny 409, záloha .bak); kiosk mimo rate limit; řada drobných oprav | — |
+| `deploy.ps1`: obnova po selhání v půlce, rollback jen z posledního nasazení, volitelný přesun do `C:\apps` (doporučeno zatím **N**) | viz `06_build/deploy/README.md` |
+
 ## Release 2.6.1 (2026-10-23) — Analyzing 2.6.1, ScadaViewer 2.6.1 (DatabaseGateway 2.6.0)
 
 Balíček `06_build/releases/deploy_v2.6.1/` (`deploy.bat`) — **všechny tři aktuální verze**; požadavky a kontroly jako
