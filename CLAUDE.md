@@ -939,10 +939,10 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
     nad ~500 000 soubory řazení v SQLite, změřit síť k NAS na PC u stroje
 12. A12 — rozdělit `csv_repository.py` (~1 680 ř.) na přehled / cache / index zakázky
 13. Smazat vzorové zakázky `VZOR-50K-*` (100 × 13 MB) z `12.Database/production/done_remote/` po testech
-14. ~~Vydání 2.4.0~~ (verze, `deploy.ps1`, balíček `deploy_v2.4.0`) — hotovo 2026-10-19. Zbývá: přegenerovat uživatelský
-    manuál (`06_build/manual/` — ikona detailu, nápověda stránek, graf / barvy kategorií, filtr NOK oblasti, mazání
-    In progress, dokončení rozpracované zakázky, flashka (ukládání, bezpečné odebrání), PLC přihlášení = admin, nová
-    definice RT, XLSX podle vzoru) a GitHub releasy ručně (gh nepřihlášen)
+14. ~~Uživatelský manuál~~ — přegenerován 2026-10-27 pro 2.6.10 (vydání manuálu 2.0, CS + EN, 41 stran, 43 obrázků):
+    nová ukázková data ve formátu Gateway 2.6.x, `run_demo.py` (atrapa flashky, NTP / NAS jako u stroje), všechny funkce
+    do 2.6.10 + přílohy Parametry a Pojmy. Zbývá: GitHub releasy ručně (gh nepřihlášen); Info → Dokumentace stále uvádí
+    „Uživatelský manuál bude doplněn“ (`i18n info.docsManualNote`) — upravit při příštím vydání
 
 > Hotové položky dřívějšího TODO (build, frontend testy, CSP, ADS mock testy, řazení,
 > hromadné mazání) jsou v § 13 a v `audit_log.md`.

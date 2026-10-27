@@ -1,5 +1,6 @@
 // Uživatelský manuál ScadaViewer — generátor .docx (CS + EN)
 // Použití: node build_manual.js cs|en <výstupní.docx>
+// Text odpovídá verzi aplikace v 00_backend/scada/__init__.py; popisky tlačítek = i18n/cs.ts / en.ts.
 const fs = require('fs')
 const path = require('path')
 const {
@@ -18,8 +19,9 @@ const params = JSON.parse(fs.readFileSync(path.join(__dirname, 'params.json'), '
 // Verze aplikace — jediný zdroj je scada/__init__.py (__version__), ne natvrdo v textu manuálu
 const VERSION = (fs.readFileSync(path.join(__dirname, '..', '..', '00_backend', 'scada', '__init__.py'), 'utf8')
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
+const ISSUE = t('2.0 · říjen 2026', '2.0 · October 2026')
 const FONT = 'Segoe UI'
-const NAVY = '161C2D', ACCENT = '2563EB', MUTED = '6B7280', LINE = 'D1D5DB', SOFT = 'F3F4F6'
+const NAVY = '161C2D', ACCENT = '2563EB', MUTED = '6B7280', LINE = 'D1D5DB'
 const PAGE_W = 11906, MARGIN = 1134                       // A4, okraje 2 cm
 const CONTENT = PAGE_W - 2 * MARGIN                        // 9638 DXA ≈ 17 cm
 const CONTENT_PX = Math.round(CONTENT / 1440 * 96)         // ≈ 642 px
@@ -47,20 +49,26 @@ const H1 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: 
 const H2 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(text)] })
 const H3 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(text)] })
 const UL = (items) => items.map(i => new Paragraph({ numbering: { reference: 'bullets', level: 0 }, children: runs(i), spacing: { after: 60, line: 276 } }))
-const OL = (items, ref) => items.map(i => new Paragraph({ numbering: { reference: ref, level: 0 }, children: runs(i), spacing: { after: 60, line: 276 } }))
+let olNo = 0
+const OL = (items) => {
+  olNo += 1
+  return items.map(i => new Paragraph({ numbering: { reference: 'steps', level: 0, instance: olNo }, children: runs(i), spacing: { after: 60, line: 276 } }))
+}
 
 function pngSize(file) {
   const b = fs.readFileSync(file)
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), data: b }
 }
 
-// Obrázek s popiskem; frac = podíl šířky obsahu, maxPx = horní mez (malé výřezy nezvětšovat)
+// Obrázek s popiskem; frac = podíl šířky obsahu, maxScale = horní mez vůči pixelům snímku (malé výřezy nezvětšovat)
 function FIG(id, caption, frac = 1, maxScale = 0.5) {
   const file = path.join(IMG, `${id}.png`)
   if (!fs.existsSync(file)) throw new Error('chybí obrázek ' + file)
   const { w, h, data } = pngSize(file)
-  const width = Math.min(Math.round(CONTENT_PX * frac), Math.round(w * maxScale))
-  const height = Math.round(h * width / w)
+  let width = Math.min(Math.round(CONTENT_PX * frac), Math.round(w * maxScale))
+  let height = Math.round(h * width / w)
+  const MAX_H = 820                                        // ~21,7 cm — obrázek se vejde na stranu i s popiskem
+  if (height > MAX_H) { width = Math.round(width * MAX_H / height); height = MAX_H }
   figNo += 1
   return [
     new Paragraph({
@@ -80,11 +88,11 @@ function FIG(id, caption, frac = 1, maxScale = 0.5) {
   ]
 }
 
-// Zvýrazněný blok (tip / pozor)
+// Zvýrazněný blok (tip / pozor / poznámka)
 function NOTE(kind, text) {
-  const color = kind === 'warn' ? 'B45309' : ACCENT
-  const fill = kind === 'warn' ? 'FEF3C7' : 'EFF6FF'
-  const label = kind === 'warn' ? t('Pozor: ', 'Caution: ') : t('Tip: ', 'Tip: ')
+  const color = kind === 'warn' ? 'B45309' : kind === 'info' ? '374151' : ACCENT
+  const fill = kind === 'warn' ? 'FEF3C7' : kind === 'info' ? 'F3F4F6' : 'EFF6FF'
+  const label = kind === 'warn' ? t('Pozor: ', 'Caution: ') : kind === 'info' ? t('Poznámka: ', 'Note: ') : t('Tip: ', 'Tip: ')
   return new Paragraph({
     spacing: { before: 120, after: 180, line: 276 },
     shading: { type: ShadingType.CLEAR, fill, color: 'auto' },
@@ -134,7 +142,7 @@ function titlePage() {
     [t('Zákazník', 'Customer'), 'Trafag AG'],
     [t('Projekt', 'Project'), '50-1182875'],
     [t('Verze aplikace', 'Application version'), VERSION],
-    [t('Vydání manuálu', 'Manual issue'), t('1.1 · říjen 2026', '1.1 · October 2026')],
+    [t('Vydání manuálu', 'Manual issue'), ISSUE],
     [t('Dodavatel', 'Supplier'), 'Mechatronic Design & Solutions (MDS)'],
   ]
   const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
@@ -146,8 +154,8 @@ function titlePage() {
     new Paragraph({
       spacing: { after: 1400 }, border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ACCENT, space: 12 } },
       children: [new TextRun({ text: t(
-        'Webová aplikace pro prohlížení výrobních a testovacích dat mikrospínačů — linka Trafag AG',
-        'Web application for viewing production and test data of microswitches — Trafag AG line'), size: 24, color: '374151' })],
+        'Webová aplikace pro prohlížení, vyhodnocení a export výrobních a testovacích dat mikrospínačů — měřicí a třídicí linka Trafag AG',
+        'Web application for viewing, evaluating and exporting production and test data of microswitches — Trafag AG measuring and sorting line'), size: 24, color: '374151' })],
     }),
     new Table({
       width: { size: 6800, type: WidthType.DXA }, columnWidths: [2600, 4200],
@@ -165,408 +173,664 @@ function body() {
   const Y = '✓', N = '—'
   const c = []
 
-  // 1 ─ Úvod
+  // ═══ 1 Úvod ═══════════════════════════════════════════════════════════
   c.push(H1(t('1  Úvod', '1  Introduction')))
-  c.push(H2(t('1.1  K čemu aplikace slouží', '1.1  What the application is for')))
+  c.push(H2(t('1.1  Účel aplikace', '1.1  Purpose of the application')))
   c.push(P(t(
-    'ScadaViewer je webová aplikace pro prohlížení dat z linky na měření a třídění mikrospínačů. Během výroby a testů zapisuje služba **DatabaseGateway** naměřené hodnoty každého kusu do CSV souborů na PC u stroje a nahrává je na síťové úložiště (Synology NAS). ScadaViewer tato data přehledně zobrazí — v tabulkách, grafech a diagramech — a umožní je exportovat a vytisknout.',
-    'ScadaViewer is a web application for viewing data from the microswitch measuring and sorting line. During production and tests, the **DatabaseGateway** service writes the measured values of every piece to CSV files on the machine PC and uploads them to network storage (Synology NAS). ScadaViewer presents this data clearly — in tables, charts and diagrams — and lets you export and print it.')))
-  c.push(P(t('V aplikaci můžete:', 'In the application you can:')))
+    'ScadaViewer je webová aplikace pro prohlížení a vyhodnocení dat z linky na měření a třídění mikrospínačů. Pro každý kus zakázky zaznamená linka průběh síly, polohy a elektrických veličin kontaktů; analytická služba **Analyzing** z nich vypočte charakteristické parametry spínače a služba **DatabaseGateway** je zapíše do souborů CSV na PC u stroje a nahraje na síťové úložiště (Synology NAS). ScadaViewer tato data zpřístupní v tabulkách, grafech a diagramech a umožní je filtrovat, exportovat a tisknout.',
+    'ScadaViewer is a web application for viewing and evaluating data from the microswitch measuring and sorting line. For every piece of an order the line records the force, position and electrical contact signals; the **Analyzing** service calculates the characteristic parameters of the switch from them and the **DatabaseGateway** service writes them to CSV files on the machine PC and uploads them to network storage (Synology NAS). ScadaViewer makes this data available in tables, charts and diagrams and lets you filter, export and print it.')))
+  c.push(P(t('Hlavní funkce:', 'Main functions:')))
   c.push(...UL(t([
-    'procházet zakázky (Production) a testy (Testing) na PC u stroje i na NAS,',
-    'sledovat rozpracovanou zakázku, která se právě měří,',
-    'zobrazit rozložení kusů do kategorií 1–6 a časový průběh výroby zakázky,',
-    'filtrovat kusy zakázky podle stavu OK / NOK a podle kategorie,',
-    'otevřít detail jednoho kusu s diagramem síla–dráha a spínacími časy kontaktů,',
-    'prohlížet signálová data testů (poloha, síla, napětí, proud a odpor kontaktů),',
-    'stahovat data jako CSV nebo XLSX a tisknout protokoly A4,',
-    'hlídat zaplnění lokálního úložiště a uvolnit místo po synchronizaci na NAS.',
+    'přehled výrobních zakázek (Production) a testovacích měření (Testing) na PC u stroje i v archivu na NAS, hledání zakázky podle čísla,',
+    'sledování rozpracované zakázky, její ruční dokončení po výpadku a hlídání zaplnění lokálního úložiště, NAS a flashky,',
+    'detail zakázky: údaje zakázky (šarže, testovací parametry, kategorie a limity třídění), rozložení kusů do kategorií 1–6, časový průběh výroby,',
+    'tabulka kusů s filtrem podle stavu, kategorie a oblasti NOK a s vyznačením hodnot mimo limity třídění,',
+    'detail kusu s diagramem síla–dráha, časovým diagramem spínání a grafickou nápovědou ke každému parametru,',
+    'signálová data testovacích měření (poloha, síla, napětí, proud a odpor kontaktů) s přiblížením v plném rozlišení,',
+    'export CSV / XLSX jednotlivě i hromadně (u stroje na flashku, z kanceláře do prohlížeče), tiskové protokoly A4,',
+    'čas PC u stroje jako NTP server pro další průmyslová PC (IPC) linky.',
   ], [
-    'browse orders (Production) and tests (Testing) on the machine PC and on the NAS,',
-    'follow the order that is currently being measured,',
-    'see how the pieces of an order are distributed into categories 1–6 and how production progressed over time,',
-    'filter the pieces of an order by OK / NOK status and by category,',
-    'open the detail of a single piece with the force–travel diagram and contact switching times,',
-    'view the signal data of tests (position, force, contact voltage, current and resistance),',
-    'download data as CSV or XLSX and print A4 reports,',
-    'monitor how full the local storage is and free up space after synchronisation to the NAS.',
+    'overview of production orders (Production) and test measurements (Testing) on the machine PC and in the NAS archive, order search by number,',
+    'monitoring of the order in progress, finishing it manually after an outage, and monitoring of local storage, NAS and USB flash drive usage,',
+    'order detail: order data (lots, testing parameters, sorting categories and limits), distribution of pieces into categories 1–6, production timeline,',
+    'piece table with a filter by status, category and NOK area and with values outside the sorting limits highlighted,',
+    'piece detail with the force–travel diagram, the switching time diagram and a graphical explanation of every parameter,',
+    'signal data of test measurements (position, force, contact voltage, current and resistance) with zoom at full resolution,',
+    'CSV / XLSX export of single files and in bulk (to a USB flash drive at the machine, to the browser from the office), A4 print reports,',
+    'the machine PC time as an NTP server for the other industrial PCs (IPCs) of the line.',
   ])))
-  c.push(NOTE('tip', t(
-    'Aplikace data pouze čte. Jediný zásah do souborů je smazání **lokálních** kopií na PC u stroje. Soubory na NAS ScadaViewer nikdy nemaže ani nemění.',
-    'The application only reads data. The only change it can make is deleting **local** copies on the machine PC. ScadaViewer never deletes or modifies files on the NAS.')))
+  c.push(NOTE('info', t(
+    'ScadaViewer naměřená data nemění. Zasahuje pouze do souborů v **lokálním** úložišti PC u stroje: mazání, uvolnění synchronizovaných kopií a ruční dokončení rozpracované zakázky. Soubory na NAS nikdy nemaže ani neupravuje.',
+    'ScadaViewer never modifies measured data. It only acts on files in the **local** storage of the machine PC: deletion, removal of synchronised copies and manually finishing an order in progress. It never deletes or alters files on the NAS.')))
 
-  c.push(H2(t('1.2  Kde aplikace běží a jak ji otevřít', '1.2  Where the application runs and how to open it')))
+  c.push(H2(t('1.2  Tok dat a stavy souboru', '1.2  Data flow and file states')))
   c.push(P(t(
-    'Aplikace běží jako služba na **PC u stroje**. Na monitoru stroje je otevřená trvale (levá obrazovka; na pravé běží HMI stroje). Z kanceláře ji otevřete v prohlížeči (Chrome nebo Edge) na adrese, kterou vám sdělí správce, například:',
-    'The application runs as a service on the **machine PC**. It is always open on the machine monitor (left screen; the machine HMI runs on the right screen). From the office, open it in a browser (Chrome or Edge) at the address provided by your administrator, for example:')))
+    'Jedna výrobní zakázka = jeden soubor `PROD_<zakázka>_<ID mikrospínače>_<datum>_<čas>.csv`, jedno testovací měření = jeden soubor `TEST_<typ>_<datum>_<čas>.csv`. Soubor prochází třemi stavy, které aplikace ukazuje ve sloupci **Sync**:',
+    'One production order = one file `PROD_<order>_<microswitch ID>_<date>_<time>.csv`, one test measurement = one file `TEST_<type>_<date>_<time>.csv`. A file goes through three states, shown by the application in the **Sync** column:')))
+  c.push(...TABLE(
+    [t('Stav (Sync)', 'State (Sync)'), t('Složka na PC u stroje', 'Folder on the machine PC'), t('Význam', 'Meaning')],
+    [
+      ['In progress', '`production/wip`', t('Zakázka se právě vyrábí; DatabaseGateway připisuje každý další kus.', 'The order is being produced; DatabaseGateway appends every further piece.')],
+      ['Local', '`…/done_local`', t('Zakázka je uzavřená a čeká na nahrání na NAS. Na PC u stroje je zatím **jediná kopie** dat.', 'The order is closed and waiting to be uploaded to the NAS. The machine PC holds the **only copy** of the data so far.')],
+      ['Synced', '`…/done_remote`', t('Zakázka je nahraná na NAS; lokální kopie slouží jen pro rychlý přístup a lze ji uvolnit (kap. 3.5).', 'The order has been uploaded to the NAS; the local copy only serves fast access and can be removed (section 3.5).')],
+    ],
+    [1700, 2300, 5638], t('Stavy souboru zakázky', 'Order file states')))
+  c.push(P(t(
+    'Výrobní soubor má od verze DatabaseGateway 2.3 blokovou strukturu: `[Metadata]` (zakázka, receptura, ID a název mikrospínače, šarže výrobce), `[TestingParameters]` (parametry testu z receptury), `[SortingCategories]` (meze kategorií 1–6), `[SortingLimits]` (limity Trafag a výrobce pro každý měřený parametr) a `[Data]` (jeden řádek na kus). ScadaViewer čte i starší soubory s jednodušší hlavičkou.',
+    'Since DatabaseGateway 2.3 the production file has a block structure: `[Metadata]` (order, recipe, microswitch ID and name, supplier lots), `[TestingParameters]` (test parameters from the recipe), `[SortingCategories]` (limits of categories 1–6), `[SortingLimits]` (Trafag and supplier limits of every measured parameter) and `[Data]` (one row per piece). ScadaViewer also reads older files with a simpler header.')))
+  c.push(P(t(
+    'Hodnoty jsou v jednotkách zákazníka: síly v mN, polohy a dráhy v µm, časy v µs, odpory kontaktů v mΩ. Polohy FP, OP, RP, TTP a FPR udávají výšku hmatníku nad osou upevňovacích otvorů (P = C − x, kde C je kalibrační konstanta stroje a x dráha vozíku); při stlačení proto klesají.',
+    'Values are in customer units: forces in mN, positions and travels in µm, times in µs, contact resistances in mΩ. The positions FP, OP, RP, TTP and FPR give the height of the actuator above the mounting-hole axis (P = C − x, where C is the calibration constant of the machine and x the carriage travel); they therefore decrease when the switch is actuated.')))
+
+  c.push(H2(t('1.3  Kde aplikace běží a jak ji otevřít', '1.3  Where the application runs and how to open it')))
+  c.push(P(t(
+    'Aplikace běží jako služba Windows na **PC u stroje**. Na monitoru stroje je trvale otevřená v režimu kiosku (levá obrazovka; na pravé běží HMI stroje). Z kanceláře ji otevřete v prohlížeči Chrome nebo Edge na adrese, kterou sdělí správce, například:',
+    'The application runs as a Windows service on the **machine PC**. It is permanently open in kiosk mode on the machine monitor (left screen; the machine HMI runs on the right screen). From the office, open it in Chrome or Edge at the address provided by your administrator, for example:')))
   c.push(P('`http://<' + t('adresa PC u stroje', 'machine PC address') + '>:8080`', { indent: { left: 360 } }))
   c.push(P(t(
-    'Z kanceláře je aplikace **jen pro prohlížení**: data můžete procházet, exportovat a tisknout, ale mazání souborů, čištění úložiště a změny nastavení jsou možné pouze na PC u stroje. Při vzdáleném přístupu je v horní liště štítek **Vzdálený přístup · jen prohlížení**.',
-    'From the office the application is **view-only**: you can browse, export and print data, but deleting files, cleaning up storage and changing settings is only possible on the machine PC. During remote access the top bar shows the label **Remote access · view only**.')))
+    'Z kanceláře je aplikace **jen pro prohlížení**: data lze procházet, stahovat a tisknout, ale mazání, dokončení zakázky, čištění úložiště, flashka, nastavení času a změny nastavení jsou možné pouze na PC u stroje. Při vzdáleném přístupu je v horní liště štítek **Vzdálený přístup · jen prohlížení**.',
+    'From the office the application is **view-only**: data can be browsed, downloaded and printed, but deleting, finishing an order, storage clean-up, the USB flash drive, setting the time and changing settings are only possible on the machine PC. During remote access the top bar shows the label **Remote access · view only**.')))
 
-  c.push(H2(t('1.3  Uživatelské role', '1.3  User roles')))
+  c.push(H2(t('1.4  Uživatelské role a oprávnění', '1.4  User roles and permissions')))
   c.push(P(t(
-    'Každý uživatel má jednu ze čtyř rolí. Vyšší role může vše, co nižší. Co smí která role, ukazuje tabulka:',
-    'Every user has one of four roles. A higher role can do everything a lower one can. The table shows what each role may do:')))
+    'Každý účet má jednu ze čtyř rolí: Operátor < Technik < Správce < Výrobce. Vyšší role smí vše, co nižší. Přihlášení přes PLC (kapitola 2.1) má oprávnění role Správce. Sloupec Kancelář platí pro libovolnou roli při přístupu z jiného počítače než PC u stroje.',
+    'Every account has one of four roles: Operator < Technician < Administrator < Manufacturer. A higher role may do everything a lower one can. Sign-in via the PLC (section 2.1) has the permissions of the Administrator role. The Office column applies to any role when accessing from a computer other than the machine PC.')))
   c.push(...TABLE(
     [t('Akce', 'Action'), R.op, R.tech, R.adm, R.mfr, R.off],
     [
-      [t('Prohlížení, export CSV / XLSX, tisk', 'Viewing, CSV / XLSX export, printing'), Y, Y, Y, Y, Y],
-      [t('Vyčistit synchronizované soubory', 'Clean up synced files'), Y, Y, Y, Y, N],
-      [t('Smazání souboru (i hromadné)', 'Deleting files (incl. batch)'), N, Y, Y, Y, N],
-      [t('Nastavení cest a limitu úložiště', 'Storage paths and limit settings'), N, N, Y, Y, N],
+      [t('Prohlížení, tisk protokolů', 'Viewing, printing reports'), Y, Y, Y, Y, Y],
+      [t('Stažení CSV / XLSX (jednotlivě i hromadně)', 'CSV / XLSX download (single and bulk)'), N, N, t('✓ flashka', '✓ USB drive'), t('✓ flashka', '✓ USB drive'), t('✓ prohlížeč', '✓ browser')],
+      [t('Vyčistit synchronizované', 'Clean synced files'), Y, Y, Y, Y, N],
+      [t('Smazání souboru Synced (i hromadně)', 'Deleting a Synced file (incl. batch)'), N, Y, Y, Y, N],
+      [t('Smazání souboru Local (není na NAS)', 'Deleting a Local file (not on the NAS)'), N, N, Y, Y, N],
+      [t('Smazání / dokončení rozpracované zakázky', 'Deleting / finishing the order in progress'), N, N, Y, Y, N],
+      [t('Flashka — bezpečné odebrání', 'USB flash drive — safe removal'), N, N, Y, Y, N],
+      [t('Cesty k datům a limit úložiště', 'Data paths and storage limit'), N, N, Y, Y, N],
+      [t('Nastavení času PC (přehled vidí všichni)', 'Setting the PC time (everyone sees the overview)'), N, N, Y, Y, N],
       [t('Správa uživatelů', 'User management'), N, N, t('jen nižší role', 'lower roles only'), Y, N],
-      [t('Změna vlastního hesla', 'Changing your own password'), Y, Y, Y, Y, Y],
     ],
-    [3238, 1180, 1180, 1440, 1300, 1300],
-    t('Oprávnění podle role (sloupec Kancelář = přístup z jiného počítače než PC u stroje)', 'Permissions by role (Office column = access from a computer other than the machine PC)')))
+    [3238, 1100, 1100, 1400, 1400, 1400],
+    t('Oprávnění podle role (u stroje) a z kanceláře', 'Permissions by role (at the machine) and from the office')))
+  c.push(NOTE('info', t(
+    'U stroje se soubory nestahují do složky Stažené soubory PC, ale ukládají se výhradně na zasunutou flashku (kapitola 3.6). Proto je u stroje export vyhrazen roli Správce a vyšší.',
+    'At the machine, files are not downloaded to the PC’s Downloads folder but saved exclusively to the inserted USB flash drive (section 3.6). That is why export at the machine is reserved for the Administrator role and higher.')))
 
-  c.push(H2(t('1.4  O tomto manuálu', '1.4  About this manual')))
+  c.push(H2(t('1.5  O tomto manuálu', '1.5  About this manual')))
   c.push(P(t(
-    'Obrázky v manuálu pocházejí z ukázkových dat. Na obrázcích je PLC odpojené (červený stav v horní liště); v provozu u stroje je stav zelený. Názvy zakázek, časy a hodnoty slouží jen jako příklad.',
-    'The figures in this manual were taken with sample data. The PLC is disconnected in the figures (red status in the top bar); in operation at the machine the status is green. Order names, times and values are examples only.')))
+    `Manuál popisuje ScadaViewer verze ${VERSION}. Obrázky pocházejí z ukázkových dat ve formátu, který zapisuje linka; čísla zakázek, šarže, časy a hodnoty jsou jen příklady. Na obrázcích je PLC odpojené (červený stav v horní liště) — v provozu u stroje je stav zelený. Každá stránka aplikace má navíc vlastní stručnou nápovědu (ikona ? u nadpisu, kapitola 2.3).`,
+    `This manual describes ScadaViewer version ${VERSION}. The figures were taken with sample data in the format written by the line; order numbers, lots, times and values are examples only. The PLC is disconnected in the figures (red status in the top bar) — in operation at the machine the status is green. In addition, every page of the application has its own brief help (? icon next to the title, section 2.3).`)))
 
-  // 2 ─ Přihlášení a ovládání
+  // ═══ 2 Přihlášení a ovládání ══════════════════════════════════════════
   c.push(H1(t('2  Přihlášení a ovládání', '2  Sign-in and basic controls')))
   c.push(H2(t('2.1  Přihlášení', '2.1  Signing in')))
-  c.push(...FIG('01_login', t('Přihlašovací obrazovka', 'Sign-in screen'), 0.62))
-  c.push(P(t('Přihlásit se lze dvěma způsoby:', 'There are two ways to sign in:')))
+  c.push(...FIG('01_login', t('Přihlašovací obrazovka na PC u stroje', 'Sign-in screen on the machine PC'), 0.6))
+  c.push(P(t('Na PC u stroje se lze přihlásit dvěma způsoby:', 'On the machine PC there are two ways to sign in:')))
   c.push(...UL(t([
-    '**Automaticky přes PLC** — když se operátor přihlásí na terminálu stroje, aplikace na PC u stroje se přihlásí sama. Na obrazovce je v té době text „Čekám na přihlášení operátora na PLC terminálu…“. Z kanceláře automatické přihlášení nefunguje.',
-    '**Uživatelským jménem a heslem** — vyplňte pole v části „Nebo se přihlaste lokálně“ a stiskněte **Přihlásit se**.',
+    '**Automaticky přes PLC** — přihlásí-li se na terminálu stroje nejvyšší autorita, aplikace se přihlásí sama s oprávněním role Správce. Přihlášení platí, dokud ho PLC drží: po odhlášení na PLC (nebo při ztrátě spojení s PLC) aplikace během několika sekund odhlásí také. Mezitím obrazovka ukazuje „Čekám na přihlášení operátora na PLC terminálu…“.',
+    '**Uživatelským jménem a heslem** — vyplňte pole v části **Nebo se přihlaste lokálně** a stiskněte **Přihlásit se**. Na PC u stroje skončí přihlášení heslem po **15 minutách nečinnosti** (bez dotyku, kliknutí nebo klávesy), aby práva technika či správce nezůstala další směně.',
   ], [
-    '**Automatically via the PLC** — when the operator signs in on the machine terminal, the application on the machine PC signs in by itself. Meanwhile the screen shows “Waiting for operator login on the PLC terminal…”. Automatic sign-in does not work from the office.',
-    '**With user name and password** — fill in the fields under “Or sign in locally” and press **Sign in**.',
+    '**Automatically via the PLC** — when the highest authority signs in on the machine terminal, the application signs in by itself with the permissions of the Administrator role. The sign-in lasts as long as the PLC holds it: after sign-out on the PLC (or when the PLC connection is lost) the application signs out too within a few seconds. Meanwhile the screen shows “Waiting for operator login on PLC terminal…”.',
+    '**With user name and password** — fill in the fields under **Or sign in locally** and press **Sign in**. On the machine PC a password sign-in ends after **15 minutes of inactivity** (no touch, click or key), so that technician or administrator rights are not left to the next shift.',
   ])))
   c.push(P(t(
-    'Přihlášení platí 8 hodin. Potom aplikace zobrazí „Relace vypršela — přihlaste se prosím znovu.“ Po pěti chybných pokusech o heslo je přihlašování z daného počítače na 10 minut zablokované. Odhlásíte se tlačítkem se šipkou v horní liště.',
-    'A sign-in is valid for 8 hours. After that the application shows “Session expired — please sign in again.” After five wrong password attempts, sign-in from that computer is blocked for 10 minutes. Sign out with the arrow button in the top bar.')))
+    'Z kanceláře je k dispozici jen přihlášení jménem a heslem; platí nejvýše 8 hodin, potom aplikace zobrazí „Relace vypršela — přihlaste se prosím znovu.“. Po pěti chybných pokusech o heslo je přihlašování z daného počítače na 10 minut zablokované. Odhlásíte se tlačítkem se šipkou v horní liště.',
+    'From the office only sign-in with user name and password is available; it is valid for at most 8 hours, after which the application shows “Session expired — please sign in again.”. After five wrong password attempts, sign-in from that computer is blocked for 10 minutes. Sign out with the arrow button in the top bar.')))
+  c.push(NOTE('warn', t(
+    'Účet s výchozím heslem `admin` se z kanceláře nepřihlásí a aplikace u stroje dole zobrazuje výzvu ke změně hesla. Výchozí heslo změňte hned při uvedení do provozu (Nastavení → Uživatelé).',
+    'An account with the default password `admin` cannot sign in from the office, and at the machine the application shows a prompt to change it at the bottom. Change the default password right at commissioning (Settings → Users).')))
 
   c.push(H2(t('2.2  Horní lišta', '2.2  Top bar')))
   c.push(...FIG('02b_topbar', t('Horní lišta', 'Top bar'), 1, 0.4))
   c.push(...TABLE(
     [t('Prvek', 'Item'), t('Význam', 'Meaning')],
     [
-      [t('PLC připojeno / odpojeno', 'PLC connected / disconnected'), t('Stav spojení s řídicím systémem stroje (zelená = v pořádku, červená = bez spojení).', 'Connection to the machine controller (green = OK, red = no connection).')],
-      [t('Uživatel', 'User'), t('Kdo je přihlášený, případně způsob přihlášení.', 'Who is signed in, or how they signed in.')],
+      [t('PLC připojeno / odpojeno', 'PLC connected / disconnected'), t('Stav spojení s řídicím systémem stroje přes protokol ADS (zelená = v pořádku, červená = bez spojení). Při změně stavu se zobrazí krátké upozornění.', 'Connection to the machine controller via the ADS protocol (green = OK, red = no connection). A short notification appears when the state changes.')],
+      [t('Lokální úložiště / NAS (jen při zaplnění)', 'Local storage / NAS (only when filling up)'), t('Objeví se od 80 % zaplnění (oranžově), od 95 % červeně. Kliknutím přejdete do Databáze.', 'Appears from 80 % usage (orange), red from 95 %. Click it to go to the Database.')],
+      [t('Vzdálený přístup · jen prohlížení', 'Remote access · view only'), t('Aplikace je otevřená z jiného počítače než PC u stroje (kapitola 1.3).', 'The application is open on a computer other than the machine PC (section 1.3).')],
+      [t('Lokální přístup / jméno uživatele', 'Local access / user name'), t('U stroje „Lokální přístup“, vzdáleně jméno přihlášeného uživatele.', '“Local access” at the machine, the signed-in user’s name remotely.')],
       [t('Šipka ze dveří', 'Exit arrow'), t('Odhlásit se.', 'Sign out.')],
-      ['CS / EN', t('Jazyk aplikace. Volba se pamatuje v prohlížeči.', 'Application language. The choice is remembered in the browser.')],
+      ['CS / EN', t('Jazyk aplikace; volba se pamatuje v prohlížeči.', 'Application language; the choice is remembered in the browser.')],
       [t('Měsíc / slunce', 'Moon / sun'), t('Tmavý nebo světlý vzhled.', 'Dark or light appearance.')],
-      [t('Datum a čas', 'Date and time'), t('Aktuální čas PC, na kterém aplikace běží.', 'Current time of the PC running the application.')],
-      [t('Lokální úložiště (jen při zaplnění)', 'Local storage (only when filling up)'), t('Objeví se, když je úložiště zaplněné nad 80 %. Kliknutím přejdete do Databáze.', 'Appears when the storage is more than 80 % full. Click it to go to the Database.')],
-      [t('Vzdálený přístup · jen prohlížení', 'Remote access · view only'), t('Aplikace je otevřená z jiného počítače než PC u stroje.', 'The application is open on a computer other than the machine PC.')],
+      [t('Datum a čas', 'Date and time'), t('Aktuální čas PC, na kterém běží aplikace (= čas časových značek nových záznamů).', 'Current time of the PC running the application (= the time stamped on new records).')],
     ],
     [3000, 6638], t('Prvky horní lišty', 'Top bar items')))
 
-  c.push(H2(t('2.3  Menu a ovládání', '2.3  Menu and controls')))
+  c.push(H2(t('2.3  Menu, nápověda a klávesové zkratky', '2.3  Menu, help and keyboard shortcuts')))
   c.push(P(t(
-    'Levé menu obsahuje stránky **Databáze**, **Nastavení** a **Info**. Kliknutím na logo se vrátíte do Databáze. Aplikace je přizpůsobená dotykovému monitoru; všechna tlačítka lze ovládat prstem.',
-    'The left menu contains the **Database**, **Settings** and **Info** pages. Click the logo to return to the Database. The application is designed for a touch monitor; every button can be operated with a finger.')))
+    'Levé menu obsahuje stránky **Databáze**, **Nastavení** a **Info**; kliknutím na logo se vrátíte do Databáze. Aplikace je určena pro dotykový monitor — všechna tlačítka mají velikost vhodnou pro ovládání prstem.',
+    'The left menu contains the **Database**, **Settings** and **Info** pages; click the logo to return to the Database. The application is designed for a touch monitor — all buttons are sized for finger operation.')))
+  c.push(P(t(
+    'Ikona **?** vedle nadpisu každé stránky otevře nápovědu: k čemu stránka slouží a co na ní je. Zavřete ji křížkem nebo klávesou Esc.',
+    'The **?** icon next to the title of every page opens its help: what the page is for and what it contains. Close it with the cross or the Esc key.')))
+  c.push(...FIG('02e_help', t('Nápověda stránky Databáze', 'Help of the Database page'), 0.62))
   c.push(...UL(t([
     '**F5** — obnoví seznam souborů v Databázi (bez načtení celé stránky).',
-    '**Esc** — zavře rozbalenou zakázku nebo otevřený dialog.',
-    'Pokud se přeruší spojení se serverem aplikace, objeví se červený pruh „Server nedostupný — kontroluji spojení…“. Po obnovení spojení zmizí sám.',
+    '**Esc** — zavře rozbalenou zakázku, dialog nebo nápovědu.',
+    'Při přerušení spojení se serverem aplikace se objeví červený pruh „Server nedostupný — kontroluji spojení…“; po obnovení spojení zmizí sám.',
   ], [
     '**F5** — refreshes the file list in the Database (without reloading the whole page).',
-    '**Esc** — closes an expanded order or an open dialog.',
-    'If the connection to the application server is lost, a red bar “Server unavailable — checking connection…” appears. It disappears by itself once the connection is restored.',
+    '**Esc** — closes an expanded order, a dialog or the help.',
+    'If the connection to the application server is lost, a red bar “Server unavailable — checking connection…” appears; it disappears by itself once the connection is restored.',
   ])))
 
-  // 3 ─ Databáze
+  c.push(H2(t('2.4  Klávesnice na obrazovce', '2.4  On-screen keyboard')))
+  c.push(P(t(
+    'Na PC u stroje je systémová klávesnice Windows v režimu kiosku vypnutá. Po klepnutí do textového pole (hledání zakázky, přihlášení, nastavení) se proto zobrazí klávesnice aplikace s českou diakritikou, číslicemi a symboly (**?123**). **Enter** potvrdí formulář, šipka vpravo dole klávesnici skryje, dvojí klepnutí na Shift zapne trvale velká písmena. Chování nastavíte v Nastavení → Předvolby (kapitola 7.1).',
+    'On the machine PC the Windows system keyboard is disabled in kiosk mode. When you tap a text field (order search, sign-in, settings), the application keyboard therefore appears, with Czech diacritics, digits and symbols (**?123**). **Enter** submits the form, the arrow at the bottom right hides the keyboard, a double tap on Shift locks capital letters. Configure the behaviour in Settings → Preferences (section 7.1).')))
+  c.push(...FIG('21b_osk', t('Klávesnice na obrazovce u pole Hledat zakázku', 'On-screen keyboard at the Search order field')))
+
+  // ═══ 3 Databáze ═══════════════════════════════════════════════════════
   c.push(H1(t('3  Databáze', '3  Database')))
   c.push(P(t(
-    'Databáze je hlavní stránka aplikace. Zobrazuje seznam souborů — jeden soubor je jedna zakázka (Production) nebo jeden test (Testing).',
-    'The Database is the main page of the application. It lists files — one file is one order (Production) or one test (Testing).')))
+    'Databáze je hlavní stránka aplikace. Zobrazuje seznam souborů — jeden řádek je jedna zakázka (Production) nebo jedno měření (Testing). Rozpracovaná zakázka je vždy zvýrazněná nahoře a počet jejích kusů přibývá automaticky.',
+    'The Database is the main page of the application. It lists files — one row is one order (Production) or one measurement (Testing). The order in progress is always highlighted at the top and its piece count updates automatically.')))
   c.push(...FIG('02_database', t('Databáze — zakázky na PC u stroje', 'Database — orders on the machine PC')))
+
   c.push(H2(t('3.1  Seznam zakázek', '3.1  Order list')))
   c.push(...TABLE(
-    [t('Sloupec', 'Column'), t('Význam', 'Meaning')],
+    [t('Sloupec / prvek', 'Column / item'), t('Význam', 'Meaning')],
     [
+      [t('Zaškrtávací pole', 'Check box'), t('Výběr souborů pro hromadné stažení nebo smazání (rozpracovaná zakázka výběr nemá).', 'Selects files for bulk download or deletion (the order in progress cannot be selected).')],
       [t('Datum vytvoření', 'Created'), t('Kdy se zakázka začala měřit.', 'When measuring of the order started.')],
       [t('Zakázka', 'Order'), t('Číslo zakázky.', 'Order number.')],
-      [t('Typ spínače', 'Switch type'), t('Typ (výrobce) mikrospínače.', 'Microswitch type (manufacturer).')],
-      [t('Záznamy', 'Records'), t('Počet změřených kusů („…“ = ještě se dopočítává).', 'Number of measured pieces (“…” = still being counted).')],
-      ['Sync', t('Stav synchronizace na NAS — viz další tabulka.', 'Synchronisation status to the NAS — see the next table.')],
-      [t('Tlačítka vpravo', 'Buttons on the right'), t('Rozbalit zakázku, stáhnout CSV, stáhnout XLSX, smazat.', 'Expand the order, download CSV, download XLSX, delete.')],
+      [t('ID mikrospínače', 'Microswitch ID'), t('Materiálové (SAP) číslo mikrospínače.', 'Material (SAP) number of the microswitch.')],
+      [t('Název mikrospínače', 'Microswitch name'), t('Typ / výrobce mikrospínače.', 'Type / manufacturer of the microswitch.')],
+      [t('Záznamy', 'Records'), t('Počet změřených kusů; „…“ = počet se právě dopočítává.', 'Number of measured pieces; “…” = being counted.')],
+      ['Sync', t('Stav souboru In progress / Local / Synced (kapitola 1.2).', 'File state In progress / Local / Synced (section 1.2).')],
+      [t('Ikona grafu', 'Chart icon'), t('Otevře detail zakázky (kapitola 4).', 'Opens the order detail (chapter 4).')],
+      [t('Šipka', 'Arrow'), t('Rozbalí přehled kusů přímo v seznamu (kapitola 3.4).', 'Expands the piece overview directly in the list (section 3.4).')],
+      ['CSV / XLSX', t('Stažení zakázky (kapitola 3.6).', 'Downloads the order (section 3.6).')],
+      [t('Koš', 'Bin'), t('Smazání lokálního souboru (kapitola 3.9).', 'Deletes the local file (section 3.9).')],
+      [t('Zatržítko (jen In progress)', 'Check mark (In progress only)'), t('Dokončit zakázku (kapitola 3.8).', 'Finish order (section 3.8).')],
     ],
-    [2600, 7038], t('Sloupce seznamu', 'List columns')))
-  c.push(...TABLE(
-    [t('Štítek', 'Badge'), t('Význam', 'Meaning')],
-    [
-      ['In progress', t('Zakázka se právě měří. Je vždy nahoře, počet kusů přibývá automaticky. Nelze ji smazat.', 'The order is being measured right now. It is always at the top and its piece count updates automatically. It cannot be deleted.')],
-      ['Local', t('Zakázka je uzavřená a čeká na nahrání na NAS.', 'The order is closed and waiting to be uploaded to the NAS.')],
-      ['Synced', t('Zakázka je nahraná na NAS. Lokální kopii lze uvolnit čištěním úložiště (kapitola 3.7).', 'The order has been uploaded to the NAS. The local copy can be removed by cleaning up storage (section 3.7).')],
-    ],
-    [2000, 7638], t('Stav synchronizace (sloupec Sync)', 'Synchronisation status (Sync column)')))
+    [2600, 7038], t('Sloupce a tlačítka seznamu', 'List columns and buttons')))
   c.push(P(t(
-    'Seznam se zobrazí okamžitě i při tisících souborů — zakázka, typ a datum se berou přímo z názvu souboru. Počet záznamů se dopočítá na pozadí: do té doby je místo něj pulzující „…“ a doplní se sám. Na záložce Vzdálená (NAS) se počítají jen zakázky na zobrazené stránce; zakázky, které už prošly tímto strojem, mají počet hned.',
-    'The list appears immediately even with thousands of files — order, type and date are taken directly from the file name. The number of records is counted in the background: until then a pulsing “…” is shown and fills in by itself. On the Remote (NAS) tab only the orders on the displayed page are counted; orders that have already passed through this machine show their count immediately.')))
+    'Seznam se zobrazí okamžitě i při desetitisících souborů — zakázka, ID a datum se čtou z názvu souboru. Počet kusů a název mikrospínače se doplní na pozadí, jakmile se soubor přečte. Na záložce Vzdálená se dopočítávají jen zakázky zobrazené stránky. Pod tabulkou je počet souborů a součet záznamů a stránkování.',
+    'The list appears immediately even with tens of thousands of files — order, ID and date are read from the file name. The piece count and the microswitch name are filled in in the background once the file has been read. On the Remote tab only the orders of the displayed page are counted. Below the table are the number of files, the total of records and paging.')))
 
   c.push(H2(t('3.2  Přepínače, filtr data a řazení', '3.2  Switches, date filter and sorting')))
-  c.push(...FIG('02d_controls', t('Hlavička Databáze: ukazatel úložiště a přepínače', 'Database header: storage indicator and switches'), 1, 0.45))
+  c.push(...FIG('02d_controls', t('Hlavička Databáze: ukazatele úložišť a přepínače', 'Database header: storage indicators and switches'), 1, 0.45))
   c.push(...UL(t([
-    '**Lokální / Vzdálená** — soubory na PC u stroje, nebo na NAS. Zelená tečka u „Vzdálená“ znamená, že je NAS dostupný; červená, že není.',
-    '**Production / Testing** — výrobní zakázky, nebo testy.',
-    '**Šipky v kruhu** — ruční obnovení seznamu (stejně jako F5).',
-    '**Od / Do** — omezení na období podle data vytvoření. Výchozí jsou poslední dva dny; **Zrušit filtr** zobrazí vše. Když filtr skryje všechny soubory, aplikace napíše, kolik jich je mimo období, a nabídne tlačítko pro zobrazení nejnovějších.',
-    '**Řazení** — kliknutím na záhlaví sloupce (Datum vytvoření, Zakázka, Typ spínače, Záznamy); druhé kliknutí obrátí pořadí.',
-    '**Stránkování** — pod tabulkou. Počet souborů na stránce a interval automatického obnovení nastavíte v Nastavení. Nové soubory v lokálním úložišti se objeví okamžitě.',
+    '**Lokální / Vzdálená** — soubory na PC u stroje, nebo archiv na NAS. Zelená tečka u záložky Vzdálená = NAS dostupný, červená = nedostupný.',
+    '**Production / Testing** — výrobní zakázky, nebo testovací měření.',
+    '**Šipky v kruhu** — ruční obnovení seznamu (jako F5). Automatické obnovení probíhá v intervalu z Nastavení; nové soubory v lokálním úložišti se objeví okamžitě.',
+    '**Od / Do** — období podle data vytvoření, výchozí jsou poslední dva dny; **Zrušit filtr** zobrazí vše. Skryje-li filtr všechny soubory, aplikace napíše, kolik jich je mimo období, a nabídne tlačítko pro zobrazení nejnovějších.',
+    '**Řazení** — kliknutím na záhlaví sloupce (Datum vytvoření, Zakázka, ID mikrospínače, Název mikrospínače, Záznamy); druhé kliknutí obrátí pořadí.',
   ], [
-    '**Local / Remote** — files on the machine PC, or on the NAS. A green dot next to “Remote” means the NAS is reachable; red means it is not.',
-    '**Production / Testing** — production orders, or tests.',
-    '**Circular arrows** — refresh the list manually (same as F5).',
-    '**From / To** — limit the list to a period by creation date. The default is the last two days; **Clear filter** shows everything. If the filter hides all files, the application says how many are outside the period and offers a button to show the latest ones.',
-    '**Sorting** — click a column header (Created, Order, Switch type, Records); click again to reverse the order.',
-    '**Paging** — below the table. Set the number of files per page and the automatic refresh interval in Settings. New files in local storage appear immediately.',
+    '**Local / Remote** — files on the machine PC, or the archive on the NAS. A green dot on the Remote tab = NAS reachable, red = unreachable.',
+    '**Production / Testing** — production orders, or test measurements.',
+    '**Circular arrows** — manual list refresh (like F5). Automatic refresh runs at the interval set in Settings; new files in local storage appear immediately.',
+    '**From / To** — period by creation date, the default is the last two days; **Clear filter** shows everything. If the filter hides all files, the application says how many are outside the period and offers a button to show the latest ones.',
+    '**Sorting** — click a column header (Created, Order, Microswitch ID, Microswitch name, Records); click again to reverse the order.',
   ])))
 
-  c.push(H2(t('3.3  Rozbalení zakázky', '3.3  Expanding an order')))
+  c.push(H2(t('3.3  Hledání zakázky', '3.3  Order search')))
   c.push(P(t(
-    'Klikněte na řádek zakázky (nebo na šipku). Pod řádkem se zobrazí graf rozložení kategorií a tabulka kusů se všemi parametry. Kliknutím na kus otevřete jeho detail (kapitola 5). Tlačítko **Detail zakázky** dole otevře celou zakázku (kapitola 4). U testu (Testing) se kliknutím na řádek otevře rovnou detail testu.',
-    'Click the row of an order (or the arrow). A category distribution chart and a table of pieces with all parameters appear below the row. Click a piece to open its detail (chapter 5). The **Order detail** button at the bottom opens the whole order (chapter 4). For a test (Testing), clicking the row opens the test detail directly.')))
+    'Pole **Hledat zakázku…** (jen záložka Production) najde zakázky podle části čísla nebo názvu; velikost písmen ani diakritika nehrají roli. Během hledání se prohledává **celý archiv bez ohledu na datum** — pole Od / Do zešednou a u lišty je text „Hledá se ve všech datech“. Hledaný text zůstane zachovaný i po návratu z detailu zakázky. Křížek v poli nebo klávesa Esc hledání zruší a datumový filtr opět platí.',
+    'The **Search order…** field (Production tab only) finds orders by part of their number or name; letter case and diacritics do not matter. While searching, the **whole archive is searched regardless of the date** — the From / To fields are greyed out and the bar shows “Searching all dates”. The search text is kept when you return from an order detail. The cross in the field or the Esc key clears the search and the date filter applies again.')))
+  c.push(...FIG('03b_search', t('Hledání zakázky podle části čísla', 'Searching for an order by part of its number')))
+
+  c.push(H2(t('3.4  Rozbalení zakázky', '3.4  Expanding an order')))
+  c.push(P(t(
+    'Klepnutím na řádek zakázky (nebo na šipku) se pod ním zobrazí graf rozložení kategorií (kapitola 4.3) a prvních pět kusů s parametry; hodnoty mimo limity třídění jsou podbarvené podle legendy (kapitola 4.5). Kliknutím na kus otevřete jeho detail, tlačítko **Detail zakázky** otevře celou zakázku. U měření (Testing) otevře klepnutí na řádek rovnou detail měření.',
+    'Tapping an order row (or the arrow) shows the category distribution chart (section 4.3) and the first five pieces with their parameters below it; values outside the sorting limits are tinted according to the legend (section 4.5). Click a piece to open its detail; the **Order detail** button opens the whole order. For a measurement (Testing), tapping the row opens the measurement detail directly.')))
   c.push(...FIG('03_expanded', t('Rozbalená zakázka v seznamu', 'Order expanded in the list')))
 
-  c.push(H2(t('3.4  Stažení dat', '3.4  Downloading data')))
+  c.push(H2(t('3.5  Úložiště: lokální, NAS a flashka', '3.5  Storage: local, NAS and USB flash drive')))
+  c.push(P(t('V hlavičce Databáze jsou vedle sebe tři ukazatele:', 'The Database header shows three indicators side by side:')))
+  c.push(...FIG('04a_storagebar', t('Lokální úložiště', 'Local storage'), 0.55, 0.45))
   c.push(...UL(t([
-    '**CSV** — originální soubor přesně tak, jak ho zapsal systém linky (oddělovač středník, kódování UTF-8). Vhodný pro archivaci a další zpracování.',
-    '**XLSX** — všechny kusy zakázky v jednom listu Excelu: čísla jako čísla (lze s nimi počítat), čas jako datum, zmrazená hlavička s filtrem. Soubor sestaví server, takže i zakázka s desítkami tisíc kusů je hotová za pár sekund. V Chrome a Edge se po kliknutí nejdřív otevře dialog „Uložit jako“ (lze uložit rovnou na USB disk nebo síťovou složku), soubor se stáhne až potom.',
+    '**Lokální úložiště** — součet velikostí souborů na PC u stroje (rozpracované, Local i Synced) vůči nastavenému limitu (výchozí 5 GB). Od 80 % je oranžový a objeví se i v horní liště, od 95 % je červený. Upozorní také, zbývá-li na disku málo místa.',
+    '**NAS** — volné a celkové místo sdílené složky na NAS (má-li složka na Synology kvótu, ukazuje se kvóta). Stejné prahy 80 / 95 %. Plný NAS znamená, že data ze stroje se brzy nebudou mít kam nahrát.',
+    '**USB** — jen pro správce u stroje: písmeno jednotky, zaplnění a volné místo zasunuté flashky; šipka vpravo = **Bezpečně odebrat**. Bez flashky ukazuje „zasuňte flashku“.',
   ], [
-    '**CSV** — the original file exactly as written by the line system (semicolon separator, UTF-8 encoding). Suitable for archiving and further processing.',
-    '**XLSX** — all pieces of the order in one Excel sheet: numbers as numbers (you can calculate with them), time as a date, frozen header with a filter. The file is built by the server, so even an order with tens of thousands of pieces is ready in a few seconds. In Chrome and Edge a “Save as” dialog opens first after clicking (you can save directly to a USB drive or network folder), then the file is downloaded.',
+    '**Local storage** — total size of files on the machine PC (in progress, Local and Synced) against the configured limit (default 5 GB). From 80 % it turns orange and also appears in the top bar, from 95 % red. It also warns when the disk itself is running out of space.',
+    '**NAS** — free and total space of the NAS shared folder (if the folder has a quota on the Synology, the quota is shown). Same 80 / 95 % thresholds. A full NAS means machine data will soon have nowhere to be uploaded.',
+    '**USB** — for an administrator at the machine only: drive letter, usage and free space of the inserted flash drive; the arrow on the right = **Safely remove**. Without a flash drive it shows “insert a drive”.',
   ])))
-
-  c.push(H2(t('3.5  Mazání souborů', '3.5  Deleting files')))
+  c.push(...FIG('04b_nasbar', t('Zaplnění NAS', 'NAS usage'), 0.55, 0.45))
+  c.push(...FIG('04c_usbbar', t('Flashka u stroje s tlačítkem bezpečného odebrání', 'USB flash drive at the machine with the safe-removal button'), 0.45, 0.45))
+  c.push(H3(t('Uvolnění místa — Vyčistit synchronizované', 'Freeing space — Clean synced files')))
   c.push(P(t(
-    'Smazat lze jen soubory v **lokálním** úložišti, pouze na PC u stroje a s rolí Technik nebo vyšší. Jeden soubor smažete ikonou koše; aplikace se před smazáním zeptá. Pro hromadné mazání zaškrtněte soubory v prvním sloupci — nad tabulkou se objeví lišta **Smazat vybrané** / **Zrušit výběr**. Najednou lze smazat nejvýše 200 souborů. Rozpracovanou zakázku smazat nelze.',
-    'Only files in **local** storage can be deleted, only on the machine PC and with the Technician role or higher. Delete a single file with the bin icon; the application asks for confirmation. For batch deletion tick the files in the first column — a **Delete selected** / **Clear selection** bar appears above the table. At most 200 files can be deleted at once. An order in progress cannot be deleted.')))
-  c.push(...FIG('05_selection', t('Výběr více souborů k hromadnému smazání', 'Selecting several files for batch deletion')))
-  c.push(NOTE('warn', t(
-    'Smazání je nevratné. Pokud soubor ještě není na NAS (štítek Local), data zakázky se tím ztratí natrvalo.',
-    'Deletion cannot be undone. If the file is not yet on the NAS (Local badge), the order data is lost permanently.')))
-
-  c.push(H2(t('3.6  Vzdálené úložiště (NAS)', '3.6  Remote storage (NAS)')))
-  c.push(P(t(
-    'Záložka **Vzdálená** zobrazuje archiv zakázek a testů na NAS, včetně starších, které už na PC u stroje nejsou. Ovládání je stejné jako u lokálního úložiště; soubory na NAS nelze z aplikace smazat. Když NAS není dostupný, zobrazí se upozornění a tečka u záložky je červená — lokální data přitom fungují dál.',
-    'The **Remote** tab shows the archive of orders and tests on the NAS, including older ones no longer on the machine PC. It works the same way as local storage; files on the NAS cannot be deleted from the application. When the NAS is unreachable, a warning appears and the dot next to the tab is red — local data keeps working.')))
-  c.push(...FIG('06_remote', t('Zakázky na NAS', 'Orders on the NAS')))
-
-  c.push(H2(t('3.7  Lokální úložiště a jeho čištění', '3.7  Local storage and clean-up')))
-  c.push(...FIG('04a_storagebar', t('Ukazatel lokálního úložiště', 'Local storage indicator'), 0.6, 0.45))
-  c.push(P(t(
-    'Ukazatel v hlavičce Databáze ukazuje, kolik místa zabírají soubory na PC u stroje vůči nastavenému limitu. Od 80 % je oranžový a objeví se i v horní liště, od 95 % je červený. Místo uvolníte tlačítkem s košem **Vyčistit synchronizované**:',
-    'The indicator in the Database header shows how much space the files on the machine PC take up compared to the configured limit. From 80 % it turns orange and also appears in the top bar; from 95 % it turns red. Free up space with the bin button **Clean up synced**:')))
+    'Synchronizované zakázky (Synced) jsou už na NAS; jejich lokální kopie lze smazat tlačítkem s košem u ukazatele lokálního úložiště:',
+    'Synchronised orders (Synced) are already on the NAS; their local copies can be deleted with the bin button next to the local storage indicator:')))
   c.push(...OL(t([
-    'Klikněte na ikonu koše u ukazatele.',
+    'Klepněte na ikonu koše u ukazatele lokálního úložiště.',
     'Dialog ukáže, kolik synchronizovaných souborů a jak velkých se smaže.',
-    'Potvrďte **Vyčistit synchronizované**. Každý soubor se před smazáním ověří na NAS (název a velikost); co na NAS chybí nebo se liší, zůstane.',
+    'Potvrďte **Vyčistit synchronizované**. Každý soubor se před smazáním ověří na NAS (název a velikost); co na NAS chybí nebo se liší, zůstane. Soubory Local a rozpracovaná zakázka se nikdy nemažou.',
   ], [
-    'Click the bin icon next to the indicator.',
+    'Tap the bin icon next to the local storage indicator.',
     'The dialog shows how many synced files will be deleted and their total size.',
-    'Confirm with **Clean up synced**. Every file is verified on the NAS (name and size) before deletion; anything missing or different on the NAS is kept.',
-  ]), 'steps1'))
+    'Confirm with **Clean synced files**. Every file is verified on the NAS (name and size) before deletion; anything missing or different on the NAS is kept. Local files and the order in progress are never deleted.',
+  ])))
   c.push(...FIG('04_storage', t('Potvrzení čištění synchronizovaných souborů', 'Confirming clean-up of synced files'), 0.55))
   c.push(NOTE('warn', t(
-    'Odkaz „Smazat i soubory, které nelze na NAS ověřit…“ smaže synchronizované soubory bez kontroly. Používejte ho jen tehdy, když víte, že jsou data na NAS v pořádku (např. NAS je dočasně nedostupný a disk je plný). Aplikace vyžaduje potvrzení rizika.',
-    'The link “Also delete files that cannot be verified on the NAS…” deletes synced files without checking. Only use it if you know the data on the NAS is fine (e.g. the NAS is temporarily unreachable and the disk is full). The application asks you to confirm the risk.')))
+    'Odkaz „Smazat i soubory, které nelze na NAS ověřit…“ smaže synchronizované soubory bez kontroly na NAS. Použijte ho jen tehdy, když víte, že jsou data na NAS v pořádku (např. NAS je dočasně nedostupný a disk PC je plný); aplikace vyžaduje potvrzení rizika.',
+    'The link “Also delete files that cannot be verified on the NAS…” deletes synced files without checking the NAS. Only use it if you know the data on the NAS is fine (e.g. the NAS is temporarily unreachable and the PC disk is full); the application asks you to confirm the risk.')))
 
-  c.push(H2(t('3.8  Testy (Testing)', '3.8  Tests (Testing)')))
+  c.push(H2(t('3.6  Stažení dat (CSV, XLSX)', '3.6  Downloading data (CSV, XLSX)')))
+  c.push(...UL(t([
+    '**CSV** — originální soubor beze změny, tak jak ho zapsala linka (oddělovač středník, kódování UTF-8 s BOM). Vhodný pro archivaci a další zpracování.',
+    '**XLSX** — soubor pro Excel sestavený serverem: čísla jako čísla (lze s nimi počítat), čas jako datum, formáty čísel podle jednotek. U blokového výrobního souboru je rozložení stejné jako vzor zakázky linky — nahoře podbarvené bloky Metadata, TestingParameters, SortingCategories a SortingLimits, pod nimi tabulka Data se zmrazeným záhlavím a filtrem. I zakázka s desítkami tisíc kusů je hotová za několik sekund.',
+  ], [
+    '**CSV** — the original file unchanged, exactly as written by the line (semicolon separator, UTF-8 with BOM encoding). Suitable for archiving and further processing.',
+    '**XLSX** — an Excel file built by the server: numbers as numbers (you can calculate with them), time as a date, number formats by unit. For a block production file the layout matches the line’s order template — the tinted blocks Metadata, TestingParameters, SortingCategories and SortingLimits at the top, the Data table with a frozen header and filter below. Even an order with tens of thousands of pieces is ready within a few seconds.',
+  ])))
   c.push(P(t(
-    'Na záložce **Testing** je seznam jednotlivých testů. Kliknutím na řádek (nebo ikonu grafu) otevřete detail testu (kapitola 6).',
-    'The **Testing** tab lists individual tests. Click a row (or the chart icon) to open the test detail (chapter 6).')))
-  c.push(...FIG('07_testing_list', t('Seznam testů', 'Test list')))
+    '**Na PC u stroje** se soubor neukládá do prohlížeče, ale na zasunutou flashku do složky `Trafag_ScadaViewer` (existuje-li soubor stejného jména, uloží se jako „… (2)“ — nic se nepřepíše). Ukládat smí jen správce (i přihlášení přes PLC). Bez flashky nebo bez oprávnění jsou tlačítka tlumená; klepnutí zobrazí důvod a ukazatel USB zabliká. Po uložení flashku vyjměte až po **Bezpečně odebrat** a hlášení „Flashku … lze vyjmout“.',
+    '**On the machine PC** the file is not saved by the browser but to the inserted USB flash drive, in the folder `Trafag_ScadaViewer` (if a file with the same name exists, it is saved as “… (2)” — nothing is overwritten). Only an administrator (including PLC sign-in) may save. Without a flash drive or permission the buttons are dimmed; tapping them shows the reason and the USB indicator blinks. After saving, remove the flash drive only after **Safely remove** and the message “Flash drive … can be removed”.')))
+  c.push(P(t(
+    '**Z kanceláře** se soubory stahují do prohlížeče; u XLSX se v Chrome a Edge nejdřív otevře dialog „Uložit jako“.',
+    '**From the office** files are downloaded by the browser; for XLSX, Chrome and Edge first open a “Save as” dialog.')))
 
-  // 4 ─ Detail zakázky
+  c.push(H2(t('3.7  Hromadné stažení', '3.7  Bulk download')))
+  c.push(P(t(
+    'Tlačítko **Stáhnout vše (N)** v liště filtru stáhne všechny soubory, které odpovídají aktuálnímu filtru — záložce (Lokální / Vzdálená, Production / Testing), období Od – Do, případně hledání; N je jejich počet. Po zaškrtnutí řádků nabídne lišta výběru **Stáhnout vybrané**. Najednou lze stáhnout nejvýše **500 souborů**; při větším počtu zužte filtr. Rozpracovaná zakázka se nestahuje (ještě se zapisuje).',
+    'The **Download all (N)** button in the filter bar downloads all files that match the current filter — the tab (Local / Remote, Production / Testing), the From – To period, or the search; N is their number. After ticking rows, the selection bar offers **Download selected**. At most **500 files** can be downloaded at once; with more, narrow the filter. The order in progress is not included (it is still being written).')))
+  c.push(...FIG('05_selection', t('Výběr souborů — Stáhnout vybrané, Smazat vybrané', 'Selecting files — Download selected, Delete selected')))
+  c.push(P(t(
+    'Dialog **Hromadné stažení** ukáže rozsah, počet souborů a jejich velikost (u XLSX orientačně) a nabídne formát **CSV (originální soubory)** nebo **XLSX (Excel)**.',
+    'The **Bulk download** dialog shows the scope, the number of files and their size (approximate for XLSX) and offers the format **CSV (original files)** or **XLSX (Excel)**.')))
+  c.push(...FIG('05b_bulk', t('Hromadné stažení všech zakázek období', 'Bulk download of all orders of a period'), 0.62))
+  c.push(...UL(t([
+    '**U stroje (správce):** **Uložit na flashku** uloží soubory jednotlivě do nové podsložky, např. `E:\\Trafag_ScadaViewer\\production_2026-10-20_2026-10-27` (hledání = `production_hledani_<text>`, výběr = `production_vyber_<datum_čas>`). Dialog ukazuje průběh a ukládání lze zrušit (dokončené soubory zůstanou). Nevejdou-li se soubory CSV na flashku, ukládání se vůbec nespustí. Na konci je souhrn s případnými chybami a tlačítko **Bezpečně odebrat**. Během ukládání nelze flashku odebrat ani spustit další dávku.',
+    '**Z kanceláře:** **Stáhnout ZIP** stáhne jeden soubor ZIP se všemi soubory. Soubor, který nejde přečíst, v ZIPu chybí a jeho název s důvodem je v souboru `CHYBY.txt`.',
+  ], [
+    '**At the machine (administrator):** **Save to USB drive** saves the files one by one to a new sub-folder, e.g. `E:\\Trafag_ScadaViewer\\production_2026-10-20_2026-10-27` (search = `production_hledani_<text>`, selection = `production_vyber_<date_time>`). The dialog shows the progress and saving can be cancelled (completed files remain). If the CSV files do not fit on the flash drive, saving does not start at all. At the end there is a summary with any errors and a **Safely remove** button. While saving, the flash drive cannot be removed and no further batch can be started.',
+    '**From the office:** **Download ZIP** downloads one ZIP file containing all files. A file that cannot be read is missing from the ZIP and its name and the reason are listed in the file `CHYBY.txt`.',
+  ])))
+  c.push(...FIG('05c_bulk_done', t('Souhrn po uložení na flashku', 'Summary after saving to the flash drive'), 0.62))
+
+  c.push(H2(t('3.8  Rozpracovaná zakázka: dokončení a smazání', '3.8  Order in progress: finishing and deleting')))
+  c.push(P(t(
+    'Zakázku uzavírá standardně stroj (PLC) — soubor pak přejde do stavu Local a DatabaseGateway ho nahraje na NAS. Skončí-li zakázka na stroji neplánovaně (např. výpadek proudu) a zůstane ve stavu In progress, může ji **správce u stroje** uzavřít ručně tlačítkem se zatržítkem **Dokončit zakázku**: soubor se uzavře se všemi dosud naměřenými kusy (neúplný poslední řádek se odřízne) a DatabaseGateway ho během několika minut nahraje na NAS.',
+    'Normally the machine (PLC) closes an order — the file then changes to Local and DatabaseGateway uploads it to the NAS. If an order ends unexpectedly on the machine (e.g. power failure) and remains In progress, an **administrator at the machine** can close it manually with the check-mark button **Finish order**: the file is closed with all pieces measured so far (an incomplete last row is cut off) and DatabaseGateway uploads it to the NAS within a few minutes.')))
+  c.push(...UL(t([
+    'Zakázku, kterou PLC hlásí jako právě běžící, dokončit nelze — nejdřív ji ukončete na stroji.',
+    'Nefunguje-li spojení s PLC, nelze ověřit, že zakázka na stroji neběží; dialog proto vyžaduje zaškrtnutí **Rozumím, zakázka na stroji neběží**.',
+    'V dokončené zakázce pokračovat nelze — další kus téže zakázky PLC odmítne (Rejected).',
+  ], [
+    'An order that the PLC reports as currently running cannot be finished — end it on the machine first.',
+    'If the PLC connection is down, it cannot be verified that the order is not running on the machine; the dialog therefore requires ticking **I understand, the order is not running on the machine**.',
+    'A finished order cannot be continued — the PLC rejects the next piece of that order (Rejected).',
+  ])))
+  c.push(...FIG('05e_finish_wip', t('Dokončení rozpracované zakázky bez spojení s PLC', 'Finishing the order in progress without PLC connection'), 0.55))
+  c.push(P(t(
+    'Rozpracovanou zakázku může správce také **smazat** (koš v řádku, jen jednotlivě, nikdy hromadně). Data zatím nejsou na NAS a smazáním se nenávratně ztratí; vyrábí-li stroj zakázku dál, další kus PLC odmítne a zakázku je nutné založit znovu. Dialog proto vyžaduje zaškrtnutí **Rozumím, smazat rozpracovanou zakázku**.',
+    'An administrator can also **delete** the order in progress (bin in the row, one at a time only, never in bulk). The data is not on the NAS yet and is lost permanently; if the machine keeps producing the order, the PLC rejects the next piece and the order must be created again. The dialog therefore requires ticking **I understand, delete the order in progress**.')))
+  c.push(...FIG('05d_delete_wip', t('Smazání rozpracované zakázky — potvrzení rizika', 'Deleting the order in progress — confirming the risk'), 0.55))
+
+  c.push(H2(t('3.9  Mazání souborů', '3.9  Deleting files')))
+  c.push(P(t(
+    'Mazat lze jen soubory v **lokálním** úložišti a jen na PC u stroje. Jeden soubor smažete ikonou koše, více souborů zaškrtnutím a tlačítkem **Smazat vybrané** (nejvýše 200 najednou; dialog vypíše jejich názvy). Pravidla:',
+    'Only files in **local** storage can be deleted, and only on the machine PC. Delete one file with the bin icon, several files by ticking them and pressing **Delete selected** (at most 200 at once; the dialog lists their names). Rules:')))
+  c.push(...UL(t([
+    '**Synced** (kopie je na NAS) — technik a vyšší.',
+    '**Local** (ještě není na NAS = jediná kopie dat) — jen správce; dialog upozorní, že se data nenávratně ztratí.',
+    '**In progress** — jen správce, jednotlivě a po potvrzení rizika (kapitola 3.8).',
+    'Zapisuje-li DatabaseGateway do souboru právě v tu chvíli, smazání se odmítne — zkuste to za chvíli znovu.',
+    'Soubory na NAS (záložka Vzdálená) aplikace nemaže nikdy.',
+  ], [
+    '**Synced** (a copy is on the NAS) — technician and higher.',
+    '**Local** (not yet on the NAS = the only copy of the data) — administrator only; the dialog warns that the data will be lost permanently.',
+    '**In progress** — administrator only, one at a time and after confirming the risk (section 3.8).',
+    'If DatabaseGateway is writing to the file at that moment, deletion is refused — try again shortly.',
+    'The application never deletes files on the NAS (Remote tab).',
+  ])))
+  c.push(NOTE('warn', t('Smazání je nevratné.', 'Deletion cannot be undone.')))
+
+  c.push(H2(t('3.10  Vzdálené úložiště (NAS)', '3.10  Remote storage (NAS)')))
+  c.push(P(t(
+    'Záložka **Vzdálená** zobrazuje archiv zakázek a měření na NAS, včetně starších, které už na PC u stroje nejsou. Ovládání je stejné jako u lokálního úložiště; soubory nelze mazat. Když NAS není dostupný, zobrazí se upozornění a tečka u záložky je červená — lokální data fungují dál a zakázky se na NAS nahrají, až bude opět dostupný.',
+    'The **Remote** tab shows the archive of orders and measurements on the NAS, including older ones no longer on the machine PC. It works the same way as local storage; files cannot be deleted. When the NAS is unreachable, a warning appears and the dot on the tab is red — local data keeps working and orders are uploaded once the NAS is reachable again.')))
+  c.push(...FIG('06_remote', t('Archiv zakázek na NAS', 'Order archive on the NAS')))
+
+  c.push(H2(t('3.11  Testovací měření (Testing)', '3.11  Test measurements (Testing)')))
+  c.push(P(t(
+    'Na záložce **Testing** je seznam jednotlivých testovacích měření mikrospínače (název, datum, stav synchronizace). Klepnutím na řádek nebo ikonu grafu otevřete detail měření (kapitola 6).',
+    'The **Testing** tab lists individual test measurements of a microswitch (name, date, synchronisation state). Tap a row or the chart icon to open the measurement detail (chapter 6).')))
+  c.push(...FIG('07_testing_list', t('Seznam testovacích měření', 'List of test measurements')))
+
+  // ═══ 4 Detail zakázky ═════════════════════════════════════════════════
   c.push(H1(t('4  Detail zakázky', '4  Order detail')))
   c.push(P(t(
-    'Detail zakázky otevřete tlačítkem **Detail zakázky** v rozbalené zakázce. Tlačítko **Zpět na databázi** vás vrátí na stejné místo v seznamu.',
-    'Open the order detail with the **Order detail** button in an expanded order. The **Back to database** button returns you to the same place in the list.')))
-  c.push(...FIG('08_order', t('Detail zakázky — hlavička a rozložení kategorií', 'Order detail — header and category distribution')))
-  c.push(H2(t('4.1  Hlavička a rozložení kategorií', '4.1  Header and category distribution')))
+    'Detail zakázky otevřete ikonou grafu v řádku zakázky nebo tlačítkem **Detail zakázky** v rozbaleném řádku. Tlačítko **Zpět na databázi** vrátí na stejné místo v seznamu.',
+    'Open the order detail with the chart icon in the order row or the **Order detail** button in an expanded row. The **Back to database** button returns you to the same place in the list.')))
+  c.push(...FIG('08_order', t('Detail zakázky — hlavička, údaje zakázky a rozložení kategorií', 'Order detail — header, order data and category distribution')))
+
+  c.push(H2(t('4.1  Hlavička zakázky', '4.1  Order header')))
+  c.push(...FIG('08b_hero', t('Hlavička zakázky', 'Order header')))
   c.push(P(t(
-    'Hlavička ukazuje číslo zakázky, počet změřených kusů a typ mikrospínače. Pod ní je graf, kolik kusů padlo do které kategorie (třídicího boxu), a souhrn OK / NOK:',
-    'The header shows the order number, the number of measured pieces and the microswitch type. Below it is a chart of how many pieces went into each category (sorting box), with an OK / NOK summary:')))
+    'Číslo zakázky a počet změřených kusů; vpravo název a ID mikrospínače, ID receptury, podle které stroj měřil, a šarže výrobce mikrospínačů. Z šarží jsou vidět první tři, tlačítko „+N dalších“ otevře celý seznam v Údajích zakázky.',
+    'Order number and number of measured pieces; on the right the microswitch name and ID, the recipe ID the machine measured with, and the supplier lots of the microswitches. The first three lots are shown; the “+N more” button opens the full list in Order data.')))
+
+  c.push(H2(t('4.2  Údaje zakázky', '4.2  Order data')))
+  c.push(P(t(
+    'Panel **Údaje zakázky** shrnuje bloky souboru zakázky v rozbalovacích řádcích; každý řádek ukazuje souhrn, klepnutím se rozbalí nebo sbalí:',
+    'The **Order data** panel summarises the blocks of the order file in expandable rows; each row shows a summary and expands or collapses when tapped:')))
+  c.push(...FIG('08d_orderinfo', t('Údaje zakázky — sbalené řádky se souhrnem', 'Order data — collapsed rows with summary')))
   c.push(...TABLE(
-    [t('Kategorie', 'Category'), t('Význam', 'Meaning')],
+    [t('Řádek', 'Row'), t('Obsah', 'Content')],
     [
-      ['1 – 4', t('OK — kus vyhověl; číslo určuje třídicí box.', 'OK — the piece passed; the number is the sorting box.')],
-      ['5', t('NOK Trafag — kus nevyhověl požadavkům Trafag.', 'NOK Trafag — the piece failed Trafag requirements.')],
-      ['6', t('NOK výrobce — kus nevyhověl požadavkům výrobce spínače.', 'NOK manufacturer — the piece failed the switch manufacturer’s requirements.')],
+      [t('Šarže výrobce', 'Supplier lots'), t('Všechny šarže mikrospínačů v pořadí, v jakém se v zakázce objevily (soubor šarži ke konkrétnímu kusu nepřiřazuje).', 'All microswitch lots in the order in which they appeared in the order (the file does not link a lot to a specific piece).')],
+      [t('Testovací parametry', 'Testing parameters'), t('Parametry, se kterými stroj měřil: rychlost, zrychlení, zpomalení a ryv pohonu (Velocity, Acceleration, Deceleration, Jerk), maximální síla (Max_Force), měřicí proud a napětí kontaktů a mez odporu.', 'Parameters the machine measured with: drive velocity, acceleration, deceleration and jerk, maximum force (Max_Force), contact measuring current and voltage and the resistance limit.')],
+      [t('Kategorie třídění', 'Sorting categories'), t('Třídicí veličina (obvykle MD) a meze Min / Max kategorií 1–4. Kus mimo všechny kategorie, ale v limitech = kategorie 5 (NOK Trafag).', 'The sorting quantity (usually MD) and the Min / Max limits of categories 1–4. A piece outside all categories but within the limits = category 5 (NOK Trafag).')],
+      [t('Limity třídění', 'Sorting limits'), t('Pro každý měřený parametr limity **Trafag** (modře) a **výrobce** (oranžově) Min / Max; „—“ = limit není aktivní. Přepínač **Vše / Jen aktivní** skryje parametry bez limitu.', 'For every measured parameter the **Trafag** (blue) and **manufacturer** (orange) Min / Max limits; “—” = limit not active. The **All / Active only** switch hides parameters without a limit.')],
     ],
-    [1800, 7838], t('Kategorie třídění', 'Sorting categories')))
-  c.push(H2(t('4.2  Časový průběh', '4.2  Timeline')))
+    [2400, 7238], t('Řádky panelu Údaje zakázky', 'Rows of the Order data panel')))
+  c.push(...FIG('08e_orderinfo_cats', t('Kategorie třídění podle MD', 'Sorting categories by MD')))
+  c.push(...FIG('08f_orderinfo_limits', t('Limity třídění — jen aktivní (výřez)', 'Sorting limits — active only (detail)')))
+
+  c.push(H2(t('4.3  Rozložení kategorií', '4.3  Category distribution')))
   c.push(P(t(
-    'Přepínačem **Časový průběh** vpravo nahoře zobrazíte, jak výroba zakázky postupovala v čase. Křivka ukazuje počet vyrobených kusů; vodorovné úseky jsou prodlevy.',
-    'Use the **Timeline** switch at the top right to see how production of the order progressed over time. The curve shows the number of pieces produced; flat sections are pauses.')))
+    'Graf ukazuje, kolik kusů padlo do které kategorie (třídicí krabice). Barvy kategorií odpovídají barvám štítků krabic u stroje. Pás OK (zelený) zahrnuje kategorie 1–4, samostatné pásy NOK Trafag (žlutý) a NOK Supplier (oranžový) kategorie 5 a 6, každý se součtem a podílem. Pod OK kategoriemi je rozmezí třídicí veličiny (MD), je-li v souboru. Nad grafem je souhrn OK / NOK.',
+    'The chart shows how many pieces went into each category (sorting box). The category colours match the box labels at the machine. The OK band (green) covers categories 1–4, the separate NOK Trafag (yellow) and NOK Supplier (orange) bands categories 5 and 6, each with its total and share. Below the OK categories the range of the sorting quantity (MD) is shown if present in the file. Above the chart is the OK / NOK summary.')))
+  c.push(...FIG('08c_categories', t('Rozložení kategorií zakázky', 'Category distribution of an order')))
+  c.push(...TABLE(
+    [t('Kategorie', 'Category'), t('Stav', 'Status'), t('Význam', 'Meaning')],
+    [
+      ['1 – 4', 'OK', t('Kus vyhověl; číslo je třídicí krabice podle mezí třídicí veličiny (kapitola 4.2).', 'The piece passed; the number is the sorting box according to the limits of the sorting quantity (section 4.2).')],
+      ['5', 'NOK Trafag', t('Kus je mimo limity Trafag, nebo mimo všechny kategorie 1–4.', 'The piece is outside the Trafag limits, or outside all categories 1–4.')],
+      ['6', 'NOK Supplier', t('Kus je mimo limity výrobce mikrospínače.', 'The piece is outside the microswitch manufacturer’s limits.')],
+    ],
+    [1300, 1700, 6638], t('Kategorie třídění', 'Sorting categories')))
+
+  c.push(H2(t('4.4  Časový průběh', '4.4  Timeline')))
+  c.push(P(t(
+    'Přepínačem **Časový průběh** zobrazíte, jak výroba zakázky postupovala v čase: křivka ukazuje počet vyrobených kusů, vodorovné úseky jsou prodlevy. Nad grafem jsou ukazatele:',
+    'The **Timeline** switch shows how production of the order progressed over time: the curve shows the number of pieces produced, flat sections are pauses. Indicators above the chart:')))
   c.push(...FIG('09_timeline', t('Časový průběh zakázky', 'Order timeline')))
   c.push(...TABLE(
-    [t('Údaj', 'Value'), t('Význam', 'Meaning')],
+    [t('Ukazatel', 'Indicator'), t('Význam', 'Meaning')],
     [
       [t('Začátek / Konec', 'Start / End'), t('Čas prvního a posledního kusu.', 'Time of the first and last piece.')],
-      [t('Celková doba', 'Total duration'), t('Od prvního do posledního kusu, včetně prodlev.', 'From the first to the last piece, including pauses.')],
-      [t('Průměr / medián mezi kusy', 'Average / median between pieces'), t('Typická doba cyklu jednoho kusu.', 'Typical cycle time of one piece.')],
+      [t('Celková doba', 'Total duration'), t('Od prvního do posledního kusu včetně prodlev.', 'From the first to the last piece including pauses.')],
+      [t('Průměr / medián mezi kusy', 'Average / median between pieces'), t('Doba cyklu jednoho kusu; medián není ovlivněn prodlevami.', 'Cycle time of one piece; the median is not affected by pauses.')],
       [t('Nejdelší prodleva', 'Longest pause'), t('Nejdelší mezera mezi dvěma kusy a kdy nastala.', 'Longest gap between two pieces and when it occurred.')],
       [t('Prodlevy', 'Pauses'), t('Počet a součet mezer delších než 5× medián a zároveň alespoň 1 minuta.', 'Number and total of gaps longer than 5× the median and at least 1 minute.')],
-      [t('Výkon', 'Rate'), t('Kusů za hodinu v celé době zakázky (včetně prodlev).', 'Pieces per hour over the whole order duration (including pauses).')],
+      [t('Výkon', 'Throughput'), t('Kusů za hodinu v celé době zakázky (včetně prodlev).', 'Pieces per hour over the whole order duration (pauses included).')],
     ],
-    [3200, 6438], t('Ukazatele časového průběhu', 'Timeline indicators')))
-
-  c.push(H2(t('4.3  Tabulka kusů a filtr', '4.3  Piece table and filter')))
+    [3000, 6638], t('Ukazatele časového průběhu', 'Timeline indicators')))
   c.push(P(t(
-    'Pod grafem je tabulka všech kusů. Záložky **Forces**, **Positions**, **Travel**, **Times** a **Electric** přepínají skupiny parametrů; čas, kategorie, stav a NOK kategorie zůstávají vždy vidět. Kliknutím na záhlaví sloupce zobrazíte popis parametru. Ikona ✓ u NOK kategorie znamená v pořádku, červený vykřičník chybu v dané oblasti (síla, poloha, elektrika, časy, proces).',
-    'Below the chart is a table of all pieces. The **Forces**, **Positions**, **Travel**, **Times** and **Electric** tabs switch between parameter groups; time, category, status and NOK categories always stay visible. Click a column header to see a description of the parameter. A ✓ in a NOK category means OK, a red exclamation mark means a fault in that area (force, position, electric, times, process).')))
+    'Při posunu hodin na konci letního času (opakovaná hodina) aplikace kusy nepromíchá a dobu zakázky správně prodlouží.',
+    'When the clocks go back at the end of summer time (a repeated hour), the application does not mix up the pieces and extends the order duration correctly.')))
+
+  c.push(H2(t('4.5  Tabulka kusů a hodnoty mimo limity', '4.5  Piece table and values outside the limits')))
+  c.push(P(t(
+    'Pod grafem je tabulka kusů (200 na stránku). Záložky **Forces**, **Positions**, **Travel**, **Times** a **Electric** přepínají skupiny parametrů; čas záznamu, kategorie, stav a pět NOK kategorií (F – Force, P – Position, E – Electric, T – Times, PR – Process) zůstávají vždy vidět. ✓ = v pořádku, červený vykřičník = kus v dané oblasti nevyhověl. Klepnutím na řádek otevřete detail kusu.',
+    'Below the chart is the piece table (200 per page). The **Forces**, **Positions**, **Travel**, **Times** and **Electric** tabs switch the parameter groups; the record time, category, status and the five NOK categories (F – Force, P – Position, E – Electric, T – Times, PR – Process) always stay visible. ✓ = OK, red exclamation mark = the piece failed in that area. Tap a row to open the piece detail.')))
   c.push(...FIG('10b_tabs', t('Tabulka kusů — skupina Positions', 'Piece table — Positions group')))
   c.push(P(t(
-    'Lišta filtru nad tabulkou zúží seznam kusů:',
-    'The filter bar above the table narrows down the list of pieces:')))
+    'Hodnoty mimo limity třídění zakázky (kapitola 4.2) jsou lehce podbarvené; po najetí myší se zobrazí příslušné meze. Legenda je nad tabulkou:',
+    'Values outside the sorting limits of the order (section 4.2) are lightly tinted; hovering shows the relevant limits. The legend is above the table:')))
+  c.push(...TABLE(
+    [t('Podbarvení', 'Tint'), t('Význam', 'Meaning')],
+    [
+      [t('žluté', 'yellow'), t('Mimo limity Trafag, nebo třídicí veličina (MD) mimo kategorie 1–4 → NOK Trafag.', 'Outside the Trafag limits, or the sorting quantity (MD) outside categories 1–4 → NOK Trafag.')],
+      [t('oranžové', 'orange'), t('Mimo limity výrobce → NOK Supplier.', 'Outside the manufacturer’s limits → NOK Supplier.')],
+      [t('oranžové se žlutým pruhem', 'orange with a yellow bar'), t('Mimo limity výrobce i Trafag.', 'Outside both the manufacturer’s and Trafag limits.')],
+    ],
+    [2600, 7038], t('Podbarvení hodnot mimo limity třídění', 'Tinting of values outside the sorting limits')))
+
+  c.push(H2(t('4.6  Řazení a filtr kusů', '4.6  Sorting and filtering pieces')))
+  c.push(P(t('Lišta nad tabulkou upraví pořadí a výběr kusů; filtruje server, takže počty i stránkování odpovídají:', 'The bar above the table changes the order and selection of pieces; filtering is done by the server, so the counts and paging stay consistent:')))
   c.push(...UL(t([
+    '**Řazení** — Nejstarší (pořadí výroby) nebo Nejnovější.',
     '**Stav** — Vše, OK nebo NOK.',
-    '**Kategorie** — Vše, nebo libovolná kombinace kategorií 1–6 (tlačítka v barvách boxů).',
-    'Stav a kategorie platí zároveň. Při aktivním filtru se zobrazí „Zobrazeno: X z Y“ a tlačítko **Zrušit filtr**.',
-    'Graf kategorií i hlavička zakázky dál ukazují celou zakázku; filtr mění jen tabulku.',
+    '**Kategorie** — Vše, nebo libovolná kombinace kategorií 1–6 (tlačítka v barvách krabic).',
+    '**NOK oblast** — Force, Position, Electric, Times, Process: kusy, které v dané oblasti nevyhověly. Číslo u tlačítka je počet takových kusů v celé zakázce; vybere-li se víc oblastí, stačí nevyhovění v kterékoli z nich. Oblast bez NOK kusů je neaktivní.',
+    'Části filtru se kombinují (např. NOK + kategorie 6 + Electric). Při aktivním filtru je vidět „Zobrazeno: X z Y“ a tlačítko **Zrušit filtr**. Hlavička zakázky a graf kategorií dál ukazují celou zakázku.',
   ], [
+    '**Order** — Oldest (production order) or Newest.',
     '**Status** — All, OK or NOK.',
     '**Category** — All, or any combination of categories 1–6 (buttons in the box colours).',
-    'Status and category apply together. With an active filter, “Shown: X of Y” and a **Clear filter** button appear.',
-    'The category chart and the order header still show the whole order; the filter only changes the table.',
+    '**NOK area** — Force, Position, Electric, Times, Process: pieces that failed in that area. The number on the button is the count of such pieces in the whole order; with several areas selected, failing in any one of them is enough. An area without NOK pieces is disabled.',
+    'The filter parts are combined (e.g. NOK + category 6 + Electric). With an active filter, “Shown: X of Y” and a **Clear filter** button are visible. The order header and the category chart still show the whole order.',
   ])))
-  c.push(...FIG('11_filter', t('Filtr — jen NOK kusy', 'Filter — NOK pieces only')))
-  c.push(H2(t('4.4  Export a tisk zakázky', '4.4  Exporting and printing an order')))
-  c.push(P(t(
-    'Tlačítka **CSV** a **XLSX** nad tabulkou stáhnou celou zakázku (bez ohledu na filtr). Tlačítko **Tisk** připraví protokol A4: hlavičku zakázky, souhrn OK / NOK a tabulky všech skupin parametrů pro aktuální stránku tabulky (až 200 kusů). U větší zakázky nebo při filtru je nahoře uvedeno, které kusy protokol obsahuje (např. „Vytištěné kusy: 1–200 z 4 005 (stránka 1 z 21)“) a jaký filtr platí; sloupec # je pořadí kusu v celé zakázce. Celou velkou zakázku stáhněte jako CSV nebo XLSX. Grafy se do protokolu zakázky netisknou. V záhlaví protokolu je čas tisku a jméno přihlášeného uživatele, v zápatí číslo strany.',
-    'The **CSV** and **XLSX** buttons above the table download the whole order (regardless of the filter). The **Print** button prepares an A4 report: order header, OK / NOK summary and tables of all parameter groups for the current page of the table (up to 200 pieces). For a larger order or with a filter, the top of the report states which pieces it contains (e.g. “Printed pieces: 1–200 of 4,005 (page 1 of 21)”) and which filter applies; the # column is the position of the piece in the whole order. Download a whole large order as CSV or XLSX. Charts are not included in the order report. The report header shows the print time and the signed-in user; the footer shows the page number.')))
+  c.push(...FIG('11_filter', t('Filtr — jen NOK kusy, s podbarvením hodnot mimo limity', 'Filter — NOK pieces only, with values outside the limits tinted')))
+  c.push(...FIG('11b_filter_nok', t('Filtr NOK oblasti — kusy nevyhovující v poloze (Position)', 'NOK area filter — pieces failing in Position')))
 
-  // 5 ─ Detail záznamu
-  c.push(H1(t('5  Detail záznamu (jeden kus)', '5  Record detail (one piece)')))
+  c.push(H2(t('4.7  Export a tisk zakázky', '4.7  Exporting and printing an order')))
   c.push(P(t(
-    'Detail jednoho kusu otevřete kliknutím na řádek v tabulce kusů. V záhlaví je pořadí kusu v zakázce (např. 4 / 120), v souhrnném řádku zakázka, typ, čas měření, kategorie a stav OK / NOK.',
-    'Open the detail of a piece by clicking its row in the piece table. The heading shows the position of the piece in the order (e.g. 4 / 120); the summary line shows the order, type, measurement time, category and OK / NOK status.')))
-  c.push(...FIG('13_record', t('Detail záznamu — diagramy', 'Record detail — diagrams')))
-  c.push(...UL(t([
-    '**Síla – dráha** — průběh síly při stlačení (plná čára) a uvolnění (čárkovaně) s vyznačenými body FP, OP, RP a TTP, silami OF, RF a TTF, zdvihy PT, OT, RT, MD, TT a odpory kontaktů v bodech OP a RP.',
-    '**Spínací časy kontaktů** — napětí kontaktů NC a NO kolem okamžiku sepnutí v časovém měřítku s vyznačenými časy UT, RevT, BT a OpT.',
+    'Tlačítka **CSV** a **XLSX** nad tabulkou stáhnou celou zakázku bez ohledu na filtr (kapitola 3.6). Tlačítko **Tisk** připraví protokol A4: hlavičku a údaje zakázky, souhrn OK / NOK a tabulky všech skupin parametrů pro **aktuální stránku tabulky** (nejvýše 200 kusů) s použitým filtrem a řazením. U větší zakázky nebo při filtru je nahoře uvedeno, které kusy protokol obsahuje (např. „Vytištěné kusy: 1–200 z 4 005 (stránka 1 z 21)“) a jaký filtr platí; sloupec # je pořadí kusu v celé zakázce. V záhlaví protokolu je čas tisku a přihlášený uživatel, v zápatí číslo strany. Grafy se do protokolu zakázky netisknou.',
+    'The **CSV** and **XLSX** buttons above the table download the whole order regardless of the filter (section 3.6). The **Print** button prepares an A4 report: order header and data, OK / NOK summary and tables of all parameter groups for the **current page of the table** (at most 200 pieces) with the applied filter and sorting. For a larger order or with a filter, the top of the report states which pieces it contains (e.g. “Printed pieces: 1–200 of 4,005 (page 1 of 21)”) and which filter applies; the # column is the position of the piece in the whole order. The report header shows the print time and the signed-in user, the footer the page number. Charts are not included in the order report.')))
+
+  // ═══ 5 Detail kusu ════════════════════════════════════════════════════
+  c.push(H1(t('5  Detail kusu', '5  Piece detail')))
+  c.push(P(t(
+    'Detail jednoho kusu otevřete klepnutím na řádek v tabulce kusů. V nadpisu je pořadí kusu v zakázce (např. 4 / 160), v souhrnném řádku zakázka, ID receptury, název a ID mikrospínače, čas záznamu, kategorie a stav OK / NOK. Slouží k posouzení, proč kus skončil v dané kategorii.',
+    'Open the detail of a piece by tapping its row in the piece table. The title shows the position of the piece in the order (e.g. 4 / 160); the summary line shows the order, recipe ID, microswitch name and ID, record time, category and OK / NOK status. It is used to assess why the piece ended up in its category.')))
+  c.push(...FIG('13_record', t('Detail kusu — diagramy síla–dráha a spínací časy', 'Piece detail — force–travel and switching time diagrams')))
+
+  c.push(H2(t('5.1  Diagram síla–dráha', '5.1  Force–travel diagram')))
+  c.push(P(t(
+    'Schéma hysterezní smyčky mikrospínače s hodnotami tohoto kusu. Plná čára je dopředný chod (stlačování), čárkovaná zpětný chod (uvolňování). Vodorovná osa je poloha hmatníku (vlevo klidová poloha FP, vpravo konec zdvihu TTP), svislá osa síla.',
+    'Schematic hysteresis loop of the microswitch with the values of this piece. The solid line is the forward stroke (actuation), the dashed line the return stroke (release). The horizontal axis is the actuator position (free position FP on the left, end of travel TTP on the right), the vertical axis the force.')))
+  c.push(...TABLE(
+    [t('Prvek', 'Item'), t('Definice', 'Definition')],
+    [
+      ['FP', t('Klidová poloha hmatníku bez vnější síly.', 'Free position of the actuator without external force.')],
+      ['OP', t('Poloha bodu sepnutí (přepnutí kontaktu) na dopředné cestě.', 'Operating position (contact changeover) on the forward stroke.')],
+      ['RP', t('Poloha bodu uvolnění (zpětného přepnutí) na zpáteční cestě.', 'Releasing position (return changeover) on the return stroke.')],
+      ['TTP', t('Konec zdvihu — nejhlubší bod stlačení.', 'End of travel — the deepest point of actuation.')],
+      ['FPR', t('Volná poloha po návratu — kde síla při zpětném chodu klesne na nulu; u dobrého kusu blízko FP.', 'Free position return — where the force drops to zero on the return stroke; close to FP for a good piece.')],
+      ['PT', 'PT = FP − OP ' + t('(předzdvih)', '(pre-travel)')],
+      ['OvT', 'OvT = OP − TTP ' + t('(přezdvih)', '(overtravel)')],
+      ['MD', 'MD = RP − OP ' + t('(diferenciál pohybu, polohová hystereze)', '(movement differential, positional hysteresis)')],
+      ['RvT', 'RvT = FP − RP = PT − MD ' + t('(uvolňovací zdvih, Leerlaufweg podle DIN 41636-1)', '(releasing travel, Leerlaufweg according to DIN 41636-1)')],
+      ['TT', 'TT = FP − TTP ' + t('(celkový zdvih)', '(total travel)')],
+      ['OF / RF / TTF', t('Síla v OP, v RP a na konci zdvihu.', 'Force at OP, at RP and at the end of travel.')],
+      ['DF', 'DF = OF − RF ' + t('(silový diferenciál, silová hystereze)', '(differential force, force hysteresis)')],
+      [t('OP / RP Contacts', 'OP / RP Contacts'), t('Odpory kontaktů NC a NO těsně před (−) a těsně po (+) přepnutí v bodě OP a RP.', 'Resistances of the NC and NO contacts just before (−) and just after (+) the changeover at OP and RP.')],
+      ['Static', t('Statický odpor sepnutého kontaktu NC a NO mimo okamžik přepnutí.', 'Static resistance of the closed NC and NO contact outside the changeover.')],
+    ],
+    [1900, 7738], t('Body, dráhy a síly v diagramu síla–dráha', 'Points, travels and forces in the force–travel diagram')))
+  c.push(NOTE('info', t(
+    'Definice RvT se změnila s Analyzing 2.6.3 (27. 10. 2026): dříve dráha od konce zdvihu zpět do RP (TTP → RP, typicky 850–1 320 µm), nyní dráha od klidové polohy do RP (FP → RP, typicky 550–730 µm). Aplikace u každého kusu pozná, která definice platí, a u starších souborů kótu označí „RvT (TTP → RP)“. U starších souborů (bez kalibrační konstanty C) jsou polohy na stupnici enkodéru — při stlačení rostou; aplikace na to upozorní poznámkou.',
+    'The definition of RvT changed with Analyzing 2.6.3 (27 Oct 2026): previously the travel from the end of travel back to RP (TTP → RP, typically 850–1,320 µm), now the travel from the free position to RP (FP → RP, typically 550–730 µm). The application recognises for every piece which definition applies and labels the dimension “RvT (TTP → RP)” for older files. In older files (without the calibration constant C) the positions are on the encoder scale — they increase when actuated; the application shows a note.')))
+
+  c.push(H2(t('5.2  Spínací časy kontaktů', '5.2  Contact switching times')))
+  c.push(P(t(
+    'Průběh napětí kontaktů NO (nahoře) a NC (dole) kolem okamžiku sepnutí, obdobně jako na osciloskopu; čas 0 = OP. Vyznačené časy: **UT** (nestabilní čas — kmity kontaktu po sepnutí), **RevT** (čas reverzu), **BT** (čas odskoku — zákmity kontaktu NO) a **OpT** = UT + RevT + BT (celkový čas sepnutí). Úseky jsou v měřítku; je-li jeden mnohem delší než ostatní, osa se zkrátí (značka „//“) — hodnoty v kótách platí vždy.',
+    'The voltage of the NO (top) and NC (bottom) contacts around the switching moment, similar to an oscilloscope; time 0 = OP. Marked times: **UT** (unstable time — contact oscillation after switching), **RevT** (reverse time), **BT** (bounce time — bouncing of the NO contact) and **OpT** = UT + RevT + BT (total operating time). Segments are to scale; if one is much longer than the others, the axis is shortened (“//” mark) — the values in the dimensions always apply.')))
+  c.push(P(t(
     'Tlačítkem se šipkami v rohu diagramu ho zvětšíte na celou obrazovku.',
-    'Pod diagramy je stav NOK kategorií a tabulka všech parametrů. Tlačítko **?** u parametru zobrazí jeho vysvětlení.',
-  ], [
-    '**Force – travel** — force during pressing (solid line) and release (dashed) with the FP, OP, RP and TTP points, the OF, RF and TTF forces, the PT, OT, RT, MD and TT travels and the contact resistances at OP and RP.',
-    '**Contact switching times** — NC and NO contact voltage around the switching moment, to time scale, with the UT, RevT, BT and OpT times.',
-    'Use the arrows button in the corner of a diagram to enlarge it to full screen.',
-    'Below the diagrams are the NOK categories and a table of all parameters. The **?** button next to a parameter shows its explanation.',
-  ])))
-  c.push(P(t(
-    'Tlačítko **Tisk** vytvoří protokol A4 s oběma diagramy a tabulkou parametrů:',
-    'The **Print** button creates an A4 report with both diagrams and the parameter table:')))
-  c.push(...FIG('12_print_record', t('Tiskový protokol detailu záznamu (1. strana)', 'Printed record report (page 1)'), 0.62, 1))
-  c.push(NOTE('tip', t(
-    'Popis všech parametrů a jejich zkratek je v Příloze A.',
-    'All parameters and their abbreviations are described in Appendix A.')))
+    'Use the arrows button in the corner of a diagram to enlarge it to full screen.')))
 
-  // 6 ─ Testing
-  c.push(H1(t('6  Detail testu (Testing)', '6  Test detail (Testing)')))
+  c.push(H2(t('5.3  NOK kategorie a tabulka parametrů', '5.3  NOK categories and parameter table')))
   c.push(P(t(
-    'Test je podrobné měření jednoho mikrospínače včetně průběhu všech signálů. Hlavička ukazuje typ a ID spínače, čas a dobu měření a celkový výsledek OK / NOK. Obsah je rozdělený do záložek.',
-    'A test is a detailed measurement of one microswitch including the course of all signals. The header shows the switch type and ID, measurement time and duration and the overall OK / NOK result. The content is divided into tabs.')))
-  c.push(...FIG('14_testing', t('Detail testu — Nastavení testu', 'Test detail — Test settings')))
+    'Pod diagramy je stav pěti NOK kategorií (Force, Position, Electric, Times, Process) a tabulka všech parametrů ve skupinách Forces, Positions, Travel, Times a Electric: zkratka, název, hodnota s jednotkou. „—“ = hodnota nestanovena, ∞ = rozepnutý kontakt (odpor nad 999,9 mΩ). Hodnoty mimo limity zakázky jsou podbarvené stejně jako v tabulce kusů.',
+    'Below the diagrams are the five NOK categories (Force, Position, Electric, Times, Process) and a table of all parameters in the Forces, Positions, Travel, Times and Electric groups: abbreviation, name, value with unit. “—” = value not determined, ∞ = open contact (resistance above 999.9 mΩ). Values outside the order limits are tinted as in the piece table.')))
+  c.push(P(t(
+    'Tlačítko **?** u parametru zobrazí jeho popis a výpočet. Tlačítko s grafem (**Zobrazit v grafu**) otevře diagram, ve kterém je parametr zvýrazněný spolu s body, ze kterých se počítá; ostatní prvky jsou ztlumené. Diagram je schematický s hodnotami tohoto kusu.',
+    'The **?** button next to a parameter shows its description and calculation. The chart button (**Show in chart**) opens a diagram in which the parameter is highlighted together with the points it is calculated from; all other elements are dimmed. The diagram is schematic with the values of this piece.')))
+  c.push(...FIG('13b_param_explain', t('Grafická nápověda parametru RvT', 'Graphical explanation of the RvT parameter')))
+
+  c.push(H2(t('5.4  Tisk protokolu kusu', '5.4  Printing a piece report')))
+  c.push(P(t(
+    'Tlačítko **Tisk** vytvoří protokol A4 s oběma diagramy a tabulkou parametrů; tlačítko **Zpět na databázi** vrátí do detailu zakázky na stejné místo.',
+    'The **Print** button creates an A4 report with both diagrams and the parameter table; the **Back to database** button returns to the order detail at the same position.')))
+  c.push(...FIG('12_print_record', t('Tiskový protokol kusu (1. strana)', 'Printed piece report (page 1)'), 0.62, 1))
+  c.push(NOTE('tip', t('Popis všech parametrů a jejich zkratek je v Příloze A, pojmy v Příloze B.', 'All parameters and their abbreviations are described in Appendix A, terms in Appendix B.')))
+
+  // ═══ 6 Testing ════════════════════════════════════════════════════════
+  c.push(H1(t('6  Detail měření (Testing)', '6  Measurement detail (Testing)')))
+  c.push(P(t(
+    'Testovací měření je podrobné měření jednoho mikrospínače včetně surových průběhů všech signálů. Hlavička ukazuje název, ID mikrospínače a ID receptury, čas a dobu měření a výsledek OK / NOK. Výsledek určují NOK kategorie: nevyhoví-li měření v kterékoli oblasti, je NOK. Obsah je rozdělen do záložek; vpravo jsou tlačítka CSV, XLSX a Tisk.',
+    'A test measurement is a detailed measurement of one microswitch including the raw signals. The header shows the name, the microswitch ID and recipe ID, the measurement time and duration and the OK / NOK result. The result is determined by the NOK categories: if the measurement fails in any area, it is NOK. The content is divided into tabs; the CSV, XLSX and Print buttons are on the right.')))
+  c.push(...FIG('14_testing', t('Detail měření — Nastavení testu', 'Measurement detail — Test setup')))
   c.push(...TABLE(
     [t('Záložka', 'Tab'), t('Obsah', 'Content')],
     [
-      [t('Nastavení testu', 'Test settings'), t('Vstupy testu: dráha, rychlost, zrychlení a ryv pohonu, měřicí proud a napětí, vzorkování (perioda v µs, převzorkování, rezerva vzorků) a bezpečnostní limity dráhy a síly.', 'Test inputs: drive distance, velocity, acceleration and jerk, measuring current and voltage, sampling (period in µs, oversampling, samples reserve) and safety limits for distance and force.')],
-      [t('Měření', 'Measurement'), t('Doba měření a čas zapsaný řídicím systémem.', 'Measurement duration and the time recorded by the controller.')],
-      [t('Výsledky', 'Results'), t('Vypočtené parametry: síly, polohy, zdvihy, spínací časy a odpory kontaktů.', 'Calculated parameters: forces, positions, travels, switching times and contact resistances.')],
-      [t('NOK hodnocení', 'NOK evaluation'), t('Celkový výsledek a stav pěti NOK kategorií (Force, Position, Electric, Times, Process).', 'Overall result and the status of the five NOK categories (Force, Position, Electric, Times, Process).')],
-      [t('Signálová data', 'Signal data'), t('Grafy naměřených signálů — viz 6.1.', 'Charts of the measured signals — see 6.1.')],
+      [t('Nastavení testu', 'Test setup'), t('Vstupy testu: dráha, rychlost, zrychlení, zpomalení a ryv pohonu, měřicí proud a napětí kontaktů, vzorkování (základní perioda v µs, převzorkování, rezerva vzorků) a bezpečnostní limity dráhy a síly.', 'Test inputs: drive distance, velocity, acceleration, deceleration and jerk, contact measuring current and voltage, sampling (base period in µs, oversampling, samples reserve) and safety limits for distance and force.')],
+      [t('Měření', 'Measurement'), t('Doba měření, čas zapsaný řídicím systémem a (u novějších souborů) kalibrační konstanta C.', 'Measurement duration, the time recorded by the controller and (in newer files) the calibration constant C.')],
+      [t('Výsledky', 'Results'), t('Vyhodnocené parametry — stejná tabulka jako u výroby, včetně „?“ a grafu parametru.', 'Evaluated parameters — the same table as for production, including “?” and the parameter chart.')],
+      [t('NOK hodnocení', 'NOK evaluation'), t('Výsledek a stav pěti NOK kategorií.', 'Result and the status of the five NOK categories.')],
+      [t('Signálová data', 'Signal data'), t('Grafy naměřených signálů (kapitola 6.1).', 'Charts of the measured signals (section 6.1).')],
     ],
-    [2400, 7238], t('Záložky detailu testu', 'Test detail tabs')))
-  c.push(...FIG('17_test_results', t('Výsledky testu', 'Test results')))
+    [2400, 7238], t('Záložky detailu měření', 'Measurement detail tabs')))
+  c.push(...FIG('17_test_results', t('Výsledky měření', 'Measurement results')))
+  c.push(...FIG('18_test_nok', t('NOK hodnocení — měření nevyhovělo v oblasti Times', 'NOK evaluation — the measurement failed in the Times area')))
 
   c.push(H2(t('6.1  Signálová data', '6.1  Signal data')))
   c.push(P(t(
-    'Záložka **Signálová data** zobrazí průběh měření v grafech. Vpravo nahoře je počet vzorků. Grafy mají pět podzáložek:',
-    'The **Signal data** tab shows the measurement in charts. The number of samples is shown at the top right. The charts have five sub-tabs:')))
+    'Záložka **Signálová data** zobrazí průběh měření v grafech; vpravo nahoře je počet vzorků. Polohy jsou ve stejných souřadnicích jako výsledky (výška nad osou upevňovacích otvorů, C v popisku osy). Body OP a RP se určují elektricky — přepnutím kontaktu NC při prahu 50 % rozsahu napětí U_NC, stejně jako v analýze. Grafy mají pět podzáložek:',
+    'The **Signal data** tab shows the measurement in charts; the number of samples is at the top right. Positions use the same coordinates as the results (height above the mounting-hole axis, C in the axis label). The OP and RP points are determined electrically — by the NC contact changeover at a threshold of 50 % of the U_NC voltage range, as in the analysis. The charts have five sub-tabs:')))
   c.push(...TABLE(
     [t('Podzáložka', 'Sub-tab'), t('Co zobrazuje', 'What it shows')],
     [
       [t('Přehled', 'Overview'), t('Poloha, síla, napětí, proud a odpor kontaktů v čase pro celé měření.', 'Position, force, contact voltage, current and resistance over time for the whole measurement.')],
-      [t('Výsledky', 'Results'), t('Poloha a síla s vyznačenými body FP, OP, TTP, RP a tabulka výsledků analýzy.', 'Position and force with the FP, OP, TTP, RP points marked, plus a table of analysis results.')],
-      [t('Hystereze', 'Hysteresis'), t('Síla v závislosti na poloze pro dopředný a zpětný chod.', 'Force versus position for the forward and reverse stroke.')],
+      [t('Výsledky', 'Results'), t('Poloha a síla s vyznačenými body FP, OP, TTP, RP a FPR a tabulka výsledků analýzy.', 'Position and force with the FP, OP, TTP, RP and FPR points marked, plus a table of analysis results.')],
+      [t('Hystereze', 'Hysteresis'), t('Síla v závislosti na poloze pro dopředný a zpětný chod.', 'Force versus position for the forward and return stroke.')],
       [t('Detail spínání', 'Switching detail'), t('Napětí, proud a síla kolem bodů OP a RP ve vysokém rozlišení.', 'Voltage, current and force around the OP and RP points at high resolution.')],
-      [t('Časování', 'Timing'), t('Napětí a proud kontaktů s vyznačenými časy UT, RevT, BT a OpT.', 'Contact voltage and current with the UT, RevT, BT and OpT times marked.')],
+      [t('Časování', 'Timing detail'), t('Napětí a proud kontaktů s vyznačenými časy UT, RevT, BT a OpT.', 'Contact voltage and current with the UT, RevT, BT and OpT times marked.')],
     ],
     [2400, 7238], t('Podzáložky signálových dat', 'Signal data sub-tabs')))
   c.push(...FIG('20a_sig_overview', t('Signálová data — Přehled', 'Signal data — Overview')))
+  c.push(...FIG('20c_sig_hysteresis', t('Signálová data — Hystereze', 'Signal data — Hysteresis')))
   c.push(...FIG('20d_sig_switching', t('Signálová data — Detail spínání', 'Signal data — Switching detail')))
   c.push(H3(t('Přiblížení grafu', 'Zooming a chart')))
   c.push(...UL(t([
-    '**Ctrl + kolečko myši** nebo **dva prsty** na dotykové obrazovce — přiblížení osy času. Přiblížený úsek se načte v plném rozlišení.',
+    '**Ctrl + kolečko myši** nebo **dva prsty** na dotykové obrazovce — přiblížení časové osy. Přiblížený úsek se načte v plném rozlišení (bez decimace).',
     '**Tažení** — posun přiblíženého úseku.',
-    '**Dvojklik** — návrat na základní velikost.',
-    '**Tlačítko se šipkami** v rohu grafu — celá obrazovka; zavřete klávesou **Esc**.',
+    '**Dvojklik** — návrat na základní zobrazení.',
+    '**Tlačítko se šipkami** v rohu grafu — celá obrazovka (zde stačí kolečko bez Ctrl); zavřete klávesou **Esc**.',
   ], [
-    '**Ctrl + mouse wheel** or **two fingers** on a touch screen — zoom the time axis. The zoomed section is loaded at full resolution.',
+    '**Ctrl + mouse wheel** or **two fingers** on a touch screen — zoom the time axis. The zoomed section is loaded at full resolution (without decimation).',
     '**Drag** — move the zoomed section.',
-    '**Double-click** — return to the default size.',
-    '**Arrows button** in the corner of a chart — full screen; close with **Esc**.',
+    '**Double-click** — return to the default view.',
+    '**Arrows button** in the corner of a chart — full screen (the wheel works without Ctrl here); close with **Esc**.',
   ])))
-  c.push(H2(t('6.2  Tisk protokolu testu', '6.2  Printing a test report')))
+  c.push(H2(t('6.2  Tisk protokolu měření', '6.2  Printing a measurement report')))
   c.push(P(t(
-    'Tlačítko **Tisk** (nebo **Ctrl + P**) připraví protokol se všemi záložkami — nastavení, měření, výsledky, NOK hodnocení — a se všemi grafy signálových dat. Příprava grafů trvá několik sekund (na tlačítku je „Připravuji tisk…“), potom se otevře tiskový dialog prohlížeče.',
-    'The **Print** button (or **Ctrl + P**) prepares a report with all tabs — settings, measurement, results, NOK evaluation — and all signal data charts. Preparing the charts takes a few seconds (the button shows “Preparing print…”), then the browser print dialog opens.')))
+    'Tlačítko **Tisk** (nebo **Ctrl + P**) připraví protokol se všemi záložkami — nastavení, měření, výsledky, NOK hodnocení — a se všemi pěti grafy signálových dat. Příprava grafů trvá několik sekund (na tlačítku je „Připravuji tisk…“), potom se otevře tiskový dialog prohlížeče.',
+    'The **Print** button (or **Ctrl + P**) prepares a report with all tabs — setup, measurement, results, NOK evaluation — and all five signal data charts. Preparing the charts takes a few seconds (the button shows “Preparing print…”), then the browser print dialog opens.')))
 
-  // 7 ─ Nastavení
+  // ═══ 7 Nastavení ══════════════════════════════════════════════════════
   c.push(H1(t('7  Nastavení', '7  Settings')))
-  c.push(H2(t('7.1  Předvolby', '7.1  Preferences')))
   c.push(P(t(
-    'Jazyk, tmavý / světlý vzhled, počet souborů na stránce Databáze a interval automatického obnovení seznamu. Předvolby se ukládají v prohlížeči, takže každý počítač může mít vlastní. Ikona ⓘ u řádku zobrazí nápovědu.',
-    'Language, dark / light appearance, number of files per Database page and the automatic list refresh interval. Preferences are stored in the browser, so each computer can have its own. The ⓘ icon next to a row shows help.')))
+    'Stránka má čtyři záložky: Předvolby, Připojení, Čas / NTP a Uživatelé (jen správce u stroje). Ikona ⓘ u řádku zobrazí nápovědu k danému nastavení.',
+    'The page has four tabs: Preferences, Connection, Time / NTP and Users (administrator at the machine only). The ⓘ icon next to a row shows help for that setting.')))
+  c.push(H2(t('7.1  Předvolby', '7.1  Preferences')))
+  c.push(...TABLE(
+    [t('Předvolba', 'Preference'), t('Možnosti', 'Options')],
+    [
+      [t('Jazyk', 'Language'), 'Čeština / English'],
+      [t('Téma', 'Theme'), t('Světlý / Tmavý (tmavý snižuje únavu očí při nočním provozu).', 'Light / Dark (dark reduces eye strain during night shifts).')],
+      [t('Souborů na stránce', 'Files per page'), t('10, 25 nebo 50 (výchozí 50).', '10, 25 or 50 (default 50).')],
+      [t('Automatické obnovení', 'Auto-refresh'), t('15, 30 nebo 60 s (výchozí 30 s). Lokální úložiště se navíc obnovuje okamžitě při každé změně.', '15, 30 or 60 s (default 30 s). Local storage additionally refreshes immediately on every change.')],
+      [t('Klávesnice na obrazovce', 'On-screen keyboard'), t('Automaticky (jen na PC u stroje) / Zapnuto / Vypnuto.', 'Automatic (machine PC only) / On / Off.')],
+    ],
+    [2800, 6838], t('Předvolby', 'Preferences')))
+  c.push(P(t(
+    'Předvolby se ukládají v prohlížeči, takže každý počítač může mít vlastní.',
+    'Preferences are stored in the browser, so each computer can have its own.')))
   c.push(...FIG('21_settings_prefs', t('Nastavení — Předvolby', 'Settings — Preferences')))
+
   c.push(H2(t('7.2  Připojení', '7.2  Connection')))
   c.push(P(t(
-    'Stav spojení s PLC (Net ID, port), dostupnost lokálního úložiště a NAS a jejich cesty, zaplnění a limit lokálního úložiště. Cesty a limit může měnit jen správce, a to pouze na PC u stroje; změna platí okamžitě. Tlačítkem se složkou vyberete lokální cestu procházením disku.',
-    'PLC connection status (Net ID, port), availability of local storage and the NAS with their paths, and usage and limit of local storage. Only an administrator can change the paths and the limit, and only on the machine PC; changes take effect immediately. The folder button lets you pick the local path by browsing the disk.')))
+    'Stav spojení s PLC TwinCAT 3 (ADS, AMS Net ID a port runtime), dostupnost a cesta lokálního úložiště (složka, do které zapisuje DatabaseGateway), zaplnění a limit lokálního úložiště a dostupnost a síťová cesta (UNC) NAS. Dostupnost NAS se kontroluje každých 30 s. Cesty a limit může měnit jen správce u stroje; změna platí okamžitě a uloží se do konfigurace. Tlačítko **Procházet** vybere lokální složku procházením disku.',
+    'Status of the connection to the TwinCAT 3 PLC (ADS, AMS Net ID and runtime port), availability and path of local storage (the folder DatabaseGateway writes to), usage and limit of local storage, and availability and network path (UNC) of the NAS. NAS availability is checked every 30 s. Only an administrator at the machine can change the paths and the limit; changes take effect immediately and are saved in the configuration. The **Browse** button picks the local folder by browsing the disk.')))
   c.push(...FIG('22_settings_conn', t('Nastavení — Připojení', 'Settings — Connection')))
-  c.push(H2(t('7.3  Uživatelé', '7.3  Users')))
+
+  c.push(H2(t('7.3  Čas / NTP', '7.3  Time / NTP')))
   c.push(P(t(
-    'Záložka je vidět jen správci a výrobci. Zobrazuje seznam účtů a umožňuje přidat uživatele, změnit heslo a smazat účet. Správce nemůže vytvořit, smazat ani změnit heslo účtu se stejnou nebo vyšší rolí. Vlastní heslo si může změnit každý uživatel.',
-    'This tab is visible only to administrators and the manufacturer. It lists the accounts and lets you add a user, change a password and delete an account. An administrator cannot create, delete or change the password of an account with the same or a higher role. Every user can change their own password.')))
+    'PC u stroje slouží jako NTP server, ze kterého si čas berou další průmyslová PC (IPC) linky; tento čas dostávají i časové značky všech nových záznamů. Nahoře je hned vidět, zda si IPC mohou brát čas z tohoto PC — a pokud ne, proč (služba Windows Time neběží, NTP server je vypnutý, port UDP 123 nenaslouchá, PC se neohlašuje jako spolehlivý zdroj). Dále čas PC, odkud ho PC bere a **adresa pro IPC** — na IPC nastavte jako NTP server adresu PC v síti stroje. Údaje pro servis (časové pásmo, rozdíl vůči zařízení, ze kterého se díváte, stav služby, stratum, výstup `w32tm /query /status`) jsou ve sbalených **Technických podrobnostech**.',
+    'The machine PC acts as the NTP server from which the other industrial PCs (IPCs) of the line take their time; all new records are also time-stamped with it. The top immediately shows whether the IPCs can take their time from this PC — and if not, why (Windows Time service not running, NTP server disabled, UDP port 123 not listening, the PC not announcing itself as a reliable source). Below are the PC time, where the PC takes it from and the **address for the IPCs** — on the IPCs set the PC address in the machine network as the NTP server. Service details (time zone, difference to the device you are viewing from, service state, stratum, the output of `w32tm /query /status`) are in the collapsed **Technical details**.')))
+  c.push(...FIG('22b_settings_time', t('Nastavení — Čas / NTP', 'Settings — Time / NTP')))
+  c.push(P(t(
+    '**Nastavit čas PC** smí jen správce u stroje: vyplňte nový místní čas (tlačítko **Vyplnit aktuální čas PC** vloží současný), stiskněte **Nastavit čas…** a v dialogu s rozdílem potvrďte **Rozumím, nastavit čas PC**. Nový čas převezmou IPC a dostanou ho časové značky nových záznamů; posun dopředu o víc než 8 hodin odhlásí všechny uživatele. Synchronizuje-li se PC z nadřazeného zdroje, ručně nastavený čas se při další synchronizaci přepíše (aplikace upozorní).',
+    '**Setting the PC time** is reserved for an administrator at the machine: enter the new local time (the **Fill in current PC time** button inserts the current one), press **Set time…** and confirm **I understand, set the PC time** in the dialog showing the difference. The IPCs adopt the new time and new records are time-stamped with it; a jump forward of more than 8 hours signs out all users. If the PC synchronises from an upstream source, a manually set time is overwritten at the next synchronisation (the application warns).')))
+  c.push(NOTE('info', t(
+    'Účet, pod kterým běží služba ScadaViewer, musí mít právo „Změna systémového času“ (secpol.msc → Přiřazení uživatelských práv). Bez něj aplikace nastavení odmítne s vysvětlením.',
+    'The account the ScadaViewer service runs under needs the “Change the system time” right (secpol.msc → User Rights Assignment). Without it the application refuses to set the time and explains why.')))
+
+  c.push(H2(t('7.4  Uživatelé', '7.4  Users')))
+  c.push(P(t(
+    'Záložka je dostupná jen správci a výrobci na PC u stroje (z kanceláře se nezobrazí). Ukazuje uživatelské jméno, zobrazované jméno a roli účtů a umožňuje přidat uživatele, změnit heslo a smazat účet. Pravidla:',
+    'The tab is available only to the administrator and the manufacturer on the machine PC (it is not shown from the office). It shows the user name, display name and role of the accounts and lets you add a user, change a password and delete an account. Rules:')))
+  c.push(...UL(t([
+    'Nový účet smí mít nejvýše stejnou roli jako ten, kdo ho zakládá.',
+    'Cizí heslo lze změnit a cizí účet smazat jen u účtu s **nižší** rolí. Vlastní heslo se mění vždy s aktuálním heslem.',
+    'Vlastní účet ani posledního uživatele smazat nelze. Smazaný uživatel je okamžitě odhlášen.',
+    'Jméno `plc_operator` je vyhrazené pro přihlášení přes PLC.',
+  ], [
+    'A new account may have at most the same role as the user creating it.',
+    'Another user’s password can be changed and their account deleted only for an account with a **lower** role. Your own password is always changed with the current password.',
+    'Neither your own account nor the last user can be deleted. A deleted user is signed out immediately.',
+    'The name `plc_operator` is reserved for sign-in via the PLC.',
+  ])))
   c.push(...FIG('23_settings_users', t('Nastavení — Uživatelé', 'Settings — Users')))
 
-  // 8 ─ Info
+  // ═══ 8 Info ═══════════════════════════════════════════════════════════
   c.push(H1(t('8  Info', '8  Info')))
   c.push(P(t(
-    'Stránka Info ukazuje verzi aplikace, číslo projektu, zákazníka, dodavatele a kontakt. Verzi uvádějte při hlášení problému.',
-    'The Info page shows the application version, project number, customer, supplier and contact. Please quote the version when reporting a problem.')))
+    'Stránka Info ukazuje verzi aplikace (hlásí ji server), číslo projektu, zákazníka, dodavatele a kontakt; záložka Dokumentace obsahuje stručný popis aplikace. Verzi uvádějte při hlášení problému.',
+    'The Info page shows the application version (reported by the server), project number, customer, supplier and contact; the Documentation tab contains a brief description of the application. Please quote the version when reporting a problem.')))
   c.push(...FIG('24_info', t('Stránka Info', 'Info page')))
 
-  // 9 ─ Řešení problémů
+  // ═══ 9 Řešení problémů ════════════════════════════════════════════════
   c.push(H1(t('9  Řešení běžných situací', '9  Common situations')))
   c.push(...TABLE(
     [t('Situace', 'Situation'), t('Příčina a řešení', 'Cause and solution')],
     [
-      [t('V horní liště je „PLC odpojeno“', '“PLC disconnected” in the top bar'), t('Řídicí systém stroje není dostupný (vypnutý, restart, odpojený kabel). Data v Databázi lze dál prohlížet. Spojení se obnoví samo.', 'The machine controller is unreachable (switched off, restarting, cable unplugged). Database data can still be viewed. The connection is restored automatically.')],
-      [t('Červený pruh „Server nedostupný“', 'Red bar “Server unavailable”'), t('Prohlížeč ztratil spojení se serverem aplikace (restart PC nebo služby, výpadek sítě). Počkejte, pruh zmizí sám. Pokud trvá, kontaktujte správce.', 'The browser lost the connection to the application server (PC or service restart, network outage). Wait, the bar disappears by itself. If it persists, contact your administrator.')],
+      [t('V horní liště je „PLC odpojeno“', '“PLC disconnected” in the top bar'), t('Řídicí systém stroje není dostupný (vypnutý, restart, odpojený kabel). Data v Databázi lze dál prohlížet; přihlášení přes PLC skončí. Spojení se obnoví samo.', 'The machine controller is unreachable (switched off, restarting, cable unplugged). Database data can still be viewed; a PLC sign-in ends. The connection is restored automatically.')],
+      [t('Červený pruh „Server nedostupný“', 'Red bar “Server unavailable”'), t('Prohlížeč ztratil spojení se serverem aplikace (restart PC nebo služby, výpadek sítě). Pruh zmizí sám; trvá-li, kontaktujte správce.', 'The browser lost the connection to the application server (PC or service restart, network outage). The bar disappears by itself; if it persists, contact your administrator.')],
       [t('Záložka Vzdálená je nedostupná', 'The Remote tab is unavailable'), t('NAS není dostupný ze sítě. Lokální data fungují dál a zakázky se na NAS nahrají, až bude dostupný.', 'The NAS cannot be reached on the network. Local data keeps working and orders will be uploaded once the NAS is reachable.')],
-      [t('V Databázi nevidím zakázku', 'An order is missing in the Database'), t('Zkontrolujte filtr Od / Do (výchozí jsou poslední dva dny) a přepínače Lokální / Vzdálená a Production / Testing.', 'Check the From / To filter (default: last two days) and the Local / Remote and Production / Testing switches.')],
-      [t('Místo počtu záznamů je „…“', '“…” instead of the number of records'), t('Počet se dopočítává na pozadí a doplní se sám (u velkých souborů na NAS podle rychlosti sítě). Trvá-li dlouho, zkontrolujte dostupnost NAS.', 'The count is being calculated in the background and fills in by itself (for large files on the NAS depending on network speed). If it takes long, check that the NAS is reachable.')],
-      [t('„Relace vypršela“', '“Session expired”'), t('Přihlášení platí 8 hodin. Přihlaste se znovu.', 'A sign-in is valid for 8 hours. Sign in again.')],
+      [t('V Databázi nevidím zakázku', 'An order is missing in the Database'), t('Zkontrolujte filtr Od / Do (výchozí jsou poslední dva dny) a přepínače Lokální / Vzdálená a Production / Testing, nebo zakázku vyhledejte podle čísla (hledá v celém archivu).', 'Check the From / To filter (default: last two days) and the Local / Remote and Production / Testing switches, or search for the order by number (searches the whole archive).')],
+      [t('Místo počtu záznamů je „…“', '“…” instead of the number of records'), t('Počet se dopočítává na pozadí a doplní se sám (u velkých souborů na NAS podle rychlosti sítě).', 'The count is being calculated in the background and fills in by itself (for large files on the NAS depending on network speed).')],
+      [t('Tlačítka CSV / XLSX jsou u stroje tlumená', 'CSV / XLSX buttons are dimmed at the machine'), t('Není zasunutá flashka nebo přihlášený uživatel není správce. Zasuňte flashku, případně se přihlaste jako správce.', 'No USB flash drive is inserted or the signed-in user is not an administrator. Insert a flash drive or sign in as an administrator.')],
+      [t('Flashku nelze bezpečně odebrat', 'The flash drive cannot be removed safely'), t('Na flashce je otevřený soubor (např. v Excelu) nebo na ni právě probíhá hromadné ukládání. Zavřete soubor / počkejte na dokončení a zkuste to znovu.', 'A file on the flash drive is open (e.g. in Excel) or a bulk save to it is in progress. Close the file / wait for completion and try again.')],
+      [t('„Na flashce není dost místa“', '“Not enough space on the flash drive”'), t('Použijte větší nebo prázdnou flashku, případně zužte filtr hromadného stažení.', 'Use a larger or empty flash drive, or narrow the bulk download filter.')],
+      [t('Dokončit zakázku hlásí „Zakázka právě běží na stroji“', 'Finish order reports “The order is running on the machine”'), t('PLC zakázku hlásí jako aktivní. Ukončete ji na stroji; ručně se dokončuje jen zakázka, která se po výpadku neuzavřela.', 'The PLC reports the order as active. End it on the machine; only an order that was not closed after an outage is finished manually.')],
+      [t('„Relace vypršela“', '“Session expired”'), t('U stroje po 15 minutách nečinnosti (přihlášení heslem), vzdáleně po 8 hodinách. Přihlaste se znovu.', 'At the machine after 15 minutes of inactivity (password sign-in), remotely after 8 hours. Sign in again.')],
+      [t('Z kanceláře se nelze přihlásit — „výchozí heslo“', 'Cannot sign in from the office — “default password”'), t('Účet má výchozí heslo; změňte ho u stroje v Nastavení → Uživatelé.', 'The account still has the default password; change it at the machine in Settings → Users.')],
       [t('Přihlášení je zablokované', 'Sign-in is blocked'), t('Po 5 chybných heslech je přihlašování z počítače na 10 minut zablokované. Počkejte a zkuste to znovu.', 'After 5 wrong passwords, sign-in from that computer is blocked for 10 minutes. Wait and try again.')],
-      [t('Upozornění na zaplnění úložiště', 'Storage filling up warning'), t('Uvolněte místo tlačítkem Vyčistit synchronizované (kapitola 3.7). Pokud zbývají jen soubory Local, zkontrolujte připojení NAS.', 'Free up space with Clean up synced (section 3.7). If only Local files remain, check the NAS connection.')],
-      [t('Nejde mazat ani měnit nastavení', 'Cannot delete or change settings'), t('Jste připojeni z jiného počítače (štítek Vzdálený přístup), nebo nemáte potřebnou roli (tabulka 1).', 'You are connected from another computer (Remote access label), or you do not have the required role (Table 1).')],
+      [t('Upozornění na zaplnění úložiště', 'Storage filling up warning'), t('Uvolněte místo tlačítkem Vyčistit synchronizované (kapitola 3.5). Zbývají-li jen soubory Local, zkontrolujte připojení NAS.', 'Free up space with Clean synced files (section 3.5). If only Local files remain, check the NAS connection.')],
+      [t('IPC nepřebírají čas z PC u stroje', 'The IPCs do not take the time from the machine PC'), t('Nastavení → Čas / NTP ukáže důvod; postup nápravy je v dokumentaci nasazení (kapitola „Čas PC — NTP server pro IPC“).', 'Settings → Time / NTP shows the reason; the fix is described in the deployment documentation (section “PC time — NTP server for IPCs”).')],
+      [t('Nejde mazat, dokončit zakázku ani měnit nastavení', 'Cannot delete, finish an order or change settings'), t('Jste připojeni z jiného počítače (štítek Vzdálený přístup), nebo nemáte potřebnou roli (tabulka 2).', 'You are connected from another computer (Remote access label), or you do not have the required role (Table 2).')],
     ],
-    [3000, 6638], t('Běžné situace a jejich řešení', 'Common situations and how to resolve them')))
+    [3100, 6538], t('Běžné situace a jejich řešení', 'Common situations and how to resolve them')))
 
-  // Příloha A ─ parametry
+  // ═══ Příloha A ─ parametry ════════════════════════════════════════════
   c.push(H1(t('Příloha A  Přehled parametrů', 'Appendix A  Parameter overview')))
   c.push(P(t(
-    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Hodnoty jsou v jednotkách zákazníka: síly v mN, polohy a zdvihy v µm (0,1 µm), časy v µs, odpory kontaktů v mΩ (0,1 mΩ); odpor nad 999,9 mΩ (rozepnutý kontakt) se zobrazuje jako ∞. Polohy FP, OP, RP a TTP udávají výšku hmatníku nad osou upevňovacích otvorů — při stlačení klesají. U starších souborů (před 10/2026) jsou polohy na stupnici enkodéru; aplikace na to upozorní poznámkou.',
-    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Values are in customer units: forces in mN, positions and travels in µm (0.1 µm), times in µs, contact resistances in mΩ (0.1 mΩ); a resistance above 999.9 mΩ (open contact) is shown as ∞. Positions FP, OP, RP and TTP give the height of the actuator above the mounting-hole axis — they decrease when actuated. In older files (before 10/2026) the positions are on the encoder scale; the application shows a note.')))
+    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Formát hodnot: síly v mN (celá čísla), polohy a dráhy v µm s rozlišením 0,1 µm, časy v µs, odpory kontaktů v mΩ s rozlišením 0,1 mΩ; odpor nad 999,9 mΩ (rozepnutý kontakt) se zobrazuje jako ∞, nestanovená hodnota jako „—“. Zkratky OvT a RvT (dráhy) se liší od OpT a RevT (časy), aby nedošlo k záměně. Parametry DF a FPR jsou v souborech od 21. 10. 2026, statické odpory od 22. 10. 2026; starší soubory je nemají.',
+    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Value format: forces in mN (integers), positions and travels in µm with a resolution of 0.1 µm, times in µs, contact resistances in mΩ with a resolution of 0.1 mΩ; a resistance above 999.9 mΩ (open contact) is shown as ∞, an undetermined value as “—”. The abbreviations OvT and RvT (travels) differ from OpT and RevT (times) to avoid confusion. The parameters DF and FPR are present in files from 21 Oct 2026, the static resistances from 22 Oct 2026; older files do not contain them.')))
   const desc = L === 'cs' ? params.desc : params.desc_en
   for (const g of params.groups) {
     const rows = g.keys.map(k => {
-      const name = (params.tooltips[k] || '').replace(/\s*\[[^\]]*\]\s*$/, '').split(' — ')[0]
+      const name = (params.tooltips[k] || '').replace(/\s*\[[^\]]*\]\s*/, ' ').replace(/\s+/g, ' ').trim()
       return [params.labels[k] || k, name, desc[k] || '']
     })
     c.push(...TABLE([t('Zkratka', 'Abbr.'), t('Název', 'Name'), t('Popis', 'Description')], rows,
-      [1100, 2700, 5838], `${g.label} [${g.unit}]`))
+      [1150, 2750, 5738], `${g.label} [${g.unit}]`))
   }
+
+  // ═══ Příloha B ─ pojmy ════════════════════════════════════════════════
+  c.push(H1(t('Příloha B  Pojmy a zkratky', 'Appendix B  Terms and abbreviations')))
+  c.push(...TABLE(
+    [t('Pojem', 'Term'), t('Význam', 'Meaning')],
+    [
+      ['ADS', t('Komunikační protokol Beckhoff TwinCAT, přes který aplikace sleduje stav PLC.', 'Beckhoff TwinCAT communication protocol through which the application monitors the PLC state.')],
+      ['Analyzing', t('Služba, která z naměřených signálů vypočte parametry kusu a předá je PLC.', 'Service that calculates the parameters of a piece from the measured signals and passes them to the PLC.')],
+      ['C', t('Kalibrační konstanta stroje [µm]; poloha zákazníka P = C − x (x = dráha vozíku).', 'Calibration constant of the machine [µm]; customer position P = C − x (x = carriage travel).')],
+      ['DatabaseGateway', t('Služba, která zapisuje data zakázek a měření do CSV a nahrává je na NAS.', 'Service that writes order and measurement data to CSV and uploads it to the NAS.')],
+      ['IPC', t('Průmyslové PC linky; čas přebírá z PC u stroje (NTP).', 'Industrial PC of the line; it takes its time from the machine PC (NTP).')],
+      [t('Kategorie 1–6', 'Category 1–6'), t('Třídicí krabice: 1–4 OK podle třídicí veličiny, 5 NOK Trafag, 6 NOK Supplier.', 'Sorting box: 1–4 OK by the sorting quantity, 5 NOK Trafag, 6 NOK Supplier.')],
+      [t('Limity Trafag / výrobce', 'Trafag / manufacturer limits'), t('Meze Min / Max měřených parametrů ze zakázky; mimo Trafag = NOK Trafag, mimo výrobce = NOK Supplier.', 'Min / Max limits of the measured parameters from the order; outside Trafag = NOK Trafag, outside manufacturer = NOK Supplier.')],
+      ['NAS', t('Síťové úložiště Synology — archiv zakázek a měření.', 'Synology network storage — archive of orders and measurements.')],
+      ['NC / NO', t('Rozpínací (normally closed) / spínací (normally open) kontakt mikrospínače.', 'Normally closed / normally open contact of the microswitch.')],
+      [t('NOK kategorie / oblast', 'NOK category / area'), t('Oblast, ve které kus nevyhověl: Force, Position, Electric, Times, Process.', 'Area in which a piece failed: Force, Position, Electric, Times, Process.')],
+      ['NTP', t('Protokol synchronizace času v síti.', 'Network time synchronisation protocol.')],
+      ['PLC', t('Řídicí systém stroje (Beckhoff TwinCAT 3).', 'Machine controller (Beckhoff TwinCAT 3).')],
+      [t('Receptura', 'Recipe'), t('Sada parametrů testu a třídění v PLC, podle které se zakázka měří (ID receptury).', 'Set of test and sorting parameters in the PLC used to measure the order (recipe ID).')],
+      [t('Rozpracovaná zakázka (WIP)', 'Order in progress (WIP)'), t('Zakázka, která se právě vyrábí (stav In progress).', 'Order currently being produced (In progress state).')],
+      [t('Šarže výrobce', 'Supplier lot'), t('Číslo dodávky mikrospínačů od výrobce, ze které kusy zakázky pocházejí.', 'Delivery number of the microswitches from the manufacturer from which the pieces of the order come.')],
+      [t('Třídicí veličina', 'Sorting quantity'), t('Parametr, podle kterého se OK kusy dělí do kategorií 1–4 (obvykle MD).', 'Parameter by which OK pieces are divided into categories 1–4 (usually MD).')],
+      ['XLSX / CSV', t('Formát Excel / textový formát se středníkem; CSV je originál souboru zakázky.', 'Excel format / semicolon-separated text format; CSV is the original order file.')],
+    ],
+    [2500, 7138], t('Pojmy a zkratky', 'Terms and abbreviations')))
   return c
 }
 
@@ -594,7 +858,7 @@ const doc = new Document({
     config: [
       { reference: 'bullets', levels: [{ level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.LEFT,
         style: { paragraph: { indent: { left: 540, hanging: 270 } } } }] },
-      { reference: 'steps1', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT,
+      { reference: 'steps', levels: [{ level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.LEFT,
         style: { paragraph: { indent: { left: 540, hanging: 300 } } } }] },
     ],
   },

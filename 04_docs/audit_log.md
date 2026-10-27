@@ -5,6 +5,20 @@
 
 ---
 
+## [2026-10-27] Uživatelský manuál 2.0 (ScadaViewer 2.6.10)
+
+Manuál CS + EN přegenerován (`04_docs/manual/`, 41 stran, 43 obrázků, 19 tabulek) — předchozí byl z 2026-10-11 (verze 2.1).
+Doplněno vše od 2.2 do 2.6.10: tok dat a stavy souboru, role × akce (export u stroje jen správce na flashku), PLC
+přihlášení = správce, nečinnost 15 min, výchozí heslo, nápověda stránek, klávesnice na obrazovce, hledání zakázky,
+ukazatele NAS / USB, flashka, hromadné stažení, dokončení / smazání rozpracované zakázky, údaje zakázky (šarže, testovací
+parametry, kategorie, limity), podbarvení mimo limity, filtr NOK oblasti, diagram síla–dráha s DF / FPR / statickými odpory
+a novou definicí RvT (DIN 41636-1), grafická nápověda parametru, Čas / NTP; přílohy Parametry (z `paramMeta.ts`) a Pojmy.
+Fakta ověřena proti kódu (i18n, `dependencies.py`, `users_api.py`, `AuthContext`, `orderTimeline.ts`, `useSettings`).
+Generátor: nová ukázková data ve formátu Gateway 2.6.x (`make_demo_data.py`), `run_demo.py` (atrapa flashky, NTP a NAS
+jako u stroje — do manuálu se nedostanou údaje build PC), `shots.py` (52 snímků × 2 jazyky).
+
+---
+
 ## [2026-10-27] Vydání ScadaViewer 2.6.10
 
 Hromadné stažení (záznam níže, commit 36b8f79) vydané jako 2.6.10 — balíček `deploy_v2.6.10` (Analyzing 2.6.3,
