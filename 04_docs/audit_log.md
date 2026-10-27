@@ -5,6 +5,20 @@
 
 ---
 
+## [2026-10-27] Nasazení 2.6.10 na stroji selhalo — zápis do logu (deploy.ps1)
+
+Krok 5c (přejmenování složek) proběhl, pak `Log` → `Add-Content -Encoding utf8` hodil „Stream was not readable“
+(PS 5.1 při krátkém zámku souboru logu — antivir / indexování). Výjimka skončila v bloku obnovy, jehož první `Log`
+selhal stejně → skript skončil BEZ obnovy a BEZ spuštění služeb (exe + _internal nové, složky přejmenované, NSSM přepsáno).
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔴 HIGH | Zápis do logu mohl ukončit nasazení i obnovu — `Log` nyní `[IO.File]::AppendAllText` (jen zápis), 5 pokusů, pak pokračuje bez logu; nikdy nevyhodí | `06_build/deploy/deploy.ps1` | ✅ Opraveno (ověřeno simulací zamčeného souboru) |
+| 2 | ⚠️ MEDIUM | Blok obnovy: Restore / Start-Apps / Check-Health každý ve vlastním try — selhání obnovy nezabrání spuštění služeb | `deploy.ps1` | ✅ Opraveno |
+| 3 | ℹ️ INFO | Stroj po selhání: služby zastavené — nápravu viz odpověď (rollback.bat s opraveným deploy.ps1, nebo ruční start) | PC u stroje | ⬜ Ověřit |
+
+---
+
 ## [2026-10-27] Uživatelský manuál 2.0 (ScadaViewer 2.6.10)
 
 Manuál CS + EN přegenerován (`04_docs/manual/`, 41 stran, 43 obrázků, 19 tabulek) — předchozí byl z 2026-10-11 (verze 2.1).

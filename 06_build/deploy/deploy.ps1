@@ -115,10 +115,23 @@ $Apps = @(
     @{ Service = 'ScadaViewer';     Exe = 'scada_viewer.exe'; Zip = "ScadaViewer_v$($AppVersions.ScadaViewer).zip";     Folder = 'scada_viewer' }
 )
 
+$script:LogEnc    = New-Object Text.UTF8Encoding $true
+$script:LogWarned = $false
+# Zapis do logu nesmi nasazeni NIKDY shodit: Add-Content v PS 5.1 pri kratkem zamku souboru (antivir / indexovani)
+# hazel "Stream was not readable" a s $ErrorActionPreference Stop ukoncil skript i v bloku obnovy po chybe - sluzby
+# zustaly zastavene, aplikace napul vymenene (nasazeni 2.6.10, 2026-10-27). AppendAllText jen zapisuje (nic necte),
+# pri zamku 5 pokusu, pak pokracovat bez logu.
 function Log([string]$msg, [string]$color = 'Gray') {
     $line = '{0}  {1}' -f (Get-Date -Format 'HH:mm:ss'), $msg
     Write-Host $line -ForegroundColor $color
-    Add-Content -Path $LogFile -Value $line -Encoding utf8
+    for ($i = 0; $i -lt 5; $i++) {
+        try { [IO.File]::AppendAllText($LogFile, $line + "`r`n", $script:LogEnc); return }
+        catch { Start-Sleep -Milliseconds 300 }
+    }
+    if (-not $script:LogWarned) {
+        $script:LogWarned = $true
+        Write-Host "[VAROVANI] Zapis do $LogFile selhal - nasazeni pokracuje, vystup sledujte v tomto okne." -ForegroundColor Yellow
+    }
 }
 function Fail([string]$msg) { Log "[CHYBA] $msg" 'Red'; throw $msg }
 
@@ -884,10 +897,11 @@ if ($DataMove) { Invoke-DataMove $DataMove $Apps[1].Backup }
     $err = $_
     Log "[CHYBA] Nasazeni selhalo po zastaveni sluzeb: $($err.Exception.Message)" 'Red'
     Log '        Vracim predchozi stav (slozky, exe, _internal, Config.toml) a spoustim sluzby ...' 'Yellow'
-    Restore-AfterFailure $done
+    # Kazdy krok zvlast - selhani obnovy nesmi zabranit spusteni sluzeb (stroj by nemeril)
+    try { Restore-AfterFailure $done } catch { Log "[CHYBA] Obnova predchoziho stavu selhala: $($_.Exception.Message) - zkontrolujte rucne, pripadne rollback.bat." 'Red' }
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-    Start-Apps
-    Check-Health $port | Out-Null
+    try { Start-Apps } catch { Log "[CHYBA] Spusteni sluzeb selhalo: $($_.Exception.Message) - spustte je rucne (services.msc)." 'Red' }
+    try { Check-Health $port | Out-Null } catch { }
     Log "[CHYBA] Nasazeni v$Version NEPROBEHLO - bezi predchozi verze. Pricinu najdete vyse; log: $LogFile" 'Red'
     exit 1
 }
