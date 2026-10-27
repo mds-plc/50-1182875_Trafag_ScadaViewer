@@ -109,6 +109,32 @@ beforeEach(() => {
 // -----------------------------------------------------------------------
 
 describe('FileTable', () => {
+  it('CSV / XLSX with a reason (machine, no flash drive): muted, reason in title, still clickable', () => {
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} total={1} downloadDisabledReason="Insert a USB flash drive" />
+      </Wrapper>
+    )
+    const btns = Array.from(container.querySelectorAll('.db-download-btn')) as HTMLButtonElement[]
+    expect(btns).toHaveLength(2)
+    for (const b of btns) {
+      expect(b).toHaveClass('db-download-btn--blocked')
+      expect(b.title).toBe('Insert a USB flash drive')
+      expect(b).not.toBeDisabled()
+    }
+    fireEvent.click(btns[0])
+    expect(DEFAULT_PROPS.onDownload).toHaveBeenCalled()
+  })
+
+  it('CSV / XLSX without a reason: normal look', () => {
+    const { container } = render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[makeFile()]} total={1} />
+      </Wrapper>
+    )
+    for (const b of container.querySelectorAll('.db-download-btn')) expect(b).not.toHaveClass('db-download-btn--blocked')
+  })
+
   it('shows "no files" message when files list is empty', () => {
     render(
       <Wrapper>

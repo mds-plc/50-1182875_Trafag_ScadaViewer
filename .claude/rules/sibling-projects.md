@@ -52,6 +52,9 @@ csv_encoding  = "utf-8-sig"
   Od 2026-10-21 (Analyzing 2.4.0+): PROD `[Data]` 35 sloupců — `DF_DifferentialForce` na konci Force, `FPR_FreePositionReturn`
   na konci Position, poslední `PositionReference` (= C); TEST `[AnalyzedParameters]` 26 + `PositionReference` v `[MeasuredInfo]`.
   Rozhraní: `Analyzing/04_docs/interface_2026-10-21_DF_FPR_C.md`.
+  Od Analyzing 2.6.3 (2026-10-27): `RT_RealisingTravel` = |RP − FP| (Leerlaufweg, DIN 41636-1; dřív |TTP − RP|), OP = první
+  sepnutí NO (`op_definition = "no_close"` v Config.toml Analyzingu, nastavuje deploy) — název sloupců beze změny;
+  ScadaViewer rozlišuje starší soubory přes `paramMeta.rtDefinition`, OP v signálu přes `signal_reader._OP_MATCH_UM`.
 
 ### Složková struktura výstupů DatabaseGateway
 ```
@@ -69,6 +72,9 @@ csv_encoding  = "utf-8-sig"
   **Kontrakt mazání WIP (2026-10-16):** Gateway drží otevřené zakázky v paměti (`_wip_index`); smazaný WIP soubor
   pozná přes `FileManager._wip_path()` / `_forget_wip()` → Op2 / Op3 Rejected, Op1 smí zakázku založit znovu, kus se
   zapisuje `"r+"` (nikdy nový soubor bez hlavičky). Bez této Gateway ScadaViewer WIP mazat nesmí → nasazovat spolu.
+  **Ruční dokončení (2026-10-26):** ScadaViewer přesune `wip/…_WIP.csv` → `done_local/…_DONE.csv` (jako Op3); Gateway WIP
+  postrádá stejně jako po smazání (`_wip_path` / `_forget_wip` → další kus Rejected) a done_local nahraje na NAS běžnou
+  synchronizací (`register_untracked`).
 
 ### sync_state.json
 ScadaViewer tento soubor **nečte**. Stav synchronizace dedukuje ze složkové struktury:
@@ -124,3 +130,4 @@ Při implementaci **libovolné části** ScadaViewer:
 | `06_build/exe/build.bat` | `Analyzing/06_build/exe/build.bat` |
 | `06_build/exe/nssm_install.bat` | `DatabaseGateway/06_build/exe/nssm_install.bat` |
 | `06_build/exe/scada.spec` | `DatabaseGateway/06_build/exe/db_gateway.spec` |
+| `services/xlsx_export.py` (`build_blocks_xlsx`) | `DatabaseGateway/04_docs/sample_production.xlsx` (vzor rozložení XLSX) |

@@ -182,6 +182,48 @@ def test_xlsx_layout_like_gateway_sample(client) -> None:
         assert 'rgb="FFC1F0C8"' in styles and 'formatCode="0.0"' in styles and '<left style="thin">' in styles
 
 
+def _sheet_name(data: bytes) -> str:
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return ET.fromstring(zf.read("xl/workbook.xml")).find("m:sheets/m:sheet", NS).get("name")
+
+
+def test_build_blocks_xlsx_edges() -> None:
+    """build_blocks_xlsx: prázdná data, bez bloků, řádek delší než hlavička (hodnoty se nezahodí),
+    dlouhý název listu (max 31 znaků)."""
+    from scada.services.xlsx_export import build_blocks_xlsx
+    head = ["Timestamp", "OF_OperatingForce [mN]"]
+    rows = _sheet(build_blocks_xlsx([("Metadata", [["Order"], ["1"]])], head, iter([])))
+    assert rows[-2:] == [["[Data]"], head]                      # jen hlavička dat
+    rows = _sheet(build_blocks_xlsx([], head, iter([["2026-10-27T08:00:00", "1000", "navic"]])))
+    assert rows[0] == ["[Data]"] and rows[1] == head
+    assert rows[2][1:] == ["1000", "navic"]                    # hodnota za hlavičkou zůstala
+    data = build_blocks_xlsx([], [], iter([]))                 # prázdná hlavička nespadne
+    assert zipfile.is_zipfile(io.BytesIO(data))
+    assert len(_sheet_name(build_blocks_xlsx([], head, iter([]), sheet_name="X" * 40))) == 31
+
+
+def test_xlsx_wip_and_old_format(tmp_path: Path) -> None:
+    """Rozpracovaná zakázka → list PROD_WIP; starší PROD bez bloků → prostá tabulka (list Data, hlavička nahoře)."""
+    local = tmp_path / "local"
+    wip = "PROD_1268847_E01389-C_20260916_161700_WIP.csv"
+    _write(local / "production/wip" / wip, _rows(3))
+    old = "PROD_OLD_Marquardt_20260916_161700_DONE.csv"
+    p = local / "production/done_local" / old
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("Timestamp;Order;OF_OperatingForce [mN]\n2026-09-16T16:17:00;OLD;1000\n", encoding="utf-8-sig")
+    cfg = AppConfig(server=ServerConfig(host="127.0.0.1", port=8080), ads=AdsConfig(net_id="1.2.3.4.1.1", port=851),
+                    data=_cfg(local))
+    app = create_app(cfg)
+    with TestClient(app) as c:
+        app.state.sessions[_TOKEN] = {"username": "u", "role": "operator", "display_name": "U", "created_at": time.time()}
+        c.headers.update({"Authorization": f"Bearer {_TOKEN}"})
+        r = c.get(f"/api/files/{wip}/xlsx", params={"location": "local", "type": "production"})
+        assert r.status_code == 200 and _sheet_name(r.content) == "PROD_WIP"
+        r = c.get(f"/api/files/{old}/xlsx", params={"location": "local", "type": "production"})
+        assert r.status_code == 200 and _sheet_name(r.content) == "Data"
+        assert _sheet(r.content)[0][:2] == ["Timestamp", "Order"]
+
+
 def test_testing_file_still_single_record(client) -> None:
     body = client.get("/api/data", params={"file": "TEST_M_20261001_080000_DONE.csv", "type": "testing"}).json()
     assert body["total"] == 1

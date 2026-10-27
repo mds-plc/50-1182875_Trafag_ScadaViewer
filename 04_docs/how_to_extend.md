@@ -21,6 +21,8 @@
 12. [Změnit formát názvu souboru nebo složky na NAS](#12-změnit-formát-názvu-souboru-nebo-složky-na-nas)
 13. [Přidat filtr do přehledu Databáze](#13-přidat-filtr-do-přehledu-databáze)
 14. [Změnit barvu nebo název kategorie (třídicí krabice)](#14-změnit-barvu-nebo-název-kategorie-třídicí-krabice)
+15. [Akce jen pro admina u stroje](#15-akce-jen-pro-admina-u-stroje)
+16. [Nové tlačítko stažení / exportu](#16-nové-tlačítko-stažení--exportu)
 
 ---
 
@@ -126,13 +128,16 @@ async def get_stats(request: Request, location: str = Query('local')):
 
 ```python
 # 00_backend/scada/app.py
-from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, stats
+from scada.api import (plc_ws, files, data, status, health, auth, config_api, users_api, signal,
+                       storage, system_time, usb, stats)   # ← přidat do stávajícího importu
 
 app.include_router(stats.router, prefix="/api", tags=["stats"])
 ```
 
 > **Pořadí registrace:** routery vždy **před** `app.mount("/", StaticFiles…)`.
-> Nový modul přidej i do `hiddenimports` v `06_build/exe/scada.spec`.
+> **PyInstaller:** modul importovaný staticky (jako výše v `app.py`) najde PyInstaller sám — do `hiddenimports`
+> v `06_build/exe/scada.spec` ho přidávat **není nutné** (např. `scada.api.storage`, `system_time`, `usb` tam nejsou
+> a build funguje). `hiddenimports` jen pro moduly importované dynamicky (`importlib`, `__import__`, řetězcem).
 
 ### Krok 3 — Přidat typ odpovědi (frontend)
 
@@ -420,6 +425,8 @@ export interface CsvRecord { …; pr_pressure?: string }
 - [ ] `utils/paramMeta.ts` — `PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS`
 - [ ] Jednotka sloupce: CSV nese jednotku v hlavičce; nová jednotka k převodu → `_TO_CUSTOMER` v `services/units.py`
       (∞ jen u odporů > 999,9 mΩ; sloupec odporu, který je ve všech záznamech ∞, se v tabulce skryje)
+- [ ] XLSX blokového PROD_ (`build_blocks_xlsx` v `services/xlsx_export.py`): první sloupec nové skupiny parametrů →
+      prefix do `_GROUP_START` (svislá čára skupiny); nová jednotka → formát čísla v `_unit_fmt`
 - [ ] `CLAUDE.md § 6` — tabulka CSV sloupců
 
 ---
@@ -630,7 +637,7 @@ přehledu neotevírá. Nový údaj proto patří buď do názvu souboru (okamži
 | Záznamy zakázky číst přes `CsvRepository.read_records()` / `read_table()` | Jdou přes `_OrderIndex` v paměti — soubor se čte jednou, ne při každém požadavku |
 | Nový filtr → předpočítat sloupec v `_build_index()` (jako `grp`, `status`, `days`) a filtrovat v `read_records` | Dict se staví jen pro vrácené řádky; filtr přes celý soubor pak trvá setiny sekundy |
 | Nevracet celé velké zakázky jako JSON (`per_page=0` má strop 20 000) | 50 000 dictů ≈ stovky MB; celé zakázky přes `GET /api/files/{id}/xlsx` nebo originální CSV |
-| Export → server (`services/xlsx_export.build_xlsx(header, rows)`, rows generátor) | Prohlížeč (kiosk) by pro 50 000 kusů potřeboval > 1 GB paměti |
+| Export → server (`services/xlsx_export.build_xlsx(header, rows)`, rows generátor; blokový PROD_ → `build_blocks_xlsx` — rozložení podle vzoru Gateway `sample_production.xlsx`: bloky Metadata … SortingLimits nad Data) | Prohlížeč (kiosk) by pro 50 000 kusů potřeboval > 1 GB paměti |
 | Soubor z NAS → `FileService._read_path()` (lokální kopie, je-li) a I/O přes `run_io(location, …)` | Rychlost, nezatížit síť, NAS pool s okamžitým 503 |
 | Dopočet / čtení na pozadí z NAS jen pro to, co uživatel vidí | Archiv na NAS může mít 100 000+ souborů |
 | Nové cache vždy s limitem (počet + paměť) | Paměť serveru — přehled stropů v `architecture.md` |
@@ -719,6 +726,82 @@ Dál podle potřeby:
 - [ ] Vizuálně: detail zakázky (graf, tabulka kusů, filtr), rozbalený řádek Databáze, Údaje zakázky → Kategorie
 - [ ] Nápověda detailu zakázky (`help.cs.ts` / `help.en.ts`, „Rozložení kategorií") zmiňuje barvy pásů
 - [ ] `npm run build` (uživatel jede přes port 8080)
+
+---
+
+## 15. Akce jen pro admina u stroje
+
+**Kdy:** nová akce, která mění data nebo PC u stroje (mazání, dokončení zakázky, flashka, systémový čas…).
+Vzory: `POST /api/files/{id}/finish` (`api/files.py`), `/api/usb`, `/api/usb/export`, `/api/usb/eject` (`api/usb.py`).
+
+### Backend
+
+```python
+# 00_backend/scada/api/usb.py — obě podmínky VŽDY spolu
+_ADMIN = [Depends(require_local), Depends(require_role("admin"))]
+
+@router.post("/usb/eject", status_code=204, dependencies=_ADMIN)
+async def eject(...): ...
+
+# potřebuje-li endpoint jméno uživatele (log), session z require_role:
+@router.post("/files/{file_id}/finish", dependencies=[Depends(require_local)])
+async def finish_wip(..., session: dict = Depends(require_role("admin"))):
+    log.warning("[API]   zakázka ručně dokončena (%s): %s", session.get("username", "?"), file_id)
+```
+
+- `require_local` → vzdáleně (kancelář) **403** i s tokenem admina; `require_role("admin")` pustí admin + manufacturer.
+- **PLC přihlášení = role admin** (`dependencies.PLC_ROLE`) — session `plc: True` se ověřuje při **každém** požadavku
+  (`require_auth`): PLC už nehlásí `UserLoggedIn` / výpadek ADS → 401 + `WWW-Authenticate`. Nic dalšího není třeba.
+- Destruktivní akce (mazání, dokončení, zápis na disk, změna času) → `log.warning` **s uživatelem**.
+- Akce závislá na stavu stroje: rozhodovat z `request.app.state.monitor` (`connected`, `current_values`); neznámý stav
+  (ADS odpojeno) → 409 s kódem a potvrzením v těle (vzor `plc_unknown` / `plc_unknown_confirmed`).
+
+### Frontend
+
+- Tlačítko jen při `!isRemote && (role === 'admin' || role === 'manufacturer')` (`useAuth()`; vzor `canUse` v
+  `context/UsbContext.tsx`). Skryté tlačítko není ochrana — tu dělá backend.
+- Riziková akce → potvrzovací dialog se zaškrtnutím „Rozumím" (vzor `DeleteModal`, dokončení zakázky).
+- Volání přes `apiFetch`; chyby 403 / 409 / 507 přeložit na srozumitelnou hlášku (`detail.code`).
+
+### Checklist
+- [ ] `Depends(require_local)` + `Depends(require_role("admin"))`
+- [ ] `log.warning` s uživatelem u destruktivní akce
+- [ ] Test: vzdáleně 403, operator / technician 403, admin u stroje OK, PLC session po odhlášení na PLC 401
+      (vzor `02_tests/test_finish_wip.py`, `test_usb.py`, `test_remote_access.py`)
+- [ ] Tabulka rolí `acceptance_test.md` § 2.1 + curl v § 6, nápověda stránky (`help.cs.ts` / `help.en.ts`)
+
+---
+
+## 16. Nové tlačítko stažení / exportu
+
+**Kdy:** další místo, odkud jde uložit CSV / XLSX (nová stránka, nový detail).
+
+> **Pravidlo:** VŽDY přes `useFileDownload()` z `context/UsbContext.tsx` — **nikdy** přímo `downloadOriginalCsv()`
+> (`utils/downloadOriginal.ts`) ani `exportFileXlsx()` (`utils/exportXlsx.ts`). Jinak se u stroje obejde flashka
+> (soubor by šel do prohlížeče kiosku) i pravidlo „u stroje ukládá jen admin".
+
+```tsx
+import { useFileDownload } from '../context/UsbContext'
+
+const { downloadCsv, downloadXlsx, disabledReason } = useFileDownload()
+
+<button
+  className={`btn btn--secondary btn--sm${disabledReason ? ' btn--blocked' : ''}`}   // tlumený vzhled, NE disabled
+  title={disabledReason ?? t.chart.exportCsv}
+  onClick={() => downloadCsv(file.id, location, type)}
+>
+```
+
+- `disabledReason` (null = půjde): u stroje bez práva / bez flashky / během ukládání. Tlačítko **nezakazovat** —
+  na dotykovém kiosku tooltip nikdo neuvidí; klik sám ukáže varování a ukazatel USB zabliká.
+- Vzdáleně (kancelář) hook stahuje do prohlížeče (XLSX s dialogem „Uložit jako" hned po kliknutí).
+- Server u stroje `GET /api/files/{id}/download` a `/xlsx` neblokuje — pravidlo „jen flashka" je v UI, není to
+  bezpečnostní hranice.
+
+### Checklist
+- [ ] `useFileDownload()` (žádný přímý import `downloadOriginalCsv` / `exportFileXlsx` v komponentě)
+- [ ] `title={disabledReason ?? …}` + tlumený vzhled (`btn--blocked`; vzor `ChartView.tsx`, Databáze přes `useDatabaseState`)
+- [ ] Test komponenty (mock `useFileDownload`), nápověda stránky zmiňuje flashku
 
 ---
 

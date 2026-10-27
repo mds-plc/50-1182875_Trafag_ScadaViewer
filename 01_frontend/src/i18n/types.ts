@@ -417,6 +417,7 @@ export interface Translations {
     saveError:   string
     noSpace:     string
     none:        string
+    usage:       string
   }
   storage: {
     title:          string

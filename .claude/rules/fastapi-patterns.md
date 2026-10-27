@@ -145,7 +145,9 @@ result = await asyncio.wait_for(
 - Výpis NAS složky `_REMOTE_LISTING_TTL` (15 s), během skenování poslední známý stav.
 - `_OrderIndex` — zakázka v paměti (LRU 3 soubory / 256 MB); záznamy číst přes `read_records()` /
   `read_table()`, nový filtr = předpočítaný sloupec v `_build_index()`.
-- XLSX celé zakázky jen na serveru (`services/xlsx_export.build_xlsx`); `per_page=0` má strop 20 000.
+- XLSX celé zakázky jen na serveru (`services/xlsx_export.build_xlsx`; blokový PROD_ = `build_blocks_xlsx` z
+  `csv_repository.read_blocks_export` podle vzoru Gateway `04_docs/sample_production.xlsx` — změna vzoru v Gateway =
+  upravit i tady); `per_page=0` má strop 20 000.
 - Soubor z NAS číst přes `FileService._read_path()` (lokální kopie, je-li).
 - **Soubory (CSV, signál, stažení) otevírat VŽDY `open_shared()`** (`services/shared_open.py`) — běžné
   `open()` na Windows blokuje přesun v DatabaseGateway (WinError 32 → PLC Error, duplikát; audit X2).
@@ -164,6 +166,9 @@ result = await asyncio.wait_for(
 - 401 z `require_auth` nese `WWW-Authenticate: Bearer` — frontend podle ní odhlašuje.
   Jiné 401 (špatné heslo) hlavičku mít **nesmí**.
 - Ověření hesla s lockoutem: `_is_locked` / `_record_failure` / `_clear_failures` z `api/auth.py`
+- PLC přihlášení = role admin (`PLC_ROLE` v `dependencies.py`, rozhodnutí 2026-10-26), session `plc: True` —
+  `require_auth` ji zruší (401 + WWW-Authenticate), jakmile `plc_operator_login` spadne (odhlášení na PLC, výpadek ADS);
+  jméno `plc_operator` je pro lokální uživatele vyhrazené.
 
 ## Zásahy do systému PC (čas / NTP) — pravidla
 
@@ -179,6 +184,18 @@ result = await asyncio.wait_for(
 - Rozpracovaná zakázka `wip/*_WIP.csv` jen admin+ a **jen `DELETE /api/files/{id}`** (`allow_wip`), `batch-delete`
   ji nemaže nikdy (`wip_forbidden`). Smazání WIP logovat (`log.warning` + uživatel). DatabaseGateway chybějící WIP
   pozná (`FileManager._wip_path`) — změnu chování mazání WIP vždy sladit s Gateway a nasazovat obě aplikace spolu.
+- Ruční dokončení WIP `POST /api/files/{id}/finish`: jen admin+ u stroje; PLC hlásí tuto zakázku (`order_valid` +
+  `order_name`) → 409 `running` (nejde obejít); ADS odpojeno → 409 `plc_unknown` bez `plc_unknown_confirmed`; přesun
+  `csv_repository.finish_wip` (odříznutí neúplného řádku, fsync, atomický přesun; existující DONE → 409 `exists`);
+  vždy `log.warning` s uživatelem a stavem PLC. Gateway chybějící WIP pozná jako smazaný a done_local nahraje na NAS.
+
+## Flashka (USB) — pravidla (nerozbíjet)
+
+- `/api/usb*` jen `require_local` + `require_role("admin")`; písmeno jednotky jen z aktuálního `usb_service.list_drives()`
+  (nikdy C: ani síťový disk). Zápis přes `usb_service.write_file` (`.part` + fsync + přejmenování, nikdy nepřepsat → „ (2)“);
+  CSV z NAS kopírovat přes `run_io(location, …)`. Málo místa = `UsbSpaceError` → 507, otevřený soubor při odebrání =
+  `UsbBusyError` → 409. Windows API jen přes ctypes; v testech vždy atrapy (`drive_root`, `list_drives`, `eject` — vzor
+  `test_usb.py`), nikdy skutečné odebrání.
 
 ## Error responses
 

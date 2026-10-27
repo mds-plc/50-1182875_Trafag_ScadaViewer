@@ -392,6 +392,7 @@ export const en: Translations = {
     saveError:   'Saving to the flash drive failed',
     noSpace:     'Not enough space on the flash drive',
     none:        'insert a flash drive',
+    usage:       '{free} free of {total}',
   },
   storage: {
     title:          'Local storage',

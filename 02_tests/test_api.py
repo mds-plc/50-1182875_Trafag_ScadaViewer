@@ -1001,6 +1001,16 @@ class TestPlcLogin:
         r = c.post("/api/users", headers={"Authorization": f"Bearer {token}"},
                    json={"username": "plc_operator", "display_name": "X", "password": "pw-123456", "role": "operator"})
         assert r.status_code == 409
+        r = c.post("/api/users", headers={"Authorization": f"Bearer {token}"},
+                   json={"username": " plc_operator ", "display_name": "X", "password": "pw-123456", "role": "operator"})
+        assert r.status_code == 409                                       # i s mezerami (jméno se ořezává)
+
+    def test_password_session_unaffected_by_plc_flag(self, client) -> None:
+        """Přihlášení heslem (bez klíče plc) nezávisí na PLC příznaku — jen PLC session končí s odhlášením na PLC."""
+        c, _ = client
+        c.app.state.monitor.current_values["plc_operator_login"] = False
+        _inject_session(c.app, "pw-tok", {"username": "admin", "role": "admin", "display_name": "A"})
+        assert c.get("/api/users", headers={"Authorization": "Bearer pw-tok"}).status_code == 200
 
 
 # ======================================================================

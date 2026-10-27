@@ -342,14 +342,20 @@ def build_blocks_xlsx(
             n = min(len(data_header), ncol)
             # prázdná buňka se stylem jen u první buňky skupiny — svislá čára zůstane souvislá
             empty = [f's="{styles[i]}"/>' if borders[i] else '' for i in range(n)]
+            general = _BLK_XF[(0, 'val', _FMT_GENERAL, 0)]
             chunk: list[str] = []
             for vals in data_rows:
                 rs = str(r)
                 nv = len(vals)
-                chunk.append(f'<row r="{rs}">' + ''.join(
+                cells = ''.join(
                     _blk_value(letters[i] + rs, vals[i] if i < nv else None, styles[i], date_style)
                     or (f'<c r="{letters[i]}{rs}" {empty[i]}' if empty[i] else '')
-                    for i in range(n)) + '</row>')
+                    for i in range(n))
+                # hodnoty za hlavičkou (poškozený / ručně upravený soubor) nezahazovat — sloupce bez názvu
+                if nv > n:
+                    cells += ''.join(_blk_value(_col_letter(i) + rs, vals[i], general, date_style)
+                                     for i in range(n, nv))
+                chunk.append(f'<row r="{rs}">{cells}</row>')
                 r += 1
                 if len(chunk) >= _CHUNK_ROWS:
                     w.write(''.join(chunk).encode('utf-8'))

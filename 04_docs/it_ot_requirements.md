@@ -3,7 +3,7 @@
 > Odpověď dodavatele na směrnici *„Pořizování, uvádění do provozu a provoz IT zdrojů v prostředí OT"*
 > (Trafag AG, index a, 26. 6. 2025 — koncept). Popisuje, jak PC u stroje a tři aplikace (Analyzing,
 > DatabaseGateway, ScadaViewer) komunikují, pod jakými účty běží a co potřebujeme od Trafag IT.
-> Stav k 2026-10-23 (vydání 2.6.1). Položky **„k ověření"** doplníme na stroji.
+> Stav k 2026-10-27 (vydání 2.6.7). Položky **„k ověření"** doplníme na stroji.
 
 ---
 
@@ -55,7 +55,7 @@ z uvedených adres). Aplikace nepotřebuje internet.
 | Účel | Dnes | Navrhujeme (směrnice 3.1, 3.3) | Potřebujeme od IT |
 |------|------|-------------------------------|-------------------|
 | Obsluha / kiosk | lokální `admin` (slabé heslo), automatické přihlášení | **doménový kiosk účet bez práv správce**, automatické přihlášení | účet + **výjimka z automatického odhlášení / zámku obrazovky** (kiosk běží trvale, obsluha se přihlašuje na PLC terminálu) |
-| Služby (3 aplikace) | LocalSystem *(k ověření — vypisuje `deploy.ps1`)* | **servisní účet** (doménový nebo lokální bez interaktivního přihlášení) | účet; práva: *Přihlásit se jako služba*, *Změna systémového času* (NTP server), zápis do `C:\apps\…` (logy, data); přístup na NAS (bod 4) |
+| Služby (3 aplikace) | LocalSystem *(k ověření — vypisuje `deploy.ps1`)* | **servisní účet** (doménový nebo lokální bez interaktivního přihlášení) | účet; práva: *Přihlásit se jako služba*, *Změna systémového času* (NTP server), zápis do `C:\apps\…` (logy, data); přístup na NAS (bod 4); bezpečné odebrání flashky (otevření svazku — práva správce nebo LocalSystem; jinak jde jen zápis na flashku) |
 | Servis / nasazení nových verzí | lokální `admin` | lokální admin **se silným heslem v 1Password Trafag**, použití jen se souhlasem IT — nebo doménový servisní účet s dočasnými právy | rozhodnutí IT, kdo spouští nasazení (`deploy.bat` potřebuje práva správce) |
 | Ostatní lokální účty | k ověření | vypnout | — |
 
@@ -65,8 +65,9 @@ z `C:\Users\admin\Desktop` do `C:\apps` (nasazovací skript, práva: Administrat
 už na profilu účtu admin. Servisní účet nastavený před nasazením dostane zápis automaticky, později přidaný
 ručně: `icacls C:\apps /grant "<účet>:(OI)(CI)M"`.
 
-**Přihlášení do aplikace ScadaViewer** (role operátor / technik / admin) je samostatné od Windows — účty
-v `users.toml`, hesla PBKDF2, zámek po 5 chybných pokusech, relace 8 h. Výchozí heslo správce aplikace
+**Přihlášení do aplikace ScadaViewer** (role operátor / technik / admin / výrobce) je samostatné od Windows — účty
+v `users.toml`, hesla PBKDF2, zámek po 5 chybných pokusech; heslem u stroje odhlášení po 15 min nečinnosti, vzdáleně
+relace 8 h. Přihlášení přes PLC (jen nejvyšší autorita na PLC, jen u stroje) = role admin po dobu přihlášení na PLC. Výchozí heslo správce aplikace
 před předáním změníme.
 
 ## 4. NAS

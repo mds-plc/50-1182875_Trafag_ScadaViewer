@@ -69,6 +69,28 @@ def test_op_no_close_definition_follows_table() -> None:
     assert kp["op"]["idx"] == 60
 
 
+@pytest.mark.parametrize("op_table,expected_idx", [
+    ("62", 60),      # přesně 2,0 µm od rozepnutí NC (pos[60] = 60) → zůstane na hraně (práh je ostrý)
+    ("62.5", 62),    # dál než 2 µm → bod podle tabulky (nejbližší poloha za hranou)
+    ("50", 60),      # tabulková OP před hranou NC → hledá se až od hrany, zůstane na ní
+])
+def test_op_match_boundary(op_table: str, expected_idx: int) -> None:
+    sig = _signal(0.0, 20.0)
+    kp = find_key_points({**ANALYZED, "op_operatingposition": op_table}, sig)
+    assert kp["op"]["idx"] == expected_idx
+
+
+def test_op_match_customer_scale() -> None:
+    """Souřadnice zákazníka (P = C − x, C ze souboru): OP 5 µm za hranou NC → bod podle tabulky."""
+    sig = _signal(0.0, 20.0)
+    c = 9500.0
+    analyzed = {"fp_freeposition": str(c - 20), "ttp_totaltravelposition": str(c - 99),
+                "op_operatingposition": str(c - 65)}
+    kp = find_key_points(analyzed, sig, position_reference=c)
+    assert kp["op"]["idx"] == 65
+    assert kp["op"]["position"] == pytest.approx(c - 65)
+
+
 def test_no_switching_falls_back_to_5v() -> None:
     sig = _signal(0.2, 0.4)
     assert switching_threshold(sig["u_nc"], fp_idx=20) == 5.0

@@ -13,10 +13,10 @@
 #   2. Kontroly PRED jakoukoli zmenou: Config.toml existuji, Analyzing ma position_reference_um > 0,
 #      DatabaseGateway: cesty na NAS lezi pod \\host\share (od 2.4.0 jinak nenastartuje),
 #      production/wip je prazdna (jen kdyz vydani meni hlavicku CSV - $WipBlocksDeploy; jinak upozorneni), done_local (upozorneni).
-#   3. Zastavi ScadaViewer -> DatabaseGateway -> AdsAnalyzer.
-#   4. Stary exe + _internal\ PRESUNE do <slozka>.backup_<cas>\ (+ kopie Config.toml / users.toml).
-#   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
-#      nssm.exe a .bat skripty zustanou beze zmeny.
+#   3. Rozbali ZIPy do docasne slozky (jeste pred zastavenim - kratsi odstavka).
+#   4. Zastavi ScadaViewer -> DatabaseGateway -> AdsAnalyzer (pri $WipBlocksDeploy znovu zkontroluje production\wip).
+#   5. Stary exe + _internal\ PRESUNE do <slozka>.backup_<cas>\ (+ kopie Config.toml / users.toml) a nasadi novou
+#      verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\, nssm.exe a .bat zustanou.
 #   5b. NSSM (od 2.4.0): AppDirectory bez koncoveho "\", DatabaseGateway AppRotateOnline 1 + AppStopMethodConsole 15000.
 #   5d. (od 2.6.0) [measurement] max_cycles v Config.toml Analyzingu a Gateway >= $MinMaxCycles (buffer PLC), jinak nastavi;
 #       (od 2.6.6) [analysis.detection] Analyzingu podle $AnSettings (op_definition, staticke odpory).
@@ -33,8 +33,11 @@
 #      Rodicovska slozka se presune i s prejmenovanim, odkazy se prepisou stejne jako u prejmenovani; nova
 #      $DefaultAppsRoot dostane prava jen Administrators + SYSTEM (plna) a ucty sluzeb (zapis), Users zadna -
 #      Config.toml obsahuje heslo k NAS a hash admina. Presunute slozky prevezmou prava od ni (icacls /reset).
-#   Selhani v krocich 5-5c (od 2026-10-25, audit A26-04): skript vrati presuny slozek, exe + _internal a Config.toml
-#      ze zalohy, spusti sluzby a skonci chybou - bezi predchozi verze.
+#   5e. (od 2.6.2) lokalni databaze z profilu uzivatele do $DefaultDataRoot (-MoveDataTo / -NoMoveData): presun slozky,
+#      Config.toml Gateway + ScadaViewer a sync_state.json, zaznam data_move.txt v zaloze Gateway (rollback vrati);
+#      s rozpracovanou zakazkou se presun preskoci.
+#   Selhani v krocich 5-5e (od 2026-10-25, audit A26-04): skript vrati presuny slozek, exe + _internal a Config.toml
+#      ze zalohy (vc. presunu databaze), spusti sluzby a skonci chybou - bezi predchozi verze.
 #   Rollback (A26-05): last_deploy.txt v balicku = razitko posledniho nasazeni; rollback obnovi jen zalohy s nim
 #      (aplikace bez takove zalohy se jen restartuje). Bez zaznamu (starsi nasazeni) musi byt zalohy ze stejneho behu.
 #   6. Spusti AdsAnalyzer -> DatabaseGateway -> ScadaViewer, po 20 s overi, ze vsechny bezi (chyba v configu =
@@ -91,6 +94,8 @@ $AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer 
 # nasazeni ZASTAVI (Gateway by do WIP se starou hlavickou kusy nepridala / kusy by se tridily podle limitu stare
 # definice). $false = jen upozorneni, zakazka po nasazeni pokracuje.
 # 2.6.3-2.6.5: beze zmeny -> $false. 2.6.6: nova definice RT a OP (limity zakazky) -> $true.
+# 2.6.7: balicek obsahuje Analyzing 2.6.3 (stroj zatim bez 2.6.6) -> $true; az bude stroj na 2.6.6+, dalsi vydani
+# bez zmeny hlavicky / vyznamu hodnot -> $false.
 $WipBlocksDeploy = $true
 $PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji). 2.6.6 (Analyzing 2.6.3): RT_RealisingTravel = |RP - FP| (Leerlaufweg DIN 41636-1, cca 550-730 um misto 850-1320) a OP = prvni sepnuti NO - jsou LIMITY RT (a pripadne PT / OT / MD) v recepturach PLC prenastavene? Zakaznik: RT 300-1400 um.'
 
@@ -729,7 +734,7 @@ if (-not $NoMoveData -and $dataInApp.Count -eq 0 -and
     } elseif (-not (Test-Path -LiteralPath $dataDir)) {
         Log "[INFO] Lokalni databaze $dataDir neexistuje - presun se preskoci." 'Yellow'
     } elseif ((Get-WipFiles $dataDir).Count -gt 0) {
-        # Rozpracovanou zakazku nepresouvat pod rukama (kontrola wip je od 2.6.3 jen upozorneni)
+        # Rozpracovanou zakazku nepresouvat pod rukama (kontrola wip je podle $WipBlocksDeploy chyba nebo jen upozorneni)
         Log "[INFO] V databazi je rozpracovana zakazka (production\wip) - presun databaze se preskoci (pristi nasazeni)." 'Yellow'
     } else {
         if (-not $MoveDataTo) {
@@ -778,7 +783,8 @@ if ($local -and $WipBlocksDeploy) {
     $wipNow = Get-WipFiles $local
     if ($wipNow.Count -gt 0) {
         Log "[CHYBA] Behem pripravy vznikla rozpracovana zakazka: $($wipNow.Name -join ', ') - nasazeni preruseno, nic nevymeneno." 'Red'
-        Log '        Uzavrete ji na PLC (Op3) a spustte deploy.bat znovu. Sluzby se spousti zpet.' 'Red'
+        Log '        Uzavrete ji na PLC (Op3) nebo ve ScadaViewer (Databaze -> In progress -> Dokoncit zakazku)' 'Red'
+        Log '        a spustte deploy.bat znovu. Sluzby se spousti zpet.' 'Red'
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
         Start-Apps
         exit 1
@@ -790,7 +796,7 @@ Set-Content -LiteralPath (Join-Path $Here 'last_deploy.txt') -Value $Stamp -Enco
 $done = New-Object System.Collections.ArrayList
 $rootExisted = $MoveTo -and (Test-Path -LiteralPath $MoveTo)
 
-# Kroky 5-5c: jakakoli chyba (zamek Defenderu, plny disk ...) -> vratit predchozi stav a spustit sluzby;
+# Kroky 5-5e: jakakoli chyba (zamek Defenderu, plny disk ...) -> vratit predchozi stav a spustit sluzby;
 # bez toho by sluzby zustaly zastavene a aplikace napul vymenene - stroj by nemeril (audit A26-04)
 try {
 
@@ -921,11 +927,11 @@ Log '  4. Nastaveni -> Cas / NTP: sluzba Windows Time bezi, NTP server zapnuty, 
 Log '     UDP 123 nasloucha - jinak viz ScadaViewer 04_docs/deployment.md -> Cas PC - NTP server pro IPC.'
 Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nastaveni -> Predvolby: Automaticky).'
 Log '  6. 2.6.2: ScadaViewer -> Nastaveni -> Uzivatele: zmenit vychozi heslo admin (pruh dole); prihlaseni heslem u stroje'
-Log '     konci po 15 min necinnosti; Info -> verze 2.6.2. Heslo k NAS zmenit (stare je v historii gitu Gateway).'
+Log ('     konci po 15 min necinnosti; Info -> verze ' + $Version + '. Heslo k NAS zmenit (stare je v historii gitu Gateway).')
 Log '  7. 2.6.3/2.6.4: Databaze -> radek In progress -> tlacitko Dokoncit zakazku (admin u stroje nebo prihlaseni pres PLC),'
 Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. XLSX zakazky = rozlozeni vzoru.'
 Log '  8. 2.6.6: novy kus - RT (RvT) cca 550-730 um (FP -> RP), v diagramu kusu kota RvT mezi FP a RP; starsi kusy'
-Log '     "RvT (TTP -> RP)". Log Analyzingu bez chyb Config (op_definition, static_*). Info -> ScadaViewer 2.6.6.'
+Log ('     "RvT (TTP -> RP)". Log Analyzingu bez chyb Config (op_definition, static_*). Info -> verze ' + $Version + '.')
 Log '  9. 2.6.7: zasunout flashku -> Databaze, vedle uloziste a NAS ukazatel USB E: (admin u stroje); CSV / XLSX'
 Log '     ulozi do E:\Trafag_ScadaViewer; tlacitko u ukazatele USB = bezpecne odebrani (toast "lze vyjmout").'
 Log ' 10. Zalohy *.backup_* po overeni smazat.'

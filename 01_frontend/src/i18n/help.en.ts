@@ -14,7 +14,7 @@ export const helpEn: Translations['help'] = {
       items: [
         { title: 'Local / Remote', text: 'Local = files on this PC (orders waiting to be uploaded and already uploaded). Remote = archive on the Synology NAS. The dot on the tab shows whether the NAS is reachable.' },
         { title: 'Production / Testing', text: 'Production = production orders (each row is one order with many pieces). Testing = single microswitch test measurements with signal data.' },
-        { title: 'Storage and NAS', text: 'Indicators in the header: local storage usage against its limit and NAS usage. Warning from 80 %, critical from 95 %. A button removes local copies of files that are already safely on the NAS.' },
+        { title: 'Storage and NAS', text: 'Indicators in the header: local storage usage against its limit and NAS usage. Warning from 80 %, critical from 95 %. A button removes local copies of files that are already safely on the NAS. An administrator at the machine also sees the USB flash drive indicator here, with its usage and a safe-removal button.' },
         { title: 'Search order', text: 'Type part of the order number or name (case and accents do not matter). While searching, the whole archive is searched regardless of the date. The cross or Esc clears the search.' },
         { title: 'From – to', text: 'Date filter by order creation, the last 2 days by default. If nothing matches, it offers to jump to the day with the newest data.' },
         { title: 'Table', text: 'Click a column header to sort. Click an order row (or the arrow) to expand the pieces and category distribution; the chart icon opens the order detail directly, without expanding. CSV / XLSX downloads the whole order. On the machine PC the file is not saved by the browser but to the inserted USB flash drive (folder Trafag_ScadaViewer) — administrator only (also sign-in via the PLC); without a flash drive the app warns on an attempt to save and the USB indicator blinks. Then remove the flash drive safely with the button on the USB indicator in the Database header (next to local storage and NAS). In the expanded piece overview, values outside the sorting limits are lightly tinted. "…" in the piece count = the count is being calculated. The order in progress is highlighted at the top.' },
@@ -63,9 +63,9 @@ export const helpEn: Translations['help'] = {
       intro: 'Display preferences, connection status of the PLC and storages, PC time (NTP server for IPCs) and user management.',
       items: [
         { title: 'Preferences', text: 'Language, light / dark mode, files per page, auto-refresh interval and the on-screen keyboard (kiosk without a system keyboard — Automatic = only at the machine). Stored in this browser.' },
-        { title: 'Connection', text: 'Status of the server, PLC (ADS), local storage and NAS. An administrator at the machine changes the data paths and the local storage limit here.' },
+        { title: 'Connection', text: 'Status of the PLC (ADS), Net ID and port, local storage (usage, limit) and NAS. An administrator at the machine changes the data paths and the local storage limit here.' },
         { title: 'Time / NTP', text: 'The PC at the machine serves as the NTP server for the other IPCs. The top shows at a glance whether the IPCs can take their time from this PC (and if not, why), the PC time, where the PC takes it from and the address to set on the IPCs. An administrator at the machine can set the PC time manually — the IPCs and the timestamps of new records take it over. Data for service are in the collapsed Technical details.' },
-        { title: 'Users', text: 'Administrators only: add and remove users, change passwords. A user can have at most the same role as the person creating them. An account with the default password "admin" cannot sign in remotely and the app shows a prompt at the bottom to change it. A password sign-in on the machine PC ends after 15 minutes of inactivity. Sign-in via the PLC (only the highest authority on the PLC) has administrator rights for as long as the PLC sign-in lasts.' },
+        { title: 'Users', text: 'Administrators at the machine only (hidden from the office): add and remove users, change passwords. A user can have at most the same role as the person creating them. An account with the default password "admin" cannot sign in remotely and the app shows a prompt at the bottom to change it. A password sign-in on the machine PC ends after 15 minutes of inactivity. Sign-in via the PLC (only the highest authority on the PLC) has administrator rights for as long as the PLC sign-in lasts.' },
       ],
     },
     info: {
@@ -73,7 +73,7 @@ export const helpEn: Translations['help'] = {
       intro: 'Information about the application: version, project, customer and supplier, description and documentation.',
       items: [
         { title: 'Project', text: 'Application version (reported by the server), project number and contacts.' },
-        { title: 'Documentation', text: 'Short description of the application and a link to the user manual.' },
+        { title: 'Documentation', text: 'Short description of the application; the user manual will be added.' },
       ],
     },
   },

@@ -16,6 +16,10 @@ CSV / XLSX jen na flashku (stávající tlačítka), jen administrátor. Detail:
 | 2 | ℹ️ INFO | Vytažení během zápisu nenechá rozepsaný soubor pod finálním názvem (`.part` + fsync + replace) | `usb_service.write_file` | ✅ Hotovo |
 | 3 | ⚠️ MEDIUM | Odebrání s otevřeným souborem → 409, svazek se neodpojí | `usb_service.eject` | ✅ Hotovo |
 | 4 | ℹ️ INFO | Ověřit se skutečnou flashkou na PC u stroje (ctypes testy jen atrapy) a GPO IT pro USB | PC u stroje | ⬜ Ověřit |
+| 5 | 🔵 LOW | „U stroje jen na flashku“ hlídá UI (`useFileDownload`); `/download` a `/xlsx` server u stroje neblokuje — místo uložení, ne bezpečnostní hranice | `api/files.py` | ⬜ Přijato (záměr) |
+| 6 | ℹ️ INFO | Ukazatel flashky přesunut z horní lišty do hlavičky Databáze (`UsbStorageBar`, f3a0f7f); bez flashky klik = varování + zablikání | `UsbStorageBar.tsx` | ✅ Hotovo |
+| 7 | 🔵 LOW | Bezpečné odebrání potřebuje práva správce / LocalSystem — při přechodu služeb na servisní účet (N3) jen zápis | `usb_service.eject` | ⬜ Ověřit |
+| 8 | ℹ️ INFO | Kontrola dokumentace a testů (2026-10-27): souběžný zápis na flashku do vlastního `.part`, hodnoty za hlavičkou v XLSX se nezahodí, název běžící zakázky z PLC bez mezer a velikosti písmen; nové testy (USB, dokončení WIP, XLSX, OP, PLC relace, FE ukazatel USB / Topbar / rtDefinition) | `usb_service.py`, `xlsx_export.py`, `api/files.py` | ✅ Hotovo |
 
 Testy: backend 490, frontend 241.
 
@@ -28,6 +32,7 @@ Testy: backend 490, frontend 241.
 | 1 | ⚠️ MEDIUM | Diagram kreslil RvT mezi RP a TTP — nová definice FP → RP; archiv má obě → rozpoznání po kusech | `paramMeta.ts`, `ParamDiagrams.tsx` | ✅ Opraveno |
 | 2 | 🔵 LOW | Bod OP v Signal Data elektricky z rozepnutí NC — s op_definition no_close jinde než tabulka | `signal_reader.py` | ✅ Opraveno |
 | 3 | ⚠️ MEDIUM | Config.toml na stroji: static_resistance_margin_um 50 by přebil nový default, op_definition chybí | `deploy.ps1` krok 5d | ✅ Opraveno |
+| 3b | ℹ️ INFO | `deploy.ps1` `$WipBlocksDeploy = $true` (2.6.5 ho zavedlo s `$false` — 48494cd; 2.6.6 mění význam RT / OP → rozpracovaná zakázka nasazení zastaví) | `deploy.ps1` | ✅ Hotovo |
 | 4 | ⚠️ MEDIUM | Limity RT (a PT / OT / MD) v recepturách PLC podle staré definice | PLC | ⬜ Přenastavit na stroji |
 
 Testy: backend 485, frontend 238, Analyzing 155.
@@ -83,7 +88,7 @@ Rozsah: vydání 2.6.1 (AN 2.6.1, GW 2.6.0, SV 2.6.1) + necommitnuté změny (GW
 deploy přesun do `C:\apps`, `it_ot_requirements.md`). Oblasti: správnost, kontrakty PLC ↔ AN ↔ GW ↔ SV, scénáře
 selhání, dlouhodobý běh, bezpečnost (vč. směrnice Trafag pro OT), výkon, nasazení, testy, dokumentace.
 Postup: 5 nezávislých auditních průchodů (jen čtení) + ruční ověření klíčových nálezů v kódu.
-**Opraveno 2026-10-25 (VYSOKÉ):** A26-01 (GW `_fsync` / `_fsync_path` před každým `os.replace` a po řádku Op2, test `test_a26_01_fsync_before_replace_and_done`, GW 136 testů) · A26-03 (GW `Config.toml` mimo git + `.gitignore`, `Config.toml.example` bez hesla; AN `Config.toml.example`; `build.bat` GW + AN kopírují jen `.example` a zastaví build s vyplněným `password` — ověřeno nanečisto; **zbývá: změnit heslo k NAS** — staré je v historii gitu a ve starých ZIPech `06_build/releases`) · A26-04 (deploy kroky 5–5c v `try/catch` → `Restore-AfterFailure` vrátí složky, exe, `_internal`, `Config.toml` a spustí služby) · A26-05 (`last_deploy.txt`, rollback jen se zálohami toho razítka, bez záznamu kontrola stejného běhu) · A26-06 (`C:pps` jen Administrators + SYSTEM + účty služeb, Users bez přístupu, `Reset-MovedAcl` po přesunu, `Test-AppsRootAcl` u existující složky; `it_ot_requirements.md`, README). Deploy ověřen simulací funkcí (selhání v půlce kroku 5, práva) — celý běh se službami jen na stroji. A26-02 + A26-14 — varianta (b), rozhodnutí uživatele: AN `invalid_params()` (`models/results.py`) — kus, který nelze vyhodnotit (W1, W3, W5), má odpory = izolační hodnota (v PLC 9999,9 mΩ), ostatní 0; neurčený statický odpor (W6 / < 5 vzorků) taky 9999,9 místo 0. Rozhraní s PLC beze změny (Done + W kód). Testy AN 138 (+3), kontraktní SV 26. Varianta (a) — W1/W3 jako chyba E2 bez Done — až po domluvě s autorem PLC programu.
+**Opraveno 2026-10-25 (VYSOKÉ):** A26-01 (GW `_fsync` / `_fsync_path` před každým `os.replace` a po řádku Op2, test `test_a26_01_fsync_before_replace_and_done`, GW 136 testů) · A26-03 (GW `Config.toml` mimo git + `.gitignore`, `Config.toml.example` bez hesla; AN `Config.toml.example`; `build.bat` GW + AN kopírují jen `.example` a zastaví build s vyplněným `password` — ověřeno nanečisto; **zbývá: změnit heslo k NAS** — staré je v historii gitu a ve starých ZIPech `06_build/releases`) · A26-04 (deploy kroky 5–5c v `try/catch` → `Restore-AfterFailure` vrátí složky, exe, `_internal`, `Config.toml` a spustí služby) · A26-05 (`last_deploy.txt`, rollback jen se zálohami toho razítka, bez záznamu kontrola stejného běhu) · A26-06 (`C:\apps` jen Administrators + SYSTEM + účty služeb, Users bez přístupu, `Reset-MovedAcl` po přesunu, `Test-AppsRootAcl` u existující složky; `it_ot_requirements.md`, README). Deploy ověřen simulací funkcí (selhání v půlce kroku 5, práva) — celý běh se službami jen na stroji. A26-02 + A26-14 — varianta (b), rozhodnutí uživatele: AN `invalid_params()` (`models/results.py`) — kus, který nelze vyhodnotit (W1, W3, W5), má odpory = izolační hodnota (v PLC 9999,9 mΩ), ostatní 0; neurčený statický odpor (W6 / < 5 vzorků) taky 9999,9 místo 0. Rozhraní s PLC beze změny (Done + W kód). Testy AN 138 (+3), kontraktní SV 26. Varianta (a) — W1/W3 jako chyba E2 bez Done — až po domluvě s autorem PLC programu.
 
 **Opraveno 2026-10-25 (STŘEDNÍ):** A26-07 (GW Op5: `ADSError` při čtení signálu → nic neuloží, reconnect; Valid=FALSE / chyba kanálu → Done + **Warning 2**; opakovaný Op5 se stejným `Meas_TS` → Done bez duplikátu) · A26-09 (GW heartbeat bliká jen při průchodu hlavní smyčky v posledních 30 s — `STALL_TIMEOUT_S`) · A26-10 (GW `[storage] min_free_gb` = 2 GB → **Warning 3** s každou dokončenou operací) · A26-11 (AN `export_min_free_gb` = 10 GB → export přeskočen; zamčený starý soubor rotaci nezastaví) · A26-13 (AN Run↑ zapíše `invalid_params()` před čtením → chyba nenechá v PLC předchozí kus) · A26-17 (SV C mimo 8000–11000 µm = jako starší soubor, C = TTP + max x) · A26-18 (SV výchozí heslo: kontrola při startu + `/api/health checks.default_password`, vzdálené přihlášení 403, pruh „změňte heslo", hlášky 403 / 429 ve formuláři, varování v deploy) · A26-19 (SV lokální přihlášení u stroje končí po 15 min nečinnosti) · A26-20 (deploy: wip kontrola znovu po zastavení služeb, chybějící datová složka = chyba) · A26-21 (deploy: parametry NSSM z registru, fallback `nssm get` bez pádu). Testy: AN 143, GW 143, SV 468 + FE 230. **Pro PLC:** nové WarningCode 2 a 3 v `In.CmdsResp.Saving.WarningCode` (Gateway) — zobrazit obsluze; varování provoz neblokuje.
 
@@ -243,7 +248,7 @@ Nasazení: otevřené zakázky uzavřít před upgradem Gateway; PLC + Analyzing
 ## Aktuálně otevřené nálezy
 
 > Deduplikovaný přehled — každý nález uveden jednou bez ohledu na to, ve kterém auditu se poprvé objevil.
-> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-16 (kontrola ekosystému E1–E21; hloubková analýza 2026-10-15 Q1–Q38)**.
+> Aktualizovat při každé opravě nebo novém auditu. Poslední aktualizace: **2026-10-27 (vydání 2.6.3–2.6.7, kontrola dokumentace a testů; celkový audit A26 2026-10-25)**.
 > Nálezy K1–K42 jsou zde jen odkazem — plný popis, scénář a oprava v záznamu „[2026-10-10] Kompletní audit".
 
 ### 🔴 HIGH
@@ -257,7 +262,11 @@ Nasazení: otevřené zakázky uzavřít před upgradem Gateway; PLC + Analyzing
 
 | # | Popis | Soubor | Zdroj |
 |---|-------|--------|-------|
-| E3–E7 | Stejná verze 2.3.0 pro dva kontrakty (před dalším vydáním zvednout — deploy zatím ne, rozhodnutí 2026-10-16); `$PlcNote`; přechodně ponechat `NokReason` na PLC; WIP při upgradu; TEST s „..“ v názvu (Gateway) | viz záznam [2026-10-16] | [2026-10-16] |
+| E7 | TEST s „..“ v názvu (Gateway) — E3–E6 vyřešeny vydáními 2.4.0–2.6.7 (verze, `$PlcNote`, `NokReason` zrušen, WIP při upgradu `$WipBlocksDeploy`) | viz záznam [2026-10-16] | [2026-10-16] |
+| A26-08, A26-12, A26-15, A26-16, A26-22 | Op1 / Op3 neidempotentní (GW); buffer / oversampling proti PLC (AN); Q8 duplicita zakázky (GW); Max_Force ×1000 (PLC); mezery v testech (deploy.ps1, automat AN) | viz záznam [2026-10-25] A26 | [2026-10-25] |
+| PLC-RT | Limity RT (a PT / OT / MD) v recepturách PLC podle staré definice — přenastavit před nasazením 2.6.6+ (RT 300–1400 µm) | PLC | [2026-10-27] |
+| PLC-ADM | Ověřit, že PLC nastavuje `UserLoggedIn` jen pro nejvyšší autoritu (PLC přihlášení = role admin od 2.6.4) | PLC | [2026-10-26] |
+| USB | Flashka ověřit se skutečným zařízením na PC u stroje + GPO IT pro výměnná média; bezpečné odebrání jen pod LocalSystem / správcem | PC u stroje | [2026-10-27] |
 | Q8, Q9, Q12 | Duplicitní zakázky v Gateway po čištění (oprava v Gateway); formát CSV bez specifikace a verze; podvržení portu 8080 pro kiosk (Q1–Q7, Q10, Q11, Q13 opraveny 2026-10-15) | viz záznam [2026-10-15] | [2026-10-15] |
 | Z2–Z4, Z6 | Zámek přihlášení obejde souběh; DoS velkým tělem / WS; admin rozbije users.toml (Z1, Z5 opraveny 2026-10-11) | `app.py`, `auth.py`, `plc_ws.py`, `files.py:230`, `users_api.py` | [2026-10-10 nejhlubší] |
 | N3 | Zákmity v grafech Signal Data mizí (N1, N2, N5 opraveny 2026-10-11) | `signal_reader.py:214` | [2026-10-10 nejhlubší] |
@@ -266,7 +275,7 @@ Nasazení: otevřené zakázky uzavřít před upgradem Gateway; PLC + Analyzing
 | C1, C2 | `/api/data` vrací 200 prázdné místo 404/503 (NAS pryč, WIP uzavřen); souběh zahltí sdílený pool vláken → health stojí, zdravý NAS hlásí 503 | `file_service.py:314`, `io_pool.py` | [2026-10-10 nejhlubší] |
 | K13 | Fronta dopočtu z NAS bez stropu, priority a rušení (proklikání archivu = hodiny stahování) | `csv_repository.py`, `file_service.py` | [2026-10-10 kompletní] |
 | A6 | Rate limit (120/min) i blokace přihlášení (5 pokusů / 10 min) jsou na IP — kancelářská PC za NAT / proxy sdílí jednu IP → sdílí limit i blokaci | `app.py`, `api/auth.py` | [2026-09-26 audit] |
-| A7 | `ChartView.tsx` (~930 ř., 3 režimy stránky) a `Settings.tsx` (962 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena; filtr kusů vyčleněn do `RecordFilterBar`, tisk do `usePrintMode`) | `pages/` | [2026-09-26 audit] |
+| A7 | `ChartView.tsx` (~920 ř., 3 režimy stránky) a `Settings.tsx` (~1 010 ř.) — příliš velké komponenty (drobnost `StatusDot` opravena; filtr kusů vyčleněn do `RecordFilterBar`, tisk do `usePrintMode`) | `pages/` | [2026-09-26 audit] |
 
 (M14 — `/ws/plc` bez autentizace — přijaté riziko, viz záznam 2026-09-24; platí i pro vzdálený přístup z firemní sítě)
 
@@ -286,10 +295,13 @@ Nasazení: otevřené zakázky uzavřít před upgradem Gateway; PLC + Analyzing
 | A9 | `GET /api/config` vrací `local_path`, `remote_path` (UNC) a `net_id` každému přihlášenému včetně vzdáleného; `/api/status` přitom `remote_path` záměrně skrývá | `api/config_api.py` | [2026-09-26 audit] |
 | A10 | Bez minimální délky hesla (lze nastavit i `1`) | `api/users_api.py`, `api/auth.py` | [2026-09-26 audit] |
 | A11 | Dva endpointy pro změnu vlastního hesla (`/api/auth/change-password` a `/api/users/{u}/password`) | `api/` | [2026-09-26 audit] |
+| A26-35, A26-36, A26-37 | Konec letního času v řazení / filtru; C v Production čteno až při Op2; statický odpor vs `Electric.Rezistance` v PLC | viz záznam [2026-10-25] A26 | [2026-10-25] |
+| USB-UI | „U stroje jen na flashku“ hlídá UI — `/download` a `/xlsx` server u stroje neblokuje (místo uložení, ne bezpečnost; přijato) | `api/files.py` | [2026-10-27] |
+| T-WATCH | Na konci celé sady pytest občas „files watcher: cannot schedule new futures after shutdown“ — některý TestClient bez ukončení lifespanu (jen v souběhu souborů; testy nepadají) | `02_tests/` | [2026-10-27] |
 | X6, X7, X9, Z7–Z15, N4–N9, F7–F18, T4, E7–E10, R5–R7, R9, C4–C7 | viz záznam [2026-10-10] Nejhlubší audit | — | [2026-10-10 nejhlubší] |
 | K21, K23, K27–K29, K31–K41 | viz záznam [2026-10-10] Kompletní audit (K19, K20, K22, K25, K26, K42 opraveny; K24, K30 ověřeny jako opravené 2026-10-15) | — | [2026-10-10 kompletní] |
 | Q15–Q23, Q25, Q26, Q28, Q30–Q32 (+ Q17 částečně) | viz záznam [2026-10-15] (stabilita, drobné scénáře, frontend, architektura) | — | [2026-10-15] |
-| A12 | `csv_repository.py` (1 121 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
+| A12 | `csv_repository.py` (~1 680 ř.) — vedle čtení CSV i přehled a cache (`FileMeta`, `_MetaStore`, dopočet na pozadí, `_OrderIndex`); vhodné rozdělit na `file_catalog.py` / `meta_store.py` / `order_index.py` | `services/repositories/` | [2026-10-10] |
 
 ### 📈 ŠKÁLOVÁNÍ (doporučení do budoucna — mimo ScadaViewer / dohoda s Trafag)
 

@@ -3,7 +3,8 @@
  * @description Horní lišta aplikace — název aplikace, indikátor PLC stavu,
  *   přepínač jazyka CS/EN, chip s přihlášením operátora (lokální přístup + odhlášení),
  *   chip zaplnění lokálního úložiště a chip zaplnění NAS (jen při varování / kritickém stavu → klik = Database),
- *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje), *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
+ *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje),
+ *   hodinový chip. Ukazatel flashky není tady, ale v hlavičce Databáze (UsbStorageBar). Interní hook useClock() aktualizuje datum/čas každou sekundu.
  */
 import { useState, useEffect } from 'react'
 import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe, Server } from 'lucide-react'

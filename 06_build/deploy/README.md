@@ -1,8 +1,18 @@
 # Nasazovací balíček — upgrade všech tří aplikací na PC u stroje
 
 Skript `deploy.ps1` (spouštět přes `deploy.bat`, sám si vyžádá práva správce) nasadí najednou
-Analyzing + DatabaseGateway + ScadaViewer stejné verze. Návrat: `rollback.bat`.
-Podrobně: `04_docs/deployment.md` → „Nasazovací skript".
+Analyzing + DatabaseGateway + ScadaViewer, každou ve verzi z `$AppVersions` (např. 2.6.7 = AN 2.6.3, GW 2.6.2,
+SV 2.6.7). Návrat: `rollback.bat`. Podrobně: `04_docs/deployment.md` → „Nasazovací skript".
+
+**Kontroly a nastavení podle vydání:**
+- **Rozpracovaná zakázka** (`production\wip`): `$WipBlocksDeploy = $true` (vydání mění hlavičku CSV nebo význam
+  hodnot — např. 2.6.6 / 2.6.7: nová definice RT a OP) → nasazení skončí a zakázku je nutné uzavřít na PLC nebo
+  ve ScadaViewer (Databáze → In progress → Dokončit zakázku); `$false` → jen varování, zakázka po nasazení pokračuje.
+- **Config.toml na stroji se nepřepisuje** — co vydání vyžaduje, nastaví krok 5d (záloha v `*.backup_*`):
+  `[measurement] max_cycles` ≥ `$MinMaxCycles` (Analyzing + Gateway) a klíče `$AnSettings` v Config.toml Analyzingu
+  (`[analysis.detection]` `op_definition = "no_close"`, `static_resistance_margin_um = 100.0`,
+  `static_nc_exclude_pt_fraction = 0.5`).
+- **`$PlcNote`**: před zastavením služeb se zeptá na stav PLC programu (DUT, limity RT v recepturách).
 
 **Složky s verzí v názvu (od 2.5.0):** leží-li aplikace ve složce `v<verze>_<RRRR-MM-DD>-<název>` (např.
 `Desktop\v2.1.1_2026-09-28-AdsAnalyzer\ads_analyzer`), skript ji po zastavení služeb přejmenuje na
@@ -37,5 +47,7 @@ předchozí verze). `last_deploy.txt` v balíčku = razítko posledního nasazen
    - `deploy.ps1`, `deploy.bat`, `rollback.bat` z této složky,
    - ZIPy přejmenované na `Analyzing_v<verze>.zip`, `DatabaseGateway_v<verze>.zip`, `ScadaViewer_v<verze>.zip` (každá aplikace svou verzí).
 3. V `deploy.ps1` nastavit `$Version`, `$AppVersions` (verze ZIPu každé aplikace), `$AppDates` (datum v novém názvu
-   složek podle aplikace) a `$PlcNote` (prázdné = bez dotazu na PLC).
+   složek podle aplikace), `$PlcNote` (prázdné = bez dotazu na PLC), `$WipBlocksDeploy` (`$true` = vydání mění hlavičku
+   CSV nebo význam hodnot → neprázdná `production\wip` zastaví nasazení), `$AnSettings` (klíče Config.toml Analyzingu,
+   které krok 5d nastaví) a `$MinMaxCycles`. Přidat `RELEASE_NOTES_v<verze>.md`.
 4. Složku zkopírovat na PC u stroje (vzdálená plocha: Ctrl+C / Ctrl+V).

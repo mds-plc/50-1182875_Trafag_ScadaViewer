@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -205,7 +206,8 @@ def write_file(letter: str, name: str, source: bytes | Path) -> Path:
     """Uloží soubor na flashku do složky EXPORT_DIR; vrátí cílovou cestu.
 
     Zápis přes dočasný soubor + fsync + přejmenování — vytažená flashka nenechá napůl zapsaný soubor
-    pod finálním názvem. Existující soubor se nepřepíše (přidá se „ (2)“, „ (3)“ …).
+    pod finálním názvem. Existující soubor se nepřepíše (přidá se „ (2)“, „ (3)“ … před poslední příponu:
+    „x.tar.gz“ → „x.tar (2).gz“). Rezerva volného místa 1 MiB nad velikost souboru.
     """
     letter = _valid_letter(letter)
     if _BAD_NAME.search(name) or name in ('', '.', '..'):
@@ -217,7 +219,8 @@ def write_file(letter: str, name: str, source: bytes | Path) -> Path:
     folder = root / EXPORT_DIR
     folder.mkdir(exist_ok=True)
     target = _unique_target(folder, name)
-    tmp = target.with_name(target.name + '.part')
+    # vlastní dočasný název — dva souběžné exporty téhož souboru nesmí psát do stejného .part
+    tmp = target.with_name(f'{target.name}.{secrets.token_hex(4)}.part')
     try:
         with open(tmp, 'wb') as out:
             if isinstance(source, bytes):

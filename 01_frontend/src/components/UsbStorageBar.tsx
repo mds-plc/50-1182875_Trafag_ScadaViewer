@@ -51,7 +51,7 @@ export default function UsbStorageBar() {
     <>
       {drives.map(d => {
         const used = d.total_bytes > 0 ? (1 - d.free_bytes / d.total_bytes) * 100 : 0
-        const usage = t.storage.nasUsage
+        const usage = t.usb.usage
           .replace('{free}',  formatBytes(d.free_bytes))
           .replace('{total}', formatBytes(d.total_bytes))
         const name = `${d.letter}:${d.label ? ` ${d.label}` : ''}`

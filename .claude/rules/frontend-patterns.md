@@ -60,6 +60,8 @@ const fetchData = useCallback(async () => {
 `utils/apiFetch.ts` — stejné API jako `fetch`. Při 401 + `WWW-Authenticate: Bearer` vyšle
 událost `scada:unauthorized` → `AuthContext` odhlásí (lokální login) nebo obnoví PLC login.
 Holý `fetch` jen pro veřejné endpointy (`/api/health`, `/api/auth/login`).
+PLC token je jen v paměti (ne sessionStorage) a má roli admin; 401 po odhlášení na PLC → AuthContext token zahodí
+a čeká na nové PLC přihlášení.
 
 ## Nápověda stránky — každá stránka
 
@@ -75,8 +77,11 @@ uvnitř funkce.
 
 ## Velká data — nerozbíjet
 
-- **XLSX sestavuje server** (`GET /api/files/{id}/xlsx`, `utils/exportXlsx.ts`) — dialog „Uložit jako"
-  otevřít hned po kliknutí, pak stahovat. Žádné skládání velkých souborů v prohlížeči (kiosk).
+- **CSV / XLSX VŽDY přes `useFileDownload()`** (`context/UsbContext.tsx`) — u stroje uloží na flashku (jen admin;
+  jinak tlačítko tlumené s `disabledReason`, klik = varování + zablikání `UsbStorageBar`), vzdáleně dialog „Uložit jako"
+  → `GET /api/files/{id}/xlsx` / `download`. `exportFileXlsx` / `downloadOriginalCsv` nevolat přímo. **XLSX sestavuje
+  server** — žádné skládání velkých souborů v prohlížeči (kiosk). Flashku zjišťuje jen `UsbContext` (`GET /api/usb`
+  á 3 s, jen admin u stroje) — další polling flashky nepřidávat.
 - Celé velké zakázky nikdy jako JSON (`per_page=0` má strop) — export / originální CSV.
 - `DataTable`, `OrderTimelineChart`, graf kategorií jsou `memo` → předávat stabilní props (`useMemo`,
   `useCallback`); při změně stránky / filtru obsah nechat (spinner jen při prvním načtení).
@@ -230,6 +235,8 @@ const numericKeys = useMemo(() => {
   tooltipu) — přebije sticky a hlavička při posunu odjede (screens/39); sticky je výchozím bodem i pro absolutní potomky.
 - **Mazání v Databázi:** done_local i rozpracovaná zakázka (`sync_status 'wip'`) jen admin+ (`canDeleteUnsynced` /
   `canDeleteWip`), WIP jen jednotlivě přes `DeleteModal` se zaškrtnutím rizika — nikdy hromadně (výběr WIP nemá).
+  Dokončení rozpracované zakázky = `FinishWipModal` (stejné oprávnění, `onFinishRequest`); bez spojení s PLC zaškrtnutí
+  „zakázka na stroji neběží" (`plc_unknown_confirmed`).
 - **Tisk:** styly v bloku „PROTOKOL" na konci `styles/chart.css`; obrazovkové prvky `cv-screen-only`,
   tiskové `cv-print-only`; ověřit PDF přes Playwright `page.pdf()` (testovací server s fiktivním ADS).
 

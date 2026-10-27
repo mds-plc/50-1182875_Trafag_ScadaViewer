@@ -1,5 +1,6 @@
 /**
- * Flashka na PC u stroje — sdílený stav pro Topbar (čip + bezpečné odebrání) a tlačítka CSV / XLSX.
+ * Flashka na PC u stroje — sdílený stav pro ukazatel v hlavičce Databáze (UsbStorageBar: zaplnění + bezpečné
+ * odebrání) a tlačítka CSV / XLSX (Databáze, detail zakázky, detail testu).
  *
  * Účel: V kiosku u stroje se soubory nestahují do prohlížeče (složka Stažené na PC), ale ukládají se na
  *       zasunutou flashku (rozhodnutí uživatele 2026-10-27). Smí jen administrátor (i přihlášení přes PLC).

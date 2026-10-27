@@ -189,7 +189,9 @@ async def finish_wip(
     monitor  = request.app.state.monitor
     if monitor.connected:
         vals = monitor.current_values
-        if vals.get("order_valid") and order_id and str(vals.get("order_name", "")).strip() == order_id:
+        # bez mezer a bez ohledu na velikost písmen — STRING z PLC bývá doplněný mezerami; raději odmítnout víc
+        if (vals.get("order_valid") and order_id
+                and str(vals.get("order_name", "")).strip().casefold() == order_id.strip().casefold()):
             raise HTTPException(status_code=409, detail={
                 "code": "running", "message": f"Zakázka {order_id} právě běží na stroji — nejdřív ji ukončete na PLC."})
     elif not (body and body.plc_unknown_confirmed):

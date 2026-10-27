@@ -392,6 +392,7 @@ export const cs: Translations = {
     saveError:   'Uložení na flashku se nepodařilo',
     noSpace:     'Na flashce není dost místa',
     none:        'zasuňte flashku',
+    usage:       'zbývá {free} z {total}',
   },
   storage: {
     title:          'Lokální úložiště',

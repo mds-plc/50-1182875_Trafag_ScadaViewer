@@ -14,7 +14,7 @@ export const helpCs: Translations['help'] = {
       items: [
         { title: 'Lokální / Vzdálená', text: 'Lokální = soubory na tomto PC (zakázky čekající na odeslání i už odeslané). Vzdálená = archiv na Synology NAS. Tečka u záložky ukazuje, zda je NAS dostupný.' },
         { title: 'Production / Testing', text: 'Production = zakázky z výroby (každý řádek = jedna zakázka s mnoha kusy). Testing = jednotlivá testovací měření mikrospínače se signálovými daty.' },
-        { title: 'Úložiště a NAS', text: 'Ukazatele v hlavičce: zaplnění lokálního úložiště vůči limitu a zaplnění NAS. Od 80 % varování, od 95 % kritický stav. Tlačítkem lze smazat lokální kopie souborů, které už jsou bezpečně na NAS.' },
+        { title: 'Úložiště a NAS', text: 'Ukazatele v hlavičce: zaplnění lokálního úložiště vůči limitu a zaplnění NAS. Od 80 % varování, od 95 % kritický stav. Tlačítkem lze smazat lokální kopie souborů, které už jsou bezpečně na NAS. Administrátor u stroje tu vidí i ukazatel flashky (USB) se zaplněním a tlačítkem bezpečného odebrání.' },
         { title: 'Hledat zakázku', text: 'Napište část čísla nebo názvu zakázky (velikost písmen ani diakritika nevadí). Během hledání se prohledává celý archiv bez ohledu na datum. Křížek nebo Esc hledání zruší.' },
         { title: 'Od – do', text: 'Datumový filtr podle vzniku zakázky, výchozí jsou poslední 2 dny. Když filtr nic nenajde, nabídne přechod na den s nejnovějšími daty.' },
         { title: 'Tabulka', text: 'Klik na záhlaví sloupce řadí. Klik na řádek zakázky (nebo šipka) rozbalí přehled kusů a rozložení kategorií; ikona grafu otevře detail zakázky rovnou, bez rozbalení. CSV / XLSX stáhne celou zakázku. Na PC u stroje se soubor neukládá do prohlížeče, ale na zasunutou flashku (složka Trafag_ScadaViewer) — jen administrátor (i přihlášení přes PLC); bez zasunuté flashky aplikace při pokusu o uložení upozorní a ukazatel USB zabliká. Flashku pak bezpečně odeberete tlačítkem u ukazatele USB v hlavičce Databáze (vedle lokálního úložiště a NAS). V rozbaleném přehledu kusů jsou hodnoty mimo limity třídění lehce podbarvené. „…" u počtu kusů = počet se právě dopočítává. Rozpracovaná zakázka je zvýrazněná nahoře.' },
@@ -63,9 +63,9 @@ export const helpCs: Translations['help'] = {
       intro: 'Předvolby zobrazení, stav připojení k PLC a úložištím, čas PC (NTP server pro IPC) a správa uživatelů.',
       items: [
         { title: 'Předvolby', text: 'Jazyk, světlý / tmavý režim, počet souborů na stránce, interval automatického obnovení a klávesnice na obrazovce (kiosk bez systémové klávesnice — Automaticky = jen u stroje). Ukládají se v tomto prohlížeči.' },
-        { title: 'Připojení', text: 'Stav serveru, PLC (ADS) a lokálního úložiště a NAS. Administrátor u stroje zde mění cesty k datům a limit lokálního úložiště.' },
+        { title: 'Připojení', text: 'Stav PLC (ADS), Net ID a port, lokální úložiště (zaplnění, limit) a NAS. Administrátor u stroje zde mění cesty k datům a limit lokálního úložiště.' },
         { title: 'Čas / NTP', text: 'PC u stroje slouží jako NTP server pro další IPC. Nahoře je hned vidět, zda si IPC mohou brát čas z tohoto PC (a když ne, proč), čas PC, odkud ho PC bere a adresa, kterou nastavit na IPC. Administrátor u stroje může čas PC ručně nastavit — převezmou ho IPC i časové značky nových záznamů. Údaje pro servis jsou ve sbalených Technických podrobnostech.' },
-        { title: 'Uživatelé', text: 'Jen pro administrátora: přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá. Účet s výchozím heslem „admin" se z kanceláře nepřihlásí a aplikace dole vyzve ke změně hesla. Přihlášení heslem na PC u stroje skončí po 15 minutách nečinnosti. Přihlášení přes PLC (jen nejvyšší autorita na PLC) má práva administrátora, dokud trvá přihlášení na PLC.' },
+        { title: 'Uživatelé', text: 'Jen pro administrátora u stroje (z kanceláře se záložka nezobrazí): přidání a odebrání uživatele, změna hesla. Uživatel může mít nejvýše stejnou roli jako ten, kdo ho zakládá. Účet s výchozím heslem „admin" se z kanceláře nepřihlásí a aplikace dole vyzve ke změně hesla. Přihlášení heslem na PC u stroje skončí po 15 minutách nečinnosti. Přihlášení přes PLC (jen nejvyšší autorita na PLC) má práva administrátora, dokud trvá přihlášení na PLC.' },
       ],
     },
     info: {
@@ -73,7 +73,7 @@ export const helpCs: Translations['help'] = {
       intro: 'Informace o aplikaci: verze, projekt, zákazník a dodavatel, popis aplikace a dokumentace.',
       items: [
         { title: 'Projekt', text: 'Verze aplikace (hlásí server), číslo projektu a kontakty.' },
-        { title: 'Dokumentace', text: 'Stručný popis aplikace a odkaz na uživatelský manuál.' },
+        { title: 'Dokumentace', text: 'Stručný popis aplikace; uživatelský manuál bude doplněn.' },
       ],
     },
   },

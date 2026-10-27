@@ -28,8 +28,8 @@
 
 | # | Příkaz | Očekávání |
 |---|--------|-----------|
-| 1.1 | `pytest 02_tests/ -v` | všechny testy prošly (2026-10-10: 274) |
-| 1.2 | `cd 01_frontend && npm run test` | všechny testy prošly (2026-10-10: 117) |
+| 1.1 | `pytest 02_tests/ -v` | všechny testy prošly (2026-10-27: 511) |
+| 1.2 | `cd 01_frontend && npm run test` | všechny testy prošly (2026-10-27: 256 testů, 31 souborů) |
 | 1.3 | `npm run lint` | 0 chyb, 0 varování |
 | 1.4 | `npx tsc --noEmit` | bez chyb |
 | 1.5 | `npm run build` | build bez chyb a varování o velikosti chunků |
@@ -48,15 +48,22 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 
 | Akce | operator | technician | admin | manufacturer | kancelář (libovolná role) |
 |------|:-:|:-:|:-:|:-:|:-:|
-| Prohlížení, export XLSX/CSV, tisk | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prohlížení, tisk | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Export CSV / XLSX (u stroje jen na flashku) | ❌ | ❌ | ✅ | ✅ | ✅ (do prohlížeče) |
 | Mazání souboru / hromadné mazání | ❌ | ✅ | ✅ | ✅ | ❌ |
 | Mazání souboru z `done_local` (není na NAS) | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Mazání rozpracované zakázky (In progress) — jen jednotlivě | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Dokončit rozpracovanou zakázku (In progress) | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Flashka: uložení, bezpečné odebrání | ❌ | ❌ | ✅ | ✅ | ❌ |
 | „Vyčistit synchronizované" | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Nastavení cest a limitu úložiště | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Nastavení času PC (Nastavení → Čas / NTP; přehled vidí všichni) | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Správa uživatelů | ❌ | ❌ | ✅ (jen nižší role) | ✅ | ❌ |
 | Změna vlastního hesla | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+> **PLC přihlášení = sloupec admin** (od 2.6.4, jen u stroje; platí, dokud PLC drží `UserLoggedIn`).
+> Export u stroje bez práva: tlačítka CSV / XLSX jsou tlumená a klik vysvětlí proč. Pravidlo „u stroje jen
+> na flashku" hlídá UI — `GET /api/files/{id}/download` a `/xlsx` server u stroje neblokuje (není bezpečnostní hranice).
 
 - [ ] Každou buňku tabulky ověřit (❌ = tlačítko chybí **a** přímé volání API vrátí 403, viz bod 6)
 - [ ] Admin nemůže vytvořit ani smazat účet manufacturer, ani mu změnit heslo
@@ -74,7 +81,11 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 - [ ] Detail zakázky: filtr Stav (Vše / OK / NOK) a Kategorie (Vše / 1–6), „Zobrazeno: X z Y", klik na vyfiltrovaný kus otevře správný detail
 - [ ] Detail zakázky: NOK oblast (Force / Position / Electric / Times / Process) — čísla u tlačítek = počet kusů v zakázce (porovnat se sloupci NOK F…PR v tabulce), oblast s 0 kusy zašedlá; dvě oblasti = kusy s aspoň jednou z nich; kombinace s kategorií 5 / 6; „Zrušit filtr" vrátí vše; starší soubor bez NOK sloupců skupinu nemá
 - [ ] Detail záznamu / Testing → Analyzed: tlačítko grafu vedle „?" u každého analyzovaného parametru otevře diagram se zvýrazněným parametrem a hodnotou; Esc / × zavře; u vstupů testu tlačítko není
-- [ ] XLSX: dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum
+- [ ] XLSX (z kanceláře): dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum; blokový PROD_ podle vzoru Gateway `04_docs/sample_production.xlsx` — jeden list `PROD_DONE`, nahoře podbarvené bloky Metadata / TestingParameters / SortingCategories / SortingLimits, pod nimi Data, formáty čísel podle jednotek, svislé čáry mezi skupinami parametrů
+- [ ] Flashka (admin u stroje): po zasunutí se do ~3 s v hlavičce Databáze (vedle lokálního úložiště a NAS) objeví ukazatel USB se zaplněním; CSV i XLSX z Databáze, detailu zakázky i detailu testu se uloží do `E:\Trafag_ScadaViewer`; druhé uložení téhož souboru vytvoří „… (2)" (nic se nepřepíše); bezpečné odebrání → hláška „lze vyjmout"; odebrání s otevřeným souborem na flashce (Excel) → hláška (409), flashka zůstane; bez flashky jsou tlačítka tlumená, klik = varování a ukazatel USB zabliká; plná flashka → hláška o nedostatku místa (507); operátor / technik u stroje neuloží (tlačítka tlumená s vysvětlením)
+- [ ] Dokončení rozpracované zakázky (na testovací zakázce): po simulovaném výpadku proudu (zakázka zůstala In progress) admin u stroje → „Dokončit zakázku" → soubor přejde do Local, Gateway ho do ~1,5 min nahraje na NAS (Synced); zakázku, kterou PLC hlásí jako běžící, dokončit nejde (hláška); s odpojeným ADS dialog vyžaduje zaškrtnutí „Rozumím, zakázka na stroji neběží"; další kus téže zakázky PLC odmítne (Rejected)
+- [ ] PLC přihlášení: přihlášení na PLC → ScadaViewer u stroje přihlásí jako admin; odhlášení na PLC (nebo výpadek ADS) → do pár sekund odhlášení i ve ScadaViewer; přihlášení heslem u stroje skončí po 15 min nečinnosti
+- [ ] RT / OP (2.6.6, s Analyzing 2.6.3): nový kus má RvT ~550–730 µm a v diagramu síla–dráha kótu FP → RP; starší kus ukazuje „RvT (TTP → RP)"; OP odpovídá prvnímu sepnutí NO
 - [ ] Testing detail: všech 5 záložek Signal Data, zoom kolečkem i dvěma prsty, dvojklik = reset, celá obrazovka
 - [ ] Tisk production i testing: zkontrolovat PDF (záhlaví, čísla stran, žádné prázdné stránky, všechny grafy)
 - [ ] Nastavení → Čas / NTP: služba Windows Time běží, NTP server zapnutý, UDP 123 naslouchá, ohlašování „spolehlivý zdroj" (AnnounceFlags 5), adresa PC v síti stroje; IPC po nastavení NTP serveru drží čas PC (porovnat hodiny IPC); admin u stroje nastaví čas (dialog s rozdílem a „Rozumím"), IPC ho převezmou; služba pod servisním účtem bez práva → hláška o secpol (ne pád)
@@ -99,15 +110,17 @@ U každého scénáře sleduj: aplikace nespadne, obsluha pozná, co se děje, a
 | 3.6 | Restart ScadaViewer | `nssm restart ScadaViewer` při otevřeném kiosku | červený pruh „Server nedostupný", pak se sám obnoví a přihlásí |
 | 3.7 | DatabaseGateway neběží | `nssm stop` DatabaseGateway | ScadaViewer běží dál (známé omezení: stav DatabaseGateway neukazuje) |
 | 3.8 | Restart celého PC | restart Windows | služby naběhnou, kiosk se otevře a auto-login funguje, NAS dostupný bez zásahu |
-| 3.9 | Vypršení relace | přihlásit se lokálně a nechat > 8 h, pak kliknout | hláška „Relace vypršela", po přihlášení pokračuje |
+| 3.9 | Vypršení relace | u stroje přihlásit heslem a nechat > 15 min bez dotyku (vzdáleně > 8 h), pak kliknout | hláška „Relace vypršela", po přihlášení pokračuje; PLC přihlášení nevyprší, dokud PLC drží `UserLoggedIn` |
 | 3.10 | Plné úložiště | dočasně snížit `local_max_gb` pod aktuální obsazení | varování v topbaru i Database; čištění vrátí stav do normálu |
 | 3.11 | Poškozený CSV | zkopírovat do `done_local` zkrácený / prázdný soubor (na kopii dat) | soubor se přeskočí nebo ukáže chybu, zbytek seznamu funguje |
 | 3.12 | Zaseknutý server | pozastavit proces ScadaViewer (Správce úloh → Podrobnosti → „Pozastavit“ / Process Explorer Suspend) | do ~15 s červený pruh „Server nedostupný“, po obnovení zmizí |
 | 3.13 | NAS vypadne během výpisu | otevřít záložku Vzdálená a během načítání odpojit NAS | zůstane poslední známý seznam nebo chyba NAS — **nikdy prázdný archiv** |
 | 3.14 | Uzavření zakázky při otevřeném souboru | mít otevřený detail rozpracované zakázky (a stahovat její CSV) a v PLC zakázku uzavřít | Op3 Done, soubor jen v `done_local/` (žádná kopie ve `wip/`); po uploadu jen v `done_remote/` |
 | 3.15 | Diakritika z PLC | zakázka / typ spínače s „ř“, „č“ v názvu (Op1–Op3, Op5) | Gateway uloží bez SAVE_FAILED, název souboru i Database ukazují správné znaky (ověřuje kódování STRING cp1250) |
-| 3.17 | Smazání rozpracované zakázky během výroby (na kopii / testovací zakázce) | admin u stroje smaže zakázku In progress (dialog: zaškrtnout „Rozumím"), PLC dál posílá kusy, pak zakázku uzavře | další kus i uzavření = Rejected (PLC hlásí), ve `wip/` ani `done_local/` **nevznikne soubor bez hlavičky**; zakázku se stejným číslem jde hned založit znovu; log ScadaViewer i Gateway obsahuje varování. Vyžaduje ScadaViewer + DatabaseGateway ze stejného vydání |
 | 3.16 | Konec letního času | zakázka běžící přes 25. 10. 02:00–03:00 (nebo kopie CSV s opakovanou hodinou) | Časový průběh: kusy nepromíchané, doba zakázky o hodinu delší než rozdíl časů v souboru |
+| 3.17 | Smazání rozpracované zakázky během výroby (na kopii / testovací zakázce) | admin u stroje smaže zakázku In progress (dialog: zaškrtnout „Rozumím"), PLC dál posílá kusy, pak zakázku uzavře | další kus i uzavření = Rejected (PLC hlásí), ve `wip/` ani `done_local/` **nevznikne soubor bez hlavičky**; zakázku se stejným číslem jde hned založit znovu; log ScadaViewer i Gateway obsahuje varování. Vyžaduje ScadaViewer + DatabaseGateway ze stejného vydání |
+| 3.18 | Výpadek proudu během zakázky + ruční dokončení | vypnout PC u stroje během zakázky (na testovací zakázce), po startu zakázka visí In progress; admin ji dokončí | soubor v `done_local/`, Gateway nahraje na NAS (~1,5 min); další kus téže zakázky = Rejected; log ScadaViewer obsahuje varování s uživatelem |
+| 3.19 | Vytažení flashky bez bezpečného odebrání | během ukládání XLSX na flashku ji vytáhnout | hláška o chybě uložení, aplikace běží dál; ukazatel USB zmizí do ~3 s, po zasunutí se vrátí |
 
 ---
 
@@ -190,6 +203,10 @@ Nechat běžet **24–72 h** při běžné výrobě s otevřeným kioskem a jedn
       curl -X DELETE -H "Authorization: Bearer <token>" "http://<IP>:8080/api/files/<id>?location=local&type=production"
       curl -X POST   -H "Authorization: Bearer <token>" "http://<IP>:8080/api/storage/cleanup"
       curl -X PATCH  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"local_max_gb\":1}" "http://<IP>:8080/api/config/storage"
+      curl -X POST   -H "Authorization: Bearer <token>" "http://<IP>:8080/api/files/<id>/finish?location=local&type=production"
+      curl -X POST   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"file_id\":\"<id>\",\"type\":\"production\",\"format\":\"csv\"}" "http://<IP>:8080/api/usb/export"
+      curl -X POST   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\"drive\":\"E\"}" "http://<IP>:8080/api/usb/eject"
+      curl           -H "Authorization: Bearer <token>" "http://<IP>:8080/api/usb"
       ```
       (token zjistíš v DevTools → Application → Session Storage → `scada_auth_token`)
 - [ ] `POST /api/auth/plc-login` z kanceláře → 403

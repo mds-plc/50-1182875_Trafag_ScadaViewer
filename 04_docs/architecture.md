@@ -1533,18 +1533,35 @@ Testy: `RecordDiagram.test.tsx` (stará / nová definice, zvýraznění), `test_
 Přání uživatele: u stroje stahovat data jen na zasunutou flashku a flashku bezpečně odebrat z aplikace. Rozhodnutí:
 u stroje se CSV / XLSX **neukládají do prohlížeče** (složka Stažené na PC), jen na flashku; stávající tlačítka CSV / XLSX
 (Databáze, detail zakázky, detail testu); **jen administrátor** (i přihlášení přes PLC). Z kanceláře beze změny (prohlížeč).
+Pravidlo „u stroje jen na flashku“ hlídá UI (`useFileDownload`); `/api/files/{id}/download` a `/xlsx` server u stroje
+neblokuje — jde o místo uložení, ne o bezpečnostní hranici. Bezpečné odebrání potřebuje LocalSystem / práva správce.
 
 | Část | Řešení |
 |---|---|
 | `services/usb_service.py` | Windows ctypes: `list_drives` — `GetDriveTypeW` vyměnitelná nebo pevná na sběrnici USB (`IOCTL_STORAGE_QUERY_PROPERTY`), bez systémového disku, `SetErrorMode` (prázdná čtečka bez dialogu); `write_file` — `X:\Trafag_ScadaViewer\<název>`, `.part` + fsync + `os.replace`, existující soubor nepřepíše („ (2)“), kontrola místa; `eject` — FlushFileBuffers, `FSCTL_LOCK_VOLUME` (10× 0,3 s, jinak UsbBusyError), `FSCTL_DISMOUNT_VOLUME`, `IOCTL_STORAGE_EJECT_MEDIA`, u USB disku `CM_Request_Device_EjectW` rodiče disku |
 | `api/usb.py` | `GET /api/usb`, `POST /api/usb/export` (CSV = originál přes `resolve_path` a `open_shared`, XLSX = `export_xlsx` — rozložení vzoru; NAS přes `run_io`), `POST /api/usb/eject`; vše `require_local` + `require_role("admin")`; písmeno jen z aktuálního seznamu flashek |
-| `context/UsbContext.tsx` | `UsbProvider` (v `App` pod `StorageProvider`) — dotaz á 3 s, jen admin u stroje; `useFileDownload()` pro Databázi i detail: u stroje flashka, vzdáleně prohlížeč; tlačítka se nezakazují (dotykový kiosk tooltip neukáže) — bez flashky / bez práva jsou tlumená a klik = varování toastem + `USB_ATTENTION_EVENT` (ukazatel USB 3× oranžově zabliká) |
-| `UsbStorageBar` | v hlavičce Databáze vedle lokálního úložiště a NAS (stejný prvek, pevná šířka): „USB E: POPISEK“, pruh zaplnění, „zbývá X z Y“, tlačítko bezpečného odebrání (toast „lze vyjmout“ / „otevřený soubor“); bez flashky šedé „zasuňte flashku“ |
+| `context/UsbContext.tsx` | `UsbProvider` (v `App` pod `StorageProvider`) — dotaz á 3 s, jen admin u stroje; `useFileDownload()` pro Databázi i detail: u stroje flashka, vzdáleně prohlížeč; tlačítka se nezakazují (dotykový kiosk tooltip neukáže) — bez flashky / bez práva jsou tlumená a klik = varování toastem; bez flashky navíc `USB_ATTENTION_EVENT` (ukazatel USB 3× oranžově zabliká — bez práva se ukazatel nezobrazuje) |
+| `UsbStorageBar` | v hlavičce Databáze vedle lokálního úložiště a NAS (stejný prvek, pevná šířka; dřív čip v horní liště — přesunuto na přání uživatele): „USB E: POPISEK“, pruh zaplnění, „zbývá X z Y“ (`usb.usage`), tlačítko bezpečného odebrání (toast „lze vyjmout“ / „otevřený soubor“); bez flashky šedé „zasuňte flashku“ |
 
-Testy: `test_usb.py` (5, atrapy Windows API), `UsbContext.test.tsx` (3). Nápověda Databáze, detailu zakázky a testu CS + EN.
+Testy: `test_usb.py` (atrapy Windows API: export CSV / XLSX i z NAS a Testing, oprávnění, 404 / 507, odebrání 204 / 409 / 503,
+úklid `.part`, číslování „ (2)“, rezerva místa), `UsbContext.test.tsx`, `UsbStorageBar.test.tsx`, `Topbar.test.tsx`. Nápověda Databáze, detailu zakázky a testu CS + EN.
 Podklad pro IT: `it_ot_requirements.md` otázka 9 (GPO pro zápis na USB).
 
 **Stav testů po fázi 56:** Backend **490/490**, Frontend **241/241**; `tsc` 0, lint 0.
+
+### Kontrola dokumentace a testů (2026-10-27)
+
+Tři nezávislé kontroly (CLAUDE.md + pravidla vs. kód, 04_docs + nasazení, pokrytí testy + nápověda). Opravy v kódu:
+souběžný zápis téhož souboru na flashku do vlastního `.part` (`secrets.token_hex`), hodnoty za hlavičkou dat v XLSX se
+nezahodí (`build_blocks_xlsx`), název běžící zakázky z PLC se porovná bez mezer a velikosti písmen (`/finish` → 409 running).
+Nové testy: USB (úklid `.part`, „ (2)“, rezerva, NAS / Testing, ne-Windows), dokončení WIP (hraniční případy odříznutí
+řádku vč. bloku > 64 KiB, busy / I/O, NAS / Testing, mezery v názvu), XLSX (prázdná data, bez bloků, delší řádky, WIP,
+starší formát), OP v signálu (hranice 2 µm, stupnice zákazníka), PLC relace (heslo nezávisí na PLC příznaku), FE
+`rtDefinition`, `UsbStorageBar`, `FileTable` (tlumená tlačítka), `Topbar`. Dokumentace: CLAUDE.md, pravidla, deployment,
+README nasazení, `deploy.ps1` (hlavička kroků 3–5e), it_ot, audit_log (přehled otevřených), roadmap, acceptance_test,
+how_to_extend, tato architektura (níže).
+
+**Stav testů po kontrole:** Backend **511/511**, Frontend **256/256** (31 souborů); `tsc` 0, lint 0.
 
 ---
 
@@ -1562,10 +1579,11 @@ Podklad pro IT: `it_ot_requirements.md` otázka 9 (GPO pro zápis na USB).
  _make_callback() → ctypes decode → JSON
                                                                    [Prohlížeče]
 [CSV soubory — sdílená složka]                                     ws://host/ws/plc
-    │  DatabaseGateway ZAPISUJE  ──►  C:/apps/scada_data/  ◄── ScadaViewer ČÍTÁ
+    │  DatabaseGateway ZAPISUJE  ──►  C:\Data\DtbLoc (deploy krok 5e)  ◄── ScadaViewer ČTE
     │  (složka mimo oba projekty, cesta v Config.toml [data] local_path)
     │
-    │  local:  {local_path}/production/done_local/                  → Overview (PlcStatus)
+    │  local:  {local_path}/production/wip/  (rozpracovaná — dokončení adminem → done_local, POST /finish)
+    │          {local_path}/production/done_local/                  → (Overview odpojen)
     │          {local_path}/production/done_remote/
     │          {local_path}/testing/done_local/
     │          {local_path}/testing/done_remote/
@@ -1584,13 +1602,18 @@ Podklad pro IT: `it_ot_requirements.md` otázka 9 (GPO pro zápis na USB).
   request_counts()  — dopočet počtu kusů na pozadí (lokálně vše, NAS jen zobrazená stránka)
   read_file_meta()  — hlavička + počet řádků
   read_records()    — přes _OrderIndex (zakázka v paměti, LRU 3 soubory / 256 MB)
-  read_table()      — celý soubor pro XLSX (xlsx_export.build_xlsx)
+  read_table()      — celý soubor pro XLSX (xlsx_export.build_xlsx — starší formáty, Testing)
+  read_blocks_export() — blokový PROD_ pro XLSX podle vzoru Gateway (xlsx_export.build_blocks_xlsx)
+  finish_wip()      — ruční dokončení rozpracované zakázky (wip → done_local, odříznutí neúplného řádku)
   _MetaStore        — SQLite cache metadat + tabulka known (03_output/cache/file_meta.sqlite)
   validate_params() — path traversal, null byte, _DONE.csv suffix
 
     [status.py]
     GET /api/status → remote_available: bool
-    (Path.exists() na UNC cestě, timeout 3 s)
+    (NasProbe — jedno běžící vlákno + cache, výpadek NAS neblokuje)
+
+[usb.py] /api/usb* ──► [usb_service.py]  (jen admin u stroje)
+                          list_drives() / write_file() (.part + fsync) / eject() — Windows ctypes
 
 [signal.py] GET /api/signal ──► [signal_reader.py]
                                   load_signal()  — LRU cache (2 soubory), numpy/Python parser
@@ -1609,9 +1632,10 @@ Veškeré blokující I/O: services/io_pool.run_io(location, …)
 |--------|-----------|-----------|------------|
 | Jednodílný (starý) | 1. sloupec řádku 1 = `Timestamp` | hlavička + datové řádky | `csv.DictReader` od začátku |
 | Dvoudílný (production) | 1. řádek není `Timestamp` ani `[` | ř. 1–2 metadata (`Order;Microswitch_ID;Microswitch_Name`), ř. 3 prázdný, ř. 4+ data | metadata se injektují do každého záznamu |
-| Sekční (testing) | 1. řádek začíná `[` | `[Metadata]`, `[TestingParameters]`, `[AnalyzedParameters]`, `[NokInfo]`, `[MeasuredInfo]` — vždy hlavička + 1 řádek; `[SignalData]` ~400k řádků | `_parse_sectioned()` sloučí sekce do 1 záznamu, na `[SignalData]` se zastaví (`_has_signal`); signál čte `signal_reader` |
+| Blokový (production, Gateway 2.3.0+) | 1. řádek `[Metadata]`, dál `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]`, `[Data]` | bloky před `[Data]` = údaje zakázky (`order_info`), `[Data]` = hlavička + kusy | `_prod_blocks_metadata()`; XLSX `read_blocks_export()` → `build_blocks_xlsx` |
+| Sekční (testing) | 1. řádek začíná `[` (bez bloků production) | `[Metadata]`, `[TestingParameters]`, `[AnalyzedParameters]`, `[NokInfo]`, `[MeasuredInfo]` — vždy hlavička + 1 řádek; `[SignalData]` ~400k řádků | `_parse_sectioned()` sloučí sekce do 1 záznamu, na `[SignalData]` se zastaví (`_has_signal`); signál čte `signal_reader` |
 
-Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`OF_OperatingForce [N]` → `of_operatingforce`).
+Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`OF_OperatingForce [mN]` → `of_operatingforce`; starší `[N]` převádí `units.py`).
 
 ---
 
@@ -1621,10 +1645,10 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 |--------|---------|-------------|
 | Entrypoint | `main.py` | argparse, sys.path setup, load_config, uvicorn.run |
 | App factory | `app.py` | FastAPI, lifespan (try/finally start/stop), router registrace, app.state |
-| API | `api/plc_ws.py`, `api/files.py`, `api/data.py`, `api/signal.py`, `api/status.py`, `api/health.py`, `api/auth.py`, `api/users_api.py`, `api/config_api.py`, `api/dependencies.py` | HTTP/WS — validace requestu, volání service, mapování na HTTP kódy, autentizace (Bearer) |
-| Business service | `services/file_service.py`, `services/signal_reader.py`, `services/xlsx_export.py`, `services/ads_monitor.py`, `services/ws_manager.py` | Business logika: filtrování, stránkování, sync_status, signálová data (decimace, klíčové body, cache), ADS→WS bridge |
+| API | `api/plc_ws.py`, `api/files.py`, `api/data.py`, `api/signal.py`, `api/status.py`, `api/health.py`, `api/auth.py`, `api/users_api.py`, `api/config_api.py`, `api/storage.py`, `api/system_time.py`, `api/usb.py`, `api/dependencies.py` (`/api/timeline` v `data.py`) | HTTP/WS — validace requestu, volání service, mapování na HTTP kódy, autentizace (Bearer) |
+| Business service | `services/file_service.py`, `services/signal_reader.py`, `services/xlsx_export.py`, `services/ads_monitor.py`, `services/ws_manager.py`, `services/storage_service.py`, `services/time_service.py`, `services/usb_service.py`, `services/units.py`, `services/shared_open.py`, `services/files_watcher.py` | Business logika: filtrování, stránkování, sync_status, signálová data (decimace, klíčové body, cache), ADS→WS bridge |
 | I/O pool | `services/io_pool.py` | `run_io()` — NAS operace ve vlastním poolu s okamžitým 503 při zaseknutí; lokální I/O v `to_thread` |
-| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení (3 formáty), přehled z názvů souborů (`FileMeta`) + dopočet na pozadí, SQLite cache metadat (`_MetaStore`), index zakázky v paměti (`_OrderIndex`), validace vstupů (`validate_params`) |
+| Data Access Layer | `services/repositories/csv_repository.py` | Čistý I/O: CSV čtení (4 formáty), přehled z názvů souborů (`FileMeta`) + dopočet na pozadí, SQLite cache metadat (`_MetaStore`), index zakázky v paměti (`_OrderIndex`), validace vstupů (`validate_params`) |
 | Protocol/Interface | `services/protocols.py` | `DataReader` Protocol (PEP 544); API vrstva závisí na abstrakci — lze vyměnit za SqliteReader |
 | Config | `config.py`, `constants.py` | Dataclasses + load_config (tomllib), ADS symboly |
 | Utils | `src/utils/apiFetch.ts`, `formatting.ts`, `exportXlsx.ts`, `downloadOriginal.ts`, `paramMeta.ts`, `groupColors.ts` | Autentizovaný fetch (401 → odhlášení), formátování, exporty (XLSX ze serveru, vždy celý soubor), metadata parametrů (`PARAM_LABELS`, `PARAM_TOOLTIPS`, `PARAM_GROUPS` — sdíleno ChartView + RecordDiagram), barvy skupin |
@@ -1640,8 +1664,9 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/health` | GET | `{status, version, checks}` — zdravotní stav (NSSM watchdog, monitoring) |
 | `/api/files` | GET | Seznam zakázek; `?location=local\|remote&type=production\|testing&page=1&per_page=50` |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
-| `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` |
-| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=&page=&per_page=` + filtr detailu zakázky `&status=ok\|nok&category=1,3` + řazení `&order=asc\|desc` (od nejstaršího / nejnovějšího); `per_page=0` = vše (strop 20 000) |
+| `/api/files/{file_id}` | DELETE | Smazání lokálního souboru; `?location=local&type=production` (done_local / WIP jen admin+) |
+| `/api/files/{file_id}/finish` | POST | Ruční dokončení rozpracované zakázky (admin u stroje); 409 `running` / `plc_unknown` / `exists` / `busy` |
+| `/api/data` | GET | CSV záznamy; `?file=&location=&type=&from=&to=&page=&per_page=` + filtr detailu zakázky `&status=ok\|nok&category=1,3&nok=force,electric` + řazení `&order=asc\|desc` (od nejstaršího / nejnovějšího); `per_page=0` = vše (strop 20 000) |
 | `/api/wip` | GET | ⏸ odpojeno (2026-09-23) — záznamy WIP zakázky `?order=X` |
 | `/api/signal` | GET | Decimovaná signálová data `?file=&location=&type=&mode=&buckets=` (overview / results / hysteresis / zoom_op / zoom_rp) |
 | `/api/timeline` | GET | Časový průběh zakázky `?file=&location=&type=` → `{timestamps[], categories[]}` (jen production) |
@@ -1651,7 +1676,7 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/status` | GET | `{remote_available: bool}` |
 | `/api/auth/login` | POST | `{username, password}` → `{token}`; PBKDF2-HMAC-SHA256 |
 | `/api/auth/logout` | POST | `{token}` → 204; odstraní session |
-| `/api/auth/plc-login` | POST | Token pro PLC operátora (dle `plc_operator_login`) |
+| `/api/auth/plc-login` | POST | Session s rolí **admin** (`PLC_ROLE`), platí jen dokud trvá `plc_operator_login` (ověřuje se při každém požadavku); jen u stroje |
 | `/api/auth/change-password` | POST | Změna hesla (TTL + lockout) |
 | `/api/auth/client` | GET | Veřejné — `{local}`: prohlížeč u stroje (`server.local_clients`) / vzdáleně |
 | `/api/users`, `/api/users/{u}`, `/api/users/{u}/password` | GET/POST/DELETE | Správa uživatelů (admin+); vlastní heslo vždy s `current_password` |
@@ -1659,6 +1684,8 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 | `/api/config/storage` | PATCH | `{local_max_gb}` — limit lokálního úložiště do Config.toml (admin+) |
 | `/api/storage` | GET | Zaplnění lokálního úložiště vůči limitu + úroveň ok/warning/critical |
 | `/api/storage/cleanup` | POST | Smazání `done_remote/` ověřených na NAS; `?force=true` bez ověření (po potvrzení rizika v UI) |
+| `/api/system/time` | GET / POST | Čas PC a NTP server pro IPC / ruční nastavení času (POST jen admin u stroje) |
+| `/api/usb`, `/api/usb/export`, `/api/usb/eject` | GET / POST / POST | Flashka u stroje (jen admin): seznam, uložení CSV / XLSX do `Trafag_ScadaViewer`, bezpečné odebrání |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
 
 ### WebSocket zpráva — formát JSON
@@ -1670,7 +1697,8 @@ Klíče se normalizují `_normalize_key()`: lowercase + odstranění jednotky (`
 ### /api/health — formát odpovědi
 
 ```json
-{ "status": "ok", "version": "2.0.0", "checks": { "local_storage": true, "ads": false } }
+{ "status": "ok", "version": "2.6.7",
+  "checks": { "local_storage": true, "ads": false, "default_password": false, "users_file_error": false } }
 ```
 
 `status`: `"ok"` nebo `"degraded"` (vždy HTTP 200 — NSSM rozlišuje connection refused od degraded).
@@ -1811,10 +1839,10 @@ Reálný odhad i při velkém archivu a souběžné práci: ~0,3–0,6 GB.
 
 | Stránka | Cesta | Hook | Komponenty | Stav |
 |---------|-------|------|-----------|------|
-| Overview | `/` | `usePlc` (PlcContext) + `useOrderWatcher` | hero badge, KPI, boxy, mini chart, live records | ✅ plně funkční — hero badge + zakázka + boxy + live záznamy |
-| Database | `/database` | `useFiles`, `useFileRecords`, `useRemoteStatus` | `Pagination` | ✅ plně funkční + stránkování + klávesové zkratky |
-| ChartView | `/chart?file=...` nebo `/chart?file=...&record=N` | `useData` | `Chart`, `DataTable`, `OrderHero` | ✅ dvourežimový (order detail + record detail); Production: hero + skupiny + klikací tabulka; Testing: summary + chart + placeholder |
-| Settings | `/settings` | — | — | ✅ Předvolby + Připojení + folder picker |
+| Overview | `/` | `usePlc` (PlcContext) + `useOrderWatcher` | hero badge, KPI, boxy, mini chart, live records | ⏸ odpojeno 2026-09-23 (`/` → `/database`), kód zachován |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage`, `useFileDownload` | `FileTable`, `DeleteModal`, `FinishWipModal`, `Pagination`, `StorageBar`, `NasStorageBar`, `UsbStorageBar` | ✅ přehled z názvů souborů, hledání zakázky, CSV / XLSX (u stroje jen na flashku, admin), dokončení / smazání rozpracované zakázky (admin), stránkování, klávesové zkratky |
+| ChartView | `/chart?file=...` nebo `/chart?file=...&record=N` | `useData`, `useSignalData`, `useOrderTimeline`, `useFileDownload` | `OrderHero`, `DataTable`, `RecordFilterBar`, `CategoryChart`, `OrderTimelineChart`, `ParamTable`, `RecordDiagram`, `SignalCharts` | ✅ Production: detail zakázky (filtr kusů, kategorie / časový průběh) a detail kusu (diagramy); Testing: záložky sekcí + Signal Data; tisk A4 |
+| Settings | `/settings` | `useSettings`, `useTheme` | `TimeServerTab`, UsersTab | ✅ Předvolby + Připojení (folder picker) + Čas / NTP + Uživatelé (admin u stroje) |
 | Info | `/info` | `fetch /api/health` | — | ✅ Projekt + Dokumentace (záložky) |
 
 ---
@@ -1835,7 +1863,13 @@ Všechny komponenty jsou v `src/components/`. Každá má jasně vymezenou odpov
 | `ParamDiagrams` | `ParamDiagrams.tsx` | `ForceTravelDiagram` + `TimeDiagram` (SVG) se zvýrazněním parametru (`highlight`), `PARAM_DIAGRAM` | `record`, `highlight?` |
 | `ParamExplainModal` | `ParamExplainModal.tsx` | Grafická nápověda parametru — diagram se zvýrazněným parametrem + hodnota + popis | `paramKey`, `record`, `onClose` |
 | `ParamTable` | `ParamTable.tsx` | Sdílená tabulka parametrů (zkratka · název · hodnota · „?" + graf) | `record`, `groups` |
-| `RecordFilterBar` | `RecordFilterBar.tsx` | Řazení + filtr Stav / Kategorie kusů (server); barvy kategorií `--cat-color` / `--cat-text` | viz soubor |
+| `FinishWipModal` | `FinishWipModal.tsx` | Dialog „Dokončit zakázku“ (rozpracovaná → done_local, admin u stroje); bez spojení s PLC zaškrtnutí „zakázka na stroji neběží“ | `target`, `plcUnknown`, `onCancel`, `onConfirm` |
+| `UsbStorageBar` | `UsbStorageBar.tsx` | Ukazatel flashky v hlavičce Databáze (jen admin u stroje): zaplnění, bezpečné odebrání; bez flashky „zasuňte flashku“, zabliká po `USB_ATTENTION_EVENT` | — (UsbContext) |
+| `OnScreenKeyboard` | `OnScreenKeyboard.tsx` | Klávesnice na obrazovce pro kiosk (CZ QWERTZ, symboly, číselná) — v `AppShell` | `enabledAuto` |
+| `LimitLegend` | `LimitLegend.tsx` | Legenda podbarvení hodnot mimo limity (Trafag / výrobce / obojí) | `kinds` |
+| `TimeServerTab` | `TimeServerTab.tsx` | Nastavení → Čas / NTP: čas PC, NTP server pro IPC, ruční nastavení (admin u stroje) | — |
+| `ZoomPanel` | `ZoomPanel.tsx` | Obal grafu Signal Data: zoom osy X, posun, celá obrazovka, výřez v plném rozlišení | `render(domain, hiRows)` |
+| `RecordFilterBar` | `RecordFilterBar.tsx` | Řazení + filtr Stav / Kategorie / NOK oblast kusů (server, počty `nok_counts`); barvy kategorií `--cat-color` / `--cat-text` | viz soubor |
 | `NasStorageBar` | `NasStorageBar.tsx` | Ukazatel zaplnění NAS v hlavičce Database | — |
 | `ErrorBoundary` | `ErrorBoundary.tsx` | Class component; `getDerivedStateFromError` + `componentDidCatch`; Consumer (ne hook) | children |
 | `FileTable` | `FileTable.tsx` | Hlavní tabulka DB stránky + `ExpandedRow`; Production expand vs Testing přímý navigate | viz níže |
@@ -1880,6 +1914,8 @@ interface Props {
   selectedIds: Set<string>; onToggleSelect, onSelectAll, onClearSelect, onBatchDelete
   readOnly?:        boolean          // vzdálený přístup — bez výběru a mazání
   canDeleteWip?:    boolean          // admin+ — koš i u rozpracované zakázky (jednotlivě)
+  onFinishRequest?: (file: OrderFile) => void   // tlačítko Dokončit zakázku (In progress, admin u stroje)
+  downloadDisabledReason?: string | null        // u stroje bez flashky / bez práva — tlumená CSV / XLSX, klik vysvětlí
 }
 ```
 
@@ -1887,7 +1923,8 @@ interface Props {
 
 Sloupce nejsou auto-detekované — určuje je `PARAM_GROUPS` z `utils/paramMeta.ts`
 (záložky `TABLE_TABS`) + pevné `FIXED_COLS`. Zobrazí se jen sloupce, které mají v datech
-neprázdnou hodnotu; sloupec odporu, který je ve všech záznamech nad 999,9 mΩ (∞), se skryje.
+neprázdnou hodnotu. Záložka Electric ukazuje všechny odpory, i když jsou ve všech kusech ∞ (od 2.6.1); skrývání
+sloupců odporu samých ∞ zůstalo jen v rozbaleném řádku Databáze (`FileTable`).
 
 ---
 
@@ -2040,7 +2077,7 @@ ChartView
 ```
 
 **`tableColumns`** = `FIXED_COLS` + klíče aktivní záložky (`TABLE_TABS`), jen sloupce s neprázdnou
-hodnotou; sloupec odporu, který je ve všech záznamech nad 999,9 mΩ (∞), se vynechá.
+hodnotou (záložka Electric ukazuje všechny odpory i samé ∞ — od 2.6.1).
 
 **Navigace na record detail** (klik na řádek):
 ```tsx
@@ -2233,7 +2270,8 @@ LangProvider               ← i18n CS/EN (outermost — dostupný všem)
             └── PlcAuth    ← bridge: usePlcConnection().plcLoggedIn → AuthProvider
                 └── AuthProvider  ← isLoggedIn, isLocalLogin, login(), logout()
                   └── StorageProvider  ← zaplnění lokálního úložiště (/api/storage), cleanup()
-                    └── AppShell  ← useBackendOnline() → polling /api/health každých 10 s
+                    └── UsbProvider  ← flashka u stroje (GET /api/usb á 3 s, jen admin), useFileDownload()
+                      └── AppShell  ← useBackendOnline() → polling /api/health každých 10 s; OnScreenKeyboard (kiosk)
                         ├── [offline-banner]  ← fixed banner pokud backend nedostupný
                         ├── usePlcWatcher()   ← hook v AppShell: PLC toast notifikace
                         ├── LoginOverlay      ← podmíněný (!isLoggedIn)
@@ -2242,7 +2280,7 @@ LangProvider               ← i18n CS/EN (outermost — dostupný všem)
                         └── ErrorBoundary resetKey={pathname} → <Routes>   (+ ErrorBoundary nad celou aplikací)
                             ├── /          → přesměrování na /database (Overview odpojen 2026-09-23)
                             ├── /database  → Database  (F5/Escape klávesové zkratky)
-                            ├── /chart     → ChartView (CSV export)
+                            ├── /chart     → ChartView (CSV / XLSX přes useFileDownload)
                             ├── /settings  → Settings
                             ├── /info      → Info
                             └── *          → Navigate to /  (fallback)

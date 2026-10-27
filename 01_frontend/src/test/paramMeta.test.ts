@@ -8,8 +8,33 @@ import { describe, it, expect } from 'vitest'
 import {
   formatParam, hasMeasuredValue, paramUnit, positionScaleOf, ALL_PARAM_KEYS, PARAM_GROUPS,
   PARAM_DESC, TESTING_INPUT_GROUPS, MEASUREDINFO_GROUPS, testingNokState, recordOkState,
-  PARAM_DESC_EN, PARAM_LABELS, MEASUREDINFO_KEYS,
+  PARAM_DESC_EN, PARAM_LABELS, MEASUREDINFO_KEYS, rtDefinition,
 } from '../utils/paramMeta'
+
+describe('rtDefinition — RT od 27. 10. 2026 FP → RP, starší soubory TTP → RP', () => {
+  const base = { fp_freeposition: '9261.0', rp_realeasingposition: '8611.0', ttp_totaltravelposition: '7501.0' }
+  it('podle toho, která dráha hodnotu RT vysvětlí', () => {
+    expect(rtDefinition({ ...base, rt_realisingtravel: '650.0' })).toBe('fp_rp')
+    expect(rtDefinition({ ...base, rt_realisingtravel: '1110.0' })).toBe('ttp_rp')
+  })
+  it('stupnice enkodéru (polohy rostou) — absolutní hodnoty', () => {
+    const enc = { fp_freeposition: '239', rp_realeasingposition: '889', ttp_totaltravelposition: '1999' }
+    expect(rtDefinition({ ...enc, rt_realisingtravel: '650' })).toBe('fp_rp')
+    expect(rtDefinition({ ...enc, rt_realisingtravel: '1110' })).toBe('ttp_rp')
+  })
+  it('nelze určit → nová definice', () => {
+    expect(rtDefinition(base)).toBe('fp_rp')                                         // chybí RT
+    expect(rtDefinition({ ...base, rt_realisingtravel: '0' })).toBe('fp_rp')        // RT nestanoveno
+    expect(rtDefinition({ ...base, rp_realeasingposition: '', rt_realisingtravel: '650' })).toBe('fp_rp')
+    expect(rtDefinition({ rt_realisingtravel: '650', rp_realeasingposition: '8611' })).toBe('fp_rp')
+    expect(rtDefinition({ ...base, rt_realisingtravel: 'abc' })).toBe('fp_rp')
+  })
+  it('chybí FP, TTP ano → stará; obě dráhy stejné → nová', () => {
+    expect(rtDefinition({ ...base, fp_freeposition: '0', rt_realisingtravel: '1110' })).toBe('ttp_rp')
+    expect(rtDefinition({ fp_freeposition: '9000', rp_realeasingposition: '8500', ttp_totaltravelposition: '8000',
+      rt_realisingtravel: '500' })).toBe('fp_rp')
+  })
+})
 import { CATEGORY_COLORS, categoryColor, categoryTextColor } from '../utils/groupColors'
 
 describe('formatParam', () => {

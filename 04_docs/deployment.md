@@ -4,8 +4,8 @@
 > včetně přístupu z kanceláře přes firemní síť a připojení k NAS.
 > Určeno pro IT správce nebo vývojáře provádějící nasazení.
 >
-> Poslední aktualizace: 2026-09-25 (síť se dvěma síťovkami, vzdálený přístup jen pro prohlížení,
-> NAS pod servisním účtem, uživatelé, omezený firewall)
+> Poslední aktualizace: 2026-10-27 (vydání 2.6.7 — flashka u stroje, dokončení rozpracované zakázky, PLC přihlášení
+> = admin, RT / OP podle DIN 41636-1; dříve síť se dvěma síťovkami, vzdálený přístup, NAS pod servisním účtem)
 
 ---
 
@@ -34,13 +34,10 @@
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
-> **Nasazení 2.2.0 (jednotky zákazníka):** nasadit **současně** s Analyzing 2.2.0
-> (zápis mN / mΩ / polohy C − x do PLC) a DatabaseGateway 2.2.0 (hlavičky `[mN]`, `[mOhm]`) — viz „Release 2.2.0“ níže.
-> Samotný ScadaViewer 2.2.0 zobrazí správně i starší soubory; nová Gateway bez nového Analyzing by ale
-> do CSV zapsala hodnoty v N pod hlavičkou `[mN]`. **Před upgradem uzavřít rozpracované zakázky** (prázdné
-> `production/wip/`) — Gateway jinak do zakázky se starou hlavičkou další kusy odmítne (Op2 Rejected, ERROR v logu).
-> Po nasazení otevřít jeden nový záznam a ověřit,
-> že síla je v mN (stovky až tisíce), odpor v mΩ a polohy kolem 7 000–9 300 µm.
+> **Aktuální vydání: Release 2.6.7 níže** (balíček `deploy_v2.6.7` = Analyzing 2.6.3 + DatabaseGateway 2.6.2 +
+> ScadaViewer 2.6.7). Podmínky jako 2.6.6: limity RT (PT / OT / MD) v recepturách PLC přenastavit, rozpracovanou
+> zakázku uzavřít (skript s neprázdnou `production\wip` skončí). Aplikace se nasazují vždy všechny tři najednou
+> (`06_build/deploy/`).
 
 ---
 
@@ -49,7 +46,11 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 Balíček `06_build/releases/deploy_v2.6.7/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.7 (obsahuje 2.6.6).
 Požadavky na PLC a limity RT jako 2.6.6. Na PC u stroje ukládají tlačítka CSV / XLSX soubor **jen na zasunutou flashku**
 (složka `Trafag_ScadaViewer`), jen administrátor (i přihlášení přes PLC); ukazatel USB v hlavičce Databáze (vedle úložiště a NAS) = zaplnění + bezpečné odebrání.
-Služba ScadaViewer běží pod LocalSystem — zápis na USB a odebrání smí; zakazuje-li IT zápis na USB (GPO), nepůjde to.
+Služba ScadaViewer běží pod LocalSystem — zápis na USB a odebrání smí. Pod servisním účtem bez práv správce (Krok N3)
+zápis funguje, ale **bezpečné odebrání selže** (otevření svazku potřebuje práva správce) — ověřit. Zakazuje-li IT zápis
+na USB (GPO „Removable Storage Access“), nepůjde ani zápis. Pravidlo „u stroje jen na flashku“ hlídá UI (`useFileDownload`);
+`/api/files/{id}/download` a `/xlsx` server u stroje neblokuje — nejde o bezpečnostní hranici, jen o místo uložení.
+Operátor a technik u stroje CSV / XLSX neuloží (jen z kanceláře do prohlížeče).
 
 ---
 
@@ -272,13 +273,18 @@ Upgrade všech tří aplikací jedním spuštěním (vytvoření balíčku: `06_
    (vzdálená plocha: Ctrl+C / Ctrl+V).
 2. Spustit **`deploy.bat`** (vyžádá si práva správce). Skript:
    - najde složky aplikací podle NSSM služeb `AdsAnalyzer` / `DatabaseGateway` / `ScadaViewer`,
-   - **před změnou** zkontroluje `Config.toml` všech tří, `position_reference_um` v Analyzing, prázdné
-     `production/wip` (jinak se zeptá) a upozorní na `done_local`,
-   - po potvrzení zastaví služby, starý exe + `_internal\` přesune do `<složka>.backup_<čas>\`,
-     nahraje novou verzi — `Config.toml`, `users.toml`, `03_output\`, `nssm.exe` a `.bat` **ponechá**
-     (ZIPy Gateway / Analyzing obsahují vlastní `Config.toml` — ten se nepoužije),
+   - **před změnou** zkontroluje `Config.toml` všech tří, `position_reference_um` v Analyzing, cesty NAS Gateway,
+     rozpracovanou zakázku `production/wip` (`$WipBlocksDeploy`: vydání mění hlavičku / význam hodnot → skončí,
+     jinak jen varuje) a upozorní na `done_local`; při `$PlcNote` se zeptá na stav PLC programu,
+   - rozbalí ZIPy, zastaví služby, starý exe + `_internal\` přesune do `<složka>.backup_<čas>\` a nahraje novou
+     verzi — `Config.toml`, `users.toml`, `03_output\`, `nssm.exe` a `.bat` **ponechá** (ZIPy obsahují jen
+     `Config.toml.example`),
+   - 5b NSSM nastavení, 5d co vydání vyžaduje v `Config.toml` (`max_cycles`, `$AnSettings` Analyzingu), 5c přejmenování
+     / přesun složek do `C:\apps`, 5e přesun lokální databáze do `C:\Data` (podrobně `06_build/deploy/README.md`);
+     chyba v krocích 5–5e → vše vrátí a spustí předchozí verzi,
    - spustí Analyzing → Gateway → ScadaViewer a ověří verzi v `/api/health`; log `deploy_<čas>.log`.
-3. Problém → **`rollback.bat`** vrátí exe + `_internal\` z poslední zálohy `*.backup_*`.
+3. Problém → **`rollback.bat`** obnoví zálohy s razítkem posledního nasazení (`last_deploy.txt`) — exe, `_internal\`,
+   na dotaz i `Config.toml`, a vrátí přejmenování / přesuny složek i databáze.
 4. Po ověření (přejímací test) zálohy `*.backup_*` smazat.
 
 ---
@@ -469,10 +475,13 @@ Dokud `users.toml` neexistuje, platí jediný účet z `Config.toml [auth]` — 
 
 | Role | U stroje | Vzdáleně |
 |------|----------|----------|
-| `operator` | prohlížení, export, tisk | jen prohlížení |
-| `technician` | + mazání souborů | jen prohlížení |
-| `admin` | + nastavení cest, limitu úložiště, správa uživatelů | jen prohlížení |
-| `manufacturer` | vše | jen prohlížení |
+| `operator` | prohlížení, tisk | prohlížení, export CSV / XLSX do prohlížeče, tisk |
+| `technician` | + mazání synchronizovaných souborů | jako operator |
+| `admin` | + CSV / XLSX na flashku, dokončení / smazání rozpracované zakázky, mazání Local, čas PC, nastavení cest a limitu úložiště, správa uživatelů | jako operator (+ vlastní heslo) |
+| `manufacturer` | vše | jako operator |
+
+PLC přihlášení (u stroje, `UserLoggedIn` = nejvyšší autorita na PLC) = role `admin`, jen dokud trvá přihlášení na PLC.
+Přihlášení heslem u stroje končí po 15 min nečinnosti, vzdáleně relace 8 h.
 
 Čištění synchronizovaných souborů (Database → Lokální úložiště) smí u stroje každý přihlášený.
 
@@ -679,8 +688,9 @@ vypisuje desítky sekund — doporučené podsložky `Production/RRRR/MM/` a ret
 - Kdokoli, kdo se síťově dostane na port 8080 PC u stroje, uvidí **přihlašovací obrazovku** —
   **o přístupu rozhodují účty** (`users.toml`).
 - Vzdáleně: přihlášení **jen jménem a heslem** (PLC auto-login funguje jen u stroje), **jen prohlížení** —
-  procházení dat, grafy, export CSV/XLSX, tisk. Mazání, čištění úložiště, změny nastavení a správu
-  uživatelů server vzdáleně odmítne (HTTP 403) a UI tyto ovládací prvky skryje.
+  procházení dat, grafy, export CSV/XLSX do prohlížeče (u stroje jen na flashku), tisk. Mazání, dokončení
+  rozpracované zakázky, flashku, čištění úložiště, změny nastavení a správu uživatelů server vzdáleně odmítne
+  (HTTP 403) a UI tyto ovládací prvky skryje (bez ukazatele USB, bez Dokončit zakázku).
   V topbaru svítí „Vzdálený přístup · jen prohlížení".
 - Uživatel v kanceláři otevírá `http://<IP nebo DNS jméno síťovky 2>:8080`.
 
@@ -867,7 +877,12 @@ nssm start   Caddy
 ### ADS (PLC)
 
 - [ ] V topbaru „PLC připojeno"; `/api/health` → `"checks": {"ads": true}`
-- [ ] Přihlášení obsluhy na PLC terminálu → aplikace u stroje se přihlásí automaticky
+- [ ] Přihlášení na PLC terminálu (nejvyšší autorita) → aplikace u stroje se přihlásí automaticky jako „PLC Admin“;
+      po odhlášení na PLC se aplikace do několika sekund odhlásí
+- [ ] Nový kus: RT (RvT) cca 550–730 µm, v diagramu kusu kóta RvT mezi FP a RP; log Analyzingu bez chyb
+      `op_definition` / `static_*`
+- [ ] Dokončit zakázku: na testovací rozpracované zakázce (Databáze → In progress → Dokončit) — soubor přejde do
+      Local a Gateway ho nahraje na NAS; zakázku běžící na stroji dokončit nejde
 
 ### NAS a lokální úložiště
 
@@ -876,6 +891,8 @@ nssm start   Caddy
 - [ ] Ukazatel „Lokální úložiště" v hlavičce Database odpovídá `local_max_gb` (nastavit dle disku)
 - [ ] „Vyčistit synchronizované" smaže jen soubory ověřené na NAS
 - [ ] Ukazatel zaplnění NAS odpovídá kvótě sdílené složky (nebo svazku) v DSM
+- [ ] Flashka (admin u stroje): po zasunutí ukazatel „USB E: …“; CSV i XLSX uloží do `E:\Trafag_ScadaViewer`;
+      tlačítko u ukazatele = „Flashku E: lze vyjmout“
 - [ ] Technik nemůže smazat zakázku z `done_local` (dialog varuje „není na NAS“), admin ano
 - [ ] Database → Vzdálená: hledání zakázky odpovídá rychle (výpis NAS je 15 s v paměti); první výpis po startu
       služby může u velkého archivu trvat déle (S1)
@@ -945,10 +962,12 @@ GET http://localhost:8080/api/health
 
 {
   "status":  "ok",           ← "degraded" pokud local_path neexistuje
-  "version": "2.x.x",
+  "version": "2.6.7",
   "checks": {
-    "local_storage": true,   ← false = local_path nenalezena
-    "ads":           true    ← false = ADS odpojeno
+    "local_storage":    true,    ← false = local_path nenalezena
+    "ads":              true,    ← false = ADS odpojeno
+    "default_password": false,   ← true = některý účet má výchozí heslo „admin"
+    "users_file_error": false    ← true = users.toml nejde přečíst (změny uživatelů zablokované)
   }
 }
 ```

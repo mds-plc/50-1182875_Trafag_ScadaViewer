@@ -9,9 +9,11 @@ POKRYTÍ:
 """
 from __future__ import annotations
 
+import io
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from test_api import make_app, _inject_session
@@ -134,5 +136,60 @@ def test_existing_done_and_bad_names(tmp_path: Path) -> None:
         r = c.post("/api/files/PROD_X_E1_20261026_090000_WIP.csv/finish",
                    params={"location": "local", "type": "production"}, json={"plc_unknown_confirmed": True})
         assert r.status_code == 404
+        r = c.post(f"/api/files/{WIP}/finish", params={"location": "remote", "type": "production"},
+                   json={"plc_unknown_confirmed": True})
+        assert r.status_code == 403                                     # NAS — nikdy
+        r = c.post(f"/api/files/{WIP}/finish", params={"location": "local", "type": "testing"},
+                   json={"plc_unknown_confirmed": True})
+        assert r.status_code == 400                                     # Testing nemá rozpracované zakázky
     finally:
         c.__exit__(None, None, None)
+
+
+@pytest.mark.parametrize("plc_name", [f"{ORDER}   ", f"  {ORDER.lower()}"])
+def test_running_order_name_padding_and_case(tmp_path: Path, plc_name: str) -> None:
+    """STRING z PLC doplněný mezerami / jiná velikost písmen = stále běžící zakázka (raději odmítnout víc)."""
+    c, app, base = _setup(tmp_path)
+    try:
+        app.state.monitor = _Monitor(True, {"order_valid": True, "order_name": plc_name})
+        r = _finish(c, confirm=True)
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "running"
+    finally:
+        c.__exit__(None, None, None)
+
+
+def test_busy_and_io_error(tmp_path: Path, monkeypatch) -> None:
+    """Soubor drží Gateway (PermissionError) → 409 busy, jiná chyba disku → 503; WIP zůstane."""
+    from scada.services.repositories.csv_repository import CsvRepository
+    c, app, base = _setup(tmp_path)
+    try:
+        def busy(self, path):
+            raise PermissionError("soubor otevřen")
+        monkeypatch.setattr(CsvRepository, "finish_wip", busy)
+        r = _finish(c, confirm=True)
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "busy"
+
+        def io_err(self, path):
+            raise OSError("disk")
+        monkeypatch.setattr(CsvRepository, "finish_wip", io_err)
+        assert _finish(c, confirm=True).status_code == 503
+        assert (base / "wip" / WIP).exists()
+    finally:
+        c.__exit__(None, None, None)
+
+
+@pytest.mark.parametrize("data,expected", [
+    (b"", b""),                                                       # prázdný soubor
+    (b"a;b\n1;2\n", b"a;b\n1;2\n"),                                   # končí \n — beze změny
+    (b"a;b\r\n1;2\r\n", b"a;b\r\n1;2\r\n"),                           # \r\n — beze změny
+    (b"a;b\n1;2\n3;4", b"a;b\n1;2\n"),                                # nedopsaný řádek odříznut
+    (b"\xef\xbb\xbfhlavicka bez konce", b"\xef\xbb\xbfhlavicka bez konce"),   # žádný \n — nechat celé
+    (b"a\n" + b"x" * 70_000, b"a\n"),                                 # nedopsaný řádek přes hranici bloku 64 KiB
+], ids=["empty", "lf", "crlf", "partial", "no-newline", "over-64k"])
+def test_truncate_partial_line_edges(data: bytes, expected: bytes) -> None:
+    """_truncate_partial_line: odřízne jen neukončený poslední řádek; soubor bez jediného \\n nechá celý
+    (není jak poznat hranici — stejně jako DatabaseGateway)."""
+    from scada.services.repositories.csv_repository import _truncate_partial_line
+    f = io.BytesIO(data)
+    _truncate_partial_line(f, "x.csv")
+    assert f.getvalue() == expected
