@@ -73,8 +73,10 @@
 #   ale LIMITY RT v recepturach PLC se musi prenastavit. Krok 5d nastavi [analysis.detection] v Config.toml.
 #   Rozpracovana zakazka nasazeni zastavi ($WipBlocksDeploy) - jeji kusy by mely RT / OP jinak nez limity zakazky.
 # 2.6.7 (2026-10-27): jen ScadaViewer 2.6.7 - u stroje CSV / XLSX jen na flashku (admin), ukazatel USB + bezpecne odebrani v Databazi.
+# 2.6.8 (2026-10-27): jen ScadaViewer 2.6.8 - opravy z kontroly (soubezny zapis na flashku, XLSX hodnoty za hlavickou,
+#   nazev bezici zakazky z PLC). Pozadavky jako 2.6.6 / 2.6.7 (limity RT v PLC, $WipBlocksDeploy = $true).
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.7', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.8', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -89,12 +91,12 @@ $AppDates = @{ AdsAnalyzer = '2026-10-27'; DatabaseGateway = '2026-10-26'; Scada
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.7' }
+$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.8' }
 # Meni vydani datovou hlavicku CSV (sloupce [Data]) nebo vyznam hodnot? $true = rozpracovana zakazka (production\wip)
 # nasazeni ZASTAVI (Gateway by do WIP se starou hlavickou kusy nepridala / kusy by se tridily podle limitu stare
 # definice). $false = jen upozorneni, zakazka po nasazeni pokracuje.
 # 2.6.3-2.6.5: beze zmeny -> $false. 2.6.6: nova definice RT a OP (limity zakazky) -> $true.
-# 2.6.7: balicek obsahuje Analyzing 2.6.3 (stroj zatim bez 2.6.6) -> $true; az bude stroj na 2.6.6+, dalsi vydani
+# 2.6.7 / 2.6.8: balicek obsahuje Analyzing 2.6.3 (stroj zatim bez 2.6.6) -> $true; az bude stroj na 2.6.6+, dalsi vydani
 # bez zmeny hlavicky / vyznamu hodnot -> $false.
 $WipBlocksDeploy = $true
 $PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji). 2.6.6 (Analyzing 2.6.3): RT_RealisingTravel = |RP - FP| (Leerlaufweg DIN 41636-1, cca 550-730 um misto 850-1320) a OP = prvni sepnuti NO - jsou LIMITY RT (a pripadne PT / OT / MD) v recepturach PLC prenastavene? Zakaznik: RT 300-1400 um.'

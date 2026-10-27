@@ -34,10 +34,19 @@
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
-> **Aktuální vydání: Release 2.6.7 níže** (balíček `deploy_v2.6.7` = Analyzing 2.6.3 + DatabaseGateway 2.6.2 +
-> ScadaViewer 2.6.7). Podmínky jako 2.6.6: limity RT (PT / OT / MD) v recepturách PLC přenastavit, rozpracovanou
+> **Aktuální vydání: Release 2.6.8 níže** (balíček `deploy_v2.6.8` = Analyzing 2.6.3 + DatabaseGateway 2.6.2 +
+> ScadaViewer 2.6.8). Podmínky jako 2.6.6: limity RT (PT / OT / MD) v recepturách PLC přenastavit, rozpracovanou
 > zakázku uzavřít (skript s neprázdnou `production\wip` skončí). Aplikace se nasazují vždy všechny tři najednou
 > (`06_build/deploy/`).
+
+---
+
+## Release 2.6.8 (2026-10-27) — ScadaViewer: opravy z kontroly dokumentace a testů
+
+Balíček `06_build/releases/deploy_v2.6.8/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.8 (obsahuje 2.6.3–2.6.7).
+Podmínky jako 2.6.6 / 2.6.7 (limity RT v PLC, rozpracovaná zakázka uzavřená). Oproti 2.6.7: souběžné uložení téhož souboru
+na flashku se nepřepíše, XLSX nezahodí hodnoty za hlavičkou, název běžící zakázky z PLC se porovná bez mezer a velikosti
+písmen (dokončení zakázky), ukazatel USB s vlastním textem; nasazovací skript s opravenými kroky a hláškami.
 
 ---
 

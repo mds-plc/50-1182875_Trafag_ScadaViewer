@@ -5,6 +5,13 @@
 
 ---
 
+## [2026-10-27] Vydání ScadaViewer 2.6.8
+
+Opravy z kontroly dokumentace a testů (záznam 2.6.7 #8, commit 83e4175) vydané jako 2.6.8 — balíček `deploy_v2.6.8`
+(Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.8). Testy: backend 511, frontend 256.
+
+---
+
 ## [2026-10-27] Flashka na PC u stroje (ScadaViewer 2.6.7)
 
 Přání uživatele: detekce zasunuté flashky, ukládání lokálních dat jen na ni, bezpečné odebrání. Rozhodnutí: u stroje
