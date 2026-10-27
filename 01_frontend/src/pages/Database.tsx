@@ -16,6 +16,7 @@ import { usePlcConnection } from '../context/PlcContext'
 import PageHelp from '../components/PageHelp'
 import StorageBar  from '../components/StorageBar'
 import NasStorageBar from '../components/NasStorageBar'
+import UsbStorageBar from '../components/UsbStorageBar'
 
 /**
  * Stránka prohlížeče CSV databáze (/database) — tenký presentační container.
@@ -55,6 +56,8 @@ export default function Database() {
           <StorageBar readOnly={readOnly} />
           {/* Zaplnění NAS (zbývající místo, varování 80 / 95 %) — vždy vedle lokálního úložiště */}
           <NasStorageBar />
+          {/* Flashka u stroje (admin) — CSV / XLSX se ukládají jen na ni; tlačítko = bezpečné odebrání */}
+          <UsbStorageBar />
 
           {/* Local / Remote */}
           <div className="db-tabs">

@@ -1538,8 +1538,8 @@ u stroje se CSV / XLSX **neukládají do prohlížeče** (složka Stažené na P
 |---|---|
 | `services/usb_service.py` | Windows ctypes: `list_drives` — `GetDriveTypeW` vyměnitelná nebo pevná na sběrnici USB (`IOCTL_STORAGE_QUERY_PROPERTY`), bez systémového disku, `SetErrorMode` (prázdná čtečka bez dialogu); `write_file` — `X:\Trafag_ScadaViewer\<název>`, `.part` + fsync + `os.replace`, existující soubor nepřepíše („ (2)“), kontrola místa; `eject` — FlushFileBuffers, `FSCTL_LOCK_VOLUME` (10× 0,3 s, jinak UsbBusyError), `FSCTL_DISMOUNT_VOLUME`, `IOCTL_STORAGE_EJECT_MEDIA`, u USB disku `CM_Request_Device_EjectW` rodiče disku |
 | `api/usb.py` | `GET /api/usb`, `POST /api/usb/export` (CSV = originál přes `resolve_path` a `open_shared`, XLSX = `export_xlsx` — rozložení vzoru; NAS přes `run_io`), `POST /api/usb/eject`; vše `require_local` + `require_role("admin")`; písmeno jen z aktuálního seznamu flashek |
-| `context/UsbContext.tsx` | `UsbProvider` (v `App` pod `StorageProvider`) — dotaz á 3 s, jen admin u stroje; `useFileDownload()` pro Databázi i detail: u stroje flashka (`disabledReason`: jen admin / zasuňte flashku), vzdáleně prohlížeč |
-| Topbar | čip „E: POPISEK“ + tlačítko bezpečného odebrání (toast „lze vyjmout“ / „otevřený soubor“) |
+| `context/UsbContext.tsx` | `UsbProvider` (v `App` pod `StorageProvider`) — dotaz á 3 s, jen admin u stroje; `useFileDownload()` pro Databázi i detail: u stroje flashka, vzdáleně prohlížeč; tlačítka se nezakazují (dotykový kiosk tooltip neukáže) — bez flashky / bez práva jsou tlumená a klik = varování toastem + `USB_ATTENTION_EVENT` (ukazatel USB 3× oranžově zabliká) |
+| `UsbStorageBar` | v hlavičce Databáze vedle lokálního úložiště a NAS (stejný prvek, pevná šířka): „USB E: POPISEK“, pruh zaplnění, „zbývá X z Y“, tlačítko bezpečného odebrání (toast „lze vyjmout“ / „otevřený soubor“); bez flashky šedé „zasuňte flashku“ |
 
 Testy: `test_usb.py` (5, atrapy Windows API), `UsbContext.test.tsx` (3). Nápověda Databáze, detailu zakázky a testu CS + EN.
 Podklad pro IT: `it_ot_requirements.md` otázka 9 (GPO pro zápis na USB).

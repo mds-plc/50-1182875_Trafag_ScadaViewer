@@ -138,6 +138,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── SignalCharts.tsx   ← 5 záložek Signal Data dle referenčních grafů analýzy (05_user_data/20260921_103124/*.png)
     │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
+    │   ├── UsbStorageBar.tsx  ← flashka (admin u stroje) vedle StorageBar / NasStorageBar v hlavičce Database: zaplnění + bezpečné odebrání
     │   ├── NasStorageBar.tsx  ← ukazatel zaplnění NAS (kvóta sdílené složky / svazek) v hlavičce Database
     │   ├── CategoryChart.tsx  ← sloupcový graf kategorií 1–6 (detail zakázky + rozbalený řádek, `compact`): pásy OK / NOK, rozmezí MD u OK kategorií (order_info)
     │   ├── OrderInfoPanel.tsx ← údaje zakázky z blokového PROD_ souboru — rozbalovací řádky se souhrnem: Šarže / Testovací parametry / Kategorie / Limity

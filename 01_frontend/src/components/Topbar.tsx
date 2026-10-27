@@ -3,18 +3,15 @@
  * @description Horní lišta aplikace — název aplikace, indikátor PLC stavu,
  *   přepínač jazyka CS/EN, chip s přihlášením operátora (lokální přístup + odhlášení),
  *   chip zaplnění lokálního úložiště a chip zaplnění NAS (jen při varování / kritickém stavu → klik = Database),
- *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje),
- *   chip zasunuté flashky s bezpečným odebráním (admin u stroje — UsbContext),
- *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
+ *   chip „Vzdálený přístup · jen prohlížení" (prohlížeč mimo PC u stroje), *   hodinový chip. Interní hook useClock() aktualizuje datum/čas každou sekundu.
  */
 import { useState, useEffect } from 'react'
-import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe, Server, Usb, ArrowUpFromLine } from 'lucide-react'
+import { UserCheck, LogOut, Moon, Sun, HardDrive, Globe, Server } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import AdsStatus from './AdsStatus'
 import { usePlcConnection } from '../context/PlcContext'
 import { useAuth }  from '../context/AuthContext'
 import { useStorage } from '../context/StorageContext'
-import { useUsb } from '../context/UsbContext'
 import { useLang }  from '../context/LangContext'
 import { useTheme } from '../hooks/useTheme'
 import type { Lang } from '../i18n/types'
@@ -44,7 +41,6 @@ export default function Topbar() {
   const { time, dateStr }        = useClock(lang)
   const { dark, toggle }         = useTheme()
   const { storage }              = useStorage()
-  const { canUse: canUseUsb, drives, eject, ejecting } = useUsb()
   const navigate                 = useNavigate()
 
   return (
@@ -93,19 +89,6 @@ export default function Topbar() {
               <span>NAS {Math.round(storage.nas.percent ?? 0)} %</span>
             </button>
           )}
-
-          {/* Flashka u stroje (admin) — CSV / XLSX se ukládají sem; tlačítko = bezpečné odebrání */}
-          {canUseUsb && drives.map(d => (
-            <div key={d.letter} className="topbar__chip topbar__chip--usb" title={t.usb.chipTitle}>
-              <Usb size={14} />
-              <span>{d.letter}:{d.label ? ` ${d.label}` : ''}</span>
-              <div className="topbar__chip-sep" />
-              <button className="topbar__usb-eject" onClick={() => { void eject(d.letter) }} disabled={ejecting}
-                title={ejecting ? t.usb.ejecting : t.usb.eject} aria-label={`${t.usb.eject} ${d.letter}:`}>
-                <ArrowUpFromLine size={15} />
-              </button>
-            </div>
-          ))}
 
           {isLocalLogin && (
             <div className="topbar__chip topbar__chip--user">

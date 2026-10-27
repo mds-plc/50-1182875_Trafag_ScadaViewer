@@ -84,6 +84,9 @@
   cursor: not-allowed;
 }
 
+/* Akce teď nepůjde (např. u stroje bez flashky) — tlumené, ale klikací: klik vysvětlí proč */
+.btn--blocked { opacity: 0.55; }
+
 .btn--sm {
   padding: 9px var(--space-4);
   font-size: var(--font-size-xs);

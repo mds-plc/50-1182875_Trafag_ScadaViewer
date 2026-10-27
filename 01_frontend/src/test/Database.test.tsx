@@ -109,6 +109,10 @@ vi.mock('../components/StorageBar', () => ({
   default: () => <div data-testid="storage-bar" />,
 }))
 
+vi.mock('../components/UsbStorageBar', () => ({
+  default: () => <div data-testid="usb-storage-bar" />,
+}))
+
 vi.mock('../components/NasStorageBar', () => ({
   default: () => <div data-testid="nas-storage-bar" />,
 }))

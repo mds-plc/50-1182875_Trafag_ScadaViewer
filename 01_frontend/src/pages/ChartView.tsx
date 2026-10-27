@@ -579,19 +579,17 @@ export default function ChartView() {
                   {heroRecords.length > 0 && (
                     <>
                       <button
-                        className="btn btn--secondary btn--sm"
+                        className={`btn btn--secondary btn--sm${dlDisabled ? ' btn--blocked' : ''}`}
                         onClick={() => dlCsv(fileId, location, fileType)}
                         title={dlDisabled ?? t.chart.exportCsv}
-                        disabled={dlDisabled !== null}
                       >
                         <Download size={13} />
                         CSV
                       </button>
                       <button
-                        className="btn btn--secondary btn--sm"
+                        className={`btn btn--secondary btn--sm${dlDisabled ? ' btn--blocked' : ''}`}
                         onClick={() => dlXlsx(fileId, location, fileType).catch(() => addToast(t.common.errorLoading, 'danger'))}
                         title={dlDisabled ?? t.db.downloadXlsx}
-                        disabled={dlDisabled !== null}
                       >
                         <Download size={13} />
                         XLSX
@@ -826,13 +824,14 @@ export default function ChartView() {
                 ))}
               </div>
               <div className="tile__header-actions">
-                <button className="btn btn--secondary btn--sm" onClick={() => dlCsv(fileId, location, fileType)}
-                        title={dlDisabled ?? t.chart.exportCsv} disabled={dlDisabled !== null}>
+                <button className={`btn btn--secondary btn--sm${dlDisabled ? ' btn--blocked' : ''}`}
+                        onClick={() => dlCsv(fileId, location, fileType)}
+                        title={dlDisabled ?? t.chart.exportCsv}>
                   <Download size={13} /> CSV
                 </button>
-                <button className="btn btn--secondary btn--sm"
+                <button className={`btn btn--secondary btn--sm${dlDisabled ? ' btn--blocked' : ''}`}
                         onClick={() => dlXlsx(fileId, location, fileType).catch(() => addToast(t.common.errorLoading, 'danger'))}
-                        title={dlDisabled ?? t.db.downloadXlsx} disabled={dlDisabled !== null}>
+                        title={dlDisabled ?? t.db.downloadXlsx}>
                   <Download size={13} /> XLSX
                 </button>
                 <button className="btn btn--secondary btn--sm cv-print-btn" onClick={handleTestingPrint}

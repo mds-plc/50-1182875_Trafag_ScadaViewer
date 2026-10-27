@@ -58,6 +58,14 @@ describe('UsbContext', () => {
     const { result, rerender } = renderHook(() => useFileDownload(), { wrapper })
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalled())
     expect(result.current.disabledReason).toMatch(/flash/i)
+    // pokus o uložení bez flashky: varování + zablikání ukazatele USB, nic se neposílá
+    const attention = vi.fn()
+    window.addEventListener('scada:usb-attention', attention)
+    act(() => { result.current.downloadCsv('a.csv', 'local', 'production') })
+    window.removeEventListener('scada:usb-attention', attention)
+    expect(mockToast).toHaveBeenCalledWith(expect.stringMatching(/flash/i), 'warning')
+    expect(attention).toHaveBeenCalledTimes(1)
+    expect(mockApiFetch.mock.calls.some(c => c[0] === '/api/usb/export')).toBe(false)
     auth.role = 'technician'
     rerender()
     expect(result.current.disabledReason).toMatch(/admin/i)

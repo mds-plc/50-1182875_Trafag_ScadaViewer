@@ -27,6 +27,8 @@ import { downloadOriginalCsv } from '../utils/downloadOriginal'
 import { exportFileXlsx } from '../utils/exportXlsx'
 
 const POLL_MS = 3_000
+/** Pokus o uložení bez flashky / bez práva — ukazatel USB v hlavičce Databáze zabliká (UsbStorageBar) */
+export const USB_ATTENTION_EVENT = 'scada:usb-attention'
 
 export interface UsbDrive {
   letter:      string
@@ -156,7 +158,8 @@ export function useUsb(): UsbContextType {
 
 /**
  * CSV / XLSX zakázky nebo testu — u stroje na flashku (jen admin), vzdáleně do prohlížeče.
- * disabledReason: text pro title zakázaného tlačítka (null = tlačítko funguje).
+ * disabledReason: proč uložení nepůjde (null = půjde) — title tlačítka; klik pak ukáže varování a ukazatel
+ * USB zabliká (tlačítka se nezakazují — na dotykovém kiosku by obsluha nevěděla proč).
  */
 export function useFileDownload() {
   const { token } = useAuth()
@@ -170,16 +173,25 @@ export function useFileDownload() {
     : saving ? t.usb.saving
     : null
 
+  // Tlačítka zůstávají aktivní (dotykový kiosk tooltip neukáže) — pokus bez flashky / bez práva = varování
+  // a zablikání ukazatele USB, aby obsluha hned viděla, proč se nic neuložilo
+  const blocked = useCallback((): boolean => {
+    if (disabledReason === null) return false
+    addToast(disabledReason, 'warning')
+    window.dispatchEvent(new Event(USB_ATTENTION_EVENT))
+    return true
+  }, [addToast, disabledReason])
+
   const downloadCsv = useCallback((fileId: string, location: string, type: string): void => {
-    if (atMachine) { void saveToUsb(fileId, location, type, 'csv'); return }
+    if (atMachine) { if (!blocked()) void saveToUsb(fileId, location, type, 'csv'); return }
     downloadOriginalCsv(fileId, location, type, token ?? '', () => addToast(t.common.errorLoading, 'danger'))
-  }, [addToast, atMachine, saveToUsb, t.common.errorLoading, token])
+  }, [addToast, atMachine, blocked, saveToUsb, t.common.errorLoading, token])
 
   const downloadXlsx = useCallback(async (fileId: string, location: string, type: string,
                                           signal?: AbortSignal): Promise<void> => {
-    if (atMachine) { await saveToUsb(fileId, location, type, 'xlsx'); return }
+    if (atMachine) { if (!blocked()) await saveToUsb(fileId, location, type, 'xlsx'); return }
     await exportFileXlsx(fileId, location, type, token, signal)
-  }, [atMachine, saveToUsb, token])
+  }, [atMachine, blocked, saveToUsb, token])
 
   return { downloadCsv, downloadXlsx, disabledReason }
 }
