@@ -38,13 +38,14 @@ describe('UsbStorageBar', () => {
   it('bez flashky: šedé „zasuňte flashku"', () => {
     const { container } = renderBar()
     expect(container.querySelector('.db-storage--usb.db-storage--unavailable')).not.toBeNull()
-    expect(container.textContent).toMatch(/flash/i)
+    expect(container.textContent).toMatch(/insert a drive/i)
   })
 
   it('s flashkou: písmeno, zaplnění a bezpečné odebrání', () => {
     usb.drives = [{ letter: 'E', label: 'FLASH', total_bytes: 8e9, free_bytes: 2e9 }]
     const { container } = renderBar()
-    expect(container.textContent).toContain('USB E: FLASH')
+    expect(container.textContent).toContain('USB E:')
+    expect((container.querySelector('.db-storage--usb') as HTMLElement).title).toContain('E: FLASH')   // popisek v tooltipu
     expect((container.querySelector('.db-storage__fill') as HTMLElement).style.width).toBe('75%')
     fireEvent.click(container.querySelector('.db-storage__btn--eject')!)
     expect(usb.eject).toHaveBeenCalledWith('E')

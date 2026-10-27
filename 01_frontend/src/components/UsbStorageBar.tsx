@@ -54,16 +54,17 @@ export default function UsbStorageBar() {
         const usage = t.usb.usage
           .replace('{free}',  formatBytes(d.free_bytes))
           .replace('{total}', formatBytes(d.total_bytes))
+        // kompaktně (hlavička Databáze je plná): „USB E:“ + volné místo; popisek a celková kapacita v tooltipu
         const name = `${d.letter}:${d.label ? ` ${d.label}` : ''}`
         return (
           <div key={d.letter} className="db-storage db-storage--usb" title={`USB ${name}: ${usage}\n${t.usb.chipTitle}`}>
             <span className="db-storage__info">
               <Usb size={14} />
-              <span className="db-storage__label">USB {name}</span>
+              <span className="db-storage__label">USB {d.letter}:</span>
               <span className="db-storage__track" aria-hidden>
                 <span className="db-storage__fill" style={{ width: `${Math.min(100, Math.max(0, used))}%` }} />
               </span>
-              <span className="db-storage__usage">{usage}</span>
+              <span className="db-storage__usage">{t.usb.free.replace('{free}', formatBytes(d.free_bytes))}</span>
             </span>
             <button
               type="button"

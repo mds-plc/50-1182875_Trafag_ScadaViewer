@@ -393,6 +393,7 @@ export const cs: Translations = {
     noSpace:     'Na flashce není dost místa',
     none:        'zasuňte flashku',
     usage:       'zbývá {free} z {total}',
+    free:        'volno {free}',
   },
   storage: {
     title:          'Lokální úložiště',

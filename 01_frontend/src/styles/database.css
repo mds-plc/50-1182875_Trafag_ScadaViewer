@@ -38,6 +38,10 @@
   display: flex;
   gap: var(--space-3);
   flex-wrap: wrap;
+  /* Zůstat vedle nadpisu: nevejdou-li se všechny prvky, zalomí se uvnitř bloku (vpravo), ne celý blok pod nadpis */
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 /* TABS (přepínač local/remote + production/testing) */
@@ -594,10 +598,12 @@
 .db-storage--nas .db-storage__info { flex: 1; min-width: 0; }
 .db-storage--nas .db-storage__usage { overflow: hidden; text-overflow: ellipsis; }
 /* USB flashka (admin u stroje) — pevná šířka jako NAS; bez flashky šedé „zasuňte flashku" */
-.db-storage--usb { width: 340px; --storage-fill: var(--color-success); }
+.db-storage--usb { width: 272px; --storage-fill: var(--color-success); }
 .db-storage--usb .db-storage__info { flex: 1; min-width: 0; }
 .db-storage--usb .db-storage__usage { overflow: hidden; text-overflow: ellipsis; }
 .db-storage--usb.db-storage--unavailable .db-storage__info { padding-right: var(--space-3); }
+.db-storage--usb .db-storage__track { width: 32px; flex-shrink: 0; }
+.db-storage--usb.db-storage--unavailable .db-storage__track { display: none; }
 .db-storage__btn--eject:hover:not(:disabled) { color: var(--color-success); }
 .db-storage__btn--eject:disabled { cursor: wait; }
 /* Pokus o uložení bez flashky — ukazatel USB 3× zabliká (UsbContext USB_ATTENTION_EVENT) */

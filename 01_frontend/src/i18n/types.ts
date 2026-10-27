@@ -418,6 +418,7 @@ export interface Translations {
     noSpace:     string
     none:        string
     usage:       string
+    free:        string
   }
   storage: {
     title:          string
