@@ -5,6 +5,13 @@
 
 ---
 
+## [2026-10-27] Vydání ScadaViewer 2.6.9
+
+Hlavička Databáze: po přidání ukazatele USB se ovládací prvky zalomily pod nadpis — `.db-controls` se nyní zalomí vpravo
+vedle nadpisu, ukazatel USB kompaktní (99a3253). Ověřeno snímky 1920 / 1680 / 1366 px, CS + EN. Balíček `deploy_v2.6.9`.
+
+---
+
 ## [2026-10-27] Vydání ScadaViewer 2.6.8
 
 Opravy z kontroly dokumentace a testů (záznam 2.6.7 #8, commit 83e4175) vydané jako 2.6.8 — balíček `deploy_v2.6.8`

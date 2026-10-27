@@ -34,10 +34,18 @@
 
 Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
-> **Aktuální vydání: Release 2.6.8 níže** (balíček `deploy_v2.6.8` = Analyzing 2.6.3 + DatabaseGateway 2.6.2 +
-> ScadaViewer 2.6.8). Podmínky jako 2.6.6: limity RT (PT / OT / MD) v recepturách PLC přenastavit, rozpracovanou
+> **Aktuální vydání: Release 2.6.9 níže** (balíček `deploy_v2.6.9` = Analyzing 2.6.3 + DatabaseGateway 2.6.2 +
+> ScadaViewer 2.6.9). Podmínky jako 2.6.6: limity RT (PT / OT / MD) v recepturách PLC přenastavit, rozpracovanou
 > zakázku uzavřít (skript s neprázdnou `production\wip` skončí). Aplikace se nasazují vždy všechny tři najednou
 > (`06_build/deploy/`).
+
+---
+
+## Release 2.6.9 (2026-10-27) — ScadaViewer: hlavička Databáze
+
+Balíček `06_build/releases/deploy_v2.6.9/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.9 (obsahuje 2.6.3–2.6.8).
+Podmínky jako 2.6.6–2.6.8. Oproti 2.6.8: ovládací prvky Databáze (úložiště, NAS, USB, přepínače) zůstávají vedle nadpisu
+(dřív po přidání ukazatele USB spadly pod nadpis); kompaktní ukazatel USB „USB E: volno X“.
 
 ---
 
