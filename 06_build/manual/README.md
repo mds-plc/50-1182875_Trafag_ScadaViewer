@@ -44,6 +44,25 @@ powershell -File word_finish.ps1 -In "%CD%\out_cs.docx" -Pdf "%CD%\out_cs.pdf"
 powershell -File word_finish.ps1 -In "%CD%\out_en.docx" -Pdf "%CD%\out_en.pdf"
 ```
 
+## Příručky DatabaseGateway a Analyzing (ekosystém)
+
+Výstup: `11.Parallel scripts\DatabaseGateway\04_docs\manual\DatabaseGateway_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
+a `11.Parallel scripts\Analyzing\04_docs\manual\Analyzing_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
+(vydání 1.0, 2026-10-27 — Gateway 2.6.2, Analyzing 2.6.3). Text ověřen proti kódu obou služeb (podklad:
+rozbor kódu se zdroji `soubor:řádek`); verze se čte z jejich `__init__.py`. Při změně služby text zkontrolovat.
+
+```bat
+:: schémata (tok dat, handshake, životní cyklus souborů, průběh analýzy) → img\eco\<jazyk>
+python diagrams.py
+:: výřezy diagramů síla–dráha a spínacích časů ze snímků ScadaViewer (img\<jazyk>\13_record.png, krok 3 výše)
+python crop_an.py
+node build_gateway.js cs gw_cs.docx   &  node build_gateway.js en gw_en.docx
+node build_analyzing.js cs an_cs.docx &  node build_analyzing.js en an_en.docx
+:: PDF jako u manuálu ScadaViewer (word_finish.ps1), pak kopie do 04_docs\manual obou projektů
+```
+
+Sdílená úprava dokumentů: `lib.js` (titulní strana, obsah, tabulky, poznámky, kód, obrázky).
+
 Poznámky:
 - Verze v manuálu se bere z `00_backend/scada/__init__.py` (`__version__`); vydání manuálu = `ISSUE` v `build_manual.js`.
 - `shots.py` skrývá toasty jen přes CSS — mazání jejich DOM uzlů shodí React (`removeChild`). U výřezů skryje přilepenou
