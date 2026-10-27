@@ -5,6 +5,22 @@
 
 ---
 
+## [2026-10-27] Flashka na PC u stroje (ScadaViewer 2.6.7)
+
+Přání uživatele: detekce zasunuté flashky, ukládání lokálních dat jen na ni, bezpečné odebrání. Rozhodnutí: u stroje
+CSV / XLSX jen na flashku (stávající tlačítka), jen administrátor. Detail: `architecture.md` fáze 56.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ℹ️ INFO | Zápis jen na disk ze seznamu flashek (ne C: ani síťový disk), název bez cesty, nepřepisuje | `usb_service.py`, `api/usb.py` | ✅ Hotovo |
+| 2 | ℹ️ INFO | Vytažení během zápisu nenechá rozepsaný soubor pod finálním názvem (`.part` + fsync + replace) | `usb_service.write_file` | ✅ Hotovo |
+| 3 | ⚠️ MEDIUM | Odebrání s otevřeným souborem → 409, svazek se neodpojí | `usb_service.eject` | ✅ Hotovo |
+| 4 | ℹ️ INFO | Ověřit se skutečnou flashkou na PC u stroje (ctypes testy jen atrapy) a GPO IT pro USB | PC u stroje | ⬜ Ověřit |
+
+Testy: backend 490, frontend 241.
+
+---
+
 ## [2026-10-27] Nová definice RT a OP v ekosystému (Analyzing 2.6.3 + ScadaViewer 2.6.6)
 
 | # | Závažnost | Popis | Soubor | Status |

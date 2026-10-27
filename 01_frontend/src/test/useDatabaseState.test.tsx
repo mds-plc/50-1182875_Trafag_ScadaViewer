@@ -24,6 +24,9 @@ vi.mock('../hooks/useData', () => ({
 vi.mock('../context/ToastContext', () => ({ useToast: () => ({ addToast: mockAddToast }) }))
 vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ token: 't', isRemote: false }) }))
 vi.mock('../utils/apiFetch', () => ({ apiFetch: (...a: unknown[]) => mockApiFetch(...a) }))
+vi.mock('../context/UsbContext', () => ({
+  useFileDownload: () => ({ downloadCsv: vi.fn(), downloadXlsx: vi.fn(), disabledReason: null }),
+}))
 
 import { useDatabaseState } from '../hooks/useDatabaseState'
 

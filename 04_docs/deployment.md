@@ -44,6 +44,15 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.7 (2026-10-27) — ScadaViewer: ukládání na flashku u stroje
+
+Balíček `06_build/releases/deploy_v2.6.7/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.7 (obsahuje 2.6.6).
+Požadavky na PLC a limity RT jako 2.6.6. Na PC u stroje ukládají tlačítka CSV / XLSX soubor **jen na zasunutou flashku**
+(složka `Trafag_ScadaViewer`), jen administrátor (i přihlášení přes PLC); čip flashky v horní liště = bezpečné odebrání.
+Služba ScadaViewer běží pod LocalSystem — zápis na USB a odebrání smí; zakazuje-li IT zápis na USB (GPO), nepůjde to.
+
+---
+
 ## Release 2.6.6 (2026-10-27) — Analyzing 2.6.3 + ScadaViewer 2.6.6: RT podle DIN 41636-1, OP = sepnutí NO
 
 Balíček `06_build/releases/deploy_v2.6.6/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.6 (obsahuje 2.6.3–2.6.5).

@@ -138,6 +138,9 @@ logované.
 7. Servisní router v síti stroje — přípustný, za jakých podmínek?
 8. Provoz bez HTTPS v OT VLAN (port 8080, přihlášení do aplikace) — přijatelné, nebo dodáte certifikát
    (připraveno: TLS přímo v aplikaci s certifikátem firemní CA)?
+9. USB flashka (od ScadaViewer 2.6.7): administrátor u stroje ukládá CSV / XLSX zakázky na zasunutou flashku
+   (služba ScadaViewer pod LocalSystem zapisuje do `X:\Trafag_ScadaViewer` a flashku bezpečně odebere). Je zápis
+   na USB disky na PC u stroje povolen (GPO „Removable Storage Access“), případně jen pro schválené flashky?
 
 ## 9. Postup přechodu
 

@@ -410,6 +410,40 @@ class FinishWipResult(BaseModel):
     file_id: str          # nový název — …_DONE.csv v done_local/
 
 
+class UsbDriveModel(BaseModel):
+    """Připojená flashka (USB svazek) na PC u stroje."""
+    letter:      str
+    label:       str
+    total_bytes: int
+    free_bytes:  int
+
+
+class UsbStatus(BaseModel):
+    """GET /api/usb — supported = False mimo Windows."""
+    supported: bool
+    drives:    list[UsbDriveModel]
+
+
+class UsbExportRequest(BaseModel):
+    """POST /api/usb/export — soubor zakázky / testu na flashku."""
+    model_config = ConfigDict(populate_by_name=True)
+    file_id:   str = Field(min_length=1, max_length=255)
+    location:  Literal['local', 'remote'] = 'local'
+    file_type: Literal['production', 'testing'] = Field('production', alias='type')
+    format:    Literal['csv', 'xlsx']
+    drive:     str = Field(pattern=r'^[A-Za-z]$')
+
+
+class UsbExportResult(BaseModel):
+    drive: str
+    path:  str            # cílová cesta na flashce (E:\Trafag_ScadaViewer\…)
+    bytes: int
+
+
+class UsbEjectRequest(BaseModel):
+    drive: str = Field(pattern=r'^[A-Za-z]$')
+
+
 class BatchDeleteItem(BaseModel):
     """Položka hromadného mazání — sync určí kopii, leží-li soubor v done_local i done_remote (A26-43)."""
     file_id: str

@@ -14,8 +14,7 @@ import { useData, RECORDS_PER_PAGE } from '../hooks/useData'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
-import { exportFileXlsx } from '../utils/exportXlsx'
-import { downloadOriginalCsv } from '../utils/downloadOriginal'
+import { useFileDownload } from '../context/UsbContext'
 import {
   PARAM_LABELS, PARAM_TOOLTIPS, PARAM_GROUPS, TESTING_INPUT_GROUPS,
   MEASUREDINFO_KEYS, MEASUREDINFO_GROUPS, formatParam, paramUnit,
@@ -302,7 +301,8 @@ export default function ChartView() {
   const { records, total, pages, groupCounts, totalAll, orderInfo, nokCounts, loading, error, fetchData } = useData()
   const { t, lang } = useLang()
   const { printing, printNow } = usePrintMode()   // tiskové tabulky zakázky jen při tisku
-  const { token } = useAuth()
+  // CSV / XLSX: u stroje na flashku (jen admin), vzdáleně do prohlížeče
+  const { downloadCsv: dlCsv, downloadXlsx: dlXlsx, disabledReason: dlDisabled } = useFileDownload()
   const { addToast } = useToast()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabId>('forces')
@@ -580,16 +580,18 @@ export default function ChartView() {
                     <>
                       <button
                         className="btn btn--secondary btn--sm"
-                        onClick={() => downloadOriginalCsv(fileId, location, fileType, token ?? '', () => addToast(t.common.errorLoading, 'danger'))}
-                        title={t.chart.exportCsv}
+                        onClick={() => dlCsv(fileId, location, fileType)}
+                        title={dlDisabled ?? t.chart.exportCsv}
+                        disabled={dlDisabled !== null}
                       >
                         <Download size={13} />
                         CSV
                       </button>
                       <button
                         className="btn btn--secondary btn--sm"
-                        onClick={() => exportFileXlsx(fileId, location, fileType, token).catch(() => addToast(t.common.errorLoading, 'danger'))}
-                        title={t.db.downloadXlsx}
+                        onClick={() => dlXlsx(fileId, location, fileType).catch(() => addToast(t.common.errorLoading, 'danger'))}
+                        title={dlDisabled ?? t.db.downloadXlsx}
+                        disabled={dlDisabled !== null}
                       >
                         <Download size={13} />
                         XLSX
@@ -824,10 +826,13 @@ export default function ChartView() {
                 ))}
               </div>
               <div className="tile__header-actions">
-                <button className="btn btn--secondary btn--sm" onClick={() => downloadOriginalCsv(fileId, location, fileType, token ?? '', () => addToast(t.common.errorLoading, 'danger'))} title={t.chart.exportCsv}>
+                <button className="btn btn--secondary btn--sm" onClick={() => dlCsv(fileId, location, fileType)}
+                        title={dlDisabled ?? t.chart.exportCsv} disabled={dlDisabled !== null}>
                   <Download size={13} /> CSV
                 </button>
-                <button className="btn btn--secondary btn--sm" onClick={() => exportFileXlsx(fileId, location, fileType, token).catch(() => addToast(t.common.errorLoading, 'danger'))} title={t.db.downloadXlsx}>
+                <button className="btn btn--secondary btn--sm"
+                        onClick={() => dlXlsx(fileId, location, fileType).catch(() => addToast(t.common.errorLoading, 'danger'))}
+                        title={dlDisabled ?? t.db.downloadXlsx} disabled={dlDisabled !== null}>
                   <Download size={13} /> XLSX
                 </button>
                 <button className="btn btn--secondary btn--sm cv-print-btn" onClick={handleTestingPrint}

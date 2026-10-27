@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.6.6"
+    ├── __init__.py            ← __version__ = "2.6.7"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -74,6 +74,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot) — ⏸ odpojeno (2026-09-23)
     │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
     │   ├── storage.py         ← GET /api/storage (zaplnění vs. local_max_gb + `nas` zaplnění NAS přes NasProbe) + POST /api/storage/cleanup[?force=true]
+    │   ├── usb.py             ← GET /api/usb (flashky) + POST /api/usb/export (CSV / XLSX na flashku) + POST /api/usb/eject — jen admin u stroje
     │   ├── system_time.py     ← GET /api/system/time (čas PC, služba Windows Time, NTP server pro IPC) + POST (nastavení času — admin+ u stroje)
     │   └── dependencies.py    ← require_auth(), require_role(), is_local_client() / require_local() (vzdáleně jen prohlížení); 401 nese WWW-Authenticate: Bearer
     └── services/
@@ -94,6 +95,8 @@ CLAUDE.md                  ← tento soubor
         ├── xlsx_export.py     ← build_xlsx(): XLSX bez závislosti (proudově, čísla jako čísla, čas jako datum, zmrazená hlavička, filtr);
         │                         build_blocks_xlsx(): blokový PROD_ podle vzoru Gateway 04_docs/sample_production.xlsx
         ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
+        ├── usb_service.py     ← flashka (Windows ctypes): list_drives (vyměnitelná / sběrnice USB), write_file (Trafag_ScadaViewer, .part + fsync,
+        │                         nepřepíše — „ (2)“), eject (zamknutí, odpojení, vysunutí, CM_Request_Device_Eject)
         ├── time_service.py    ← time_status() (w32time: služba, NtpServer Enabled, AnnounceFlags, zdroj, w32tm /query, UDP 123, IPv4) + set_local_time() (SetSystemTime + SeSystemtimePrivilege)
         └── ws_manager.py      ← ConnectionManager (fronta + odesílací úloha na klienta, nestíhající → close 1011) + orders_manager; broadcast(); clear_symbols() po výpadku ADS
 
@@ -153,6 +156,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── LangContext.tsx    ← LangProvider, useLang(), LangContext; localStorage persistence
     │   ├── PlcContext.tsx     ← WebSocket singleton; usePlcConnection() {connected, adsConnected, plcLoggedIn} (mimo živý přehled VŽDY tento) / usePlc() status symbolů
     │   ├── AuthContext.tsx    ← isLoggedIn, isLocalLogin, sessionExpired, login(), logout() + sessionStorage
+    │   ├── UsbContext.tsx     ← flashka u stroje (admin): GET /api/usb á 3 s, saveToUsb / eject; useFileDownload() = CSV / XLSX u stroje na flashku, vzdáleně prohlížeč
     │   ├── StorageContext.tsx ← zaplnění úložiště (/api/storage, 60 s + files_changed), toast při zhoršení, cleanup(force?)
     │   └── ToastContext.tsx   ← addToast(msg, type), auto-dismiss 4500ms, types: success|danger|warning|info
     ├── hooks/
@@ -231,6 +235,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_gateway_prod_format.py ← kontrakt s Gateway: vzorové soubory a ProductionRecord.csv_header() (skip bez sesterského projektu)
 ├── test_df_fpr_c.py           ← DF, FPR, konstanta C (rozsah 8000–11000 µm jako Analyzing), statické odpory
 ├── test_audit_a26.py          ← regrese celkového auditu A26 (index zakázky 1×, SQLite flush, users.toml, mazání kopií)
+├── test_usb.py                ← flashka: seznam, CSV / XLSX na flashku („ (2)“), jen admin u stroje, 404 / 507, odebrání 204 / 409 (atrapy Windows API)
 ├── test_finish_wip.py         ← ruční dokončení rozpracované zakázky (běžící 409, PLC odpojeno = potvrzení, role, exists, odříznutý řádek)
 └── test_scada.py              ← offline testy konfigurace
 
@@ -455,6 +460,9 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/config/storage` | PATCH | `{local_max_gb}` — limit lokálního úložiště do Config.toml, bez restartu (admin+) |
 | `/api/storage` | GET | Zaplnění lokálního úložiště — `{used_bytes, limit_bytes, percent, level, synced_count, synced_bytes, disk_low, …}` + `nas{available, total/used/free_bytes, percent, level}` (null bez remote_path; NasProbe — cache 60 s, jeden dotaz pro všechny) |
 | `/api/storage/cleanup` | POST | Smaže `done_remote/` soubory ověřené na NAS (název+velikost; NAS nedostupný → 503); `?force=true` bez ověření — UI jen po potvrzení rizika; 409 = už běží |
+| `/api/usb` | GET | Připojené flashky `{supported, drives[{letter, label, total_bytes, free_bytes}]}` — **jen admin+ u stroje** |
+| `/api/usb/export` | POST | `{file_id, location, type, format: csv\|xlsx, drive}` → originální CSV / XLSX do `X:\Trafag_ScadaViewer` (nepřepíše, „ (2)“); jen admin+ u stroje; 404 flashka / soubor, 507 málo místa |
+| `/api/usb/eject` | POST | `{drive}` → bezpečné odebrání; 409 = na flashce je otevřený soubor; jen admin+ u stroje |
 | `/api/system/time` | GET | Čas PC a NTP server pro IPC — `{utc, local, tz_name, service_state, ntp_server_enabled, announce, source, synchronized, stratum, last_sync, udp123_listening, addresses[], status_text, can_set}` (každý přihlášený, i vzdáleně) |
 | `/api/system/time` | POST | `{local_time: "RRRR-MM-DDTHH:MM[:SS]"}` v pásmu PC → systémový čas (SetSystemTime); **jen admin+ u stroje**; 409 = účet služby nemá právo „Změna systémového času“, 422 neplatný čas (rok 2020–2099), 501 není Windows; změna = WARNING v logu |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
@@ -841,13 +849,13 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.6** — 2026-10-27, s Analyzing 2.6.3 (RT = Leerlaufweg FP → RP, OP = sepnutí NO, statické odpory; fáze 55), Gateway 2.6.2; balíček `deploy_v2.6.6` — limity RT v PLC přenastavit; předtím **2.6.5** — 2026-10-27 (XLSX podle vzoru, bez odkazu na repozitář, fáze 54); předtím **2.6.4** — 2026-10-26 (PLC přihlášení = role admin, fáze 53); předtím **2.6.3** — 2026-10-26 (ruční dokončení rozpracované zakázky, fáze 52, nenasazeno); předtím **2.6.2** — 2026-10-26, společné vydání všech tří aplikací — opravy celkového auditu A26 (fsync, kus bez měření = odpory 9999,9, výchozí heslo, odhlášení po nečinnosti, deploy s obnovou po selhání); balíček `deploy_v2.6.2`; předtím **2.6.1** — 2026-10-23, Analyzing 2.6.1 + ScadaViewer 2.6.1 (záložka Electric, šířky sloupců), Gateway 2.6.0; balíček `deploy_v2.6.1`); předtím **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.7** — 2026-10-27, jen ScadaViewer (flashka u stroje: CSV / XLSX jen na flashku, bezpečné odebrání; fáze 56), Analyzing 2.6.3, Gateway 2.6.2; balíček `deploy_v2.6.7`; předtím **2.6.6** — 2026-10-27, s Analyzing 2.6.3 (RT = Leerlaufweg FP → RP, OP = sepnutí NO, statické odpory; fáze 55), Gateway 2.6.2; balíček `deploy_v2.6.6` — limity RT v PLC přenastavit; předtím **2.6.5** — 2026-10-27 (XLSX podle vzoru, bez odkazu na repozitář, fáze 54); předtím **2.6.4** — 2026-10-26 (PLC přihlášení = role admin, fáze 53); předtím **2.6.3** — 2026-10-26 (ruční dokončení rozpracované zakázky, fáze 52, nenasazeno); předtím **2.6.2** — 2026-10-26, společné vydání všech tří aplikací — opravy celkového auditu A26 (fsync, kus bez měření = odpory 9999,9, výchozí heslo, odhlášení po nečinnosti, deploy s obnovou po selhání); balíček `deploy_v2.6.2`; předtím **2.6.1** — 2026-10-23, Analyzing 2.6.1 + ScadaViewer 2.6.1 (záložka Electric, šířky sloupců), Gateway 2.6.0; balíček `deploy_v2.6.1`); předtím **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **485 testů** (regrese auditů `test_audit_20261010/11/15.py`, `test_audit_a26.py`, `test_df_fpr_c.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 28 souborů) — **238 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **490 testů** (regrese auditů `test_audit_20261010/11/15.py`, `test_audit_a26.py`, `test_df_fpr_c.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 29 souborů) — **241 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |

@@ -358,6 +358,8 @@ interface Props {
   canDeleteWip?:    boolean
   /** Ruční dokončení rozpracované zakázky (admin u stroje, jako canDeleteWip) — tlačítko jen u řádků In progress */
   onFinishRequest?: (file: OrderFile) => void
+  /** CSV / XLSX nejde (u stroje: není admin / flashka není zasunutá) — text do title; null = funguje */
+  downloadDisabledReason?: string | null
 }
 
 export default function FileTable({
@@ -367,7 +369,7 @@ export default function FileTable({
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
   sortBy, sortDir, onSort,
   selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, readOnly = false,
-  canDeleteWip = false, onFinishRequest,
+  canDeleteWip = false, onFinishRequest, downloadDisabledReason = null,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
@@ -484,14 +486,16 @@ export default function FileTable({
             {/* Stahování — vždy vedle sebe */}
             <button
               className="db-download-btn"
-              title={t.chart.exportCsv}
+              title={downloadDisabledReason ?? t.chart.exportCsv}
+              disabled={downloadDisabledReason !== null}
               onClick={() => onDownload(file)}
             >
               <Download size={14} /> CSV
             </button>
             <button
               className="db-download-btn"
-              title={t.db.downloadXlsx}
+              title={downloadDisabledReason ?? t.db.downloadXlsx}
+              disabled={downloadDisabledReason !== null}
               onClick={() => onDownloadXlsx(file)}
             >
               <Download size={14} /> XLSX

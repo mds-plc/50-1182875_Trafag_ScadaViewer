@@ -86,6 +86,7 @@ const defaultState = {
   finishTarget:   null,
   setFinishTarget: vi.fn(),
   finishWip:      vi.fn(),
+  downloadDisabledReason: null as string | null,
 }
 
 vi.mock('../context/PlcContext', () => ({

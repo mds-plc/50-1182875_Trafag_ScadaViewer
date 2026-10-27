@@ -1528,6 +1528,24 @@ Testy: `RecordDiagram.test.tsx` (stará / nová definice, zvýraznění), `test_
 
 **Stav testů po fázi 55:** Backend **485/485**, Frontend **238/238**; `tsc` 0, lint 0; Analyzing 155.
 
+### Fáze 56 — flashka na PC u stroje (2026-10-27, verze 2.6.7)
+
+Přání uživatele: u stroje stahovat data jen na zasunutou flashku a flashku bezpečně odebrat z aplikace. Rozhodnutí:
+u stroje se CSV / XLSX **neukládají do prohlížeče** (složka Stažené na PC), jen na flashku; stávající tlačítka CSV / XLSX
+(Databáze, detail zakázky, detail testu); **jen administrátor** (i přihlášení přes PLC). Z kanceláře beze změny (prohlížeč).
+
+| Část | Řešení |
+|---|---|
+| `services/usb_service.py` | Windows ctypes: `list_drives` — `GetDriveTypeW` vyměnitelná nebo pevná na sběrnici USB (`IOCTL_STORAGE_QUERY_PROPERTY`), bez systémového disku, `SetErrorMode` (prázdná čtečka bez dialogu); `write_file` — `X:\Trafag_ScadaViewer\<název>`, `.part` + fsync + `os.replace`, existující soubor nepřepíše („ (2)“), kontrola místa; `eject` — FlushFileBuffers, `FSCTL_LOCK_VOLUME` (10× 0,3 s, jinak UsbBusyError), `FSCTL_DISMOUNT_VOLUME`, `IOCTL_STORAGE_EJECT_MEDIA`, u USB disku `CM_Request_Device_EjectW` rodiče disku |
+| `api/usb.py` | `GET /api/usb`, `POST /api/usb/export` (CSV = originál přes `resolve_path` a `open_shared`, XLSX = `export_xlsx` — rozložení vzoru; NAS přes `run_io`), `POST /api/usb/eject`; vše `require_local` + `require_role("admin")`; písmeno jen z aktuálního seznamu flashek |
+| `context/UsbContext.tsx` | `UsbProvider` (v `App` pod `StorageProvider`) — dotaz á 3 s, jen admin u stroje; `useFileDownload()` pro Databázi i detail: u stroje flashka (`disabledReason`: jen admin / zasuňte flashku), vzdáleně prohlížeč |
+| Topbar | čip „E: POPISEK“ + tlačítko bezpečného odebrání (toast „lze vyjmout“ / „otevřený soubor“) |
+
+Testy: `test_usb.py` (5, atrapy Windows API), `UsbContext.test.tsx` (3). Nápověda Databáze, detailu zakázky a testu CS + EN.
+Podklad pro IT: `it_ot_requirements.md` otázka 9 (GPO pro zápis na USB).
+
+**Stav testů po fázi 56:** Backend **490/490**, Frontend **241/241**; `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

@@ -35,8 +35,7 @@ import { useSettings } from './useSettings'
 import { useToast } from '../context/ToastContext'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
-import { exportFileXlsx } from '../utils/exportXlsx'
-import { downloadOriginalCsv } from '../utils/downloadOriginal'
+import { useFileDownload } from '../context/UsbContext'
 import type { OrderFile } from '../types'
 import { apiFetch } from '../utils/apiFetch'
 
@@ -271,23 +270,23 @@ export function useDatabaseState() {
     Escape: () => { setExpandedId(null); setDeleteTarget(null); setFinishTarget(null) },
   })
 
+  // U stroje na flashku (jen admin), vzdáleně do prohlížeče — UsbContext.useFileDownload
+  const { downloadCsv: dlCsv, downloadXlsx: dlXlsx, disabledReason: downloadDisabledReason } = useFileDownload()
   const downloadCsv = useCallback((file: OrderFile): void => {
-    downloadOriginalCsv(file.file_id, file.location, file.type, token ?? '', () => {
-      addToast(t.common.errorLoading, 'danger')
-    })
-  }, [token, addToast, t.common.errorLoading])
+    dlCsv(file.file_id, file.location, file.type)
+  }, [dlCsv])
 
   const downloadXlsx = useCallback(async (file: OrderFile): Promise<void> => {
     xlsxAbortRef.current?.abort()
     const ctrl = new AbortController()
     xlsxAbortRef.current = ctrl
     try {
-      await exportFileXlsx(file.file_id, file.location, file.type, token, ctrl.signal)
+      await dlXlsx(file.file_id, file.location, file.type, ctrl.signal)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       addToast(t.common.errorLoading, 'danger')
     }
-  }, [addToast, t.common.errorLoading, token])
+  }, [addToast, dlXlsx, t.common.errorLoading])
 
   const deleteFile = useCallback(async (file: OrderFile): Promise<void> => {
     setDeleteTarget(null)
@@ -424,7 +423,7 @@ export function useDatabaseState() {
     remoteAvailable,
     showSync, totalRecords,
     readOnly: isRemote,   // vzdálený přístup — bez mazání (server ho stejně odmítne)
-    deleteFile, downloadCsv, downloadXlsx,
+    deleteFile, downloadCsv, downloadXlsx, downloadDisabledReason,
     finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   }

@@ -403,6 +403,20 @@ export interface Translations {
     successDeleted:  string
     successPassword: string
   }
+  usb: {
+    chipTitle:   string
+    eject:       string
+    ejecting:    string
+    ejected:     string
+    ejectBusy:   string
+    ejectError:  string
+    insert:      string
+    adminOnly:   string
+    saving:      string
+    saved:       string
+    saveError:   string
+    noSpace:     string
+  }
   storage: {
     title:          string
     usage:          string   // „{used} z {limit}"

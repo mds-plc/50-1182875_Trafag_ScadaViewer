@@ -69,8 +69,9 @@
 #   (op_definition "no_close"), staticke odpory (NC bez 50 % PT, NO 100 um). Format CSV a PLC DUT beze zmeny,
 #   ale LIMITY RT v recepturach PLC se musi prenastavit. Krok 5d nastavi [analysis.detection] v Config.toml.
 #   Rozpracovana zakazka nasazeni zastavi ($WipBlocksDeploy) - jeji kusy by mely RT / OP jinak nez limity zakazky.
+# 2.6.7 (2026-10-27): jen ScadaViewer 2.6.7 - u stroje CSV / XLSX jen na flashku (admin), bezpecne odebrani v horni liste.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.6', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.7', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -85,7 +86,7 @@ $AppDates = @{ AdsAnalyzer = '2026-10-27'; DatabaseGateway = '2026-10-26'; Scada
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.6' }
+$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.7' }
 # Meni vydani datovou hlavicku CSV (sloupce [Data]) nebo vyznam hodnot? $true = rozpracovana zakazka (production\wip)
 # nasazeni ZASTAVI (Gateway by do WIP se starou hlavickou kusy nepridala / kusy by se tridily podle limitu stare
 # definice). $false = jen upozorneni, zakazka po nasazeni pokracuje.
@@ -925,4 +926,6 @@ Log '  7. 2.6.3/2.6.4: Databaze -> radek In progress -> tlacitko Dokoncit zakazk
 Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. XLSX zakazky = rozlozeni vzoru.'
 Log '  8. 2.6.6: novy kus - RT (RvT) cca 550-730 um (FP -> RP), v diagramu kusu kota RvT mezi FP a RP; starsi kusy'
 Log '     "RvT (TTP -> RP)". Log Analyzingu bez chyb Config (op_definition, static_*). Info -> ScadaViewer 2.6.6.'
-Log '  9. Zalohy *.backup_* po overeni smazat.'
+Log '  9. 2.6.7: zasunout flashku -> v horni liste cip E: (admin u stroje); Databaze -> CSV / XLSX ulozi do'
+Log '     E:\Trafag_ScadaViewer; tlacitko u cipu = bezpecne odebrani (toast "lze vyjmout").'
+Log ' 10. Zalohy *.backup_* po overeni smazat.'

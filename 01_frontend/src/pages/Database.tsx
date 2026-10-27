@@ -36,7 +36,7 @@ export default function Database() {
     files, wip, hiddenByFilter, latestCreatedAt, total, pages, loading, error, fetchFiles,
     remoteAvailable,
     showSync, totalRecords, readOnly,
-    deleteFile, downloadCsv, downloadXlsx,
+    deleteFile, downloadCsv, downloadXlsx, downloadDisabledReason,
     finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
   } = useDatabaseState()
@@ -193,6 +193,7 @@ export default function Database() {
           onDeleteRequest={file => setDeleteTarget(file)}
           onDownload={file => { void downloadCsv(file) }}
           onDownloadXlsx={file => { void downloadXlsx(file) }}
+          downloadDisabledReason={downloadDisabledReason}
           onPageChange={setPage}
           sortBy={sortBy}
           sortDir={sortDir}

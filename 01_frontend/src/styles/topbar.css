@@ -117,6 +117,34 @@
   font-size: var(--font-size-sm);
 }
 
+/* FLASHKA u stroje (admin) — popisek + bezpečné odebrání */
+.topbar__chip--usb {
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+}
+.topbar__usb-eject {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.topbar__usb-eject:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-success);
+}
+.topbar__usb-eject:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 /* LOKÁLNÍ ÚLOŽIŠTĚ — jen při varování / kritickém stavu, klik = Database */
 .topbar__chip--storage {
   border: none;
