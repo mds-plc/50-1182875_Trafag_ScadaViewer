@@ -1493,6 +1493,23 @@ Testy: `test_api.py` (role, konec session po odhlášení na PLC, vyhrazené jm�
 
 **Stav testů po fázi 53:** Backend **484/484**, Frontend **237/237**; `tsc` 0, lint 0.
 
+### Fáze 54 — XLSX podle vzoru Gateway, bez odkazu na repozitář (2026-10-27, verze 2.6.5)
+
+Přání uživatele: export Excelu má odpovídat vzoru `DatabaseGateway/04_docs/sample_production.xlsx`; aplikace
+neuvádí odkaz na repozitář.
+
+| Část | Řešení |
+|---|---|
+| `xlsx_export.build_blocks_xlsx` | jeden list `PROD_DONE` / `PROD_WIP`: bloky `[Metadata]` (i šarže), `[TestingParameters]`, `[SortingCategories]`, `[SortingLimits]` podbarvené světle zeleně (`C1F0C8` = Excel „Zelená, zvýraznění 3, světlejší 80 %“) přes šířku bloku, `[Data]` bez podbarvení; prázdný řádek mezi bloky; nadpis bloku tučně, hlavičky zalomené na střed (výška 30, limity a data 45), hodnoty na střed; formát podle jednotky (mN / µs `0`, µm / mΩ `0.0`; metadata a testovací parametry „Obecný“); svislá čára před skupinou Force / Travel / Position / Electric / Times / Status; šířka 14 (Timestamp 20), Aptos Narrow 11; bez zmrazení a filtru (jako vzor). Čas = datum Excelu |
+| `CsvRepository.read_blocks_export` / `_export_data` | bloky před `[Data]` s původními názvy + datová část bez vložených metadat (jednotky zákazníka jako dřív) |
+| `FileService.export_xlsx` | blokový PROD_ → `build_blocks_xlsx`, starší formáty a Testing → prostá tabulka (beze změny) |
+| Info | odstraněn řádek GitHub (i18n `appGithubLink`), TypeDoc bez odkazu GitHub |
+
+Ověřeno: vzorový i současný formát (DF, FPR, statické odpory, PositionReference) — rozložení, výplň a čáry shodné se vzorem;
+50 000 kusů ≈ 3 s. Test `test_prod_blocks.test_xlsx_layout_like_gateway_sample`.
+
+**Stav testů po fázi 54:** Backend **484/484**, Frontend **237/237**; `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

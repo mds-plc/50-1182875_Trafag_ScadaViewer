@@ -5,6 +5,17 @@
 
 ---
 
+## [2026-10-27] Excel podle vzoru Gateway, bez odkazu na repozitář (ScadaViewer 2.6.5)
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ℹ️ INFO | XLSX blokového PROD_ = rozložení `sample_production.xlsx` (bloky, výplň, formáty, čáry skupin) | `xlsx_export.py`, `csv_repository.py`, `file_service.py` | ✅ Hotovo |
+| 2 | ℹ️ INFO | Odkaz na repozitář odstraněn ze stránky Info, TypeDoc a poznámek k vydání v balíčku | `Info.tsx`, i18n, `typedoc.json` | ✅ Hotovo |
+
+Testy: backend 484, frontend 237.
+
+---
+
 ## [2026-10-26] PLC přihlášení s právy administrátora (ScadaViewer 2.6.4)
 
 Přání uživatele: funkce admina (dokončení / smazání rozpracované zakázky…) i při přihlášení přes PLC — příznak

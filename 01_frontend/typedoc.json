@@ -16,7 +16,6 @@
     "@deprecated", "@since", "@see", "@file", "@description"
   ],
   "navigationLinks": {
-    "Backend docs": "../backend/index.html",
-    "GitHub": "https://github.com/mds-plc/50-1182875_Trafag_ScadaViewer"
+    "Backend docs": "../backend/index.html"
   }
 }

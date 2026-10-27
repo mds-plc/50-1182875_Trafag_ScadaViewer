@@ -54,7 +54,7 @@ CLAUDE.md                  ← tento soubor
 00_backend/
 ├── requirements.txt           ← fastapi, uvicorn, wsproto, pyads, numpy, tomli
 └── scada/
-    ├── __init__.py            ← __version__ = "2.6.4"
+    ├── __init__.py            ← __version__ = "2.6.5"
     ├── config.py              ← dataclasses (ServerConfig, AdsConfig, DataConfig, AppConfig) + load_config()
     ├── models.py              ← Pydantic v2 response modely (OrderFileModel, CsvRecordModel, …)
     ├── logging_setup.py       ← JsonFormatter + setup_logging(); voláno z main.py
@@ -91,7 +91,8 @@ CLAUDE.md                  ← tento soubor
         │                                     zakázka v paměti (_OrderIndex, LRU 3 soubory / 256 MB); prefer_local()
         ├── order_watcher.py   ← OrderWatcher: polls wip/ každou 1 s; WS broadcast — ⏸ odpojeno
         ├── signal_reader.py   ← parser [SignalData], min-max decimace, key points FP/OP/RP/TTP/FPR; C z [MeasuredInfo] (jinak TTP + max x); cache 2 souborů
-        ├── xlsx_export.py     ← build_xlsx(): XLSX bez závislosti (proudově, čísla jako čísla, čas jako datum, zmrazená hlavička, filtr)
+        ├── xlsx_export.py     ← build_xlsx(): XLSX bez závislosti (proudově, čísla jako čísla, čas jako datum, zmrazená hlavička, filtr);
+        │                         build_blocks_xlsx(): blokový PROD_ podle vzoru Gateway 04_docs/sample_production.xlsx
         ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
         ├── time_service.py    ← time_status() (w32time: služba, NtpServer Enabled, AnnounceFlags, zdroj, w32tm /query, UDP 123, IPv4) + set_local_time() (SetSystemTime + SeSystemtimePrivilege)
         └── ws_manager.py      ← ConnectionManager (fronta + odesílací úloha na klienta, nestíhající → close 1011) + orders_manager; broadcast(); clear_symbols() po výpadku ADS
@@ -111,7 +112,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── Database.tsx    ← /database — local/remote×production/testing, hledání zakázky, expand, delete; rozpracovaná zakázka nahoře; auto-refresh přes WS
     │   ├── ChartView.tsx   ← /chart?file=&location=&type= — graf + tabulka
     │   ├── Settings.tsx    ← /settings — Předvolby + Připojení + Uživatelé (admin+)
-    │   ├── Info.tsx        ← /info — verze z /api/health, Trafag AG
+    │   ├── Info.tsx        ← /info — verze z /api/health, Trafag AG (bez odkazu na repozitář — přání uživatele 2026-10-27)
     │   └── Wip.tsx         ← WIP záznamy — ⏸ odpojeno (kód zachován s Overview)
     ├── components/
     │   ├── AdsStatus.tsx      ← pulsující dot indikátor (zelený/červený)
@@ -440,7 +441,7 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/files` | GET | Seznam zakázek (`?location=&type=&page=&per_page=&sort_by=&sort_dir=`; `sort_by` = created_at \| order_id \| switch_id \| switch_name \| record_count — nepřečtené soubory u ID / typu na konci; `q` = hledání zakázky — část čísla / názvu, bez diakritiky a velikosti písmen, platí i pro `wip[]` a `hidden_by_filter`) + `switch_id` v položkách + `wip[]` — rozpracované zakázky (jen local, mimo stránkování/filtry). Přehled z názvů souborů: `record_count: null` = dopočítává se, `counts_pending` = zeptat se znovu (NAS: dopočet jen pro stránku) |
 | `/api/files/{file_id}` | GET | Metadata konkrétního souboru |
 | `/api/files/{file_id}/download` | GET | Download originálního CSV souboru (`?location=&type=`) |
-| `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) — čísla jako čísla, čas jako datum |
+| `/api/files/{file_id}/xlsx` | GET | Celý soubor jako XLSX sestavený na serveru (`?location=&type=`) — čísla jako čísla, čas jako datum; blokový PROD_ = rozložení vzoru Gateway `sample_production.xlsx` (bloky nad [Data] v listu PROD_DONE, podbarvení, formáty čísel, čáry skupin) |
 | `/api/files/{file_id}` | DELETE | Smazání souboru (`?location=&type=`); `*_WIP.csv` (rozpracovaná zakázka) jen admin+, jednotlivě (batch ne), jinak 403 — Gateway smazaný WIP pozná a další kus odmítne |
 | `/api/files/batch-delete` | POST | Hromadné smazání — `{file_ids[], location, type}`; max 200 souborů; rozpracovanou zakázku (`*_WIP.csv`) nemaže nikdy (`wip_forbidden`) |
 | `/api/files/{file_id}/finish` | POST | Ruční dokončení rozpracované zakázky (`*_WIP.csv` → `done_local/…_DONE.csv`, Gateway ji nahraje na NAS) — **jen admin+ u stroje**; `{plc_unknown_confirmed}`; 409 `running` (PLC hlásí tuto zakázku — nejde obejít) / `plc_unknown` (ADS odpojeno, bez potvrzení) / `exists` / `busy` |
@@ -839,7 +840,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Toast notifikace | ✅ | ToastContext, usePlcWatcher |
 | Offline indikátor | ✅ | useBackendOnline (polling /api/health 10 s, timeout 5 s); červený fixed banner — i při zaseknutém serveru |
 | Klávesové zkratky | ✅ | useKeyShortcuts — F5 (refresh), Escape (zavřít expand/modal) |
-| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.4** — 2026-10-26, jen ScadaViewer (PLC přihlášení = role admin, fáze 53), Analyzing a Gateway 2.6.2; balíček `deploy_v2.6.4`; předtím **2.6.3** — 2026-10-26 (ruční dokončení rozpracované zakázky, fáze 52, nenasazeno); předtím **2.6.2** — 2026-10-26, společné vydání všech tří aplikací — opravy celkového auditu A26 (fsync, kus bez měření = odpory 9999,9, výchozí heslo, odhlášení po nečinnosti, deploy s obnovou po selhání); balíček `deploy_v2.6.2`; předtím **2.6.1** — 2026-10-23, Analyzing 2.6.1 + ScadaViewer 2.6.1 (záložka Electric, šířky sloupců), Gateway 2.6.0; balíček `deploy_v2.6.1`); předtím **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
+| Build (build.bat + scada.spec) | ✅ | npm build + PyInstaller + release složka + ZIP (5 pokusů — Defender zámek) + git tag + gh release; verze = `scada/__init__.py` (aktuálně **2.6.5** — 2026-10-27, jen ScadaViewer (XLSX podle vzoru Gateway, bez odkazu na repozitář, fáze 54), Analyzing a Gateway 2.6.2; balíček `deploy_v2.6.5`; předtím **2.6.4** — 2026-10-26 (PLC přihlášení = role admin, fáze 53); předtím **2.6.3** — 2026-10-26 (ruční dokončení rozpracované zakázky, fáze 52, nenasazeno); předtím **2.6.2** — 2026-10-26, společné vydání všech tří aplikací — opravy celkového auditu A26 (fsync, kus bez měření = odpory 9999,9, výchozí heslo, odhlášení po nečinnosti, deploy s obnovou po selhání); balíček `deploy_v2.6.2`; předtím **2.6.1** — 2026-10-23, Analyzing 2.6.1 + ScadaViewer 2.6.1 (záložka Electric, šířky sloupců), Gateway 2.6.0; balíček `deploy_v2.6.1`); předtím **2.6.0** — 2026-10-22, společné vydání (statické odpory, max_cycles 60 000, klávesnice na obrazovce, přejmenování složek v deploy; balíček `deploy_v2.6.0`); předtím **2.5.0** — 2026-10-21, společné vydání všech tří aplikací (DF, FPR, konstanta C; nové PLC DUT, balíček `deploy_v2.5.0`); předtím **2.4.1** — 2026-10-20, jen ScadaViewer (Čas / NTP, názvy parametrů pohonu starších souborů), Analyzing a Gateway 2.4.0; balíček `deploy_v2.4.1`; předtím společné vydání 2.4.0, 2026-10-19; vyžaduje PLC DUT Testing s Recipe / Microswitch_ID STRING / NokCategory[1..5]; nasazení `06_build/releases/deploy_v2.4.0`) |
 | Pydantic response modely | ✅ | models.py — OrderFileModel, CsvRecordModel, StatusResponse, HealthResponse |
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |

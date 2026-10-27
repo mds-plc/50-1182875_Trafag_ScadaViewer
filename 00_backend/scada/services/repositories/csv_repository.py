@@ -1556,6 +1556,61 @@ class CsvRepository:
             return None
         return ix.order_info if ix is not None else None
 
+    def read_blocks_export(
+        self, path: Path,
+    ) -> tuple[list[tuple[str, list[list[str]]]], list[str], Iterator[list[str]]] | None:
+        """Blokový PROD_ soubor pro XLSX podle vzoru Gateway (sample_production.xlsx).
+
+        Returns: (bloky před [Data] v pořadí souboru jako (název, řádky buněk) — i šarže, datová hlavička,
+        datové řádky) nebo None, není-li soubor blokový production. Datová část jako read_table (jednotky
+        zákazníka, rozepnutý kontakt 9999.9), ale bez vložených metadat — ta jsou v bloku [Metadata].
+        """
+        sep = self._cfg.csv_separator
+        blocks: list[tuple[str, list[list[str]]]] = []
+        with open_shared(path, encoding=self._cfg.csv_encoding, newline='') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith('[') and line.endswith(']'):
+                    title = line[1:-1].strip()
+                    if title.lower() == 'data':
+                        break
+                    if title.lower() in _TEST_ONLY_BLOCKS:
+                        return None
+                    blocks.append((title, []))
+                elif blocks:
+                    blocks[-1][1].append([c.strip() for c in line.split(sep)])
+                else:
+                    return None                              # nezačíná blokem — starší formát
+            else:
+                return None                                  # bez [Data]
+        ix = self._order_index(path)
+        if ix is None or not ix.meta_header:
+            return None
+        header, rows = self._export_data(ix)
+        return blocks, header, rows
+
+    def _export_data(self, ix: _OrderIndex) -> tuple[list[str], Iterator[list[str]]]:
+        """Datová část zakázky pro export: hlavička a řádky v jednotkách zákazníka (export_header / export_value)."""
+        heads  = list(ix.fieldnames)
+        pos    = {_normalize_key(k): i for i, k in enumerate(heads)}
+        scale  = None
+        for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator):
+            cell = lambda k: row[pos[k]] if k in pos and pos[k] < len(row) else None  # noqa: E731
+            scale = position_scale(cell('fp_freeposition'), cell('ttp_totaltravelposition'))
+            if scale is not None:
+                break
+        convert = [i for i, k in enumerate(heads) if export_value(k, '1') != '1' or k.lower().startswith('r_')]
+
+        def converted(row: list[str]) -> list[str]:
+            for i in convert:
+                if i < len(row):
+                    row[i] = export_value(heads[i], row[i])
+            return row
+        rows = (converted(row) for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
+        return [export_header(k, scale) for k in heads], rows
+
     def read_table(self, path: Path) -> tuple[list[str], Iterator[list[str]]]:
         """Celý soubor jako tabulka pro export (XLSX): originální názvy sloupců i hodnoty.
 
@@ -1575,24 +1630,8 @@ class CsvRepository:
                     iter([[export_value(h, v) for h, v in pairs]]))
         n_meta = len(ix.meta_header)
         meta   = (list(ix.meta_vals) + [''] * n_meta)[:n_meta]
-        heads  = list(ix.fieldnames)
-        pos    = {_normalize_key(k): i for i, k in enumerate(heads)}
-        scale  = None
-        for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator):
-            cell = lambda k: row[pos[k]] if k in pos and pos[k] < len(row) else None  # noqa: E731
-            scale = position_scale(cell('fp_freeposition'), cell('ttp_totaltravelposition'))
-            if scale is not None:
-                break
-        convert = [i for i, k in enumerate(heads) if export_value(k, '1') != '1' or k.lower().startswith('r_')]
-
-        def converted(row: list[str]) -> list[str]:
-            for i in convert:
-                if i < len(row):
-                    row[i] = export_value(heads[i], row[i])
-            return row
-        rows = (meta + converted(row)
-                for row in csv.reader(iter(ix.lines), delimiter=self._cfg.csv_separator) if row)
-        return list(ix.meta_header) + [export_header(k, scale) for k in heads], rows
+        header, data = self._export_data(ix)
+        return list(ix.meta_header) + header, (meta + row for row in data)
 
     # ------------------------------------------------------------------
     # Vyhledání cesty + validace vstupů

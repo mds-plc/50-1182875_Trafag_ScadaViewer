@@ -4,7 +4,7 @@
  *   Layout shodný s Settings: db-page, db-header + záložky, tile--12.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Building2, FileText, ExternalLink } from 'lucide-react'
+import { Building2, FileText } from 'lucide-react'
 import { useLang }    from '../context/LangContext'
 import PageHelp       from '../components/PageHelp'
 
@@ -91,19 +91,6 @@ export default function Info() {
             <div className="settings-row">
               <span className="settings-row__label">{t.info.projContact}</span>
               <div className="settings-row__control">t.nepivoda@md-solutions.cz</div>
-            </div>
-            <div className="settings-row">
-              <span className="settings-row__label">GitHub</span>
-              <div className="settings-row__control">
-                <a
-                  href="https://github.com/mds-plc/50-1182875_Trafag_ScadaViewer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="info-link"
-                >
-                  {t.info.appGithubLink} <ExternalLink size={12} />
-                </a>
-              </div>
             </div>
           </>
         )}

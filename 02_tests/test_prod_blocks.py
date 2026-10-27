@@ -154,18 +154,32 @@ def _sheet(data: bytes) -> list[list[str]]:
     for row in root.find("m:sheetData", NS).findall("m:row", NS):
         cells = []
         for c in row.findall("m:c", NS):
-            cells.append(c.find("m:is/m:t", NS).text if c.get("t") == "inlineStr" else c.find("m:v", NS).text)
+            if c.get("t") == "inlineStr":
+                cells.append(c.find("m:is/m:t", NS).text)
+            else:
+                v = c.find("m:v", NS)
+                cells.append(v.text if v is not None else "")    # prázdná buňka jen se stylem (výplň, čára)
         out.append(cells)
     return out
 
 
-def test_xlsx_data_only(client) -> None:
+def test_xlsx_layout_like_gateway_sample(client) -> None:
+    """XLSX blokového PROD_ = rozložení vzoru Gateway sample_production.xlsx (2026-10-27): bloky nad [Data]
+    v jednom listu, mezi bloky prázdný řádek, data bez vložených metadat."""
     r = client.get(f"/api/files/{_NAME}/xlsx", params={"location": "local", "type": "production"})
     assert r.status_code == 200
     rows = _sheet(r.content)
-    assert rows[0] == ["Order", "Recipe", "Microswitch_ID", "Microswitch_Name", *_DATA_HEAD.split(";")]
-    assert len(rows) == 13
-    assert rows[1][:4] == ["1268847", "1", "E01389-C", "Marquardt"]
+    titles = [row[0] for row in rows if row and row[0].startswith("[")]
+    assert titles == ["[Metadata]", "[TestingParameters]", "[SortingCategories]", "[SortingLimits]", "[Data]"]
+    assert rows[0][0] == "[Metadata]" and rows[1][:4] == ["Order", "Recipe", "Microswitch_ID", "Microswitch_Name"]
+    assert rows[2][:4] == ["1268847", "1", "E01389-C", "Marquardt"]
+    i = next(k for k, row in enumerate(rows) if row and row[0] == "[Data]")
+    assert rows[i + 1] == _DATA_HEAD.split(";")                 # bez Order / Recipe / … před daty
+    assert len(rows) - (i + 2) == 12                           # všechny kusy
+    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+        assert 'name="PROD_DONE"' in zf.read("xl/workbook.xml").decode()
+        styles = zf.read("xl/styles.xml").decode()
+        assert 'rgb="FFC1F0C8"' in styles and 'formatCode="0.0"' in styles and '<left style="thin">' in styles
 
 
 def test_testing_file_still_single_record(client) -> None:

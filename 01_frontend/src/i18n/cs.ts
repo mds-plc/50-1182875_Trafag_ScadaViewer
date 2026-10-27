@@ -320,7 +320,6 @@ export const cs: Translations = {
   info: {
     title:         'Info',
     appVersion:    'Verze',
-    appGithubLink: 'Repozitář na GitHubu',
     projectTile:   'Projekt',
     projNumber:    'Číslo projektu',
     projCustomer:  'Zákazník',

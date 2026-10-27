@@ -345,7 +345,6 @@ export interface Translations {
   info: {
     title:        string
     appVersion:   string
-    appGithubLink: string
     projectTile:  string
     projNumber:   string
     projCustomer: string

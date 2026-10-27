@@ -32,7 +32,7 @@ export const helpCs: Translations['help'] = {
         { title: 'Údaje zakázky', text: 'Rozbalovací řádky se souhrnem: šarže výrobce (všechny, očíslované v pořadí výskytu), parametry testu, se kterými stroj měřil (rychlost, zrychlení, síla, proud…), meze kategorií třídění a limity jednotlivých parametrů. Klik na řádek ho rozbalí nebo sbalí.' },
         { title: 'Řazení a filtr kusů', text: 'Nejstarší / Nejnovější, filtr Stav (OK / NOK), Kategorie a NOK oblast (Force, Position, Electric, Times, Process — kusy, které v dané oblasti nevyhověly; číslo u tlačítka = počet kusů v celé zakázce, víc oblastí = aspoň jedna z nich). Filtry se kombinují, počty a stránkování se přepočítají.' },
         { title: 'Tabulka kusů', text: 'Jeden řádek = jeden testovaný kus s naměřenými parametry. Klik na řádek otevře detail kusu s diagramy. Hodnoty mimo limity třídění zakázky jsou lehce podbarvené — žlutě mimo limity Trafag nebo MD mimo kategorie 1–4 (NOK Trafag), oranžově mimo limity výrobce (NOK Supplier), oranžově se žlutým pruhem mimo obojí; po najetí se ukážou meze.' },
-        { title: 'Tisk a export', text: 'Tisk vytvoří protokol A4 z aktuálně zobrazených kusů. Tlačítka CSV a XLSX stáhnou celou zakázku (originální CSV, nebo tabulku pro Excel s čísly a časy).' },
+        { title: 'Tisk a export', text: 'Tisk vytvoří protokol A4 z aktuálně zobrazených kusů. Tlačítka CSV a XLSX stáhnou celou zakázku (originální CSV, nebo tabulku pro Excel s čísly a časy — u nových zakázek ve stejném rozložení jako vzor zakázky: údaje zakázky, testovací parametry, kategorie a limity nad daty).' },
       ],
     },
     record: {

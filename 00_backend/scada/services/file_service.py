@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from scada.services.protocols import PagedResult
-from scada.services.xlsx_export import build_xlsx
+from scada.services.xlsx_export import build_blocks_xlsx, build_xlsx
 from scada.services.repositories.csv_repository import CsvRepository
 
 log = logging.getLogger(__name__)
@@ -272,12 +272,21 @@ class FileService:
         location:  str = 'local',
         file_type: str = 'production',
     ) -> bytes | None:
-        """Celý soubor jako XLSX (originální sloupce, čísla jako čísla). None = soubor neexistuje."""
+        """Celý soubor jako XLSX (originální sloupce, čísla jako čísla). None = soubor neexistuje.
+
+        Blokový PROD_ soubor (Gateway 2.3.0+) = rozložení podle vzoru Gateway sample_production.xlsx
+        (bloky nad [Data] v jednom listu); starší formáty a Testing = prostá tabulka.
+        """
         path = self._read_path(file_id, location, file_type)
         if path is None or not path.exists():
             return None
-        header, rows = self._repo.read_table(path)
-        data = build_xlsx(header, rows, sheet_name='Data')
+        blocks = self._repo.read_blocks_export(path) if file_type == 'production' else None
+        if blocks is not None:
+            sheet = 'PROD_WIP' if file_id.endswith('_WIP.csv') else 'PROD_DONE'
+            data = build_blocks_xlsx(*blocks, sheet_name=sheet)
+        else:
+            header, rows = self._repo.read_table(path)
+            data = build_xlsx(header, rows, sheet_name='Data')
         log.info("[SVC]   export_xlsx %s → %.1f MB", file_id, len(data) / 1e6)
         return data
 

@@ -32,7 +32,7 @@ export const helpEn: Translations['help'] = {
         { title: 'Order data', text: 'Expandable rows with a summary: supplier lots (all of them, numbered in order of appearance), test parameters the machine measured with (speed, acceleration, force, current…), sorting category bounds and limits of the individual parameters. Click a row to expand or collapse it.' },
         { title: 'Sorting and piece filter', text: 'Oldest / Newest, Status filter (OK / NOK), Category and NOK area (Force, Position, Electric, Times, Process — pieces that failed in that area; the number on the button = pieces in the whole order, several areas = at least one of them). Filters combine, counts and pages follow them.' },
         { title: 'Piece table', text: 'One row = one tested piece with its measured parameters. Click a row to open the piece detail with diagrams. Values outside the sorting limits of the order are lightly tinted — yellow outside Trafag limits or MD outside categories 1–4 (NOK Trafag), orange outside supplier limits (NOK Supplier), orange with a yellow bar outside both; hover to see the limits.' },
-        { title: 'Print and export', text: 'Print creates an A4 report of the pieces currently shown. The CSV and XLSX buttons download the whole order (original CSV, or an Excel table with numbers and times).' },
+        { title: 'Print and export', text: 'Print creates an A4 report of the pieces currently shown. The CSV and XLSX buttons download the whole order (original CSV, or an Excel table with numbers and times — for new orders in the same layout as the order sample: order data, testing parameters, categories and limits above the data).' },
       ],
     },
     record: {

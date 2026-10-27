@@ -61,8 +61,10 @@
 #   In progress -> Dokoncit zakazku). Analyzing a DatabaseGateway zustavaji 2.6.2, PLC ani format CSV beze zmeny.
 # 2.6.4 (2026-10-26): jen ScadaViewer 2.6.4 - PLC prihlaseni (UserLoggedIn = nejvyssi autorita na PLC) ma prava admina,
 #   jen dokud prihlaseni na PLC trva.
+# 2.6.5 (2026-10-27): jen ScadaViewer 2.6.5 - export XLSX podle vzoru Gateway (sample_production.xlsx), bez odkazu
+#   na repozitar. Format CSV ani PLC beze zmeny.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.4', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.5', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -77,7 +79,7 @@ $AppDates = @{ AdsAnalyzer = '2026-10-26'; DatabaseGateway = '2026-10-26'; Scada
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.4' }
+$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.5' }
 # Meni vydani datovou hlavicku CSV (sloupce [Data])? $true = rozpracovana zakazka (production\wip) nasazeni ZASTAVI
 # (Gateway by do WIP se starou hlavickou kusy nepridala). $false = jen upozorneni, zakazka po nasazeni pokracuje.
 # 2.6.3 / 2.6.4: format CSV beze zmeny -> $false.
@@ -883,5 +885,5 @@ Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nast
 Log '  6. 2.6.2: ScadaViewer -> Nastaveni -> Uzivatele: zmenit vychozi heslo admin (pruh dole); prihlaseni heslem u stroje'
 Log '     konci po 15 min necinnosti; Info -> verze 2.6.2. Heslo k NAS zmenit (stare je v historii gitu Gateway).'
 Log '  7. 2.6.3/2.6.4: Databaze -> radek In progress -> tlacitko Dokoncit zakazku (admin u stroje nebo prihlaseni pres PLC),'
-Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. Info -> 2.6.4.'
+Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. Info -> 2.6.5; XLSX zakazky = rozlozeni vzoru.'
 Log '  8. Zalohy *.backup_* po overeni smazat.'

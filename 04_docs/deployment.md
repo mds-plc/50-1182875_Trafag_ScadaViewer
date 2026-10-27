@@ -44,6 +44,14 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.5 (2026-10-27) — ScadaViewer: Excel podle vzoru, bez odkazu na repozitář
+
+Balíček `06_build/releases/deploy_v2.6.5/` — Analyzing a DatabaseGateway 2.6.2, ScadaViewer 2.6.5 (obsahuje 2.6.3 a 2.6.4).
+Export XLSX nové zakázky (blokový soubor) má rozložení vzoru `sample_production.xlsx` (údaje zakázky, testovací parametry,
+kategorie a limity nad daty); stránka Info neuvádí odkaz na repozitář. Formát CSV ani PLC beze změny.
+
+---
+
 ## Release 2.6.4 (2026-10-26) — ScadaViewer: PLC přihlášení s právy administrátora
 
 Balíček `06_build/releases/deploy_v2.6.4/` — Analyzing a DatabaseGateway 2.6.2, ScadaViewer 2.6.4 (obsahuje i 2.6.3).

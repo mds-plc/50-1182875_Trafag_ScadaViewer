@@ -1,6 +1,6 @@
 {
   "name": "scada-viewer",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "private": true,
   "type": "module",
   "scripts": {
