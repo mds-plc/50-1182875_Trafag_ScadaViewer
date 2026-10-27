@@ -11,7 +11,7 @@
  */
 
 import { useId } from 'react'
-import { PARAM_LABELS, formatParam } from '../utils/paramMeta'
+import { PARAM_LABELS, formatParam, rtDefinition } from '../utils/paramMeta'
 import { useLang } from '../context/LangContext'
 
 export interface DiagramProps {
@@ -38,7 +38,7 @@ export const PARAM_DIAGRAM: Readonly<Record<string, 'force' | 'time'>> = {
 const RELATED: Readonly<Record<string, readonly string[]>> = {
   pt_pretravel:            ['fp_freeposition', 'op_operatingposition'],                // PT = FP − OP
   ot_overtravel:           ['op_operatingposition', 'ttp_totaltravelposition'],        // OT = OP − TTP
-  rt_realisingtravel:      ['rp_realeasingposition', 'ttp_totaltravelposition'],       // RT = RP − TTP
+  rt_realisingtravel:      ['fp_freeposition', 'rp_realeasingposition'],               // RT = FP − RP (od 27. 10. 2026; starší soubory RP − TTP — useHighlight)
   md_movementdifferential: ['rp_realeasingposition', 'op_operatingposition'],          // MD = RP − OP
   tt_totaltravel:          ['fp_freeposition', 'ttp_totaltravelposition'],             // TT = FP − TTP
   of_operatingforce:       ['op_operatingposition'],
@@ -59,8 +59,12 @@ const DIM = 0.12        // ztlumené prvky při zvýraznění
 const CONTEXT = 0.45    // smyčka / průběhy / osy — kontext zůstane čitelný
 
 /** Zvýraznění: `on(tag…)` = prvek patří k parametru; `op` = opacity; `sw` = zesílená čára. */
-function useHighlight(highlight?: string) {
-  const lit = highlight ? new Set([highlight, ...(RELATED[highlight] ?? [])]) : null
+function useHighlight(highlight?: string, rtOld = false) {
+  // RT v souborech do 27. 10. 2026 = TTP → RP (Rücklaufweg) — rozsvítí se RP a TTP
+  const related = highlight === 'rt_realisingtravel' && rtOld
+    ? ['rp_realeasingposition', 'ttp_totaltravelposition']
+    : (highlight ? RELATED[highlight] ?? [] : [])
+  const lit = highlight ? new Set([highlight, ...related]) : null
   const on = (...tags: string[]) => lit !== null && tags.some(t => lit.has(t))
   return {
     active: lit !== null,
@@ -102,7 +106,9 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
   const { t } = useLang()
   const val = makeVal(record)
   const uid = useId()
-  const h = useHighlight(highlight)
+  // RT: od 27. 10. 2026 FP → RP (Leerlaufweg), starší soubory TTP → RP — podle hodnot kusu (rtDefinition)
+  const rtOld = rtDefinition(record) === 'ttp_rp'
+  const h = useHighlight(highlight, rtOld)
 
   // Pevné souřadnice (schéma, neškálováno)
   const FP_x  = 200
@@ -147,13 +153,13 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
   ]
 
   // Zdvihová kóta pod osou (řada y) — PT / OvT / RvT / MD / TT
-  const travel = (key: string, xa: number, xb: number, y: number, fallback: string) => (
+  const travel = (key: string, xa: number, xb: number, y: number, fallback: string, suffix = '') => (
     <g opacity={h.op(key)}>
       {h.on(key) && <rect x={xa} y={y - 15} width={xb - xa} height={28} rx={4} fill={C_TRAVEL} opacity={0.08} />}
       <line x1={xa + 4} y1={y} x2={xb - 4} y2={y}
         stroke={C_TRAVEL} strokeWidth={h.sw(1.5, key)} markerEnd={`url(#${uid}ftB)`} markerStart={`url(#${uid}ftBL)`} />
       <text x={(xa + xb) / 2} y={y - 3} textAnchor="middle" fontSize={h.on(key) ? 11 : 9} fontWeight="700" fill={C_TRAVEL}>
-        {lbl(key, fallback)}
+        {lbl(key, fallback)}{suffix}
       </text>
       <text x={(xa + xb) / 2} y={y + 12} textAnchor="middle" fontSize={9} fill={C_TRAVEL} fontFamily="monospace">
         {val(key)}
@@ -321,7 +327,9 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
       {travel('md_movementdifferential', RP_x, OP_x,  400, 'MD')}   {/* MD  = RP − OP  (Differenzweg) */}
       {travel('pt_pretravel',            FP_x, OP_x,  425, 'PT')}   {/* PT  = FP − OP  (Vorlaufweg) */}
       {travel('ot_overtravel',           OP_x, TTP_x, 425, 'OvT')}  {/* OvT = OP − TTP (Nachlaufweg) */}
-      {travel('rt_realisingtravel',      RP_x, TTP_x, 450, 'RvT')}  {/* RvT = RP − TTP (Rücklaufweg) */}
+      {rtOld   /* RvT = Leerlaufweg FP → RP (DIN 41636-1, od 27. 10. 2026); starší soubory Rücklaufweg TTP → RP */
+        ? travel('rt_realisingtravel', RP_x, TTP_x, 450, 'RvT', ' (TTP → RP)')
+        : travel('rt_realisingtravel', FP_x, RP_x,  450, 'RvT')}
       {travel('tt_totaltravel',          FP_x, TTP_x, 475, 'TT')}   {/* TT  = FP − TTP (Gesamtweg) */}
 
       {/* ── Odpory kontaktů [mΩ] v RP a OP (fialová) ── */}

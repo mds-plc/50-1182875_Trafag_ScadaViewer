@@ -1510,6 +1510,24 @@ Ověřeno: vzorový i současný formát (DF, FPR, statické odpory, PositionRef
 
 **Stav testů po fázi 54:** Backend **484/484**, Frontend **237/237**; `tsc` 0, lint 0.
 
+### Fáze 55 — nová definice RT a OP z Analyzing 2.6.3 (2026-10-27, verze 2.6.6)
+
+Analyzing 2.6.3: `RT_RealisingTravel` = |RP − FP| = PT − MD (Releasing travel / Leerlaufweg, DIN 41636-1; dřív
+|TTP − RP| = Rücklaufweg), OP = první sepnutí NO (`op_definition = "no_close"` v Config.toml; mění OP, PT, OT, MD),
+statické odpory mimo přepnutí. Název sloupců, formát CSV ani PLC DUT se nemění → Gateway beze změny kódu.
+
+| Část | Řešení |
+|---|---|
+| `paramMeta.rtDefinition(record)` | definice RT kusu z jeho poloh: která dráha (\|RP − FP\| / \|TTP − RP\|) vysvětlí hodnotu RT přesněji; nelze určit → nová. Archiv i zakázka přes nasazení (kusy obou definic) se zobrazí správně |
+| `ParamDiagrams` | kóta RvT mezi FP a RP; starší kus „RvT (TTP → RP)“ mezi RP a TTP; zvýraznění v grafické nápovědě rozsvítí body podle definice |
+| Popisky | tooltip „Releasing Travel (FP → RP, Leerlaufweg …)“, nápověda „?“ CS / EN s oběma definicemi, nápověda detailu kusu; zkratka RvT zůstává (RT = Reverse Time) |
+| `signal_reader.find_key_points` | OP v tabulce dál než 2 µm od rozepnutí NC (`_OP_MATCH_UM`) = OP podle sepnutí NO → bod OP v grafech Signal Data tam, kde ho hlásí tabulka (dosavadní soubory: shoda do 0,5 µm, beze změny) |
+| Deploy 2.6.6 | Analyzing 2.6.3 + ScadaViewer 2.6.6; krok 5d nastaví `[analysis.detection]` op_definition / static_resistance_margin_um / static_nc_exclude_pt_fraction (`$AnSettings`); rozpracovaná zakázka nasazení zastaví (`$WipBlocksDeploy = $true` — limity zakázky staré definice); `$PlcNote` připomene limity RT v PLC |
+
+Testy: `RecordDiagram.test.tsx` (stará / nová definice, zvýraznění), `test_signal_threshold.py` (OP podle tabulky).
+
+**Stav testů po fázi 55:** Backend **485/485**, Frontend **238/238**; `tsc` 0, lint 0; Analyzing 155.
+
 ---
 
 ## Tok dat

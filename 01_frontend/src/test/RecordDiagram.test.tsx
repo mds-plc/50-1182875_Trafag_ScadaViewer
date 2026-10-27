@@ -3,7 +3,7 @@
  * @description Detail záznamu s reálným production záznamem (PROD_testnedele2, řádek 1),
  *   hodnoty jak je posílá /api/data — v jednotkách zákazníka (síla mN, odpor mΩ, polohy
  *   zákazníka P = 9500 − x; backend převádí podle hlavičky CSV, audit X1):
- *   - kóta RT leží mezi RP a TTP a ukazuje RT_RealisingTravel (= RP − TTP = 1110 µm)
+ *   - kóta RT: starší soubor TTP → RP (= RP − TTP = 1110 µm, popisek „(TTP → RP)"), od 27. 10. 2026 FP → RP
  *   - žádná vymyšlená kóta „RL"
  *   - odpory v mΩ (9.0), rozepnutý kontakt (9999,9) → ∞
  *   - polohy a dráhy na 0,1 µm, časy celá čísla
@@ -13,7 +13,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { LangProvider } from '../context/LangContext'
 import RecordDiagram from '../components/RecordDiagram'
 import { ForceTravelDiagram, PARAM_DIAGRAM, TimeDiagram, timeScale } from '../components/ParamDiagrams'
-import { ALL_PARAM_KEYS } from '../utils/paramMeta'
+import { ALL_PARAM_KEYS, rtDefinition } from '../utils/paramMeta'
 
 // Klíče po _normalize_key (lowercase, bez [jednotky]) — hodnoty v jednotkách zákazníka
 const RECORD: Record<string, unknown> = {
@@ -36,14 +36,29 @@ function svgTexts(container: HTMLElement): string[] {
 }
 
 describe('RecordDiagram — real production record', () => {
-  it('RvT dimension shows RP − TTP and there is no "RL"', () => {
+  it('older file: RvT = TTP → RP (Rücklaufweg, before 27 Oct 2026) and there is no "RL"', () => {
     const { container } = render(<LangProvider><RecordDiagram record={RECORD} /></LangProvider>)
     const texts = svgTexts(container)
-    expect(texts).toContain('RvT')                     // stejné zkratky jako tabulka parametrů (PARAM_LABELS)
+    expect(texts).toContain('RvT (TTP → RP)')          // stejné zkratky jako tabulka parametrů (PARAM_LABELS)
     expect(texts).toContain('1110.0')
     expect(texts).not.toContain('RL')
     expect(texts).toContain('687.0')   // PT
     expect(texts).toContain('37.0')    // MD
+  })
+
+  it('RT from 27 Oct 2026 = Leerlaufweg FP → RP: plain RvT, highlight lights FP and RP (not TTP)', () => {
+    const rec = { ...RECORD, rt_realisingtravel: '650.0' }          // |RP − FP| = 9261 − 8611
+    expect(rtDefinition(rec)).toBe('fp_rp')
+    expect(rtDefinition(RECORD)).toBe('ttp_rp')
+    const { container } = render(<LangProvider><ForceTravelDiagram record={rec} highlight="rt_realisingtravel" /></LangProvider>)
+    const texts = svgTexts(container)
+    expect(texts).toContain('RvT')
+    expect(texts).not.toContain('RvT (TTP → RP)')
+    const posLabel = (l: string) => Array.from(container.querySelectorAll('svg text'))
+      .find(t => (t.textContent ?? '').startsWith(`${l} `))
+    expect(posLabel('FP')?.getAttribute('opacity')).toBe('1')
+    expect(posLabel('RP')?.getAttribute('opacity')).toBe('1')
+    expect(posLabel('TTP')?.getAttribute('opacity')).toBe('0.12')
   })
 
   it('contact resistances in mΩ, open contact as ∞', () => {

@@ -5,6 +5,19 @@
 
 ---
 
+## [2026-10-27] Nová definice RT a OP v ekosystému (Analyzing 2.6.3 + ScadaViewer 2.6.6)
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ⚠️ MEDIUM | Diagram kreslil RvT mezi RP a TTP — nová definice FP → RP; archiv má obě → rozpoznání po kusech | `paramMeta.ts`, `ParamDiagrams.tsx` | ✅ Opraveno |
+| 2 | 🔵 LOW | Bod OP v Signal Data elektricky z rozepnutí NC — s op_definition no_close jinde než tabulka | `signal_reader.py` | ✅ Opraveno |
+| 3 | ⚠️ MEDIUM | Config.toml na stroji: static_resistance_margin_um 50 by přebil nový default, op_definition chybí | `deploy.ps1` krok 5d | ✅ Opraveno |
+| 4 | ⚠️ MEDIUM | Limity RT (a PT / OT / MD) v recepturách PLC podle staré definice | PLC | ⬜ Přenastavit na stroji |
+
+Testy: backend 485, frontend 238, Analyzing 155.
+
+---
+
 ## [2026-10-27] Excel podle vzoru Gateway, bez odkazu na repozitář (ScadaViewer 2.6.5)
 
 | # | Závažnost | Popis | Soubor | Status |

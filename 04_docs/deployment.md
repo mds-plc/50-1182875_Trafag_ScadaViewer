@@ -44,6 +44,22 @@ Obě cesty sdílejí stejnou konfiguraci, NSSM instalaci a provozní postup.
 
 ---
 
+## Release 2.6.6 (2026-10-27) — Analyzing 2.6.3 + ScadaViewer 2.6.6: RT podle DIN 41636-1, OP = sepnutí NO
+
+Balíček `06_build/releases/deploy_v2.6.6/` — Analyzing 2.6.3, DatabaseGateway 2.6.2, ScadaViewer 2.6.6 (obsahuje 2.6.3–2.6.5).
+Formát CSV ani PLC DUT beze změny, ale **mění se význam hodnot**:
+
+| Změna | Dopad |
+|---|---|
+| RT_RealisingTravel = \|RP − FP\| (Leerlaufweg, DIN 41636-1), dřív \|TTP − RP\| | hodnoty cca 550–730 µm místo 850–1320 → **limity RT v recepturách PLC přenastavit** (zákazník 300–1400 µm) |
+| OP = první sepnutí NO (`op_definition = "no_close"`) | OP / PT / OT / MD o jednotky µm jinak (MD medián 25 → 30 µm) — limity zkontrolovat |
+| Statické odpory (NC bez 50 % PT, NO 100 µm) | R_NC_Static nižší (medián 19 → 9 mΩ) |
+| Deploy krok 5d | nastaví v Config.toml Analyzingu `[analysis.detection]` op_definition, static_resistance_margin_um = 100, static_nc_exclude_pt_fraction = 0.5 |
+| Rozpracovaná zakázka | nasazení **zastaví** — uzavřít na PLC (kusy by se třídily podle limitů staré definice) |
+| ScadaViewer | kóta RvT v diagramu FP → RP; starší kusy „RvT (TTP → RP)“ (rozpoznáno podle poloh kusu) |
+
+---
+
 ## Release 2.6.5 (2026-10-27) — ScadaViewer: Excel podle vzoru, bez odkazu na repozitář
 
 Balíček `06_build/releases/deploy_v2.6.5/` — Analyzing a DatabaseGateway 2.6.2, ScadaViewer 2.6.5 (obsahuje 2.6.3 a 2.6.4).

@@ -59,6 +59,16 @@ def test_op_found_at_relative_threshold_not_fixed_5v() -> None:
     assert kp["rp"]["idx"] == 141         # sestupně pod 10 V
 
 
+def test_op_no_close_definition_follows_table() -> None:
+    """Analyzing op_definition = "no_close" (od 27.10.2026): OP = sepnutí NO, za rozepnutím NC — bod v grafu
+    leží tam, kde OP hlásí tabulka; do 2 µm od rozepnutí NC (dosavadní definice) zůstane na hraně U_NC."""
+    sig = _signal(0.0, 20.0)
+    kp = find_key_points({**ANALYZED, "op_operatingposition": "66"}, sig)
+    assert kp["op"]["idx"] == 66 and kp["op"]["source"] == "electric"
+    kp = find_key_points({**ANALYZED, "op_operatingposition": "61"}, sig)
+    assert kp["op"]["idx"] == 60
+
+
 def test_no_switching_falls_back_to_5v() -> None:
     sig = _signal(0.2, 0.4)
     assert switching_threshold(sig["u_nc"], fp_idx=20) == 5.0

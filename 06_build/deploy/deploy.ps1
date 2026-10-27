@@ -18,7 +18,8 @@
 #   5. Rozbali novou verzi: exe, _internal\, Config.toml.example. Config.toml, users.toml, 03_output\,
 #      nssm.exe a .bat skripty zustanou beze zmeny.
 #   5b. NSSM (od 2.4.0): AppDirectory bez koncoveho "\", DatabaseGateway AppRotateOnline 1 + AppStopMethodConsole 15000.
-#   5d. (od 2.6.0) [measurement] max_cycles v Config.toml Analyzingu a Gateway >= $MinMaxCycles (buffer PLC), jinak nastavi.
+#   5d. (od 2.6.0) [measurement] max_cycles v Config.toml Analyzingu a Gateway >= $MinMaxCycles (buffer PLC), jinak nastavi;
+#       (od 2.6.6) [analysis.detection] Analyzingu podle $AnSettings (op_definition, staticke odpory).
 #   5c. Prejmenovani slozek s verzi v nazvu (od 2.5.0, vypnout -NoRename): rodicovska slozka aplikace ve tvaru
 #      v<verze>_<RRRR-MM-DD>-<nazev> (napr. Desktop\v2.1.1_2026-09-28-AdsAnalyzer\ads_analyzer) se prejmenuje na
 #      v<nova verze>_<datum z $AppDates>-<nazev>. Prepisou se vsechny odkazy na starou cestu: ImagePath sluzby (nssm.exe),
@@ -63,8 +64,13 @@
 #   jen dokud prihlaseni na PLC trva.
 # 2.6.5 (2026-10-27): jen ScadaViewer 2.6.5 - export XLSX podle vzoru Gateway (sample_production.xlsx), bez odkazu
 #   na repozitar. Format CSV ani PLC beze zmeny.
+# 2.6.6 (2026-10-27): Analyzing 2.6.3 + ScadaViewer 2.6.6 (Gateway 2.6.2). Analyzing: RT_RealisingTravel = |RP - FP|
+#   (Leerlaufweg, DIN 41636-1; driv |TTP - RP|, hodnoty cca 550-730 um misto 850-1320), OP = prvni sepnuti NO
+#   (op_definition "no_close"), staticke odpory (NC bez 50 % PT, NO 100 um). Format CSV a PLC DUT beze zmeny,
+#   ale LIMITY RT v recepturach PLC se musi prenastavit. Krok 5d nastavi [analysis.detection] v Config.toml.
+#   Rozpracovana zakazka nasazeni zastavi ($WipBlocksDeploy) - jeji kusy by mely RT / OP jinak nez limity zakazky.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.5', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.6', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -74,17 +80,18 @@ $DefaultDataRoot = Join-Path $env:SystemDrive 'Data'
 
 # Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
 # (stejna verze i datum) se tak neprejmenuje znovu
-$AppDates = @{ AdsAnalyzer = '2026-10-26'; DatabaseGateway = '2026-10-26'; ScadaViewer = '2026-10-27' }
+$AppDates = @{ AdsAnalyzer = '2026-10-27'; DatabaseGateway = '2026-10-26'; ScadaViewer = '2026-10-27' }
 # [measurement] max_cycles v Config.toml Analyzingu a Gateway musi byt >= velikost bufferu v PLC (cMEASURING_MAX_CYCLES);
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.2'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.5' }
-# Meni vydani datovou hlavicku CSV (sloupce [Data])? $true = rozpracovana zakazka (production\wip) nasazeni ZASTAVI
-# (Gateway by do WIP se starou hlavickou kusy nepridala). $false = jen upozorneni, zakazka po nasazeni pokracuje.
-# 2.6.3 / 2.6.4: format CSV beze zmeny -> $false.
-$WipBlocksDeploy = $false
-$PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji).'
+$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.6' }
+# Meni vydani datovou hlavicku CSV (sloupce [Data]) nebo vyznam hodnot? $true = rozpracovana zakazka (production\wip)
+# nasazeni ZASTAVI (Gateway by do WIP se starou hlavickou kusy nepridala / kusy by se tridily podle limitu stare
+# definice). $false = jen upozorneni, zakazka po nasazeni pokracuje.
+# 2.6.3-2.6.5: beze zmeny -> $false. 2.6.6: nova definice RT a OP (limity zakazky) -> $true.
+$WipBlocksDeploy = $true
+$PlcNote     = 'Bezi na PLC program od verze 2.6.0? AnalyzedParams 112 B (Electric.R_NC_Static + R_NO_Static, DF / FPR, Info.Calibration.PositionReference, limity DF / FPR), cMEASURING_MAX_CYCLES = 60000. Se starsim programem Analyzing hlasi E6 a DatabaseGateway kusy neulozi. Od 2.6.2: Gateway WarningCode 2 = test bez signalu, 3 = malo mista na disku (provoz neblokuji). 2.6.6 (Analyzing 2.6.3): RT_RealisingTravel = |RP - FP| (Leerlaufweg DIN 41636-1, cca 550-730 um misto 850-1320) a OP = prvni sepnuti NO - jsou LIMITY RT (a pripadne PT / OT / MD) v recepturach PLC prenastavene? Zakaznik: RT 300-1400 um.'
 
 $ErrorActionPreference = 'Stop'
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -600,6 +607,31 @@ foreach ($app in $Apps[0..1]) {
     [void]$CycleFix.Add($app)
 }
 
+# Nastaveni analyzy v Config.toml Analyzingu, ktera vydani vyzaduje (Config.toml na stroji se neprepisuje) - krok 5d.
+# 2.6.3: op_definition "no_close" (OP = prvni sepnuti NO, DIN 41636-1; v kodu vychozi "nc_open"),
+# static_resistance_margin_um 100 (stroj ma z 2.6.0 50 - prebil by novy default), static_nc_exclude_pt_fraction 0.5.
+$AnSettings = @(
+    @{ Section = 'analysis.detection'; Key = 'op_definition';                 Value = '"no_close"'; Want = 'no_close' },
+    @{ Section = 'analysis.detection'; Key = 'static_resistance_margin_um';   Value = '100.0';      Want = '100.0' },
+    @{ Section = 'analysis.detection'; Key = 'static_nc_exclude_pt_fraction'; Value = '0.5';        Want = '0.5' }
+)
+$AnFix = New-Object System.Collections.ArrayList
+$anCfgPath = Join-Path $Apps[0].Dir 'Config.toml'
+foreach ($s in $AnSettings) {
+    $cur = Get-TomlValue $anCfgPath $s.Section $s.Key
+    $same = ("$cur" -eq $s.Want)
+    if (-not $same) {
+        $a = 0.0; $b = 0.0
+        if ([double]::TryParse("$cur", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$a) -and
+            [double]::TryParse($s.Want, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$b)) {
+            $same = ($a -eq $b)
+        }
+    }
+    if ($same) { Log "Analyzing [$($s.Section)] $($s.Key) = $cur" 'Green'; continue }
+    Log "[UPRAVA] Analyzing Config.toml [$($s.Section)] $($s.Key) = '$cur' -> $($s.Value)" 'Yellow'
+    [void]$AnFix.Add($s)
+}
+
 # DatabaseGateway 2.4.0: s vyplnenym [server] host musi production_path / testing_path lezet pod \\host\share,
 # jinak sluzba nenastartuje (audit 2026-10-18 - upload pod jinym nazvem serveru by sel bez prihlaseni)
 $gwCfg  = Join-Path $Apps[1].Dir 'Config.toml'
@@ -632,7 +664,7 @@ if ($local) {
     if ($wip.Count -gt 0 -and $WipBlocksDeploy) {
         # Vydani meni datovou hlavicku CSV - Gateway do WIP se starou hlavickou kus neprida
         Log "[CHYBA] production\wip obsahuje $($wip.Count) soubor(u): $($wip.Name -join ', ')" 'Red'
-        Log '        Toto vydani meni hlavicku CSV - rozpracovanou zakazku nejdriv uzavrete na PLC (Op3)' 'Red'
+        Log '        Toto vydani meni hlavicku CSV / vyznam hodnot (2.6.6: RT, OP) - zakazku nejdriv uzavrete na PLC (Op3)' 'Red'
         Log '        nebo ve ScadaViewer (Databaze -> In progress -> Dokoncit zakazku). Potom spustte deploy.bat znovu.' 'Red'
         exit 1
     } elseif ($wip.Count -gt 0) {
@@ -806,6 +838,11 @@ foreach ($app in $CycleFix) {
     if (Set-TomlValue $cfg 'measurement' 'max_cycles' "$MinMaxCycles") { Log "  $($app.Service): max_cycles = $MinMaxCycles" 'Green' }
     else { Log "[VAROVANI] $($app.Service): sekce [measurement] v $cfg nenalezena - max_cycles nastavte rucne." 'Yellow' }
 }
+# 5d. nastaveni analyzy (Analyzing Config.toml, zalohovany v *.backup_$Stamp)
+foreach ($s in $AnFix) {
+    if (Set-TomlValue $anCfgPath $s.Section $s.Key $s.Value) { Log "  AdsAnalyzer: [$($s.Section)] $($s.Key) = $($s.Value)" 'Green' }
+    else { Log "[VAROVANI] AdsAnalyzer: sekce [$($s.Section)] v $anCfgPath nenalezena - $($s.Key) = $($s.Value) nastavte rucne." 'Yellow' }
+}
 
 # 5c. Prejmenovani / presun slozek + prepsani odkazu (sluzby jsou zastavene)
 if ($MoveTo -and $Renames.Count -gt 0 -and -not $rootExisted) { New-AppsRoot $MoveTo }
@@ -885,5 +922,7 @@ Log '  5. Kiosk: klepnuti do hledani zakazky ukaze klavesnici na obrazovce (Nast
 Log '  6. 2.6.2: ScadaViewer -> Nastaveni -> Uzivatele: zmenit vychozi heslo admin (pruh dole); prihlaseni heslem u stroje'
 Log '     konci po 15 min necinnosti; Info -> verze 2.6.2. Heslo k NAS zmenit (stare je v historii gitu Gateway).'
 Log '  7. 2.6.3/2.6.4: Databaze -> radek In progress -> tlacitko Dokoncit zakazku (admin u stroje nebo prihlaseni pres PLC),'
-Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. Info -> 2.6.5; XLSX zakazky = rozlozeni vzoru.'
-Log '  8. Zalohy *.backup_* po overeni smazat.'
+Log '     jen u zakazky, ktera na stroji skoncila a neuzavrela se. Po odhlaseni na PLC prava admina konci. XLSX zakazky = rozlozeni vzoru.'
+Log '  8. 2.6.6: novy kus - RT (RvT) cca 550-730 um (FP -> RP), v diagramu kusu kota RvT mezi FP a RP; starsi kusy'
+Log '     "RvT (TTP -> RP)". Log Analyzingu bez chyb Config (op_definition, static_*). Info -> ScadaViewer 2.6.6.'
+Log '  9. Zalohy *.backup_* po overeni smazat.'

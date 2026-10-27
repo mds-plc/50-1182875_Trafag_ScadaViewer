@@ -51,6 +51,8 @@ _SWITCH_THRESHOLD_RATIO = 0.5
 # Záložní pevný práh, když U_NC nemá rozsah (přepnutí nenastalo / chybí data)
 _SWITCH_THRESHOLD_V = 5.0
 _MIN_U_NC_RANGE_V   = 1.0
+# OP v tabulce dál než tolik od rozepnutí NC = Analyzing s op_definition "no_close" (OP = sepnutí NO) [µm]
+_OP_MATCH_UM = 2.0
 # Zoom okno kolem OP / RP: ±600 vzorků při 20 kHz = ±30 ms
 _ZOOM_HALF_SAMPLES = 600
 
@@ -432,7 +434,11 @@ def find_key_points(
     op_from = max(fp_idx or 1, 1)
     op_edge = _edge(op_from, ttp_idx + 1, rising=True)
     op_val  = _get_pos('operatingposition')
-    if op_edge is not None:
+    if op_edge is not None and op_val is not None and abs(to_x(op_val) - position[op_edge]) > _OP_MATCH_UM:
+        # Analyzing s op_definition = "no_close" (od 27.10.2026): OP = první sepnutí NO — leží za rozepnutím NC
+        # (medián 3 µm, plíživé kusy až ~75 µm). Bod do grafu tam, kde ho hlásí tabulka parametrů.
+        points['op'] = _point(_argmin_abs(position, to_x(op_val), op_edge, ttp_idx + 1), 'electric')
+    elif op_edge is not None:
         points['op'] = _point(op_edge, 'electric')
     elif op_val is not None:
         op_idx = _argmin_abs(position, to_x(op_val), op_from - 1, ttp_idx + 1) if ttp_idx > 0 else 0

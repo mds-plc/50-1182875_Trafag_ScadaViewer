@@ -196,7 +196,7 @@ export const PARAM_TOOLTIPS: Record<string, string> = {
   // souborů); vzorec se znaménkem v nápovědě PARAM_DESC
   pt_pretravel:                'Pre-travel [µm] (FP → OP)',
   ot_overtravel:               'Overtravel [µm] (OP → TTP)',
-  rt_realisingtravel:          'Releasing Travel [µm] (TTP → RP)',
+  rt_realisingtravel:          'Releasing Travel [µm] (FP → RP, Leerlaufweg; files before 27 Oct 2026: TTP → RP)',
   md_movementdifferential:     'Movement Differential [µm] (OP → RP)',
   tt_totaltravel:              'Total Travel [µm] (FP → TTP)',
   fp_freeposition:             'Free Position [µm]',
@@ -393,6 +393,29 @@ export function positionScaleOf(records: Record<string, unknown>[]): 'customer' 
   return null
 }
 
+/**
+ * Definice RT_RealisingTravel v záznamu. Od 27. 10. 2026 (Analyzing 2.6.3) = Releasing travel / Leerlaufweg
+ * podle DIN 41636-1: dráha FP → RP (RT = FP − RP = PT − MD), dřív dráha od konce zdvihu zpět k RP (TTP → RP,
+ * Rücklaufweg). Rozpozná se z vlastních poloh kusu — sloupec i datum souboru jsou stejné; která dráha hodnotu
+ * RT přesněji vysvětluje (na 0,1 µm), ta platí. Nelze určit (chybí polohy, neurčené RT) → nová definice.
+ */
+export type RtDefinition = 'fp_rp' | 'ttp_rp'
+
+export function rtDefinition(record: Record<string, unknown>): RtDefinition {
+  const num = (k: string): number | null => {
+    const v = record[k]
+    if (v == null || String(v).trim() === '') return null
+    const n = Number(v)
+    return isFinite(n) && n !== 0 ? n : null      // 0 = nestanoveno (W5 / W6)
+  }
+  const rt = num('rt_realisingtravel'), fp = num('fp_freeposition')
+  const rp = num('rp_realeasingposition'), ttp = num('ttp_totaltravelposition')
+  if (rt === null || rp === null) return 'fp_rp'
+  const dNew = fp !== null ? Math.abs(Math.abs(rt) - Math.abs(rp - fp)) : Infinity
+  const dOld = ttp !== null ? Math.abs(Math.abs(rt) - Math.abs(ttp - rp)) : Infinity
+  return dOld < dNew ? 'ttp_rp' : 'fp_rp'
+}
+
 /** Všechny měřené parametry v pořadí skupin (Forces, Positions, Travel, Times, Electric). */
 export const ALL_PARAM_KEYS: string[] = PARAM_GROUPS.flatMap(g => g.keys)
 
@@ -424,7 +447,7 @@ export const PARAM_DESC: Record<string, string> = {
   ot_overtravel:
     'Přezdvih [µm] — rezerva za bodem sepnutí (OT = OP − TTP). Chrání kontakt před přetížením.',
   rt_realisingtravel:
-    'Uvolňovací zdvih [µm] — dráha od konce zdvihu zpět do bodu uvolnění (RT = RP − TTP).',
+    'Uvolňovací zdvih (Leerlaufweg, DIN 41636-1) [µm] — dráha od klidové polohy FP do bodu uvolnění RP (RT = FP − RP = PT − MD); nezávisí na hloubce stlačení. Soubory do 27. 10. 2026: dráha od konce zdvihu zpět do RP (TTP → RP) — diagram kusu vyznačí, která dráha platí.',
   md_movementdifferential:
     'Diferenciál pohybu [µm] — vzdálenost mezi OP a RP (MD = RP − OP, polohová hystereze). Větší MD = stabilnější přepínání. Záporné MD = záporná hystereze (RP leží za OP) — spínač neodpovídá běžnému chování.',
   tt_totaltravel:
@@ -515,7 +538,7 @@ export const PARAM_DESC_EN: Record<string, string> = {
   ot_overtravel:
     'Overtravel [µm] — reserve beyond the operating point (OT = OP − TTP). Protects the contact from overload.',
   rt_realisingtravel:
-    'Releasing travel [µm] — distance from the end of travel back to the releasing point (RT = RP − TTP).',
+    'Releasing travel (Leerlaufweg, DIN 41636-1) [µm] — distance from the free position FP to the releasing point RP (RT = FP − RP = PT − MD); independent of the actuation depth. Files before 27 Oct 2026: distance from the end of travel back to RP (TTP → RP) — the piece diagram shows which one applies.',
   md_movementdifferential:
     'Movement differential [µm] — distance between OP and RP (MD = RP − OP, position hysteresis). Larger MD = more stable switching. Negative MD = negative hysteresis (RP lies beyond OP) — abnormal switch behaviour.',
   tt_totaltravel:
