@@ -5,6 +5,27 @@
 
 ---
 
+## [2026-10-27] Hromadné stažení podle filtru / výběru (nevydáno)
+
+Přání uživatele: stáhnout najednou soubory v rozsahu časového filtru. Rozhodnutí: CSV / XLSX volbou, u stroje jednotlivě
+do podsložky na flashce, z kanceláře ZIP, strop 500, i „Stáhnout vybrané". Detail: `architecture.md` fáze 57.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | ⚠️ MEDIUM | Archiv 100 000 souborů: nad limit se nic nestatuje ani nečte (jen počet) | `FileService.bulk_items` | ✅ Hotovo |
+| 2 | ⚠️ MEDIUM | ZIP nesmí ležet celý v paměti (500 × desítky MB): proudově přes frontu se zpětným tlakem, data descriptor, ZIP64; odpojený klient = konec | `bulk_export.start_zip`, `api/bulk.py` | ✅ Hotovo |
+| 3 | ⚠️ MEDIUM | Stažení prohlížečem bez hlavičky Authorization: jednorázový odkaz (120 s, max 50), vázaný na relaci — po odhlášení / vypršení neplatí | `api/bulk.py` | ✅ Hotovo |
+| 4 | ⚠️ MEDIUM | Dávka na flashku ve vlastním vlákně (NAS / flashka neblokují pooly ani event loop); souběžně jen jedna (409); odebrání flashky během dávky 409; při vypnutí služby se úlohy zruší | `UsbBulkJob`, `api/usb.py`, `app.py` | ✅ Hotovo |
+| 5 | ℹ️ INFO | Rozpracovaná zakázka do dávky nikdy (ještě se zapisuje); výběr posílá konkrétní kopii (sync) jako batch-delete | `bulk_items` | ✅ Hotovo |
+| 6 | 🔵 LOW | Velikost XLSX v náhledu jen odhad (velikost CSV); místo na flashce se u XLSX kontroluje až soubor po souboru (dávka skončí `no_space`) | `api/usb.py` | ⬜ Přijato |
+| 7 | 🔵 LOW | Průběh se ptá á 1,5 s — spolu s ukazatelem USB a přehledem pod rate limitem 120 / min | `BulkExportModal.tsx` | ✅ Hotovo |
+| 8 | ℹ️ INFO | Ověřit na stroji: dávka ze Vzdálené (NAS) se skutečnou flashkou, rychlost zápisu stovek souborů | PC u stroje | ⬜ Ověřit |
+
+Testy: backend 529 (`test_bulk.py` 18), frontend 267 (`BulkExportModal.test.tsx` 7 + FileTable / Database). Vizuálně
+ověřeno (Playwright: lišta filtru, dialog, souhrn, výběr, telefon).
+
+---
+
 ## [2026-10-27] Vydání ScadaViewer 2.6.9
 
 Hlavička Databáze: po přidání ukazatele USB se ovládací prvky zalomily pod nadpis — `.db-controls` se nyní zalomí vpravo

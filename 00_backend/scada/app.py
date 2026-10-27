@@ -130,7 +130,8 @@ def _build_csp(frontend_dist: Path) -> str:
 from scada import __version__
 from scada.logging_setup import request_id_var
 from scada.config import AppConfig, load_users_checked
-from scada.api import plc_ws, files, data, status, health, auth, config_api, users_api, signal, storage, system_time, usb
+from scada.api import (plc_ws, files, data, status, health, auth, config_api, users_api, signal, storage, system_time,
+                       usb, bulk)
 from scada.api.auth import find_default_password_users
 from scada.api.dependencies import is_local_client
 from scada.services.ads_monitor import AdsMonitor
@@ -317,6 +318,8 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
         app.state.users_path   = users_path    # pro zápis users.toml
         app.state.users, app.state.users_read_error = load_users_checked(users_path, cfg.auth)
         app.state.sessions: dict[str, dict] = {}   # token → {username, role, display_name}
+        app.state.bulk_tickets: dict[str, dict] = {}   # hromadné stažení ZIP — jednorázové odkazy (api/bulk.py)
+        app.state.bulk_jobs: dict[str, object] = {}    # hromadné uložení na flashku — úlohy (api/usb.py)
         # Účty s výchozím heslem „admin" (Config.toml.example) — /api/health + odmítnutí vzdáleného přihlášení (A26-18)
         app.state.default_password_users = await asyncio.to_thread(find_default_password_users, app.state.users)
         if app.state.default_password_users:
@@ -328,6 +331,8 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
             await watcher.start()
             yield
         finally:
+            for job in list(app.state.bulk_jobs.values()):    # běžící hromadné uložení — dopsat soubor a skončit
+                job.cancel()
             csv_reader.close()
             await watcher.stop()
             await monitor.stop()
@@ -373,6 +378,7 @@ def create_app(cfg: AppConfig, rate_limit: int = 120, config_path: Path | None =
     app.include_router(storage.router,    prefix="/api", tags=["storage"])
     app.include_router(system_time.router, prefix="/api", tags=["system"])
     app.include_router(usb.router,        prefix="/api", tags=["usb"])
+    app.include_router(bulk.router,       prefix="/api", tags=["bulk"])
 
     # React frontend — automaticky aktivní pokud existuje build (Docker / produkce).
     # V dev módu (npm run dev na :5173) adresář dist/ neexistuje → přeskočeno.

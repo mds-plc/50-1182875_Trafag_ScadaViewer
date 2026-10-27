@@ -18,7 +18,8 @@ Rozhraní:
   supported() -> bool
   list_drives() -> list[UsbDrive]
   drive_root(letter) -> Path                 — kořen svazku (testy ho nahrazují dočasnou složkou)
-  write_file(letter, name, source) -> Path   — source = bytes nebo cesta k souboru (proudové kopírování)
+  write_file(letter, name, source, subdir=None) -> Path — source = bytes nebo cesta k souboru (proudové kopírování)
+  make_folder(letter, name) -> str           — podsložka hromadného uložení (nepoužije existující → „ (2)“)
   eject(letter) -> None
 
 Napojení:
@@ -202,22 +203,48 @@ def _unique_target(folder: Path, name: str) -> Path:
     return target
 
 
-def write_file(letter: str, name: str, source: bytes | Path) -> Path:
-    """Uloží soubor na flashku do složky EXPORT_DIR; vrátí cílovou cestu.
+def _check_name(name: str, what: str = 'souboru') -> None:
+    if _BAD_NAME.search(name) or name in ('', '.', '..'):
+        raise UsbError(f'Neplatný název {what}: {name!r}')
+
+
+def make_folder(letter: str, name: str) -> str:
+    """Vytvoří podsložku dávky v EXPORT_DIR (hromadné uložení) a vrátí její skutečný název.
+
+    Existující složka se nepoužije znovu — dostane „ (2)“, „ (3)“ … (dvě dávky se stejným filtrem se nesmíchají).
+    """
+    letter = _valid_letter(letter)
+    _check_name(name, 'složky')
+    base = drive_root(letter) / EXPORT_DIR
+    base.mkdir(exist_ok=True)
+    folder, n = base / name, 2
+    while folder.exists():
+        folder = base / f'{name} ({n})'
+        n += 1
+    folder.mkdir()
+    return folder.name
+
+
+def write_file(letter: str, name: str, source: bytes | Path, subdir: str | None = None) -> Path:
+    """Uloží soubor na flashku do složky EXPORT_DIR (případně do její podsložky subdir); vrátí cílovou cestu.
 
     Zápis přes dočasný soubor + fsync + přejmenování — vytažená flashka nenechá napůl zapsaný soubor
     pod finálním názvem. Existující soubor se nepřepíše (přidá se „ (2)“, „ (3)“ … před poslední příponu:
     „x.tar.gz“ → „x.tar (2).gz“). Rezerva volného místa 1 MiB nad velikost souboru.
     """
     letter = _valid_letter(letter)
-    if _BAD_NAME.search(name) or name in ('', '.', '..'):
-        raise UsbError(f'Neplatný název souboru: {name!r}')
+    _check_name(name)
+    if subdir is not None:
+        _check_name(subdir, 'složky')
     root = drive_root(letter)
     size = len(source) if isinstance(source, bytes) else os.path.getsize(source)
     if shutil.disk_usage(root).free < size + 1024 * 1024:
         raise UsbSpaceError(f'Na flashce {letter}: není dost místa ({size / 1e6:.1f} MB)')
     folder = root / EXPORT_DIR
     folder.mkdir(exist_ok=True)
+    if subdir is not None:
+        folder = folder / subdir
+        folder.mkdir(exist_ok=True)
     target = _unique_target(folder, name)
     # vlastní dočasný název — dva souběžné exporty téhož souboru nesmí psát do stejného .part
     tmp = target.with_name(f'{target.name}.{secrets.token_hex(4)}.part')

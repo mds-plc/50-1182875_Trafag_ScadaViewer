@@ -55,6 +55,7 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 | Mazání rozpracované zakázky (In progress) — jen jednotlivě | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Dokončit rozpracovanou zakázku (In progress) | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Flashka: uložení, bezpečné odebrání | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Hromadné stažení (Stáhnout vše / vybrané, max 500) | ❌ | ❌ | ✅ (na flashku) | ✅ (na flashku) | ✅ (ZIP) |
 | „Vyčistit synchronizované" | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Nastavení cest a limitu úložiště | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Nastavení času PC (Nastavení → Čas / NTP; přehled vidí všichni) | ❌ | ❌ | ✅ | ✅ | ❌ |
@@ -83,6 +84,7 @@ Základ je [checklist v deployment.md](deployment.md#ověřovací-checklist-po-n
 - [ ] Detail záznamu / Testing → Analyzed: tlačítko grafu vedle „?" u každého analyzovaného parametru otevře diagram se zvýrazněným parametrem a hodnotou; Esc / × zavře; u vstupů testu tlačítko není
 - [ ] XLSX (z kanceláře): dialog „Uložit jako" hned po kliknutí, soubor `…_DONE.xlsx`, v Excelu čísla jako čísla (SUM funguje), čas jako datum; blokový PROD_ podle vzoru Gateway `04_docs/sample_production.xlsx` — jeden list `PROD_DONE`, nahoře podbarvené bloky Metadata / TestingParameters / SortingCategories / SortingLimits, pod nimi Data, formáty čísel podle jednotek, svislé čáry mezi skupinami parametrů
 - [ ] Flashka (admin u stroje): po zasunutí se do ~3 s v hlavičce Databáze (vedle lokálního úložiště a NAS) objeví ukazatel USB se zaplněním; CSV i XLSX z Databáze, detailu zakázky i detailu testu se uloží do `E:\Trafag_ScadaViewer`; druhé uložení téhož souboru vytvoří „… (2)" (nic se nepřepíše); bezpečné odebrání → hláška „lze vyjmout"; odebrání s otevřeným souborem na flashce (Excel) → hláška (409), flashka zůstane; bez flashky jsou tlačítka tlumená, klik = varování a ukazatel USB zabliká; plná flashka → hláška o nedostatku místa (507); operátor / technik u stroje neuloží (tlačítka tlumená s vysvětlením)
+- [ ] Hromadné stažení: „Stáhnout vše (N)" v liště filtru — N = počet souborů ve filtru; dialog ukáže počet a velikost, rozsah (období / hledání / vybrané); u stroje (admin, flashka) CSV i XLSX → nová složka `E:\Trafag_ScadaViewer\production_<od>_<do>` (stejný filtr znovu = „ (2)"), průběh, zrušení uprostřed (uložené soubory zůstanou), souhrn + „Bezpečně odebrat"; během ukládání odebrání flashky → hláška; z kanceláře jeden ZIP (originální CSV beze změny); zaškrtnout 2 řádky → „Stáhnout vybrané" jen ty dva (i z kanceláře, kde mazání není); filtr s > 500 soubory → hláška „zužte filtr"; rozpracovaná zakázka v dávce není; zkusit dávku z NAS (Vzdálená)
 - [ ] Dokončení rozpracované zakázky (na testovací zakázce): po simulovaném výpadku proudu (zakázka zůstala In progress) admin u stroje → „Dokončit zakázku" → soubor přejde do Local, Gateway ho do ~1,5 min nahraje na NAS (Synced); zakázku, kterou PLC hlásí jako běžící, dokončit nejde (hláška); s odpojeným ADS dialog vyžaduje zaškrtnutí „Rozumím, zakázka na stroji neběží"; další kus téže zakázky PLC odmítne (Rejected)
 - [ ] PLC přihlášení: přihlášení na PLC → ScadaViewer u stroje přihlásí jako admin; odhlášení na PLC (nebo výpadek ADS) → do pár sekund odhlášení i ve ScadaViewer; přihlášení heslem u stroje skončí po 15 min nečinnosti
 - [ ] RT / OP (2.6.6, s Analyzing 2.6.3): nový kus má RvT ~550–730 µm a v diagramu síla–dráha kótu FP → RP; starší kus ukazuje „RvT (TTP → RP)"; OP odpovídá prvnímu sepnutí NO
@@ -121,6 +123,8 @@ U každého scénáře sleduj: aplikace nespadne, obsluha pozná, co se děje, a
 | 3.17 | Smazání rozpracované zakázky během výroby (na kopii / testovací zakázce) | admin u stroje smaže zakázku In progress (dialog: zaškrtnout „Rozumím"), PLC dál posílá kusy, pak zakázku uzavře | další kus i uzavření = Rejected (PLC hlásí), ve `wip/` ani `done_local/` **nevznikne soubor bez hlavičky**; zakázku se stejným číslem jde hned založit znovu; log ScadaViewer i Gateway obsahuje varování. Vyžaduje ScadaViewer + DatabaseGateway ze stejného vydání |
 | 3.18 | Výpadek proudu během zakázky + ruční dokončení | vypnout PC u stroje během zakázky (na testovací zakázce), po startu zakázka visí In progress; admin ji dokončí | soubor v `done_local/`, Gateway nahraje na NAS (~1,5 min); další kus téže zakázky = Rejected; log ScadaViewer obsahuje varování s uživatelem |
 | 3.19 | Vytažení flashky bez bezpečného odebrání | během ukládání XLSX na flashku ji vytáhnout | hláška o chybě uložení, aplikace běží dál; ukazatel USB zmizí do ~3 s, po zasunutí se vrátí |
+| 3.20 | Vytažení flashky během hromadného uložení | spustit „Stáhnout vše" (desítky souborů) a flashku vytáhnout | dávka skončí „Flashka byla vytažena — uloženo X z Y", na flashce žádný `.part` pod finálním názvem; další dávka po zasunutí jde spustit |
+| 3.21 | Zavření prohlížeče během ZIPu (kancelář) | z kanceláře stahovat velký ZIP a zavřít záložku | server skládání ZIPu ukončí (log), aplikace reaguje dál; odkaz nejde použít znovu |
 
 ---
 

@@ -352,7 +352,9 @@ interface Props {
   onSelectAll:      () => void
   onClearSelect:    () => void
   onBatchDelete:    () => void
-  /** Vzdálený přístup — bez výběru a mazání (jen prohlížení) */
+  /** Hromadné stažení zaškrtnutých souborů (BulkExportModal) — výběr je pak i vzdáleně; bez něj jen u mazání */
+  onBatchDownload?: () => void
+  /** Vzdálený přístup — bez mazání (jen prohlížení; výběr jen pro stažení) */
   readOnly?:        boolean
   /** Admin+ smí smazat rozpracovanou zakázku (jednotlivě, dialog s potvrzením rizika; ne hromadně) */
   canDeleteWip?:    boolean
@@ -369,11 +371,13 @@ export default function FileTable({
   page, pages, total, totalRecords,
   expandedId, onExpandToggle, onDeleteRequest, onDownload, onDownloadXlsx, onPageChange,
   sortBy, sortDir, onSort,
-  selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, readOnly = false,
+  selectedIds, onToggleSelect, onSelectAll, onClearSelect, onBatchDelete, onBatchDownload, readOnly = false,
   canDeleteWip = false, onFinishRequest, downloadDisabledReason = null,
 }: Props) {
   const { t } = useLang()
   const navigate = useNavigate()
+  // Zaškrtávat jde, když je co s výběrem dělat: smazat (u stroje) nebo stáhnout (i vzdáleně)
+  const selectable = !readOnly || onBatchDownload !== undefined
 
   // colspan: checkbox + # + created + [order] + switch + [records] + [sync] + actions
   const showRecords = dataType === 'production'
@@ -407,7 +411,7 @@ export default function FileTable({
           }
         >
           <td className="db-td db-td--check" onClick={e => e.stopPropagation()}>
-            {!isWip && !readOnly && (
+            {!isWip && selectable && (
               <input
                 type="checkbox"
                 checked={selectedIds.has(file.file_id)}
@@ -545,14 +549,21 @@ export default function FileTable({
       {(files.length > 0 || (!loading && !error)) && (
         <>
           {/* Batch toolbar — viditelný jen pokud je něco vybráno */}
-          {selectedIds.size > 0 && !readOnly && (
+          {selectedIds.size > 0 && selectable && (
             <div className="db-batch-toolbar">
               <span className="db-batch-toolbar__count">
                 {t.db.selectedCount}: <strong>{selectedIds.size}</strong>
               </span>
-              <button className="btn btn--danger btn--sm" onClick={onBatchDelete}>
-                {t.db.deleteSelected}
-              </button>
+              {onBatchDownload && (
+                <button className="btn btn--primary btn--sm" onClick={onBatchDownload}>
+                  <Download size={14} /> {t.bulk.downloadSelected}
+                </button>
+              )}
+              {!readOnly && (
+                <button className="btn btn--danger btn--sm" onClick={onBatchDelete}>
+                  {t.db.deleteSelected}
+                </button>
+              )}
               <button className="btn btn--secondary btn--sm" onClick={onClearSelect}>
                 {t.db.clearSelection}
               </button>
@@ -563,7 +574,7 @@ export default function FileTable({
             <thead>
               <tr>
                 <th className="db-th db-td--check" onClick={e => e.stopPropagation()}>
-                  {!readOnly && <input
+                  {selectable && <input
                     type="checkbox"
                     checked={files.length > 0 && files.every(f => selectedIds.has(f.file_id))}
                     onChange={() => files.every(f => selectedIds.has(f.file_id)) ? onClearSelect() : onSelectAll()}

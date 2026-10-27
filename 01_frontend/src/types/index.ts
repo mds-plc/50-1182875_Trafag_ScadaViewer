@@ -119,6 +119,40 @@ export interface CleanupResult {
   failed:      number
 }
 
+/** Co hromadně stáhnout — files = vybrané soubory, jinak filtr přehledu (POST /api/bulk/*, /api/usb/bulk) */
+export interface BulkRequest {
+  location: 'local' | 'remote'
+  type:     'production' | 'testing'
+  from?:    string | null
+  to?:      string | null
+  q?:       string | null
+  files?:   { file_id: string; sync: 'done_local' | 'done_remote' | null }[]
+}
+
+/** Náhled hromadného stažení — POST /api/bulk/plan */
+export interface BulkPlan {
+  count:      number
+  bytes:      number
+  limit:      number
+  over_limit: boolean
+}
+
+/** Stav hromadného uložení na flashku — /api/usb/bulk */
+export interface BulkJobStatus {
+  job_id:        string
+  state:         'running' | 'done' | 'cancelled' | 'failed'
+  total:         number
+  done:          number
+  failed:        number
+  errors:        string[]
+  current:       string | null
+  drive:         string
+  folder:        string
+  format:        string
+  error:         string | null   // no_space | drive_gone | text chyby
+  bytes_written: number
+}
+
 /** Časový průběh zakázky — GET /api/timeline (sloupcový formát, seřazeno podle času) */
 export interface OrderTimeline {
   timestamps: string[]            // ISO 8601

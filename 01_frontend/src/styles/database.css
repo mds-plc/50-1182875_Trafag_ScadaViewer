@@ -828,6 +828,168 @@
   justify-content: flex-end;
 }
 
+/* HROMADNÉ STAŽENÍ — tlačítko v liště filtru + dialog (BulkExportModal) */
+
+.db-bulk-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bulk-modal {
+  width: min(480px, calc(100vw - 2 * var(--space-4)));
+  max-width: none;
+}
+
+.bulk-modal__scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.bulk-modal__chip {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.bulk-modal__muted {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bulk-modal__stats {
+  display: flex;
+  gap: var(--space-8);
+  margin: 0;
+}
+
+.bulk-modal__stats dt {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bulk-modal__stats dd {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.bulk-modal__stats small {
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  color: var(--color-text-muted);
+}
+
+.bulk-modal__format {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.bulk-modal__format legend {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Volba formátu — velké dotykové cíle (kiosk) */
+.bulk-modal__option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.bulk-modal__option--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+  font-weight: 600;
+}
+
+.bulk-modal__option input { width: 18px; height: 18px; }
+
+.bulk-modal__format:disabled .bulk-modal__option { opacity: 0.55; cursor: default; }
+
+.bulk-modal__target {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.bulk-modal__target svg { flex-shrink: 0; }
+
+.bulk-modal__status {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.bulk-modal__status--ok {
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--color-success);
+  border-radius: var(--radius-sm);
+  background: var(--color-success-muted);
+}
+
+.bulk-modal__status--warn {
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-muted);
+}
+
+.bulk-modal__progress {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.bulk-modal__progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width var(--transition-base, 0.2s) ease;
+}
+
+.bulk-modal__errors {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.bulk-modal .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* ORDER DETAIL — přehled skupin + počty */
 
 .db-order-stats {

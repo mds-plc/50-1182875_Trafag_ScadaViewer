@@ -420,6 +420,46 @@ export interface Translations {
     usage:       string
     free:        string
   }
+  /** Hromadné stažení (filtr přehledu / výběr) — BulkExportModal; {x} = zástupné hodnoty */
+  bulk: {
+    downloadAll:      string
+    downloadSelected: string
+    title:            string
+    scopeSelection:   string
+    scopeSearch:      string   // {q}
+    scopeRange:       string   // {from} {to}
+    scopeAll:         string
+    planLoading:      string
+    planError:        string
+    count:            string
+    size:             string
+    sizeXlsxNote:     string
+    overLimit:        string   // {count} {limit}
+    empty:            string
+    format:           string
+    formatCsv:        string
+    formatXlsx:       string
+    targetUsb:        string   // {drive}
+    targetZip:        string
+    startUsb:         string
+    startZip:         string
+    zipStarted:       string   // {count}
+    zipError:         string
+    running:          string
+    cancel:           string
+    cancelling:       string
+    doneTitle:        string   // {done} {total}
+    cancelledTitle:   string
+    noSpaceTitle:     string
+    driveGoneTitle:   string
+    failedTitle:      string
+    folder:           string
+    errors:           string
+    busy:             string
+    noSpace:          string
+    startError:       string
+    close:            string
+  }
   storage: {
     title:          string
     usage:          string   // „{used} z {limit}"

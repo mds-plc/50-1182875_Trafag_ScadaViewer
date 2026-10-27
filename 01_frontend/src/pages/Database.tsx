@@ -4,9 +4,10 @@
  *   Veškerá logika (state, data fetching, auto-refresh, klávesové zkratky)
  *   je v hooku useDatabaseState. Tabulka v FileTable, dialog smazání v DeleteModal.
  *   Lišta nad tabulkou: hledání zakázky (jen Production; během hledání se datumový filtr
- *   neuplatní — architecture.md fáze 47) + datumový filtr.
+ *   neuplatní — architecture.md fáze 47) + datumový filtr + Stáhnout vše (hromadné stažení podle filtru,
+ *   BulkExportModal; zaškrtnuté soubory = Stáhnout vybrané v liště výběru).
  */
-import { HardDrive, Server, RefreshCw, WifiOff, X, Search } from 'lucide-react'
+import { HardDrive, Server, RefreshCw, WifiOff, X, Search, Download } from 'lucide-react'
 import { useLang } from '../context/LangContext'
 import { useDatabaseState } from '../hooks/useDatabaseState'
 import FileTable  from '../components/FileTable'
@@ -17,6 +18,7 @@ import PageHelp from '../components/PageHelp'
 import StorageBar  from '../components/StorageBar'
 import NasStorageBar from '../components/NasStorageBar'
 import UsbStorageBar from '../components/UsbStorageBar'
+import BulkExportModal from '../components/BulkExportModal'
 
 /**
  * Stránka prohlížeče CSV databáze (/database) — tenký presentační container.
@@ -40,6 +42,7 @@ export default function Database() {
     deleteFile, downloadCsv, downloadXlsx, downloadDisabledReason,
     finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
+    bulkRequest, openBulk, closeBulk,
   } = useDatabaseState()
   const { adsConnected } = usePlcConnection()
   const selectedUnsynced = files.filter(f => selectedIds.has(f.file_id) && f.sync_status === 'done_local').length
@@ -173,6 +176,15 @@ export default function Database() {
             )}
           </div>
           {searchAllDates && <span className="db-search__note">{t.db.searchAllDates}</span>}
+          {/* Hromadné stažení všeho, co odpovídá filtru (záložka, datum, hledání) — nejvýš 500 souborů */}
+          <button
+            className="btn btn--secondary btn--sm db-bulk-btn"
+            onClick={() => openBulk(false)}
+            disabled={total === 0 || (location === 'remote' && remoteAvailable === false)}
+            title={t.bulk.title}
+          >
+            <Download size={14} /> {t.bulk.downloadAll}{total > 0 ? ` (${total})` : ''}
+          </button>
         </div>
 
         <FileTable
@@ -206,6 +218,7 @@ export default function Database() {
           onSelectAll={selectAll}
           onClearSelect={clearSelect}
           onBatchDelete={() => setBatchConfirm(true)}
+          onBatchDownload={() => openBulk(true)}
           readOnly={readOnly}
           canDeleteWip={canDeleteUnsynced}
           onFinishRequest={setFinishTarget}
@@ -231,6 +244,9 @@ export default function Database() {
           onConfirm={confirmed => { void finishWip(finishTarget, confirmed) }}
         />
       )}
+
+      {/* Hromadné stažení — filtr přehledu nebo vybrané soubory */}
+      {bulkRequest && <BulkExportModal request={bulkRequest} onClose={closeBulk} />}
 
       {/* Potvrzovací dialog hromadného smazání */}
       {batchConfirm && (

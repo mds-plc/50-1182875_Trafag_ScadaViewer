@@ -19,6 +19,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { LangProvider } from '../context/LangContext'
+import type { BulkRequest } from '../types'
 
 // -----------------------------------------------------------------------
 // Mocks
@@ -34,6 +35,7 @@ const mockSetDeleteTarget = vi.fn()
 const mockDeleteFile      = vi.fn()
 const mockDownloadCsv     = vi.fn()
 const mockSetSearchInput  = vi.fn()
+const mockOpenBulk        = vi.fn()
 
 /** Výchozí return hodnota useDatabaseState. */
 const defaultState = {
@@ -87,7 +89,14 @@ const defaultState = {
   setFinishTarget: vi.fn(),
   finishWip:      vi.fn(),
   downloadDisabledReason: null as string | null,
+  bulkRequest:    null as BulkRequest | null,
+  openBulk:       mockOpenBulk,
+  closeBulk:      vi.fn(),
 }
+
+vi.mock('../components/BulkExportModal', () => ({
+  default: () => <div data-testid="bulk-modal" />,
+}))
 
 vi.mock('../context/PlcContext', () => ({
   usePlcConnection: () => ({ connected: true, adsConnected: true, plcLoggedIn: false }),
@@ -235,5 +244,24 @@ describe('Database page', () => {
     expect(dates).toHaveLength(2)
     expect(dates.every(d => (d as HTMLInputElement).disabled)).toBe(true)
     expect(screen.getByText(/ve všech datech|all dates/i)).toBeInTheDocument()
+  })
+
+  it('Download all shows the filter count, opens bulk download for the filter; disabled when empty', () => {
+    const { unmount } = renderDatabase({ total: 0 })
+    expect(screen.getByRole('button', { name: /download all/i })).toBeDisabled()
+    unmount()
+    renderDatabase({ total: 37 })
+    const btn = screen.getByRole('button', { name: /download all \(37\)/i })
+    fireEvent.click(btn)
+    expect(mockOpenBulk).toHaveBeenCalledWith(false)
+    expect(screen.queryByTestId('bulk-modal')).toBeNull()
+  })
+
+  it('Download all disabled on Remote while NAS is unavailable; modal rendered for bulkRequest', () => {
+    const { unmount } = renderDatabase({ total: 5, location: 'remote', remoteAvailable: false })
+    expect(screen.getByRole('button', { name: /download all/i })).toBeDisabled()
+    unmount()
+    renderDatabase({ total: 5, bulkRequest: { location: 'local', type: 'production' } })
+    expect(screen.getByTestId('bulk-modal')).toBeInTheDocument()
   })
 })

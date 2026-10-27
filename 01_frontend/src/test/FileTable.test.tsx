@@ -471,4 +471,31 @@ describe('FileTable', () => {
     expect(screen.queryByTitle('Delete')).toBeNull()
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
   })
+
+  it('readOnly + hromadné stažení: výběr jde, lišta výběru má jen Download selected (bez mazání)', () => {
+    const file = makeFile()
+    const onBatchDownload = vi.fn()
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[file]} total={1} readOnly onBatchDownload={onBatchDownload}
+                   selectedIds={new Set([file.file_id])} />
+      </Wrapper>
+    )
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Delete selected')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /download selected/i }))
+    expect(onBatchDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('u stroje: lišta výběru má Download selected i Delete selected', () => {
+    const file = makeFile()
+    render(
+      <Wrapper>
+        <FileTable {...DEFAULT_PROPS} files={[file]} total={1} onBatchDownload={vi.fn()}
+                   selectedIds={new Set([file.file_id])} />
+      </Wrapper>
+    )
+    expect(screen.getByRole('button', { name: /download selected/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /delete selected/i })).toBeInTheDocument()
+  })
 })

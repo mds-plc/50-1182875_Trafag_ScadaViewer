@@ -145,6 +145,10 @@ result = await asyncio.wait_for(
 - Výpis NAS složky `_REMOTE_LISTING_TTL` (15 s), během skenování poslední známý stav.
 - `_OrderIndex` — zakázka v paměti (LRU 3 soubory / 256 MB); záznamy číst přes `read_records()` /
   `read_table()`, nový filtr = předpočítaný sloupec v `_build_index()`.
+- **Hromadné stažení** (`api/bulk.py`, `services/bulk_export.py`): rozsah VŽDY přes `FileService.bulk_items` (stejný filtr
+  jako `/api/files`, strop `BULK_LIMIT` 500 — nad něj nic nestatovat), ZIP jen proudově (`start_zip`, fronta se zpětným
+  tlakem — nikdy celý v paměti), do prohlížeče přes jednorázový ticket; dávka na flashku = `UsbBulkJob` ve vlastním vlákně
+  (ne `run_io` — dlouhá úloha by obsadila NAS pool), jedna najednou.
 - XLSX celé zakázky jen na serveru (`services/xlsx_export.build_xlsx`; blokový PROD_ = `build_blocks_xlsx` z
   `csv_repository.read_blocks_export` podle vzoru Gateway `04_docs/sample_production.xlsx` — změna vzoru v Gateway =
   upravit i tady); `per_page=0` má strop 20 000.

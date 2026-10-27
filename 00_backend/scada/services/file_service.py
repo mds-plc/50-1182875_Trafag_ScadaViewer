@@ -26,7 +26,7 @@ from datetime import datetime as _dt
 from pathlib import Path
 from typing import Any
 
-from scada.services.protocols import PagedResult
+from scada.services.protocols import BULK_LIMIT, BulkItem, PagedResult
 from scada.services.xlsx_export import build_blocks_xlsx, build_xlsx
 from scada.services.repositories.csv_repository import CsvRepository
 
@@ -265,6 +265,68 @@ class FileService:
     def close(self) -> None:
         """Ukončení aplikace — zastaví dopočet na pozadí."""
         self._repo.close()
+
+    # ------------------------------------------------------------------
+    # Hromadné stažení (filtr přehledu / výběr) — services/bulk_export.py
+    # ------------------------------------------------------------------
+
+    def bulk_items(
+        self,
+        location:  str = 'local',
+        file_type: str = 'production',
+        from_date: str | None = None,
+        to_date:   str | None = None,
+        query:     str | None = None,
+        selection: list[tuple[str, str | None]] | None = None,
+        limit:     int = BULK_LIMIT,
+    ) -> tuple[list[BulkItem], int]:
+        """Soubory pro hromadné stažení a jejich počet.
+
+        selection = None → všechny zakázky odpovídající filtru přehledu (stejná pravidla jako /api/files: záložka,
+        datum, hledání; bez stránkování). Jinak vybrané soubory [(file_id, sync)] — sync = kopie done_local /
+        done_remote (řádek v UI), None = první nalezená. Rozpracovaná zakázka (wip) nikdy — ještě se zapisuje.
+        Stejný soubor jen jednou. Počet nad limit → ([], počet): nic se nestatuje ani nečte (archiv 100 000 souborů).
+        Soubor, který mezitím zmizel (sync na NAS, smazání), se vynechá. Velikost = velikost CSV (u XLSX odhad).
+        """
+        if not self._repo.validate_params(None, location, file_type):
+            return [], 0
+        candidates: list[tuple[str, str | None]] = []
+        seen: set[str] = set()
+        if selection is None:
+            source = [(f['file_id'], None) for f in
+                      self.list_files(location, file_type, from_date, to_date, 'created_at', 'asc', query)]
+        else:
+            source = list(selection)
+        for file_id, sync in source:
+            if file_id in seen or file_id.endswith('_WIP.csv'):
+                continue
+            seen.add(file_id)
+            candidates.append((file_id, sync))
+        total = len(candidates)
+        if total > limit:
+            return [], total
+        items: list[BulkItem] = []
+        for file_id, sync in candidates:
+            path = self._bulk_path(file_id, location, file_type, sync)
+            if path is None:
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            items.append(BulkItem(file_id, location, file_type, path, size))
+        return items, total
+
+    def _bulk_path(self, file_id: str, location: str, file_type: str, sync: str | None) -> Path | None:
+        """Cesta ke čtení pro hromadné stažení — konkrétní kopie (sync), jinak jako stažení jednoho souboru."""
+        if not self._repo.validate_params(file_id, location, file_type):
+            return None
+        if sync in ('done_local', 'done_remote') and location == 'local':
+            p = self._repo.resolve_path(file_id, location, file_type)
+            if p is not None:
+                p = p.parent.parent / sync / file_id
+            return p if p is not None and p.exists() else None
+        return self.resolve_path(file_id, location, file_type)
 
     def export_xlsx(
         self,

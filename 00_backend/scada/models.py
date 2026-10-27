@@ -444,6 +444,69 @@ class UsbEjectRequest(BaseModel):
     drive: str = Field(pattern=r'^[A-Za-z]$')
 
 
+# ── Hromadné stažení (filtr přehledu / výběr) ────────────────────────────────
+
+_ISO_DATE = r'^\d{4}-\d{2}-\d{2}$'
+
+
+class BulkSelectionItem(BaseModel):
+    file_id: str = Field(min_length=1, max_length=255)
+    sync:    Literal['done_local', 'done_remote'] | None = None   # kopie, leží-li soubor v obou složkách
+
+
+class BulkRequest(BaseModel):
+    """Co stáhnout: files = vybrané soubory; bez files = vše podle filtru přehledu (záložka, datum, hledání)."""
+    model_config = ConfigDict(populate_by_name=True)
+    location:  Literal['local', 'remote'] = 'local'
+    file_type: Literal['production', 'testing'] = Field('production', alias='type')
+    from_date: str | None = Field(None, alias='from', pattern=_ISO_DATE)
+    to_date:   str | None = Field(None, alias='to', pattern=_ISO_DATE)
+    q:         str | None = Field(None, max_length=100)
+    files:     list[BulkSelectionItem] | None = Field(None, max_length=1000)
+
+    def selection(self) -> list[tuple[str, str | None]] | None:
+        return None if self.files is None else [(f.file_id, f.sync) for f in self.files]
+
+
+class BulkPlan(BaseModel):
+    """Náhled hromadného stažení — počet souborů a velikost (CSV; u XLSX odhad)."""
+    count:      int
+    bytes:      int          # 0, když je souborů nad limit (nic se nečte)
+    limit:      int
+    over_limit: bool
+
+
+class BulkExportRequest(BulkRequest):
+    format: Literal['csv', 'xlsx'] = 'csv'
+
+
+class BulkUsbRequest(BulkExportRequest):
+    drive: str = Field(pattern=r'^[A-Za-z]$')
+
+
+class BulkJobStatus(BaseModel):
+    """Stav hromadného uložení na flashku."""
+    job_id:        str
+    state:         Literal['running', 'done', 'cancelled', 'failed']
+    total:         int
+    done:          int
+    failed:        int
+    errors:        list[str]
+    current:       str | None
+    drive:         str
+    folder:        str          # E:\Trafag_ScadaViewer\<podsložka>
+    format:        str
+    error:         str | None   # no_space | drive_gone | text chyby
+    bytes_written: int
+
+
+class BulkTicket(BaseModel):
+    """Jednorázový odkaz pro stažení ZIPu prohlížečem (GET bez hlavičky Authorization)."""
+    url:   str
+    name:  str
+    count: int
+
+
 class BatchDeleteItem(BaseModel):
     """Položka hromadného mazání — sync určí kopii, leží-li soubor v done_local i done_remote (A26-43)."""
     file_id: str

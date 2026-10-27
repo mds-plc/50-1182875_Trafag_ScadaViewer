@@ -26,7 +26,7 @@ Funkce:
 > Data do CSV píše **DatabaseGateway**. ScadaViewer je čte; zasahuje jen do **lokálních** souborů: mazání
 > (jednotlivě / hromadně role technician+, done_local a rozpracovaná zakázka jen admin+), ruční dokončení
 > rozpracované zakázky (admin u stroje), „Vyčistit synchronizované" `done_remote/` (každý přihlášený) a kopie
-> CSV / XLSX na flashku (admin u stroje). Soubory na NAS nemaže nikdy.
+> CSV / XLSX na flashku (admin u stroje — jednotlivě i hromadně podle filtru / výběru, max 500). Soubory na NAS nemaže nikdy.
 
 ---
 
@@ -78,7 +78,9 @@ CLAUDE.md                  ← tento soubor
     │   ├── wip.py             ← GET /api/wip?order=X (WIP snapshot) — ⏸ odpojeno (2026-09-23)
     │   ├── signal.py          ← GET /api/signal (decimovaná signálová data, 5 mode)
     │   ├── storage.py         ← GET /api/storage (zaplnění vs. local_max_gb + `nas` zaplnění NAS přes NasProbe) + POST /api/storage/cleanup[?force=true]
-    │   ├── usb.py             ← GET /api/usb (flashky) + POST /api/usb/export (CSV / XLSX na flashku) + POST /api/usb/eject — jen admin u stroje
+    │   ├── usb.py             ← GET /api/usb (flashky) + POST /api/usb/export (CSV / XLSX na flashku) + POST /api/usb/eject
+    │   │                         + /api/usb/bulk (hromadně do podsložky, průběh, zrušení) — jen admin u stroje
+    │   ├── bulk.py            ← POST /api/bulk/plan (počet, velikost) + /ticket → GET /api/bulk/zip (jednorázový odkaz, ZIP proudově); max 500
     │   ├── system_time.py     ← GET /api/system/time (čas PC, služba Windows Time, NTP server pro IPC) + POST (nastavení času — admin+ u stroje)
     │   └── dependencies.py    ← require_auth(), require_role(), is_local_client() / require_local() (vzdáleně jen prohlížení); 401 nese WWW-Authenticate: Bearer;
     │                         PLC_USERNAME / PLC_ROLE = admin — PLC session (`plc: True`) platí jen, dokud PLC hlásí přihlášení
@@ -102,7 +104,9 @@ CLAUDE.md                  ← tento soubor
         │                         build_blocks_xlsx(): blokový PROD_ podle vzoru Gateway 04_docs/sample_production.xlsx
         ├── storage_service.py ← storage_usage() (ok/warning ≥80 %/critical ≥95 %) + cleanup_synced(verify) — done_remote ověřené na NAS
         ├── usb_service.py     ← flashka (Windows ctypes): list_drives (vyměnitelná / sběrnice USB), write_file (Trafag_ScadaViewer, .part + fsync,
-        │                         nepřepíše — „ (2)“), eject (zamknutí, odpojení, vysunutí, CM_Request_Device_Eject)
+        │                         nepřepíše — „ (2)“; subdir), make_folder (podsložka dávky), eject (zamknutí, odpojení, vysunutí, CM_Request_Device_Eject)
+        ├── bulk_export.py     ← hromadné stažení: UsbBulkJob (vlákno, soubor po souboru na flashku, průběh / zrušení / no_space / drive_gone),
+        │                         start_zip (ZIP proudově do fronty, data descriptor, CHYBY.txt), bulk_name (název podsložky / ZIPu)
         ├── time_service.py    ← time_status() (w32time: služba, NtpServer Enabled, AnnounceFlags, zdroj, w32tm /query, UDP 123, IPv4) + set_local_time() (SetSystemTime + SeSystemtimePrivilege)
         └── ws_manager.py      ← ConnectionManager (fronta + odesílací úloha na klienta, nestíhající → close 1011) + orders_manager; broadcast(); clear_symbols() po výpadku ADS
 
@@ -145,6 +149,7 @@ CLAUDE.md                  ← tento soubor
     │   ├── ZoomPanel.tsx      ← obal grafu Signal Data: zoom osy X (kolečko/2 prsty), posun, dvojklik = reset, celá obrazovka; plné rozlišení výřezu přes mode=range
     │   ├── Sidebar.tsx        ← levá navigace (3 NavLink), logo = odkaz na /database
     │   ├── UsbStorageBar.tsx  ← flashka (admin u stroje) vedle StorageBar / NasStorageBar v hlavičce Database: zaplnění + bezpečné odebrání
+    │   ├── BulkExportModal.tsx ← hromadné stažení (Stáhnout vše / vybrané): náhled, CSV / XLSX, u stroje flashka s průběhem, vzdáleně ZIP
     │   ├── NasStorageBar.tsx  ← ukazatel zaplnění NAS (kvóta sdílené složky / svazek) v hlavičce Database
     │   ├── CategoryChart.tsx  ← sloupcový graf kategorií 1–6 (detail zakázky + rozbalený řádek, `compact`): pásy OK / NOK, rozmezí MD u OK kategorií (order_info)
     │   ├── OrderInfoPanel.tsx ← údaje zakázky z blokového PROD_ souboru — rozbalovací řádky se souhrnem: Šarže / Testovací parametry / Kategorie / Limity
@@ -244,6 +249,7 @@ CLAUDE.md                  ← tento soubor
 ├── test_df_fpr_c.py           ← DF, FPR, konstanta C (rozsah 8000–11000 µm jako Analyzing), statické odpory
 ├── test_audit_a26.py          ← regrese celkového auditu A26 (index zakázky 1×, SQLite flush, users.toml, mazání kopií)
 ├── test_usb.py                ← flashka: seznam, CSV / XLSX na flashku („ (2)“), jen admin u stroje, 404 / 507, odebrání 204 / 409 (atrapy Windows API)
+├── test_bulk.py               ← hromadné stažení: plan (filtr / hledání / výběr / WIP / limit), ZIP přes ticket (jednorázový, odhlášení), flashka do podsložky, zrušení, 409 / 413 / 507
 ├── test_finish_wip.py         ← ruční dokončení rozpracované zakázky (běžící 409, PLC odpojeno = potvrzení, role, exists, odříznutý řádek)
 └── test_scada.py              ← offline testy konfigurace
 
@@ -470,7 +476,11 @@ def _ads_callback(self, notification, name):   # volán z ADS vlákna
 | `/api/storage/cleanup` | POST | Smaže `done_remote/` soubory ověřené na NAS (název+velikost; NAS nedostupný → 503); `?force=true` bez ověření — UI jen po potvrzení rizika; 409 = už běží |
 | `/api/usb` | GET | Připojené flashky `{supported, drives[{letter, label, total_bytes, free_bytes}]}` — **jen admin+ u stroje** |
 | `/api/usb/export` | POST | `{file_id, location, type, format: csv\|xlsx, drive}` → originální CSV / XLSX do `X:\Trafag_ScadaViewer` (nepřepíše, „ (2)“); jen admin+ u stroje; 404 flashka / soubor, 507 málo místa |
-| `/api/usb/eject` | POST | `{drive}` → bezpečné odebrání; 409 = na flashce je otevřený soubor; jen admin+ u stroje |
+| `/api/usb/eject` | POST | `{drive}` → bezpečné odebrání; 409 = na flashce je otevřený soubor nebo na ni běží hromadné uložení; jen admin+ u stroje |
+| `/api/usb/bulk` | POST | Hromadně na flashku — `{location, type, from, to, q \| files[{file_id, sync}], format, drive}` → `BulkJobStatus`; soubory jednotlivě do `X:\Trafag_ScadaViewer\<dávka>`; 409 běží jiná dávka, 413 > 500, 404 nic, 507 CSV se nevejde; jen admin+ u stroje |
+| `/api/usb/bulk/{id}` | GET | Průběh `{state running\|done\|cancelled\|failed, total, done, failed, errors[], current, folder, error no_space\|drive_gone}`; `/cancel` POST = zrušení |
+| `/api/bulk/plan` | POST | Náhled hromadného stažení (stejné tělo bez `format`) → `{count, bytes, limit 500, over_limit}`; každý přihlášený |
+| `/api/bulk/ticket` | POST | `{…, format}` → `{url, name, count}` jednorázový odkaz (120 s, vázaný na relaci) → `GET /api/bulk/zip?ticket=` = ZIP proudově (bez Authorization — prohlížeč stahuje nativně); rozpracovaná zakázka nikdy |
 | `/api/system/time` | GET | Čas PC a NTP server pro IPC — `{utc, local, tz_name, service_state, ntp_server_enabled, announce, source, synchronized, stratum, last_sync, udp123_listening, addresses[], status_text, can_set}` (každý přihlášený, i vzdáleně) |
 | `/api/system/time` | POST | `{local_time: "RRRR-MM-DDTHH:MM[:SS]"}` v pásmu PC → systémový čas (SetSystemTime); **jen admin+ u stroje**; 409 = účet služby nemá právo „Změna systémového času“, 422 neplatný čas (rok 2020–2099), 501 není Windows; změna = WARNING v logu |
 | `/docs` | GET | Swagger UI (FastAPI automaticky) |
@@ -595,7 +605,7 @@ ScadaViewer **nečte sync_state.json**. Stav synchronizace se dedukuje ze složk
 | Stránka | Cesta | Hook / Context | Komponenty | Stav |
 |---------|-------|----------------|-----------|------|
 | Overview | `/` | `usePlc` (PlcContext, `adsConnected`) + `useOrderWatcher` + `useWipData` | hero badge (skryt při !adsConnected), WifiOff offline ikona, ORDER tile (KPI+stats merge), boxy, last record (skeleton), chart tile--12 | ⏸ odpojeno z routingu (2026-09-23) — `/` přesměruje na `/database` |
-| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage`, `useFileDownload` (UsbContext) | `FileTable`, `DeleteModal`, `FinishWipModal`, `Pagination`, `StorageBar`, `NasStorageBar`, `UsbStorageBar` | ✅ ikona detailu zakázky v řádku (bez rozbalení) + smazání rozpracované zakázky adminem (s potvrzením rizika) + graf kategorií v rozbaleném řádku (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD) + hledání zakázky (Production, lokální i vzdálená; server `?q=`, během hledání se datumový filtr neuplatní (celý archiv, 100 000 zakázek ~0,2 s), zpoždění 350 ms, text přežije návrat z detailu — sessionStorage) + přehled z názvů souborů (okamžitě i u 100 000 souborů), počet kusů „…" → dopočet na pozadí + skupiny + CSV / XLSX (u stroje jen na flashku, admin; vzdáleně prohlížeč) + ruční dokončení rozpracované zakázky (admin u stroje) + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
+| Database | `/database` | `useDatabaseState` (`useFiles`, `useFileRecords`, `useRemoteStatus`), `useStorage`, `useFileDownload` (UsbContext) | `FileTable`, `DeleteModal`, `FinishWipModal`, `Pagination`, `StorageBar`, `NasStorageBar`, `UsbStorageBar`, `BulkExportModal` | ✅ hromadné stažení (Stáhnout vše podle filtru / Stáhnout vybrané, CSV / XLSX, max 500; u stroje na flashku, vzdáleně ZIP) + ikona detailu zakázky v řádku (bez rozbalení) + smazání rozpracované zakázky adminem (s potvrzením rizika) + graf kategorií v rozbaleném řádku (pásy OK / NOK Trafag / NOK Supplier, rozmezí MD) + hledání zakázky (Production, lokální i vzdálená; server `?q=`, během hledání se datumový filtr neuplatní (celý archiv, 100 000 zakázek ~0,2 s), zpoždění 350 ms, text přežije návrat z detailu — sessionStorage) + přehled z názvů souborů (okamžitě i u 100 000 souborů), počet kusů „…" → dopočet na pozadí + skupiny + CSV / XLSX (u stroje jen na flashku, admin; vzdáleně prohlížeč) + ruční dokončení rozpracované zakázky (admin u stroje) + řazení sloupců + hromadné mazání + zaplnění lokálního úložiště / čištění synchronizovaných |
 | ChartView — order detail | `/chart?file=&location=&type=` | `useData` + `useSignalData` + `useOrderTimeline` + `useFileDownload` (UsbContext) | `OrderHero`, `DataTable`, `ParamTable`, `SignalCharts` (`ZoomPanel`), `OrderTimelineChart` | ✅ Production: OrderHero + přepínač Rozložení kategorií / Časový průběh + **filtr kusů** (stav OK/NOK + kategorie + NOK oblast s počty) + klikací tabulka; velká zakázka (50 000 kusů) plynule (index v paměti, memo); Testing: kompaktní hero (typ · čas · doba · OK/NOK) + záložky sekcí (Nastavení testu / Měření / Výsledky / NOK / **Signal Data**) — tabulky přes sdílenou `ParamTable` |
 | ChartView — record detail | `/chart?file=&location=&type=&record=N` | `useData` | `RecordDiagram` | ✅ OrderSummary + rd-meta badge + RecordDiagram (ForceTravelDiagram SVG + TimeDiagram SVG + ParamTable s 5 skupinami) |
 | Settings | `/settings` | `useSettings`, `useTheme` | UsersTab (admin+), `TimeServerTab` | ✅ 4 záložky: Předvolby + Připojení + Čas / NTP + Uživatelé (admin+) |
@@ -863,8 +873,8 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Security headers middleware | ✅ | _SecurityHeadersMiddleware v app.py — X-Frame-Options, nosniff, Referrer-Policy |
 | Rate limiting middleware | ✅ | _RateLimitMiddleware v app.py — sliding window, 120 req/min výchozí, param rate_limit |
 | Strukturované logování | ✅ | logging_setup.py — JsonFormatter (ts/level/mod/msg/exc), setup_logging() v main.py |
-| Testy — backend | ✅ | `pytest 02_tests/ -v` — **511 testů** (regrese auditů `test_audit_20261010/11/15.py`, `test_audit_a26.py`, `test_df_fpr_c.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
-| Testy — frontend | ✅ | `npm run test` (Vitest, 31 souborů) — **256 testů**: useData, DeleteModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx, FinishWipModal, UsbContext, OnScreenKeyboard, TimeServerTab, CategoryChart, OrderInfoPanel, NasStorageBar, UsbStorageBar, Topbar, PageHelp, limits, useDatabaseState; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
+| Testy — backend | ✅ | `pytest 02_tests/ -v` — **529 testů** (regrese auditů `test_audit_20261010/11/15.py`, `test_audit_a26.py`, `test_df_fpr_c.py`): filtr kusů (`test_data_filter.py`), velké zakázky a archiv (`test_big_order.py`), config, API integration, security, ADS monitor, users, výkon/cache (`test_performance.py`), úložiště (`test_storage.py`), časový průběh (`test_timeline.py`), vzdálený přístup (`test_remote_access.py`), práh přepnutí (`test_signal_threshold.py`), regrese auditů |
+| Testy — frontend | ✅ | `npm run test` (Vitest, 32 souborů) — **267 testů**: useData, DeleteModal, BulkExportModal, useBackendOnline, AuthContext, apiFetch, paramMeta, RecordDiagram, FileTable, Database, useFiles, LangContext, Pagination, StorageBar, orderTimeline, useContentScroll, useClientLocal, i18n, RecordFilterBar, exportXlsx, FinishWipModal, UsbContext, OnScreenKeyboard, TimeServerTab, CategoryChart, OrderInfoPanel, NasStorageBar, UsbStorageBar, Topbar, PageHelp, limits, useDatabaseState; `npm run lint` (ESLint) 0 problémů; `npm audit` 0 |
 | Self-hosted fonty | ✅ | @fontsource-variable/dm-sans + @fontsource/dm-mono — aplikace funguje bez internetu |
 | Dokumentace kódu | ✅ | Strukturované hlavičky (Účel/Zodpovědnost/Rozhraní/Napojení) + Google/TypeDoc tagy |
 | Kritický audit + bezp. opravy | ✅ | Session TTL 8 h, sessions scope fix, privilege escalation — viz audit_log.md 2026-07-31 |
@@ -875,6 +885,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Tisk grafů Signal Data + nadpisy grafů (Fáze 32) | ✅ | protokol Testing obsahuje všech 5 podzáložek grafů (tlačítko Tisk / Ctrl+P je nejdřív připraví mimo obrazovku v šířce A4); nadpisy grafů odsazené od osy |
 | Vzdálený přístup z kanceláře (Fáze 33) | ✅ | `local_clients` (výchozí localhost), vzdáleně jen prohlížení (`require_local`), PLC auto-login (role admin) jen u stroje, čip „Vzdálený přístup" v topbaru; návod `deployment.md` (2 síťovky, DHCP, firewall, NAS pod servisním účtem) |
 | Sladění se sesterskými projekty (Fáze 34) | ✅ | práh přepnutí OP/RP jako Analyzing (50 % rozsahu U_NC, `switch_threshold_v`); NAS nastavení podle DatabaseGateway (jeden účet, mapování cest); MD se znaménkem |
+| Hromadné stažení (Fáze 57, 2026-10-27) | ✅ | Databáze: „Stáhnout vše (N)“ podle filtru + „Stáhnout vybrané“; `BulkExportModal` (CSV / XLSX volbou, max 500); u stroje jednotlivě do podsložky na flashce (`UsbBulkJob`, průběh, zrušení), vzdáleně ZIP (`api/bulk.py`, jednorázový odkaz, proudově); `test_bulk.py`, `BulkExportModal.test.tsx` — nevydáno |
 | Flashka u stroje (Fáze 56, 2026-10-27, 2.6.7) | ✅ | `usb_service` (ctypes: detekce, zápis .part + fsync, bezpečné odebrání) / `api/usb.py` (jen admin u stroje), `UsbContext.useFileDownload` (u stroje CSV / XLSX jen na flashku), `UsbStorageBar` v hlavičce Databáze (bez flashky klik = varování + zablikání); `test_usb.py`, `UsbContext.test.tsx` — ověřit se skutečnou flashkou na stroji |
 | RT = Leerlaufweg FP → RP, OP = sepnutí NO (Fáze 55, 2026-10-27, 2.6.6) | ✅ | s Analyzing 2.6.3; `paramMeta.rtDefinition` (starší TTP → RP), `ParamDiagrams`, `signal_reader._OP_MATCH_UM = 2.0`; deploy `$AnSettings`, `$WipBlocksDeploy` |
 | XLSX podle vzoru Gateway (Fáze 54, 2026-10-27, 2.6.5) | ✅ | `build_blocks_xlsx` + `read_blocks_export` (rozložení `sample_production.xlsx`); Info bez odkazu na repozitář |

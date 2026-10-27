@@ -83,6 +83,8 @@ uvnitř funkce.
   server** — žádné skládání velkých souborů v prohlížeči (kiosk). Flashku zjišťuje jen `UsbContext` (`GET /api/usb`
   á 3 s, jen admin u stroje) — další polling flashky nepřidávat.
 - Celé velké zakázky nikdy jako JSON (`per_page=0` má strop) — export / originální CSV.
+- Více souborů najednou = `BulkExportModal` (`useDatabaseState.openBulk` zmrazí filtr / výběr); ZIP stahovat nativně přes
+  odkaz z `/api/bulk/ticket` (`<a download>`), ne `fetch` → blob.
 - `DataTable`, `OrderTimelineChart`, graf kategorií jsou `memo` → předávat stabilní props (`useMemo`,
   `useCallback`); při změně stránky / filtru obsah nechat (spinner jen při prvním načtení).
 - Skryté tiskové tabulky vykreslovat až při tisku — `hooks/usePrintMode.ts` (`printNow` / `beforeprint`).

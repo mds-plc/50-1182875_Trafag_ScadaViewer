@@ -1563,6 +1563,32 @@ how_to_extend, tato architektura (níže).
 
 **Stav testů po kontrole:** Backend **511/511**, Frontend **256/256** (31 souborů); `tsc` 0, lint 0.
 
+### Fáze 57 — hromadné stažení podle filtru / výběru (2026-10-27)
+
+Přání uživatele: stáhnout najednou všechny soubory v rozsahu časového filtru. Rozhodnutí: formát CSV / XLSX **volbou
+v dialogu**; u stroje **jednotlivé soubory do podsložky na flashce** (prohlížeč z kanceláře dostane jeden ZIP); strop
+**500 souborů**; navíc **Stáhnout vybrané** pro zaškrtnuté řádky. Rozsah = přesně to, co ukazuje přehled (záložka
+Lokální / Vzdálená × Production / Testing, datum Od – Do, během hledání zakázky celý archiv) — `FileService.bulk_items`
+volá `list_files` se stejnými pravidly. Rozpracovaná zakázka (`*_WIP.csv`) nikdy (ještě se zapisuje).
+
+| Část | Řešení |
+|---|---|
+| `protocols.BULK_LIMIT` / `BulkItem` | strop 500; položka = file_id, location, type, cesta ke čtení (lokální kopie NAS souboru, je-li), velikost |
+| `FileService.bulk_items` | filtr nebo výběr `[(file_id, sync)]` (sync = konkrétní kopie done_local / done_remote, jako batch-delete); duplicity pryč; **nad limit → `([], počet)` bez statování** (archiv 100 000 souborů); zmizelé soubory se vynechají |
+| `api/bulk.py` | `POST /api/bulk/plan` (počet, velikost, `over_limit`) · `POST /api/bulk/ticket` → jednorázový odkaz (TTL 120 s, max 50, vázaný na relaci — po odhlášení neplatí) · `GET /api/bulk/zip?ticket=` = `StreamingResponse` bez hlavičky Authorization (prohlížeč stahuje nativně, velký ZIP nejde přes paměť záložky). Každý přihlášený, i vzdáleně (jen čtení) |
+| `services/bulk_export.start_zip` | ZIP se skládá ve vlákně do fronty (16 bloků, zpětný tlak), zipfile bez seek → data descriptor, `force_zip64`; CSV přes `open_shared` (Gateway může soubor přesunout), XLSX přes `export_xlsx`; nečitelný soubor → `CHYBY.txt`; odpojený klient → zrušení; 120 s bez bloku = zaseknutý NAS → konec |
+| `services/bulk_export.UsbBulkJob` | vlastní daemon vlákno (NAS / flashka neblokují pooly), soubor po souboru `usb_service.write_file(..., subdir)`; průběh / zrušení mezi soubory; chyba jednoho souboru = pokračuje (souhrn, max 50 chyb); málo místa = `no_space`, vytažená flashka = `drive_gone` → konec dávky. Podsložka `usb_service.make_folder` — `production_2026-10-26_2026-10-27`, `production_vse`, `production_hledani_<text>`, `production_vyber_<čas>`; existuje-li, „ (2)“ |
+| `api/usb.py` | `POST /api/usb/bulk` (jen admin u stroje; 409 už běží jiná dávka, 507 CSV se nevejde, 413 / 404), `GET /api/usb/bulk/{id}`, `POST …/cancel`; `POST /api/usb/eject` během dávky na tuto flashku → 409. Úlohy v `app.state.bulk_jobs` (10 dokončených), při vypnutí služby se zruší |
+| `BulkExportModal` | náhled (počet, velikost — u XLSX orientační), volba formátu (velké dotykové cíle), u stroje průběh á 1,5 s + zrušení + souhrn (složka, chyby) + bezpečné odebrání; bez flashky / bez práva klik = varování + zablikání ukazatele USB (jako CSV / XLSX); vzdáleně ticket → `<a download>` |
+| Databáze | „Stáhnout vše (N)“ v liště filtru (`openBulk(false)` zmrazí filtr), lišta výběru „Stáhnout vybrané“ (`openBulk(true)`); zaškrtávání nově i vzdáleně (mazání tam dál není) |
+
+Testy: `test_bulk.py` (plan / filtr / hledání / výběr / WIP / limit, ZIP obsah a jednorázovost, vypršení a odhlášení,
+CHYBY.txt, flashka CSV / XLSX do podsložky, 409 / 413 / 404 / 507 / 403, zrušení, eject během dávky, `UsbBulkJob`
+no_space / drive_gone / chyba jednoho souboru, názvy), `BulkExportModal.test.tsx`, `FileTable.test.tsx`, `Database.test.tsx`.
+Nápověda Databáze CS + EN (položka „Hromadné stažení“).
+
+**Stav testů po fázi 57:** Backend **529/529**, Frontend **267/267** (32 souborů); `tsc` 0, lint 0.
+
 ---
 
 ## Tok dat

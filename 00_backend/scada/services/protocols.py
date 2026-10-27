@@ -16,6 +16,20 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
+#: Hromadné stažení — nejvýš tolik souborů najednou (rozhodnutí uživatele 2026-10-27); víc → zúžit filtr
+BULK_LIMIT = 500
+
+
+@dataclass(frozen=True, slots=True)
+class BulkItem:
+    """Jeden soubor hromadného stažení (FileService.bulk_items)."""
+    file_id:   str
+    location:  str
+    file_type: str
+    path:      Path            # cesta ke čtení (NAS soubor s lokální kopií → lokální kopie)
+    size:      int             # velikost CSV [B] (u XLSX jen odhad)
+
+
 @dataclass
 class PagedResult:
     """Výsledek stránkovaného dotazu na seznam souborů."""
@@ -113,6 +127,19 @@ class DataReader(Protocol):
         location:  str = 'local',
         file_type: str = 'production',
     ) -> bytes | None: ...
+
+    def bulk_items(
+        self,
+        location:  str = 'local',
+        file_type: str = 'production',
+        from_date: str | None = None,
+        to_date:   str | None = None,
+        query:     str | None = None,
+        selection: list[tuple[str, str | None]] | None = None,
+        limit:     int = BULK_LIMIT,
+    ) -> tuple[list[BulkItem], int]:
+        """Soubory pro hromadné stažení (filtr přehledu / výběr) a jejich počet; nad limit ([], počet)."""
+        ...
 
     def read_timeline(
         self,

@@ -11,6 +11,7 @@
  *   - Implementuje akce: downloadCsv, downloadXlsx, deleteFile, batchDelete, finishWip.
  *   - Spravuje výběr souborů (selectedIds, toggleSelect, selectAll, clearSelect)
  *     a potvrzovací dialog pro batch-delete (batchConfirm).
+ *   - Hromadné stažení: openBulk(selection) zmrazí rozsah (filtr přehledu / vybrané soubory) pro BulkExportModal.
  *   - Registruje klávesové zkratky (F5 = refresh, Escape = zavřít expand/modal).
  *   - Není zodpovědný za renderování — jen state a side-effects.
  *
@@ -36,7 +37,7 @@ import { useToast } from '../context/ToastContext'
 import { useLang } from '../context/LangContext'
 import { useAuth } from '../context/AuthContext'
 import { useFileDownload } from '../context/UsbContext'
-import type { OrderFile } from '../types'
+import type { BulkRequest, OrderFile } from '../types'
 import { apiFetch } from '../utils/apiFetch'
 
 export type Location = 'local' | 'remote'
@@ -168,6 +169,7 @@ export function useDatabaseState() {
   const [sortDir,      setSortDirRaw]   = useState<'asc' | 'desc'>(() => _lsGet('sortDir', 'desc' as 'asc' | 'desc', isSortDir))
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
   const [batchConfirm, setBatchConfirm] = useState(false)
+  const [bulkRequest,  setBulkRequest]  = useState<BulkRequest | null>(null)
 
   // Wrappery — setState + localStorage persist
   const setLocation = useCallback((v: Location)      => { setLocationRaw(v); _lsSet('location', v) }, [])
@@ -267,7 +269,7 @@ export function useDatabaseState() {
   // F5 = ruční refresh, Escape = zavřít expand + modal
   useKeyShortcuts({
     F5:     () => fetchFiles(),
-    Escape: () => { setExpandedId(null); setDeleteTarget(null); setFinishTarget(null) },
+    Escape: () => { setExpandedId(null); setDeleteTarget(null); setFinishTarget(null) },   // bulk dialog má Esc sám
   })
 
   // U stroje na flashku (jen admin), vzdáleně do prohlížeče — UsbContext.useFileDownload
@@ -403,6 +405,27 @@ export function useDatabaseState() {
     }
   }, [selectedIds, files, location, dataType, token, addToast, fetchFiles, t.db.deleteSuccess, t.db.deleteError, t.db.deleteUnsyncedForbidden, clearSelect])
 
+  // Hromadné stažení — rozsah se zmrazí při otevření dialogu (auto-refresh přehledu ho nesmí měnit pod rukama):
+  // vybrané soubory (s kopií sync) nebo filtr přehledu, jak ho vidí obsluha (během hledání bez data — jako /api/files)
+  const openBulk = useCallback((selection: boolean) => {
+    const base = { location, type: dataType }
+    setBulkRequest(selection
+      ? {
+          ...base,
+          files: files.filter(f => selectedIds.has(f.file_id)).map(f => ({
+            file_id: f.file_id,
+            sync: f.sync_status === 'done_local' || f.sync_status === 'done_remote' ? f.sync_status : null,
+          })),
+        }
+      : {
+          ...base,
+          from: searchAllDates ? null : (dateFrom || null),
+          to:   searchAllDates ? null : (dateTo || null),
+          q:    query || null,
+        })
+  }, [dataType, dateFrom, dateTo, files, location, query, searchAllDates, selectedIds])
+  const closeBulk = useCallback(() => setBulkRequest(null), [])
+
   const showSync     = location === 'local'
   // null = některé počty se ještě dopočítávají (patička ukáže „…")
   const totalRecords = files.some(f => f.record_count == null)
@@ -426,5 +449,6 @@ export function useDatabaseState() {
     deleteFile, downloadCsv, downloadXlsx, downloadDisabledReason,
     finishTarget, setFinishTarget, finishWip,
     selectedIds, toggleSelect, selectAll, clearSelect, batchDelete, batchConfirm, setBatchConfirm,
+    bulkRequest, openBulk, closeBulk,
   }
 }
