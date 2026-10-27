@@ -5,7 +5,14 @@
 
 ---
 
-## [2026-10-27] Hromadné stažení podle filtru / výběru (nevydáno)
+## [2026-10-27] Vydání ScadaViewer 2.6.10
+
+Hromadné stažení (záznam níže, commit 36b8f79) vydané jako 2.6.10 — balíček `deploy_v2.6.10` (Analyzing 2.6.3,
+DatabaseGateway 2.6.2, ScadaViewer 2.6.10). Testy: backend 529, frontend 267.
+
+---
+
+## [2026-10-27] Hromadné stažení podle filtru / výběru (ScadaViewer 2.6.10)
 
 Přání uživatele: stáhnout najednou soubory v rozsahu časového filtru. Rozhodnutí: CSV / XLSX volbou, u stroje jednotlivě
 do podsložky na flashce, z kanceláře ZIP, strop 500, i „Stáhnout vybrané". Detail: `architecture.md` fáze 57.
