@@ -28,7 +28,8 @@ GW = ROOT / '11.Parallel scripts' / 'DatabaseGateway'
 AN = ROOT / '11.Parallel scripts' / 'Analyzing'
 HMI = ROOT / '9.HMI Program' / '50-1182875_HMI_Trafag'
 
-KIND = {'user': ('Navod_k_pouziti', 'Instructions_for_Use'), 'tech': ('Technicky_manual', 'Technical_Manual')}
+KIND = {'user': ('Navod_k_pouziti', 'Instructions_for_Use'), 'tech': ('Technicky_manual', 'Technical_Manual'),
+        'combined': ('Navod_a_technicky_manual', 'Instructions_and_Technical_Manual')}
 # (zdroj bez jazyka, projekt, produkt, typ)
 DOCS = [
     ('out', SV, 'ScadaViewer', 'user'),
@@ -38,8 +39,7 @@ DOCS = [
     ('an_user', AN, 'Analyzing', 'user'),
     ('an', AN, 'Analyzing', 'tech'),
     ('hmi', HMI, 'HMI', 'user'),
-    ('afe_user', None, 'AnalogFrontend', 'user'),       # deska 1AD01 — bez git projektu, jen 17.Dokumentace
-    ('afe_tech', None, 'AnalogFrontend', 'tech'),
+    ('afe', None, 'AnalogFrontend', 'combined'),        # deska 1AD01 — jeden dokument, bez git projektu, jen 17.Dokumentace
 ]
 SAMPLES_TO = [GW, SV]
 EXPORT = ROOT / '17.Dokumentace'

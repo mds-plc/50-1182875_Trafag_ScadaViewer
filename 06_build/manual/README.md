@@ -14,6 +14,7 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 | DatabaseGateway | `build_gateway_user.js` (1.0) | `build_gateway.js` (1.1) |
 | Analyzing | `build_analyzing_user.js` (1.0) | `build_analyzing.js` (1.1) |
 | HMI | `build_hmi.js` (rozpracováno) | — |
+| Analogový měřicí obvod 1AD01 | `build_afe.js` — **jeden** dokument „Návod k použití a technický manuál“ (`docType: 'combined'`) | — |
 
 Vzorové soubory (`vzory/`: PROD_ CSV + XLSX, TEST_ ZIP + XLSX — z ukázkových dat `demo/`, XLSX funkcemi ScadaViewer
 `build_blocks_xlsx` / `build_xlsx`) jdou do `04_docs/manual/vzorove_soubory` DatabaseGateway a ScadaViewer; popisuje je

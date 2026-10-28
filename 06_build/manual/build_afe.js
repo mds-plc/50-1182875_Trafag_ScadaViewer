@@ -1,22 +1,22 @@
-// Analogový měřicí obvod 1AD01 — Návod k použití (user) a Technický manuál (tech), CS + EN
-// Použití: node build_afe.js user|tech cs|en <výstupní.docx>
+// Analogový měřicí obvod 1AD01 — jeden dokument „Návod k použití a technický manuál“ (docType combined), CS + EN
+// Použití: node build_afe.js cs|en <výstupní.docx>
+// Rozhodnutí uživatele 2026-10-28: u této desky jedna dokumentace pro zákazníka i servis (ne dvě verze).
 // Zdroje: 17.Dokumentace/6.Analogový měřící obvod/Podklady — 1AD01_AnalogFrontend_Instructions_CZ.pdf (návod desky) a
-// 1AD01_AnalogFrontend_Schematics.pdf (KiCad). Rozhodnutí uživatele 2026-10-28: platí pinout M12 a rozsah proudu cca
-// 0–270 mA z návodu (JST XH ve schématu = vnitřní konektory desky); hrubé kanály VOLTAGE_*_COARSE se nepoužívají.
+// 1AD01_AnalogFrontend_Schematics.pdf (KiCad). Platí pinout M12 a rozsah proudu cca 0–270 mA z návodu
+// (JST XH ve schématu = vnitřní konektory desky); hrubé kanály VOLTAGE_*_COARSE se nepoužívají.
 // Jen ověřená fakta z podkladů — nic nedomýšlet (chybějící údaje = poznámka „Doplnit“).
-// Obrázky schématu img/afe/sch_1..4.png (img je v .gitignore): pdftoppm -r 170 -png <Podklady>AD01_AnalogFrontend_Schematics.pdf
+// Obrázky schématu img/afe/sch_1..4.png (img je v .gitignore): pdftoppm -r 170 -png <Podklady>/1AD01_AnalogFrontend_Schematics.pdf
 // img/afe/raw, pak každý list oříznout o bílé okraje a otočit o 90° (PIL: ImageOps.invert(im).getbbox(), rotate(90, expand=True)).
 const path = require('path')
 
-const KIND = process.argv[2] || 'user'
-const L = process.argv[3] || 'cs'
-const OUT = process.argv[4] || `afe_${KIND}_${L}.docx`
+const L = process.argv[2] || 'cs'
+const OUT = process.argv[3] || `afe_${L}.docx`
 const T = (cs, en) => (L === 'cs' ? cs : en)
-const USER = KIND === 'user'
+const USER = false                               // obsah = úplný (zákazník i servis)
 const SCH = n => path.join(__dirname, 'img', 'afe', `sch_${n}.png`)
 
 const M = require('./lib')({
-  docType: KIND,
+  docType: 'combined',
   lang: L, imgDir: path.join(__dirname, 'img', 'afe'),
   product: T('Analogový měřicí obvod', 'Analog Front-End'), version: '1AD01', versionLabel: 'Hardware',
   subtitle: T('Měřicí deska pro 4vodičové měření odporu kontaktů NC a NO mikrospínače v EOL testeru',
@@ -28,27 +28,20 @@ const c = []
 let ch = 0
 const chap = (cs, en) => { ch += 1; c.push(H1(`${ch}  ${t(cs, en)}`)) }
 let sec = 0
-const REF = {}                                   // klíč → číslo podkapitoly (pořadí kapitol se v obou verzích liší)
+const REF = {}                                   // klíč → číslo podkapitoly (odkazy se doplní podle skutečného pořadí)
 const sub = (cs, en, key) => { sec += 1; if (key) REF[key] = `${ch}.${sec}`; c.push(H2(`${ch}.${sec}  ${t(cs, en)}`)) }
 const chapter = (cs, en) => { chap(cs, en); sec = 0 }
 
 // ═══ O tomto dokumentu ═════════════════════════════════════════════════
 chapter('O tomto dokumentu', 'About this document')
 c.push(...ABOUT({
-  purpose: USER
-    ? t('Návod popisuje analogový měřicí obvod 1AD01 z pohledu uživatele: k čemu slouží, jaké má technické údaje, jak se připojuje a jak vzniká naměřený odpor kontaktů.',
-        'This document describes the 1AD01 analog front-end from the user’s perspective: what it is used for, its technical data, how it is connected and how the measured contact resistance is obtained.')
-    : t('Technický manuál popisuje analogový měřicí obvod 1AD01: zapojení, rozhraní pro PLC, kabeláž, kalibraci a převod na fyzikální jednotky. V příloze je schéma zapojení.',
-        'This technical manual describes the 1AD01 analog front-end: circuit, PLC interface, cabling, calibration and conversion to physical units. The circuit diagram is in the appendix.'),
-  audience: USER
-    ? t('kvalita, technologie a údržba zákazníka.', 'the customer’s quality, process engineering and maintenance.')
-    : t('servis a údržba EOL testeru, elektrotechnik, programátor PLC.', 'EOL tester service and maintenance, electrical engineer, PLC programmer.'),
+  purpose: t('Dokument popisuje analogový měřicí obvod 1AD01: k čemu slouží, technické údaje, připojení, měření a převod na fyzikální jednotky, zapojení, rozhraní pro PLC, kabeláž a kalibraci. V příloze je schéma zapojení.',
+             'This document describes the 1AD01 analog front-end: its purpose, technical data, connection, measurement and conversion to physical units, circuit, PLC interface, cabling and calibration. The circuit diagram is in the appendix.'),
+  audience: t('kvalita, technologie a údržba zákazníka; servis EOL testeru, elektrotechnik, programátor PLC.', 'the customer’s quality, process engineering and maintenance; EOL tester service, electrical engineer, PLC programmer.'),
   related: t([
-    USER ? '**Analogový měřicí obvod 1AD01 — Technický manuál**: zapojení, pinout, kalibrace.' : '**Analogový měřicí obvod 1AD01 — Návod k použití**: přehled pro zákazníka.',
     '**Analyzing — Návod k použití**: odpory kontaktů ve výsledcích měření.',
     'Elektrotechnická dokumentace EOL testeru (zapojení do rozváděče a PLC).',
   ], [
-    USER ? '**1AD01 Analog Front-End — Technical Manual**: circuit, pinout, calibration.' : '**1AD01 Analog Front-End — Instructions for Use**: overview for the customer.',
     '**Analyzing — Instructions for Use**: contact resistances in the measurement results.',
     'Electrical documentation of the EOL tester (wiring to the control cabinet and PLC).',
   ]),

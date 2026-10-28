@@ -24,8 +24,10 @@ module.exports = function makeLib(opt) {
   const DOC_TYPES = {
     user: t('Návod k použití', 'Instructions for Use'),
     tech: t('Technický manuál', 'Technical Manual'),
+    // jeden dokument pro zákazníka i servis (malé produkty, např. deska 1AD01 — rozhodnutí 2026-10-28)
+    combined: t('Návod k použití a technický manuál', 'Instructions for Use and Technical Manual'),
   }
-  if (!DOC_TYPES[opt.docType]) throw new Error("docType musí být 'user' nebo 'tech'")
+  if (!DOC_TYPES[opt.docType]) throw new Error("docType musí být 'user', 'tech' nebo 'combined'")
   const DOC_TYPE = DOC_TYPES[opt.docType]
   const MACHINE = t('EOL tester mikrospínačů', 'Microswitch EOL tester')
   let figNo = 0, tabNo = 0, olNo = 0
