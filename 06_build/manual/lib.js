@@ -45,7 +45,7 @@ module.exports = function makeLib(opt) {
     return out
   }
 
-  const P = (text, o = {}) => new Paragraph({ children: runs(text), spacing: { after: 120, line: 288 }, ...o })
+  const P = (text, o = {}) => new Paragraph({ children: runs(text), spacing: { after: 120, line: 288 }, keepNext: /:\**\s*$/.test(text), ...o })
   // Kapitoly plynule za sebou (krátké kapitoly by jinak nechávaly poloprázdné strany); první kapitola
   // začíná novým oddílem, ostatní jen větší mezerou. Celá kapitola na novou stranu = H1(text, true).
   let h1Count = 0
@@ -117,13 +117,13 @@ module.exports = function makeLib(opt) {
     const total = widths.reduce((a, b) => a + b, 0)
     const border = { style: BorderStyle.SINGLE, size: 4, color: LINE }
     const borders = { top: border, bottom: border, left: border, right: border }
-    const cell = (text, i, head) => new TableCell({
+    const cell = (text, i, head, keep) => new TableCell({
       borders, width: { size: widths[i], type: WidthType.DXA },
       shading: head ? { type: ShadingType.CLEAR, fill: 'E8EDF7', color: 'auto' } : undefined,
       margins: { top: 60, bottom: 60, left: 100, right: 100 },
       verticalAlign: VerticalAlign.CENTER,
       children: String(text).split('\n').map(line => new Paragraph({
-        spacing: { after: 0, line: 252 },
+        spacing: { after: 0, line: 252 }, keepNext: keep, keepLines: true,
         children: runs(line, head ? { bold: true, size: 18, color: NAVY } : { size: 18 }),
       })),
     })
@@ -139,8 +139,8 @@ module.exports = function makeLib(opt) {
     out.push(new Table({
       width: { size: total, type: WidthType.DXA }, columnWidths: widths,
       rows: [
-        new TableRow({ tableHeader: true, children: headers.map((h, i) => cell(h, i, true)) }),
-        ...rows.map(r => new TableRow({ cantSplit: true, children: r.map((c, i) => cell(c, i, false)) })),
+        new TableRow({ tableHeader: true, children: headers.map((h, i) => cell(h, i, true, true)) }),
+        ...rows.map((r, ri) => new TableRow({ cantSplit: true, children: r.map((c, i) => cell(c, i, false, ri < rows.length - 1)) })),
       ],
     }))
     out.push(new Paragraph({ spacing: { after: 120 }, children: [] }))
@@ -202,7 +202,7 @@ module.exports = function makeLib(opt) {
       title: `${opt.product} — ${DOC_TYPE}`,
       description: `${opt.product} ${opt.version}`,
       styles: {
-        default: { document: { run: { font: FONT, size: 20, color: '1F2937' } } },
+        default: { document: { run: { font: FONT, size: 20, color: '1F2937' }, paragraph: { widowControl: true } } },
         paragraphStyles: [
           { id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true,
             run: { size: 34, bold: true, font: FONT, color: NAVY },

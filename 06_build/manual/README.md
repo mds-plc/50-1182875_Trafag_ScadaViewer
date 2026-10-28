@@ -19,6 +19,12 @@ Vzorové soubory (`vzory/`: PROD_ CSV + XLSX, TEST_ ZIP + XLSX — z ukázkovýc
 `build_blocks_xlsx` / `build_xlsx`) jdou do `04_docs/manual/vzorove_soubory` DatabaseGateway a ScadaViewer; popisuje je
 příloha Návodu k použití DatabaseGateway. Kopírování dokumentů i vzorů pod správnými názvy: **`python publish.py`**.
 
+**Sazba (`lib.js`, `build_manual.js`):** řádky tabulky se nedělí, všechny řádky kromě posledního jsou „svázat s dalším“ →
+tabulka, která se vejde na stranu, je vždy celá na jedné straně (delší má opakované záhlaví); nadpisy, obrázek s popiskem
+a úvodní věta končící dvojtečkou drží s následujícím obsahem; kontrola vdov a sirotků. Před vydáním ověřit:
+`powershell -File check_layout.ps1 -In "C:\…\out_cs.docx;C:\…\gw_cs.docx"` — hlásí rozdělené tabulky a nadpisy na konci
+strany (kód 1 = problém); tabulky delší než strana jen jako informaci.
+
 Poslední přegenerování: 2026-10-28 — ScadaViewer 2.6.10, DatabaseGateway 2.6.2, Analyzing 2.6.3.
 
 ## Názvosloví (závazné pro všechny tři dokumenty, rozhodnutí 2026-10-28)

@@ -56,7 +56,7 @@ function runs(text, base = {}) {
   return out
 }
 
-const P = (text, opts = {}) => new Paragraph({ children: runs(text), spacing: { after: 120, line: 288 }, ...opts })
+const P = (text, opts = {}) => new Paragraph({ children: runs(text), spacing: { after: 120, line: 288 }, keepNext: /:\**\s*$/.test(text), ...opts })
 const H1 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(text)], pageBreakBefore: true })
 const H2 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(text)] })
 const H3 = (text) => new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(text)] })
@@ -118,13 +118,13 @@ function TABLE(headers, rows, widths, caption) {
   const total = widths.reduce((a, b) => a + b, 0)
   const border = { style: BorderStyle.SINGLE, size: 4, color: LINE }
   const borders = { top: border, bottom: border, left: border, right: border }
-  const cell = (text, i, head) => new TableCell({
+  const cell = (text, i, head, keep) => new TableCell({
     borders, width: { size: widths[i], type: WidthType.DXA },
     shading: head ? { type: ShadingType.CLEAR, fill: 'E8EDF7', color: 'auto' } : undefined,
     margins: { top: 60, bottom: 60, left: 100, right: 100 },
     verticalAlign: VerticalAlign.CENTER,
     children: String(text).split('\n').map(line => new Paragraph({
-      spacing: { after: 0, line: 252 },
+      spacing: { after: 0, line: 252 }, keepNext: keep, keepLines: true,
       children: runs(line, head ? { bold: true, size: 18, color: NAVY } : { size: 18 }),
     })),
   })
@@ -140,8 +140,8 @@ function TABLE(headers, rows, widths, caption) {
   out.push(new Table({
     width: { size: total, type: WidthType.DXA }, columnWidths: widths,
     rows: [
-      new TableRow({ tableHeader: true, children: headers.map((h, i) => cell(h, i, true)) }),
-      ...rows.map(r => new TableRow({ cantSplit: true, children: r.map((c, i) => cell(c, i, false)) })),
+      new TableRow({ tableHeader: true, children: headers.map((h, i) => cell(h, i, true, true)) }),
+      ...rows.map((r, ri) => new TableRow({ cantSplit: true, children: r.map((c, i) => cell(c, i, false, ri < rows.length - 1)) })),
     ],
   }))
   out.push(new Paragraph({ spacing: { after: 120 }, children: [] }))
