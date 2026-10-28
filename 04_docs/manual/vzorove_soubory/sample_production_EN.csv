@@ -1,0 +1,128 @@
+﻿### ==========================================================================
+### SAMPLE FILE — PRODUCTION ORDER (DatabaseGateway)
+### This comment block (lines starting with ###) exists only in the sample;
+### a real file starts directly with "[Metadata]".
+###
+### FILE NAME
+###   PROD_{order}_{switch ID}_{YYYYMMDD}_{HHMMSS}_WIP.csv   order in progress
+###   PROD_{order}_{switch ID}_{YYYYMMDD}_{HHMMSS}_DONE.csv  closed order
+###   Switch ID = SAP material number with index (e.g. E01389-C) — ISO 9001.
+###   Date and time in the name = order creation. Only _DONE.csv is stored on the NAS.
+###
+### STRUCTURE
+###   The file is divided into blocks. Each block starts with its name in square
+###   brackets, followed by a header line and value lines; blocks are separated by
+###   an empty line. Blocks [Metadata] to [SortingLimits] are written once when the
+###   order is created.
+###   [Metadata]           order, recipe and supplier lot data
+###   [TestingParameters]  test parameters
+###   [SortingCategories]  sorting groups by MD
+###   [SortingLimits]      limits for the OK / NOK evaluation
+###   [Data]               measurement header (37 columns, unit in [ ] after the name)
+###                        followed by one line = one measured microswitch
+###
+### [Metadata]
+###   Order                       order number
+###   Recipe                      recipe ID
+###   Microswitch_ID              SAP material number with index (e.g. E01389-C)
+###   Microswitch_Name            microswitch name
+###   Supplier_Order-LOT#1…       supplier lots in order of first appearance (each new lot adds a column)
+###
+### [TestingParameters]
+###   Velocity                    drive speed                               mm/s
+###   Acceleration                acceleration                              mm/s2
+###   Deceleration                deceleration                              mm/s2
+###   Jerk                        jerk                                      mm/s3
+###   Max_Force                   maximum force                             mN
+###   Resistance_Current          contact measuring current                 mA
+###   Resistance_Voltage          measuring voltage                         V
+###   Resistance_Limit            static contact resistance limit           mΩ
+###
+### [SortingCategories]
+###   Grouping_Value              parameter used for sorting (MD)
+###   Group1–6_Min / _Max         MD range of group 1–6                     µm
+###   Empty = group not used. Parts that pass the limits but do not fit into
+###   any group are NOK Trafag ("TrafagAusschuss").
+###
+### [SortingLimits]
+###   Columns = same names and units as the measurement header.
+###   Max / Min                   Trafag limits
+###   Max_Supplier / Min_Supplier supplier limits
+###   Empty cell = limit not checked.
+###
+### FORMAT
+###   Separator ";"  |  decimal point "."  |  encoding UTF-8 with BOM  |  line endings LF
+###   Numbers in the PLC resolution (e.g. 1908, 9263.4, 12.2). Timestamp = ISO 8601, PC local time.
+###   Customer units: mN, um = µm, mOhm = mΩ, us = µs, [-] = dimensionless.
+###   9999.9 in resistance columns = above 999.9 mΩ = contact open ("infinity").
+###   Empty field = invalid value from the PLC (NaN / infinity) — value missing.
+###   Positions FP/OP/RP/TTP = height of the actuator above the mounting-hole axis
+###   (decreases when actuated); travels PT/OT/RT/MD/TT = distances between the points
+###   (FP − OP, OP − TTP, FP − RP, RP − OP, FP − TTP).
+###
+### MEASUREMENT COLUMNS
+###    1  Timestamp                   time the record was saved
+###    2  OF_OperatingForce           operating force (at NC opening, before the snap)  mN
+###    3  RF_RealisingForce           release force (at release position RP)    mN
+###    4  TTF_TotalTravelForce        force at end of travel                    mN
+###    5  DF_DifferentialForce        differential force OF − RF                mN
+###    6  PT_PreTravel                pre-travel (free position → operating)    µm
+###    7  OT_OverTravel               over-travel (operating → end of travel)   µm
+###    8  RT_RealisingTravel          release travel FP − RP (Leerlaufweg, DIN 41636-1)  µm
+###    9  MD_MovementDifferential     movement differential RP − OP             µm
+###   10  TT_TotalTravel              total travel                              µm
+###   11  FP_FreePosition             free position                             µm
+###   12  OP_OperatingPosition        operating position (first NO closing)     µm
+###   13  RP_RealeasingPosition       release position (NC re-closing on return)  µm
+###   14  TTP_TotalTravelPosition     total travel position (end stop)          µm
+###   15  FPR_FreePositionReturn      free position on return (≈ FP)            µm
+###   16–23  R_{NC|NO}_{Operating|Releasing}Position_{Neg|Pos}                  mΩ
+###          NC / NO contact resistance; Operating = while pressing, Releasing =
+###          while releasing; Neg = before switching, Pos = after switching
+###   24  R_NC_Static                 static resistance of closed NC (outside switching, max.)  mΩ
+###   25  R_NO_Static                 static resistance of closed NO (outside switching, max.)  mΩ
+###   26  UT_UnstableTime             NC instability time                       µs
+###   27  RT_ReverseTime              contact transfer time (RevT)              µs
+###   28  BT_BounceTime               NO bounce time                            µs
+###   29  OT_OperatingTime            total operating time UT + RevT + BT       µs
+###   30  Status                      2 = OK, 5 = NOK
+###   31  SortingCategory             1–4 = OK (classes), 5 = NOK Trafag, 6 = NOK Supplier
+###   32  NokCategory_Force           1 = NOK in category force
+###   33  NokCategory_Position        1 = NOK in category position
+###   34  NokCategory_Electric        1 = NOK in category electrical parameters
+###   35  NokCategory_Times           1 = NOK in category times
+###   36  NokCategory_Process         1 = process fault (e.g. no contact made)
+###   37  PositionReference           calibration constant C (P = C − x); empty = not sent by the PLC  µm
+###   A NOK result can have several categories at once.
+###   Column names follow the PLC variable names, original spelling kept
+###   (Realising, Realeasing).
+###
+### SAMPLE DATA
+###   Switch 1: NOK (Status 5, SortingCategory 5) due to force (NokCategory_Force 1).
+###   Switches 2 and 3: OK, class 2 and 1.
+### ==========================================================================
+
+[Metadata]
+Order;Recipe;Microswitch_ID;Microswitch_Name;Supplier_Order-LOT#1;Supplier_Order-LOT#2;Supplier_Order-LOT#3;Supplier_Order-LOT#4;Supplier_Order-LOT#5;Supplier_Order-LOT#6
+1268847;1;E01389-C;Marquardt;185974-598477;185974-598478;185974-598479;185974-598482;185982-599113;185982-599116
+
+[TestingParameters]
+Velocity [mm/s];Acceleration [mm/s2];Deceleration [mm/s2];Jerk [mm/s3];Max_Force [mN];Resistance_Current [mA];Resistance_Voltage [V];Resistance_Limit [mOhm]
+0.2;1;1;3;4000;100;30;600
+
+[SortingCategories]
+Grouping_Value;Group1_Min [um];Group1_Max [um];Group2_Min [um];Group2_Max [um];Group3_Min [um];Group3_Max [um];Group4_Min [um];Group4_Max [um];Group5_Min [um];Group5_Max [um];Group6_Min [um];Group6_Max [um]
+MD;18;30;30.1;60;60.1;80;80.1;100;;;;
+
+[SortingLimits]
+Limit;OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us]
+Max;2200;1800;4000;;;;;105;;9300;8700;8800;8000;;600;1000000;1000000;600;1000000;600;600;1000000;600;600;3000;;3000;15000
+Min;1200;700;2200;;;;;2;;8700;8100;8130;7000;;1;1000;1000;1;1000;1;1;1000;0;0;0;;0;0
+Max_Supplier;2500;2100;4500;;;;;;;;;;;;;;;;;;;;;;;;;
+Min_Supplier;1000;500;2000;;;;;;;;;;;;;;;;;;;;;;;;;
+
+[Data]
+Timestamp;OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us];Status [-];SortingCategory [-];NokCategory_Force [-];NokCategory_Position [-];NokCategory_Electric [-];NokCategory_Times [-];NokCategory_Process [-];PositionReference [um]
+2026-09-16T16:17:23;990;910;2720;80;660;1171;648;12;1831;9282;8622;8634;7451;9294.4;7;9999.9;9999.9;5.4;9999.9;5.5;5.9;9999.9;12.4;7.3;200;1600;550;2350;5;5;1;0;0;0;0;9500
+2026-09-16T16:18:48;1360;960;2480;400;728;1064;690;38;1792;9293;8565;8603;7501;9305.4;14.8;9999.9;9999.9;8.7;9999.9;8.3;7.5;9999.9;25.1;7.5;200;2250;850;3300;2;2;0;0;0;0;0;9500
+2026-09-16T16:19:03;1350;970;2710;380;700;1129;674;26;1829;9280;8580;8606;7451;9292.4;6.9;9999.9;9999.9;5.5;9999.9;6;5.3;9999.9;8.9;6.8;200;3550;500;4250;2;1;0;0;0;0;0;9500

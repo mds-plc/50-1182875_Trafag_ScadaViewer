@@ -1,0 +1,57 @@
+﻿### ==========================================================================
+### VZOROVÝ SOUBOR — POUZE PRO DOKUMENTACI, NEPATŘÍ DO PRODUKCE
+### ==========================================================================
+###
+### Formát: Testing CSV (Op5 — testovací záznam mikrospínače)
+### Generuje: FileManager.save_testing_record()
+### Název:   TEST_{switch_name}_{YYYYMMDD}_{HHMMSS}_DONE.csv
+### Umístění: testing/done_local/ → testing/done_remote/ (po uploadu na NAS)
+###
+### Soubor má 6 sekcí oddělených prázdným řádkem:
+###   [Metadata]           — 4 sloupce, 1 řádek dat (identifikace — Recipe, Microswitch_ID, Microswitch_Name jako PROD_)
+###   [TestingParameters]  — 12 sloupců, 1 řádek dat (parametry receptury z PLC)
+###   [MeasuredInfo]       — 3 sloupce, 1 řádek dat (metadata měření z PLC, vč. konstanty C)
+###   [AnalyzedParameters] — 28 sloupců, 1 řádek dat (vyhodnocené parametry z PLC)
+###   [NokInfo]            — 5 sloupců, 1 řádek dat (maska NokCategory[1..5])
+###   [SignalData]         — 11 sloupců, ~100 000 řádků (časové řady z MeasuredData)
+###
+### Každá sekce: řádek s názvem sekce → hlavička sloupců → datový řádek(y)
+### Oddělovač: ; (středník)
+### Encoding: UTF-8 BOM (utf-8-sig)
+### Float formát: nejkratší přesný zápis REAL z PLC (models.order._f); NaN/inf → prázdné pole
+### [AnalyzedParameters] v jednotkách zákazníka (9.3): [mN], [um] (polohy = C − x), [mOhm], [us];
+### 9999.9 mΩ = kontakt rozepnutý. [SignalData] = surová data (enkodér x, N, V, A, Ω;
+### 1000000 Ω = rozepnuto).
+###
+### [SignalData] je volitelná — pokud MeasuredData z PLC nejsou dostupná,
+### sekce se vynechá. V produkci obsahuje ~102 000 řádků (~15 MB).
+###
+### ==========================================================================
+
+[Metadata]
+Timestamp;Recipe;Microswitch_ID;Microswitch_Name
+2026-09-14T16:35:22;1;E01389-C;Marquardt
+
+[TestingParameters]
+Drive_Distance [mm];Drive_Velocity [mm/s];Drive_Acceleration [mm/s2];Drive_Deceleration [mm/s2];Drive_Jerk [mm/s3];Electric_Current [mA];Electric_Voltage [V];Measuring_BasePeriod [us];Measuring_Oversampling [-];Measuring_SamplesReserve [-];Limits_DistanceMax [mm];Limits_ForceMax [N]
+2;1;3;3;10;100;30;500;10;1.1;2.1;4
+
+[MeasuredInfo]
+MeasureTime [s];Meas_TS [unix_s];PositionReference [um]
+4.6667;1789337539;9500
+
+[AnalyzedParameters]
+OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us]
+1030;960;2970;70;667;1113;644;23;1780;9281;8614;8637;7501;9293.4;5.7;9999.9;9999.9;4.7;9999.9;4.6;5.3;9999.9;12.4;7.3;500;2350;200;3050
+
+[NokInfo]
+NokCategory_Force [-];NokCategory_Position [-];NokCategory_Electric [-];NokCategory_Times [-];NokCategory_Process [-]
+0;0;0;0;0
+
+[SignalData]
+ts [ns];position [um];force [N];u_nc [V];u_no [V];u_shunt_nc [V];u_shunt_no [V];i_nc [A];i_no [A];r_nc [Ohm];r_no [Ohm]
+0;0.000;0.000000;0.000005;0.000383;0.000462;0.000113;0.000236;0.000058;1000000.0000;1000000.0000
+50000;0.000;-0.000643;0.000005;0.000380;0.000455;0.000118;0.000232;0.000060;1000000.0000;1000000.0000
+100000;0.000;0.003159;0.000007;0.000374;0.000481;0.000120;0.000245;0.000061;1000000.0000;1000000.0000
+150000;12.500;0.003586;0.000002;0.000370;0.000472;0.000155;0.000241;0.000079;1000000.0000;1000000.0000
+200000;25.000;0.000751;0.000006;0.000375;0.000461;0.000128;0.000235;0.000065;1000000.0000;1000000.0000

@@ -1,0 +1,127 @@
+﻿### ==========================================================================
+### VZOROVÝ SOUBOR — VÝROBNÍ ZAKÁZKA (DatabaseGateway)
+### Tento komentářový blok (řádky začínající ###) je pouze v ukázce,
+### skutečný soubor začíná přímo řádkem "[Metadata]".
+###
+### NÁZEV SOUBORU
+###   PROD_{zakázka}_{ID spínače}_{RRRRMMDD}_{HHMMSS}_WIP.csv   rozpracovaná zakázka
+###   PROD_{zakázka}_{ID spínače}_{RRRRMMDD}_{HHMMSS}_DONE.csv  uzavřená zakázka
+###   ID spínače = SAP materiálové číslo s indexem (např. E01389-C) — ISO 9001.
+###   Datum a čas v názvu = založení zakázky. Na NAS se ukládá pouze _DONE.csv.
+###
+### STRUKTURA
+###   Soubor je rozdělen do bloků. Každý blok začíná názvem v hranatých závorkách,
+###   pod ním je řádek hlaviček a řádky hodnot; bloky odděluje prázdný řádek.
+###   Bloky [Metadata] až [SortingLimits] se zapíší jednou při založení zakázky.
+###   [Metadata]           údaje zakázky, receptury a šarží výrobce
+###   [TestingParameters]  parametry testu
+###   [SortingCategories]  třídicí skupiny podle MD
+###   [SortingLimits]      limity pro vyhodnocení OK / NOK
+###   [Data]               hlavička měření (37 sloupců, jednotka v [ ] za názvem)
+###                        a pod ní jeden řádek = jeden změřený mikrospínač
+###
+### [Metadata]
+###   Order                       číslo zakázky
+###   Recipe                      ID receptury
+###   Microswitch_ID              SAP materiálové číslo s indexem (např. E01389-C)
+###   Microswitch_Name            název mikrospínače
+###   Supplier_Order-LOT#1…       šarže výrobce v pořadí, v jakém se v zakázce objevily (každá nová šarže = další sloupec)
+###
+### [TestingParameters]
+###   Velocity                    rychlost pohonu                           mm/s
+###   Acceleration                zrychlení                                 mm/s2
+###   Deceleration                zpomalení                                 mm/s2
+###   Jerk                        ryv                                       mm/s3
+###   Max_Force                   maximální síla                            mN
+###   Resistance_Current          měřicí proud kontaktu                     mA
+###   Resistance_Voltage          měřicí napětí                             V
+###   Resistance_Limit            limit statického odporu kontaktu          mΩ
+###
+### [SortingCategories]
+###   Grouping_Value              parametr, podle kterého se třídí (MD)
+###   Group1–6_Min / _Max         rozsah MD skupiny 1–6                     µm
+###   Prázdné = skupina se nepoužívá. Kusy, které splní limity, ale nepatří
+###   do žádné skupiny, jsou NOK Trafag.
+###
+### [SortingLimits]
+###   Sloupce = stejné názvy a jednotky jako hlavička měření.
+###   Max / Min                   limity Trafag
+###   Max_Supplier / Min_Supplier limity výrobce
+###   Prázdná buňka = limit se nekontroluje.
+###
+### FORMÁT
+###   Oddělovač ";"  |  desetinná tečka "."  |  kódování UTF-8 s BOM  |  konce řádků LF
+###   Čísla v rozlišení z PLC (např. 1908, 9263.4, 12.2). Timestamp = ISO 8601, místní čas PC.
+###   Jednotky zákazníka: mN, um = µm, mOhm = mΩ, us = µs, [-] = bezrozměrné.
+###   9999.9 v odporových sloupcích = nad 999,9 mΩ = kontakt rozepnutý („nekonečno“).
+###   Prázdné pole = neplatná hodnota z PLC (NaN / nekonečno) — hodnota chybí.
+###   Polohy FP/OP/RP/TTP = výška hmatníku nad osou upevňovacích otvorů (při stlačení
+###   klesá); dráhy PT/OT/RT/MD/TT = vzdálenosti mezi body (FP − OP, OP − TTP, FP − RP,
+###   RP − OP, FP − TTP).
+###
+### SLOUPCE MĚŘENÍ
+###    1  Timestamp                   okamžik uložení záznamu
+###    2  OF_OperatingForce           ovládací síla (v rozepnutí NC, před přeskokem)  mN
+###    3  RF_RealisingForce           vratná síla (ve vratné poloze RP)         mN
+###    4  TTF_TotalTravelForce        síla na konci zdvihu                      mN
+###    5  DF_DifferentialForce        rozdíl sil OF − RF                        mN
+###    6  PT_PreTravel                předzdvih (volná poloha → sepnutí)        µm
+###    7  OT_OverTravel               přezdvih (sepnutí → konec zdvihu)         µm
+###    8  RT_RealisingTravel          vratný zdvih FP − RP (Leerlaufweg, DIN 41636-1)  µm
+###    9  MD_MovementDifferential     hystereze dráhy RP − OP                   µm
+###   10  TT_TotalTravel              celkový zdvih                             µm
+###   11  FP_FreePosition             volná poloha                              µm
+###   12  OP_OperatingPosition        spínací poloha (první sepnutí NO)         µm
+###   13  RP_RealeasingPosition       vratná poloha (sepnutí NC při návratu)    µm
+###   14  TTP_TotalTravelPosition     poloha dorazu                             µm
+###   15  FPR_FreePositionReturn      volná poloha po návratu (≈ FP)            µm
+###   16–23  R_{NC|NO}_{Operating|Releasing}Position_{Neg|Pos}                  mΩ
+###          odpor kontaktu NC / NO; Operating = při stlačování, Releasing = při
+###          uvolňování; Neg = před přepnutím, Pos = po přepnutí
+###   24  R_NC_Static                 statický odpor sepnutého NC (mimo přepnutí, max.)  mΩ
+###   25  R_NO_Static                 statický odpor sepnutého NO (mimo přepnutí, max.)  mΩ
+###   26  UT_UnstableTime             doba nestability NC                       µs
+###   27  RT_ReverseTime              doba přeletu kontaktu (RevT)              µs
+###   28  BT_BounceTime               doba zákmitů NO                           µs
+###   29  OT_OperatingTime            celková doba přepnutí UT + RevT + BT      µs
+###   30  Status                      2 = OK, 5 = NOK
+###   31  SortingCategory             1–4 = OK (třídy), 5 = NOK Trafag, 6 = NOK Supplier
+###   32  NokCategory_Force           1 = NOK v kategorii síla
+###   33  NokCategory_Position        1 = NOK v kategorii poloha
+###   34  NokCategory_Electric        1 = NOK v kategorii elektrické parametry
+###   35  NokCategory_Times           1 = NOK v kategorii časy
+###   36  NokCategory_Process         1 = porucha procesu (např. nenakontaktování)
+###   37  PositionReference           kalibrační konstanta C (P = C − x); prázdné = PLC ji neposílá  µm
+###   NOK může mít více kategorií současně.
+###   Názvy sloupců přebírají názvy proměnných z PLC včetně původního zápisu
+###   (Realising, Realeasing).
+###
+### UKÁZKOVÁ DATA
+###   Spínač 1: NOK (Status 5, SortingCategory 5) z důvodu síly (NokCategory_Force 1).
+###   Spínač 2 a 3: OK, třída 2 a 1.
+### ==========================================================================
+
+[Metadata]
+Order;Recipe;Microswitch_ID;Microswitch_Name;Supplier_Order-LOT#1;Supplier_Order-LOT#2;Supplier_Order-LOT#3;Supplier_Order-LOT#4;Supplier_Order-LOT#5;Supplier_Order-LOT#6
+1268847;1;E01389-C;Marquardt;185974-598477;185974-598478;185974-598479;185974-598482;185982-599113;185982-599116
+
+[TestingParameters]
+Velocity [mm/s];Acceleration [mm/s2];Deceleration [mm/s2];Jerk [mm/s3];Max_Force [mN];Resistance_Current [mA];Resistance_Voltage [V];Resistance_Limit [mOhm]
+0.2;1;1;3;4000;100;30;600
+
+[SortingCategories]
+Grouping_Value;Group1_Min [um];Group1_Max [um];Group2_Min [um];Group2_Max [um];Group3_Min [um];Group3_Max [um];Group4_Min [um];Group4_Max [um];Group5_Min [um];Group5_Max [um];Group6_Min [um];Group6_Max [um]
+MD;18;30;30.1;60;60.1;80;80.1;100;;;;
+
+[SortingLimits]
+Limit;OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us]
+Max;2200;1800;4000;;;;;105;;9300;8700;8800;8000;;600;1000000;1000000;600;1000000;600;600;1000000;600;600;3000;;3000;15000
+Min;1200;700;2200;;;;;2;;8700;8100;8130;7000;;1;1000;1000;1;1000;1;1;1000;0;0;0;;0;0
+Max_Supplier;2500;2100;4500;;;;;;;;;;;;;;;;;;;;;;;;;
+Min_Supplier;1000;500;2000;;;;;;;;;;;;;;;;;;;;;;;;;
+
+[Data]
+Timestamp;OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us];Status [-];SortingCategory [-];NokCategory_Force [-];NokCategory_Position [-];NokCategory_Electric [-];NokCategory_Times [-];NokCategory_Process [-];PositionReference [um]
+2026-09-16T16:17:23;990;910;2720;80;660;1171;648;12;1831;9282;8622;8634;7451;9294.4;7;9999.9;9999.9;5.4;9999.9;5.5;5.9;9999.9;12.4;7.3;200;1600;550;2350;5;5;1;0;0;0;0;9500
+2026-09-16T16:18:48;1360;960;2480;400;728;1064;690;38;1792;9293;8565;8603;7501;9305.4;14.8;9999.9;9999.9;8.7;9999.9;8.3;7.5;9999.9;25.1;7.5;200;2250;850;3300;2;2;0;0;0;0;0;9500
+2026-09-16T16:19:03;1350;970;2710;380;700;1129;674;26;1829;9280;8580;8606;7451;9292.4;6.9;9999.9;9999.9;5.5;9999.9;6;5.3;9999.9;8.9;6.8;200;3550;500;4250;2;1;0;0;0;0;0;9500

@@ -1,0 +1,105 @@
+﻿### ==========================================================================
+### VZOROVÝ SOUBOR — TESTOVACÍ ZÁZNAM (DatabaseGateway)
+### Tento komentářový blok (řádky začínající ###) je pouze v ukázce,
+### skutečný soubor začíná přímo řádkem "[Metadata]".
+###
+### NÁZEV SOUBORU
+###   TEST_{název spínače}_{RRRRMMDD}_{HHMMSS}_DONE.csv
+###   Jeden soubor = jedno testovací měření. Soubor vzniká rovnou jako uzavřený.
+###
+### STRUKTURA — až 6 sekcí oddělených prázdným řádkem
+###   Každá sekce: řádek [NázevSekce] → hlavička sloupců → data.
+###   [Metadata]            4 sloupce,  1 řádek     identifikace měření
+###   [TestingParameters]  12 sloupců,  1 řádek     parametry testu (receptura z PLC)
+###   [MeasuredInfo]        3 sloupce,  1 řádek     údaje o průběhu měření
+###   [AnalyzedParameters] 28 sloupců,  1 řádek     vyhodnocené parametry
+###   [NokInfo]             5 sloupců,  1 řádek     kategorie NOK (výsledek testu)
+###   [SignalData]         11 sloupců,  ~100 000 ř. časové průběhy signálů (~15 MB)
+###   [SignalData] je volitelná — chybí, pokud PLC průběhy neposkytlo.
+###   V této ukázce je z [SignalData] uvedeno jen prvních 5 řádků.
+###
+### FORMÁT
+###   Oddělovač ";"  |  desetinná tečka "."  |  kódování UTF-8 s BOM  |  konce řádků LF
+###   Čísla v rozlišení z PLC (v [SignalData] dle sloupce, viz níže). Prázdné pole = neplatná
+###   hodnota z PLC (NaN). Timestamp = ISO 8601, místní čas PC.
+###   Jednotky: um = µm, us = µs, mOhm = mΩ, Ohm = Ω (jen [SignalData]).
+###   [AnalyzedParameters]: 9999.9 = nad 999,9 mΩ = kontakt rozepnutý („nekonečno“).
+###   [SignalData]: 1000000 Ω = kontakt rozepnutý / proud < 1 mA (odpor neměřitelný).
+###
+### [Metadata]
+###   Timestamp                okamžik uložení záznamu
+###   Recipe                   ID receptury
+###   Microswitch_ID           SAP materiálové číslo s indexem (např. E01389-C)
+###   Microswitch_Name         označení spínače (je i v názvu souboru)
+###
+### [TestingParameters]
+###   Drive_Distance           dráha pohonu                         mm
+###   Drive_Velocity           rychlost pohonu                      mm/s
+###   Drive_Acceleration       zrychlení                            mm/s²
+###   Drive_Deceleration       zpomalení                            mm/s²
+###   Drive_Jerk               ryv (změna zrychlení)                mm/s³
+###   Electric_Current         zkušební proud kontaktem             mA
+###   Electric_Voltage         zkušební napětí                      V
+###   Measuring_BasePeriod     perioda cyklu PLC                    µs
+###   Measuring_Oversampling   počet vzorků na jeden cyklus PLC     -
+###   Measuring_SamplesReserve rezerva počtu vzorků (koeficient)    -
+###   Limits_DistanceMax       maximální povolená dráha             mm
+###   Limits_ForceMax          maximální povolená síla              N
+###   Perioda vzorkování [SignalData] = BasePeriod / Oversampling (500 / 10 = 50 µs).
+###
+### [MeasuredInfo]
+###   MeasureTime              doba měření                          s
+###   Meas_TS                  časová značka měření z PLC (Unix čas, sekundy od 1. 1. 1970)
+###   PositionReference        kalibrační konstanta C (P = C − x); prázdné = PLC ji neposílá   µm
+###
+### [AnalyzedParameters]
+###   Stejných 28 sloupců a jednotek jako sloupce 2–29 výrobního souboru (PROD_) —
+###   jednotky zákazníka: síly [mN], dráhy a polohy [µm], odpory kontaktů [mΩ], časy [µs].
+###   Polohy = výška nad osou upevňovacích otvorů P = C − x (C = kalibrační konstanta
+###   stanice, v ukázce 9500 µm).
+###
+### [NokInfo]
+###   NokCategory_Force / _Position / _Electric / _Times / _Process
+###                            1 = NOK v dané kategorii; _Process = porucha procesu
+###   Výsledek testu: NOK = alespoň jedna kategorie 1, jinak OK.
+###   Testovací soubor neobsahuje SortingCategory.
+###
+### [SignalData] — jeden řádek = jeden vzorek
+###   ts           čas od začátku měření                   ns    0 des. míst
+###   position     poloha vozíku od klidové polohy (x)     µm    3   (surová data — enkodér;
+###                polohy v [AnalyzedParameters] jsou C − x, C = TTP + max(x) — jen z úplné sekce;
+###                v této ukázce je max x 25 µm, v plném souboru ≈ 1999 µm → C = 9500)
+###   force        síla                                    N     6
+###   u_nc, u_no   napětí na kontaktu NC / NO              V     6
+###   u_shunt_nc, u_shunt_no  napětí na měřicím bočníku    V     6
+###   i_nc, i_no   proud kontaktem NC / NO (z bočníku)     A     6
+###   r_nc, r_no   odpor kontaktu NC / NO (U / I)          Ω     4
+### ==========================================================================
+
+[Metadata]
+Timestamp;Recipe;Microswitch_ID;Microswitch_Name
+2026-09-14T16:35:22;1;E01389-C;Marquardt
+
+[TestingParameters]
+Drive_Distance [mm];Drive_Velocity [mm/s];Drive_Acceleration [mm/s2];Drive_Deceleration [mm/s2];Drive_Jerk [mm/s3];Electric_Current [mA];Electric_Voltage [V];Measuring_BasePeriod [us];Measuring_Oversampling [-];Measuring_SamplesReserve [-];Limits_DistanceMax [mm];Limits_ForceMax [N]
+2;1;3;3;10;100;30;500;10;1.1;2.1;4
+
+[MeasuredInfo]
+MeasureTime [s];Meas_TS [unix_s];PositionReference [um]
+4.6667;1789337539;9500
+
+[AnalyzedParameters]
+OF_OperatingForce [mN];RF_RealisingForce [mN];TTF_TotalTravelForce [mN];DF_DifferentialForce [mN];PT_PreTravel [um];OT_OverTravel [um];RT_RealisingTravel [um];MD_MovementDifferential [um];TT_TotalTravel [um];FP_FreePosition [um];OP_OperatingPosition [um];RP_RealeasingPosition [um];TTP_TotalTravelPosition [um];FPR_FreePositionReturn [um];R_NC_OperatingPosition_Neg [mOhm];R_NO_OperatingPosition_Neg [mOhm];R_NC_OperatingPosition_Pos [mOhm];R_NO_OperatingPosition_Pos [mOhm];R_NC_ReleasingPosition_Neg [mOhm];R_NO_ReleasingPosition_Neg [mOhm];R_NC_ReleasingPosition_Pos [mOhm];R_NO_ReleasingPosition_Pos [mOhm];R_NC_Static [mOhm];R_NO_Static [mOhm];UT_UnstableTime [us];RT_ReverseTime [us];BT_BounceTime [us];OT_OperatingTime [us]
+1030;960;2970;70;667;1113;644;23;1780;9281;8614;8637;7501;9293.4;5.7;9999.9;9999.9;4.7;9999.9;4.6;5.3;9999.9;12.4;7.3;500;2350;200;3050
+
+[NokInfo]
+NokCategory_Force [-];NokCategory_Position [-];NokCategory_Electric [-];NokCategory_Times [-];NokCategory_Process [-]
+0;0;0;0;0
+
+[SignalData]
+ts [ns];position [um];force [N];u_nc [V];u_no [V];u_shunt_nc [V];u_shunt_no [V];i_nc [A];i_no [A];r_nc [Ohm];r_no [Ohm]
+0;0.000;0.000000;0.000005;0.000383;0.000462;0.000113;0.000236;0.000058;1000000.0000;1000000.0000
+50000;0.000;-0.000643;0.000005;0.000380;0.000455;0.000118;0.000232;0.000060;1000000.0000;1000000.0000
+100000;0.000;0.003159;0.000007;0.000374;0.000481;0.000120;0.000245;0.000061;1000000.0000;1000000.0000
+150000;12.500;0.003586;0.000002;0.000370;0.000472;0.000155;0.000241;0.000079;1000000.0000;1000000.0000
+200000;25.000;0.000751;0.000006;0.000375;0.000461;0.000128;0.000235;0.000065;1000000.0000;1000000.0000
