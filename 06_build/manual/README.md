@@ -10,7 +10,7 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 
 | Produkt | Návod k použití | Technický manuál |
 |---------|-----------------|------------------|
-| ScadaViewer | `build_manual.js` (vydání 2.1) | připravuje se |
+| ScadaViewer | `build_manual.js` (vydání 2.1) | `build_scadaviewer_tech.js` (1.0) |
 | DatabaseGateway | `build_gateway_user.js` (1.0) | `build_gateway.js` (1.1) |
 | Analyzing | `build_analyzing_user.js` (1.0) | `build_analyzing.js` (1.1) |
 | HMI | `build_hmi.js` (rozpracováno) | — |

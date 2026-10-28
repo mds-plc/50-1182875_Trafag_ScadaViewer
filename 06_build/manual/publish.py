@@ -21,6 +21,7 @@ KIND = {'user': ('Navod_k_pouziti_CS', 'Instructions_for_Use_EN'), 'tech': ('Tec
 # (zdroj bez jazyka, projekt, produkt, typ)
 DOCS = [
     ('out', SV, 'ScadaViewer', 'user'),
+    ('sv_tech', SV, 'ScadaViewer', 'tech'),
     ('gw_user', GW, 'DatabaseGateway', 'user'),
     ('gw', GW, 'DatabaseGateway', 'tech'),
     ('an_user', AN, 'Analyzing', 'user'),

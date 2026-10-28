@@ -17,7 +17,7 @@ const M = require('./lib')({
     : 'Service storing production and test data from the PLC to CSV files and archiving them on the Synology NAS',
   version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
-const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE } = M
+const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
 
 // ═══ 1 Úvod ════════════════════════════════════════════════════════════
@@ -42,10 +42,24 @@ c.push(...UL(t([
 c.push(NOTE('info', t(
   'DatabaseGateway naměřené hodnoty nevyhodnocuje — parametry kusu (síly, polohy, dráhy, odpory, časy) počítá služba Analyzing a Gateway je z PLC přebírá beze změny. Soubory na NAS nikdy nemaže; soubor jiného obsahu (jiné velikosti) nikdy nepřepíše.',
   'DatabaseGateway does not evaluate measured values — the piece parameters (forces, positions, travels, resistances, times) are calculated by the Analyzing service and Gateway takes them over from the PLC unchanged. It never deletes files on the NAS and never overwrites a file with different content (different size).')))
-c.push(H2(t('1.2  Pro koho je dokument', '1.2  Who this document is for')))
-c.push(P(t(
-  `Dokument je určen pro údržbu a servis EOL testeru mikrospínačů, programátora PLC a správce IT. Popisuje DatabaseGateway verze ${VERSION}: princip činnosti, rozhraní s PLC, formát souborů, synchronizaci na NAS, konfiguraci, instalaci, diagnostiku a řešení problémů. Obsluha testeru se se službou přímo nesetkává — data prohlíží ve ScadaViewer (samostatný návod k použití a technický manuál).`,
-  `This document is intended for maintenance and service of the microswitch EOL tester, the PLC programmer and the IT administrator. It describes DatabaseGateway version ${VERSION}: operating principle, PLC interface, file format, NAS synchronisation, configuration, installation, diagnostics and troubleshooting. Tester operators do not interact with the service directly — they view the data in ScadaViewer (separate instructions for use and technical manual).`)))
+c.push(H2(t('1.2  O tomto dokumentu', '1.2  About this document')))
+c.push(...ABOUT({
+  purpose: t(`Popisuje DatabaseGateway verze ${VERSION}: princip činnosti, rozhraní s PLC, formát souborů, synchronizaci na NAS, konfiguraci, instalaci, diagnostiku a řešení problémů. Obsluha testeru se se službou přímo nesetkává — data prohlíží ve ScadaViewer.`, `It describes DatabaseGateway version ${VERSION}: operating principle, PLC interface, file format, NAS synchronisation, configuration, installation, diagnostics and troubleshooting. Tester operators do not interact with the service directly — they view the data in ScadaViewer.`),
+  audience: t('údržba a servis EOL testeru, programátor PLC, správce IT.', 'EOL tester maintenance and service, PLC programmer, IT administrator.'),
+  related: t([
+    '**DatabaseGateway — Návod k použití**: data, formát souborů a vzorové soubory pro zákazníka.',
+    '**ScadaViewer — Technický manuál**: čtení stejných dat a NAS.',
+    '**Analyzing — Technický manuál**: výpočet parametrů kusu.',
+  ], [
+    '**DatabaseGateway — Instructions for Use**: data, file format and sample files for the customer.',
+    '**ScadaViewer — Technical Manual**: reading the same data and NAS.',
+    '**Analyzing — Technical Manual**: calculation of the piece parameters.',
+  ]),
+  history: [
+    ['1.0', '2026-10-27', t('První vydání.', 'First issue.')],
+    ['1.1', '2026-10-28', t('Jednotné názvosloví dokumentace, popis aktuálního stavu.', 'Unified documentation terminology, description of the current state.')],
+  ],
+}))
 
 // ═══ 2 Princip činnosti ════════════════════════════════════════════════
 c.push(H1(t('2  Princip činnosti', '2  Operating principle')))
@@ -194,7 +208,7 @@ c.push(...TABLE(
 c.push(...TABLE(
   ['WarningCode', t('Význam', 'Meaning'), t('Kdy vzniká', 'When it occurs')],
   [
-    ['1', t('Server nedostupný (rezervováno)', 'Server unavailable (reserved)'), t('Ve verzi 2.6 se nepoužívá — dostupnost NAS hlásí jen bit `RemoteStorage`.', 'Not used in version 2.6 — NAS availability is reported only by the `RemoteStorage` bit.')],
+    ['1', t('Server nedostupný (rezervováno)', 'Server unavailable (reserved)'), t('Nepoužívá se — dostupnost NAS hlásí jen bit `RemoteStorage`.', 'Not used — NAS availability is reported only by the `RemoteStorage` bit.')],
     ['2', t('Testovací záznam uložen bez signálových dat', 'Test record saved without signal data'), t('Op5 bez platného signálu z PLC.', 'Op5 without a valid signal from the PLC.')],
     ['3', t('Na lokálním disku dochází místo', 'Local disk running out of space'), t('Po úspěšné operaci, je-li volné místo pod `min_free_gb` (0 = vypnuto).', 'After a successful operation if free space is below `min_free_gb` (0 = off).')],
   ],
@@ -509,7 +523,7 @@ c.push(P(t(
   'The `db_gateway` package contains `db_gateway.exe`, the `_internal` folder (Python runtime, numpy, pyads), `Config.toml.example`, `nssm_install.bat` and an empty `03_output` structure. The package deliberately does not contain `Config.toml` — the existing one is kept on update.')))
 c.push(H2(t('7.2  První instalace', '7.2  First installation')))
 c.push(...OL(t([
-  'Zkopírujte složku `db_gateway` do cílového umístění (např. `C:\\apps\\v2.6.2_…-DatabaseGateway\\db_gateway`).',
+  'Zkopírujte složku `db_gateway` do cílového umístění (např. `C:\\apps\\v<verze>_…-DatabaseGateway\\db_gateway`).',
   'Z `Config.toml.example` vytvořte `Config.toml` a vyplňte AMS Net ID, `local_base_dir` a sekci `[server]` (kap. 6).',
   'Na NAS vytvořte cílové složky `Production` a `Testing`; účet NAS musí mít čtení i zápis.',
   'V TwinCAT nastavte **statickou** ADS routu mezi PC a PLC; ve firewallu povolte TCP 48898 (ADS).',
@@ -517,7 +531,7 @@ c.push(...OL(t([
   'Nastavte účet služby s přístupem na NAS: `nssm set DatabaseGateway ObjectName .\\<účet> <heslo>` a uložte údaje NAS přes `cmdkey` (kap. 5.4).',
   'Restartujte službu (`nssm restart DatabaseGateway`), aby běžela pod nastaveným účtem, a ověřte stav (kap. 8.1).',
 ], [
-  'Copy the `db_gateway` folder to its target location (e.g. `C:\\apps\\v2.6.2_…-DatabaseGateway\\db_gateway`).',
+  'Copy the `db_gateway` folder to its target location (e.g. `C:\\apps\\v<version>_…-DatabaseGateway\\db_gateway`).',
   'Create `Config.toml` from `Config.toml.example` and fill in the AMS Net ID, `local_base_dir` and the `[server]` section (chapter 6).',
   'Create the target folders `Production` and `Testing` on the NAS; the NAS account needs read and write access.',
   'In TwinCAT set up a **static** ADS route between the PC and the PLC; allow TCP 48898 (ADS) in the firewall.',

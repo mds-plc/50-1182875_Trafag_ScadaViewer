@@ -17,7 +17,7 @@ const M = require('./lib')({
     : 'Service evaluating microswitch measurements — calculation of forces, positions, travels, contact resistances and switching times for the PLC',
   version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
-const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE } = M
+const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
 
 // ═══ 1 Úvod ════════════════════════════════════════════════════════════
@@ -30,10 +30,24 @@ c.push(...FIG('eco_an', t('Místo Analyzingu v ekosystému EOL testeru', 'Analyz
 c.push(NOTE('info', t(
   'Analyzing neposuzuje OK / NOK — tolerance a třídění vyhodnocuje PLC. Analyzing do databáze CSV nezapisuje; volitelně ukládá jen ladicí export signálů (kap. 8.2).',
   'Analyzing does not judge OK / NOK — tolerances and sorting are evaluated by the PLC. Analyzing does not write to the CSV database; optionally it only stores a debug signal export (section 8.2).')))
-c.push(H2(t('1.2  Pro koho je dokument', '1.2  Who this document is for')))
-c.push(P(t(
-  `Dokument je určen pro údržbu a servis EOL testeru mikrospínačů, programátora PLC, technologa a správce IT. Popisuje Analyzing verze ${VERSION}: princip činnosti, rozhraní s PLC, algoritmus vyhodnocení, konfiguraci, logy, instalaci, uvedení do provozu včetně kalibrace polohy a řešení problémů. Naměřené hodnoty si obsluha prohlíží ve ScadaViewer.`,
-  `This document is intended for maintenance and service of the microswitch EOL tester, the PLC programmer, the process engineer and the IT administrator. It describes Analyzing version ${VERSION}: operating principle, PLC interface, evaluation algorithm, configuration, logs, installation, commissioning including position calibration, and troubleshooting. Operators view the measured values in ScadaViewer.`)))
+c.push(H2(t('1.2  O tomto dokumentu', '1.2  About this document')))
+c.push(...ABOUT({
+  purpose: t(`Popisuje Analyzing verze ${VERSION}: princip činnosti, rozhraní s PLC, algoritmus vyhodnocení, konfiguraci, instalaci, uvedení do provozu včetně kalibrace polohy, provoz a řešení problémů. Naměřené hodnoty si obsluha prohlíží ve ScadaViewer.`, `It describes Analyzing version ${VERSION}: operating principle, PLC interface, evaluation algorithm, configuration, installation, commissioning including position calibration, operation and troubleshooting. Operators view the measured values in ScadaViewer.`),
+  audience: t('údržba a servis EOL testeru, programátor PLC, technolog, správce IT.', 'EOL tester maintenance and service, PLC programmer, process engineer, IT administrator.'),
+  related: t([
+    '**Analyzing — Návod k použití**: význam parametrů pro zákazníka.',
+    '**DatabaseGateway — Technický manuál**: uložení výsledků do souborů.',
+    '**ScadaViewer — Technický manuál**: zobrazení výsledků.',
+  ], [
+    '**Analyzing — Instructions for Use**: meaning of the parameters for the customer.',
+    '**DatabaseGateway — Technical Manual**: storing the results in files.',
+    '**ScadaViewer — Technical Manual**: displaying the results.',
+  ]),
+  history: [
+    ['1.0', '2026-10-27', t('První vydání.', 'First issue.')],
+    ['1.1', '2026-10-28', t('Jednotné názvosloví dokumentace, popis aktuálního stavu.', 'Unified documentation terminology, description of the current state.')],
+  ],
+}))
 
 // ═══ 2 Princip činnosti ════════════════════════════════════════════════
 c.push(H1(t('2  Princip činnosti', '2  Operating principle')))
@@ -143,8 +157,8 @@ c.push(...UL(t([
 ])))
 c.push(H2(t('3.4  Výsledky (AnalyzedParams, 112 B)', '3.4  Results (AnalyzedParams, 112 B)')))
 c.push(P(t(
-  'Struktura `ST_APP_Mod_Analyzing_AnalyzedResults_Params`, zarovnání 1 B, 28 hodnot typu REAL (4 B) v tomto pořadí; zapisuje se jedním binárním zápisem. Hodnoty jsou v jednotkách zákazníka. Názvy polí odpovídají DUT v PLC včetně historických překlepů (`RF_RealisingForce`, `RP_RealeasingPosition`, `RT_ReverseTimeTime`) — neopravovat, změnil by se symbol. Pozor na dvě zkratky RT: `RT_RealisingTravel` je vratný zdvih (RvT), `RT_ReverseTimeTime` je doba přeletu kontaktu (RevT).',
-  'Structure `ST_APP_Mod_Analyzing_AnalyzedResults_Params`, 1-byte packing, 28 REAL values (4 B) in this order; written in one binary write. Values are in customer units. The field names match the PLC DUT including historical typos (`RF_RealisingForce`, `RP_RealeasingPosition`, `RT_ReverseTimeTime`) — do not correct them, the symbol would change. Note the two RT abbreviations: `RT_RealisingTravel` is the release travel (RvT), `RT_ReverseTimeTime` is the contact transfer time (RevT).')))
+  'Struktura `ST_APP_Mod_Analyzing_AnalyzedResults_Params`, zarovnání 1 B, 28 hodnot typu REAL (4 B) v tomto pořadí; zapisuje se jedním binárním zápisem. Hodnoty jsou v jednotkách zákazníka. Názvy polí odpovídají DUT v PLC včetně překlepů (`RF_RealisingForce`, `RP_RealeasingPosition`, `RT_ReverseTimeTime`) — neopravovat, změnil by se symbol. Pozor na dvě zkratky RT: `RT_RealisingTravel` je vratný zdvih (RvT), `RT_ReverseTimeTime` je doba přeletu kontaktu (RevT).',
+  'Structure `ST_APP_Mod_Analyzing_AnalyzedResults_Params`, 1-byte packing, 28 REAL values (4 B) in this order; written in one binary write. Values are in customer units. The field names match the PLC DUT including typos (`RF_RealisingForce`, `RP_RealeasingPosition`, `RT_ReverseTimeTime`) — do not correct them, the symbol would change. Note the two RT abbreviations: `RT_RealisingTravel` is the release travel (RvT), `RT_ReverseTimeTime` is the contact transfer time (RevT).')))
 c.push(...TABLE(
   [t('Offset', 'Offset'), t('Skupina / pole', 'Group / field'), t('Jednotka', 'Unit')],
   [
@@ -238,7 +252,7 @@ c.push(...TABLE(
     ['DF', 'OF − RF'],
     ['PT', 'FP − OP'],
     ['OT (OvT)', 'OP − TTP'],
-    ['RT (RvT)', t('FP − RP = PT − MD (vratný zdvih, „Leerlaufweg“ podle DIN 41636-1; od Analyzing 2.6.3, dříve TTP − RP = OT + MD)', 'FP − RP = PT − MD (release travel, “Leerlaufweg” per DIN 41636-1; since Analyzing 2.6.3, previously TTP − RP = OT + MD)')],
+    ['RT (RvT)', t('FP − RP = PT − MD (vratný zdvih, „Leerlaufweg“ podle DIN 41636-1)', 'FP − RP = PT − MD (release travel, “Leerlaufweg” per DIN 41636-1)')],
     ['MD', t('RP − OP se znaménkem (kladné = běžná hystereze)', 'RP − OP with sign (positive = normal hysteresis)')],
     ['TT', 'FP − TTP'],
   ],
@@ -377,8 +391,8 @@ CFG('service', [
   ['reconnect_delay_s', 'float', '5.0', t('Pauza před opakovaným připojením [s].', 'Pause before reconnecting [s].')],
 ])
 c.push(NOTE('info', t(
-  'Bez funkce (rezerva nebo historické): sekce `[actuator]` a `[analysis.correction]`, klíče `electric_settling_samples`, `electric_averaging_enabled` a `electric_window_samples` (poslední dva se ani nenačítají). Pro ladění odporů slouží `electric_window_um`.',
-  'Without function (reserve or historical): sections `[actuator]` and `[analysis.correction]`, keys `electric_settling_samples`, `electric_averaging_enabled` and `electric_window_samples` (the last two are not even loaded). Use `electric_window_um` to tune resistances.')))
+  'Bez funkce (rezerva): sekce `[actuator]` a `[analysis.correction]`, klíče `electric_settling_samples`, `electric_averaging_enabled` a `electric_window_samples` (poslední dva se ani nenačítají). Pro ladění odporů slouží `electric_window_um`.',
+  'Without function (reserve): sections `[actuator]` and `[analysis.correction]`, keys `electric_settling_samples`, `electric_averaging_enabled` and `electric_window_samples` (the last two are not even loaded). Use `electric_window_um` to tune resistances.')))
 
 // ═══ 6 Instalace ═══════════════════════════════════════════════════════
 c.push(H1(t('6  Instalace a aktualizace', '6  Installation and update')))
@@ -388,12 +402,12 @@ c.push(P(t(
   'The `ads_analyzer` package contains `ads_analyzer.exe`, `_internal` (Python, numpy, scipy, pyads), `Config.toml.example`, `nssm_install.bat` and the folders `03_output\\logs`, `03_output\\data_export`. The package contains neither `Config.toml` nor `nssm.exe`. The target PC does not need Python; it needs the TwinCAT ADS router and an ADS route to the PLC.')))
 c.push(H2(t('6.2  První instalace', '6.2  First installation')))
 c.push(...OL(t([
-  'Rozbalte balíček (např. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) a z `Config.toml.example` vytvořte `Config.toml` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — vzor má export zapnutý).',
+  'Rozbalte balíček (např. `C:\\apps\\v<verze>_…-AdsAnalyzer\\ads_analyzer`) a z `Config.toml.example` vytvořte `Config.toml` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — vzor má export zapnutý).',
   'Běží-li PLC na jiném PC, nastavte v TwinCAT **statickou** ADS routu a na obou stranách povolte ve firewallu TCP 48898 (při přidávání routy vyhledáním i UDP 48899). AMS port 851 je adresa runtime uvnitř ADS, ve firewallu se nenastavuje. Běží-li PLC runtime na tomtéž PC, routa ani firewall potřeba nejsou.',
   'Ověřte ruční spuštění `ads_analyzer.exe --config Config.toml` — čekejte na „Služba připravena“ a ukončete Ctrl+C.',
   '`nssm.exe` (64bit) stáhněte z nssm.cc a uložte do složky služby nebo do PATH. Jako správce spusťte `nssm_install.bat`: služba `AdsAnalyzer`, automatický start, výstupy do `03_output\\logs\\nssm_*.log` (rotace po 10 MB i za běhu). `nssm.exe` musí po instalaci zůstat na místě — služba se přes něj spouští.',
 ], [
-  'Extract the package (e.g. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) and create `Config.toml` from `Config.toml.example` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — the template has the export switched on).',
+  'Extract the package (e.g. `C:\\apps\\v<verze>_…-AdsAnalyzer\\ads_analyzer`) and create `Config.toml` from `Config.toml.example` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — the template has the export switched on).',
   'If the PLC runs on a different PC, set up a **static** ADS route in TwinCAT and allow TCP 48898 in the firewall on both sides (and UDP 48899 when adding the route by search). AMS port 851 addresses the runtime inside ADS and is not a firewall port. If the PLC runtime runs on the same PC, neither a route nor a firewall rule is needed.',
   'Check a manual run `ads_analyzer.exe --config Config.toml` — wait for “Service ready” and stop with Ctrl+C.',
   'Download `nssm.exe` (64-bit) from nssm.cc and place it in the service folder or on the PATH. Run `nssm_install.bat` as administrator: service `AdsAnalyzer`, automatic start, output to `03_output\\logs\\nssm_*.log` (rotation every 10 MB, also while running). After installation `nssm.exe` must stay in place — the service is started through it.',
@@ -406,9 +420,6 @@ c.push(P(t(
 c.push(NOTE('warn', t(
   'PLC program musí odpovídat verzi služby: velikost `AnalyzedParams` 112 B (jinak každý kus skončí E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60 000 a `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (nesoulad se nehlásí — oříznutý záznam končí W6 / W5, jiné převzorkování dává chybná data).',
   'The PLC program must match the service version: `AnalyzedParams` size 112 B (otherwise every piece ends with E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60,000 and `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (a mismatch is not reported — a truncated record ends with W6 / W5, a different oversampling yields wrong data).')))
-c.push(NOTE('warn', t(
-  'Od Analyzing 2.6.3 má RT novou definici: nové RT = FP − RP = PT − MD (dříve TTP − RP = OT + MD) — **limity RT v recepturách PLC je nutné přenastavit**, jinak budou kusy NOK.',
-  'Since Analyzing 2.6.3 RT has a new definition: new RT = FP − RP = PT − MD (previously TTP − RP = OT + MD) — **the RT limits in the PLC recipes must be adjusted**, otherwise pieces will be NOK.')))
 
 // ═══ 7 Uvedení do provozu ══════════════════════════════════════════════
 c.push(H1(t('7  Uvedení do provozu a kalibrace polohy', '7  Commissioning and position calibration')))
@@ -519,7 +530,7 @@ c.push(...TABLE(
     ['W6', t('oříznutý záznam (pohyb se nevešel do `max_cycles`), NC se nesepnul zpět, NO nesepnul', 'truncated record (movement did not fit into `max_cycles`), NC did not close again, NO did not close'), t('Zkrátit dráhu / zvýšit rychlost; zkontrolovat `max_cycles` a kontakty NC a NO.', 'Shorten the travel / increase speed; check `max_cycles` and the NC and NO contacts.')],
     [t('W8, v logu „C z PLC neplatné (…) — použita …“', 'W8, log “C from the PLC invalid (…) — using …”'), t('PLC neposílá platné C', 'the PLC does not send a valid C'), t('Nastavit C v PLC (8 000–11 000 µm).', 'Set C in the PLC (8,000–11,000 µm).')],
     [t('Všechny sepnuté odpory kolem 900 mΩ', 'All closed resistances around 900 mΩ'), t('upadlý snímací vodič COM (4vodičové zapojení)', 'broken COM sense wire (4-wire connection)'), t('Opravit kabeláž; odpory takto změřených kusů neplatné.', 'Fix the wiring; resistances of such pieces are invalid.')],
-    [t('Po aktualizaci jsou všechny kusy NOK', 'All pieces NOK after an update'), t('limity v PLC na staré definice (RT od 2.6.3)', 'PLC limits for old definitions (RT since 2.6.3)'), t('Přenastavit limity v recepturách PLC.', 'Adjust the limits in the PLC recipes.')],
+    [t('Všechny kusy NOK v jednom parametru', 'All pieces NOK in one parameter'), t('limity v receptuře PLC neodpovídají definici parametru (kap. 4.3)', 'recipe limits in the PLC do not match the parameter definition (section 4.3)'), t('Přenastavit limity v recepturách PLC.', 'Adjust the limits in the PLC recipes.')],
     [t('„Export signálů pozastaven …“', '“Signal export paused …”'), t('málo místa na disku', 'low disk space'), t('Uvolnit disk / snížit `export_csv_max_files` / vypnout export.', 'Free the disk / reduce `export_csv_max_files` / switch the export off.')],
     [t('„Export signálu vynechán — 2 exporty ještě běží“', '“Signal export skipped — 2 exports still running”'), t('pomalý disk, export nestíhá', 'slow disk, the export cannot keep up'), t('Zkontrolovat disk; v provozu export vypnout.', 'Check the disk; switch the export off in operation.')],
     [t('V `ads_analyzer_current.log` nejsou běžné zprávy', 'No regular messages in `ads_analyzer_current.log`'), t('soubor obsahuje jen varování a chyby', 'the file contains warnings and errors only'), t('Průběh číst v `nssm_stdout.log`.', 'Read the progress in `nssm_stdout.log`.')],
