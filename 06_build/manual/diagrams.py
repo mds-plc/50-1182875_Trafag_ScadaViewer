@@ -281,64 +281,42 @@ def an_pipeline(lang: str) -> str:
     return svg(20 + cols * (bw + gx) - gx + 20, h + 36, '\n'.join(b))
 
 
-# ── Architektura systému (souhrnný dokument) ────────────────────────────────
+# ── Architektura softwaru (souhrnný dokument) ───────────────────────────────
 def arch(lang: str) -> str:
-    """Tři zóny: síť testeru | PC testeru | síť Trafag; šipky = rozhraní (ADS, analog, CSV, SMB, HTTP, NTP)."""
+    """Jen software (rozhodnutí 2026-10-28 — HW pohled je složitější): PLC program, HMI, služby, úložiště, prohlížeč."""
     b = []
     W, H = 240, 110
-    ZT, ZB = 30, 600                                       # zóny shora / zdola
-    zones = [(10, 300, tr(lang, 'Síť testeru', 'Tester network')),
-             (330, 640, tr(lang, 'PC testeru', 'Tester PC')),
-             (1000, 280, tr(lang, 'Síť Trafag', 'Trafag network'))]
-    for x, w, title in zones:
-        b.append(f'<rect x="{x}" y="{ZT}" width="{w}" height="{ZB - ZT}" rx="14" fill="#F8FAFC" stroke="{LINE}" '
-                 f'stroke-width="1.5" stroke-dasharray="8 6"/>')
-        b.append(f'<text x="{x + w / 2}" y="{ZB - 14}" text-anchor="middle" font-size="18" font-weight="700" '
-                 f'fill="{MUTED}">{title}</text>')
-    AX, B1, B2, CX = 40, 390, 710, 1020                      # x sloupců
-    # síť testeru
-    b.append(box(AX, 60, W, H, 'PLC TwinCAT 3', [tr(lang, 'řízení, měření, třídění', 'control, measurement,'),
-                                                  tr(lang, 'podle receptury', 'sorting by recipe')]))
-    b.append(box(AX, 240, W, H, tr(lang, 'Měřicí deska 1AD01', 'Measuring board 1AD01'),
-                 [tr(lang, 'odpory kontaktů NC / NO', 'NC / NO contact resistance')]))
-    b.append(box(AX, 440, W, H, 'IPC', [tr(lang, 'čas z PC testeru', 'time from the tester PC')]))
-    # PC testeru
+    A, B, C, D = 30, 390, 730, 1070                          # x sloupců
+    R1, R2, R3, R4 = 70, 230, 390, 550                       # y řádků
     hi = dict(fill='#EFF6FF', stroke=ACCENT, title_color=ACCENT, bold_border=True)
-    b.append(box(B1, 60, W, H, 'TwinCAT HMI', [tr(lang, 'ovládání testeru', 'tester operation'),
-                                               tr(lang, 'kiosk, obrazovka 2', 'kiosk, screen 2')], **hi))
-    b.append(box(B1, 200, W, H, 'Analyzing', [tr(lang, 'vyhodnocení měření', 'measurement evaluation')]))
-    b.append(box(B1, 340, W, H, 'DatabaseGateway', [tr(lang, 'ukládání dat, archivace', 'data storage, archiving')]))
-    b.append(box(B2, 60, W, H, 'ScadaViewer', [tr(lang, 'prohlížení dat :8080', 'data viewing :8080'),
-                                               tr(lang, 'kiosk, obrazovka 1', 'kiosk, screen 1')], **hi))
-    b.append(box(B2, 340, W, H, tr(lang, 'Lokální úložiště', 'Local storage'), [tr(lang, 'soubory CSV', 'CSV files')]))
-    b.append(box(B2, 470, W, 100, tr(lang, 'Čas (NTP server)', 'Time (NTP server)'), ['Windows Time']))
-    # síť Trafag
-    b.append(box(CX, 60, W, H, tr(lang, 'Kancelář', 'Office'), [tr(lang, 'prohlížeč — jen čtení', 'browser — read only')]))
-    b.append(box(CX, 340, W, H, 'Synology NAS', [tr(lang, 'archiv zakázek a testů', 'order and test archive')]))
-    # ADS sběrnice (svislá) v PC testeru
-    bx = 360
-    b.append(f'<line x1="{bx}" y1="44" x2="{bx}" y2="395" stroke="{ACCENT}" stroke-width="4"/>')
-    b.append(f'<text x="{bx - 8}" y="410" text-anchor="middle" font-size="15" font-weight="700" fill="{ACCENT}">ADS</text>')
-    b.append(arrow(AX + W, 115, bx - 2, 115, '', color=ACCENT))
-    b.append(f'<text x="{(AX + W + bx) / 2}" y="105" text-anchor="middle" font-size="13" fill="{ACCENT}">48898</text>')
-    for y in (115, 255, 395):
-        b.append(arrow(bx, y, B1 - 2, y, '', color=ACCENT))
-    b.append(f'<path d="M {bx} 44 L {B2 + W / 2} 44 L {B2 + W / 2} 56" fill="none" stroke="{ACCENT}" stroke-width="2" '
-             f'marker-end="url(#ahb)"/>')
-    b.append(f'<text x="{(bx + B2 + W / 2) / 2 + 60}" y="38" text-anchor="middle" font-size="14" fill="{ACCENT}">'
-             f'{tr(lang, "stav testeru, přihlášení", "tester state, sign-in")}</text>')
-    # měřicí deska → PLC, IPC → NTP
-    b.append(arrow(AX + W / 2, 240, AX + W / 2, 60 + H + 2, tr(lang, 'analog 0–10 V', 'analog 0–10 V'),
-                   lx=AX + W / 2 + 10, ly=212, anchor='start'))
-    b.append(arrow(B2, 520, AX + W + 2, 495, tr(lang, 'NTP (UDP 123)', 'NTP (UDP 123)'), lx=(B2 + AX + W) / 2, ly=528))
+    b.append(box(A, R2, W, H, tr(lang, 'PLC program', 'PLC program'), ['TwinCAT 3', tr(lang, 'řízení, měření, třídění', 'control, measurement, sorting')]))
+    b.append(box(B, R1, W, H, 'TwinCAT HMI', [tr(lang, 'ovládání testeru', 'tester operation')], **hi))
+    b.append(box(B, R2, W, H, 'Analyzing', [tr(lang, 'služba Windows', 'Windows service'), tr(lang, 'vyhodnocení měření', 'measurement evaluation')]))
+    b.append(box(B, R3, W, H, 'DatabaseGateway', [tr(lang, 'služba Windows', 'Windows service'), tr(lang, 'ukládání a archivace dat', 'data storage and archiving')]))
+    b.append(box(C, R1, W, H, 'ScadaViewer', [tr(lang, 'služba Windows (web)', 'Windows service (web)'), tr(lang, 'prohlížení dat', 'data viewing')], **hi))
+    b.append(box(C, R3, W, H, tr(lang, 'Lokální úložiště', 'Local storage'), [tr(lang, 'soubory CSV', 'CSV files')]))
+    b.append(box(C, R4, W, H, tr(lang, 'Síťové úložiště (NAS)', 'Network storage (NAS)'), [tr(lang, 'archiv zakázek a testů', 'order and test archive')]))
+    b.append(box(D, R1, W, H, tr(lang, 'Prohlížeč', 'Browser'), [tr(lang, 'kiosk na PC testeru', 'kiosk on the tester PC'), tr(lang, 'kancelář (jen čtení)', 'office (read only)')]))
+    # ADS: PLC → svislá sběrnice → HMI, Analyzing, DatabaseGateway; nad nimi → ScadaViewer
+    bx = 345
+    b.append(f'<line x1="{bx}" y1="40" x2="{bx}" y2="{R3 + H / 2}" stroke="{ACCENT}" stroke-width="4"/>')
+    b.append(f'<text x="{(A + W + bx) / 2}" y="{R2 + H / 2 - 10}" text-anchor="middle" font-size="15" font-weight="700" fill="{ACCENT}">ADS</text>')
+    b.append(arrow(A + W, R2 + H / 2, bx - 2, R2 + H / 2, '', color=ACCENT))
+    for y in (R1, R2, R3):
+        b.append(arrow(bx, y + H / 2, B - 2, y + H / 2, '', color=ACCENT))
+    b.append(f'<path d="M {bx} 40 L {C + W / 2} 40 L {C + W / 2} {R1 - 4}" fill="none" stroke="{ACCENT}" stroke-width="2" marker-end="url(#ahb)"/>')
+    b.append(f'<text x="{(B + C + W) / 2}" y="32" text-anchor="middle" font-size="14" fill="{ACCENT}">'
+             f'{tr(lang, "ADS: stav testeru a zakázky, přihlášení", "ADS: tester and order state, sign-in")}</text>')
     # data
-    b.append(arrow(B1 + W, 395, B2 - 2, 395, tr(lang, 'zápis CSV', 'CSV write'), dy=-10))
-    b.append(arrow(B2 + W / 2, 340, B2 + W / 2, 60 + H + 2, tr(lang, 'čte', 'reads'), lx=B2 + W / 2 + 10,
-                   ly=260, anchor='start', dashed=True))
-    b.append(arrow(B2 + W, 395, CX - 2, 395, tr(lang, 'SMB (TCP 445)', 'SMB (TCP 445)'), dy=-10))
-    b.append(arrow(B2 + W, 140, CX + 30, 340 - 2, tr(lang, 'čte', 'reads'), dashed=True, lx=B2 + W + 40, ly=250))
-    b.append(arrow(CX, 115, B2 + W + 2, 115, 'HTTP 8080', dy=-10))
-    return svg(1300, ZB + 10, '\n'.join(b))
+    b.append(arrow(B + W, R3 + H / 2, C - 2, R3 + H / 2, tr(lang, 'zápis CSV', 'CSV write'), dy=-10))
+    b.append(arrow(C + W / 2, R3, C + W / 2, R1 + H + 2, tr(lang, 'čte', 'reads'), dashed=True, lx=C + W / 2 + 10, ly=(R1 + H + R3) / 2 + 5, anchor='start'))
+    b.append(arrow(C + W / 2, R3 + H, C + W / 2, R4 - 2, tr(lang, 'Gateway nahrává (SMB)', 'Gateway uploads (SMB)'), lx=C + W / 2 + 10, ly=(R3 + H + R4) / 2 + 5, anchor='start'))
+    b.append(arrow(D, R1 + H / 2, C + W + 2, R1 + H / 2, 'HTTP 8080', dy=-10))
+    xr = C + W + 45
+    b.append(f'<path d="M {C + W} {R1 + 90} L {xr} {R1 + 90} L {xr} {R4 + H / 2} L {C + W + 4} {R4 + H / 2}" fill="none" '
+             f'stroke="{MUTED}" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ah)"/>')
+    b.append(f'<text x="{xr + 10}" y="{(R1 + R4) / 2 + 60}" font-size="15" fill="{MUTED}">{tr(lang, "čte", "reads")}</text>')
+    return svg(D + W + 30, R4 + H + 30, '\n'.join(b))
 
 
 DIAGRAMS = {

@@ -46,7 +46,7 @@ DOCS = [
 SAMPLES_TO = [GW, SV]
 EXPORT = ROOT / '17.Dokumentace'
 # pořadí složek (rozhodnutí 2026-10-28): architektura, obsluhované aplikace, služby na pozadí, měřicí deska, vzory
-EXPORT_DIRS = {'Architektura': '1.Architektura systému', 'HMI': '2.HMI', 'ScadaViewer': '3.ScadaViewer',
+EXPORT_DIRS = {'Architektura': '1.Architektura softwaru', 'HMI': '2.HMI', 'ScadaViewer': '3.ScadaViewer',
                'DatabaseGateway': '4.DatabaseGateway', 'Analyzing': '5.Analyzing', 'AnalogFrontend': '6.Analogový měřící obvod'}
 EXPORT_SAMPLES = '7.Vzorové soubory'
 GW_SAMPLES = sorted((GW / '04_docs').glob('sample_*.*'))   # komentované (CZ / EN) i technické vzory + sample_production.xlsx
