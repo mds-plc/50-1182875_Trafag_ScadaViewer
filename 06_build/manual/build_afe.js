@@ -1,6 +1,7 @@
-// Analogový měřicí obvod 1AD01 — jeden dokument „Návod k použití a technický manuál“ (docType combined), CS + EN
+// Analogový měřicí obvod 1AD01 — Technický popis (docType description), CS + EN
 // Použití: node build_afe.js cs|en <výstupní.docx>
-// Rozhodnutí uživatele 2026-10-28: u této desky jedna dokumentace pro zákazníka i servis (ne dvě verze).
+// Rozhodnutí uživatele 2026-10-28: jeden dokument; popis stavu a technické vysvětlení, ne návod — zákazník s deskou
+// nepracuje (popisná forma, žádné pokyny „připojte / nastavte“).
 // Zdroje: 17.Dokumentace/6.Analogový měřící obvod/Podklady — 1AD01_AnalogFrontend_Instructions_CZ.pdf (návod desky) a
 // 1AD01_AnalogFrontend_Schematics.pdf (KiCad). Platí pinout M12 a rozsah proudu cca 0–270 mA z návodu
 // (JST XH ve schématu = vnitřní konektory desky); hrubé kanály VOLTAGE_*_COARSE se nepoužívají.
@@ -17,7 +18,7 @@ const USER = false                               // obsah = úplný (zákazník 
 const SCH = n => path.join(__dirname, 'img', 'afe', `sch_${n}.png`)
 
 const M = require('./lib')({
-  docType: 'combined',
+  docType: 'description',
   lang: L, imgDir: path.join(__dirname, 'img', 'afe'),
   product: T('Analogový měřicí obvod', 'Analog Front-End'), version: '1AD01', versionLabel: 'Hardware',
   subtitle: T('Měřicí deska pro 4vodičové měření odporu kontaktů NC a NO mikrospínače v EOL testeru',
@@ -36,9 +37,9 @@ const chapter = (cs, en) => { chap(cs, en); sec = 0 }
 // ═══ O tomto dokumentu ═════════════════════════════════════════════════
 chapter('O tomto dokumentu', 'About this document')
 c.push(...ABOUT({
-  purpose: t('Dokument popisuje analogový měřicí obvod 1AD01: k čemu slouží, technické údaje, připojení, měření a převod na fyzikální jednotky, zapojení, rozhraní pro PLC a kabeláž. V příloze je schéma zapojení.',
-             'This document describes the 1AD01 analog front-end: its purpose, technical data, connection, measurement and conversion to physical units, circuit, PLC interface and cabling. The circuit diagram is in the appendix.'),
-  audience: t('kvalita, technologie a údržba zákazníka; servis EOL testeru, elektrotechnik, programátor PLC.', 'the customer’s quality, process engineering and maintenance; EOL tester service, electrical engineer, PLC programmer.'),
+  purpose: t('Dokument popisuje analogový měřicí obvod 1AD01 v EOL testeru: účel, technické údaje, zapojení v testeru, princip měření a převod na fyzikální jednotky a zapojení desky. Deska pracuje automaticky pod řízením PLC — obsluha ani zákazník s ní nepracují. V příloze je schéma zapojení.',
+             'This document describes the 1AD01 analog front-end in the EOL tester: purpose, technical data, connection in the tester, measurement principle and conversion to physical units, and the board circuit. The board works automatically under PLC control — neither the operator nor the customer works with it. The circuit diagram is in the appendix.'),
+  audience: t('kvalita a technologie zákazníka (pochopení měření odporu kontaktů); servis EOL testeru, elektrotechnik, programátor PLC.', 'the customer’s quality and process engineering (understanding the contact resistance measurement); EOL tester service, electrical engineer, PLC programmer.'),
   related: t([
     '**Analyzing — Návod k použití**: odpory kontaktů ve výsledcích měření.',
     'Elektrotechnická dokumentace EOL testeru (zapojení do rozváděče a PLC).',
@@ -50,7 +51,7 @@ c.push(...ABOUT({
 }))
 
 // ═══ Určené použití ════════════════════════════════════════════════════
-chapter('Určené použití a funkce', 'Intended use and function')
+chapter('Účel a funkce', 'Purpose and function')
 c.push(P(t(
   'Analogový měřicí obvod 1AD01 je zesilovač (front-end) pro měření malých odporů v rozsahu 0–1 Ω. Obsahuje dva měřicí kanály pro přepínací mikrospínač — rozpínací (NC) a spínací (NO) kontakt. Měření využívá 4vodičovou (Kelvinovu) metodu: testovací proud teče kontaktem jedním párem vodičů, úbytek napětí se měří druhým párem přímo na svorkách mikrospínače.',
   'The 1AD01 analog front-end is an amplifier for measuring low resistances in the range 0–1 Ω. It has two measuring channels for a changeover microswitch — the normally closed (NC) and normally open (NO) contact. The measurement uses the 4-wire (Kelvin) method: the test current flows through the contact via one pair of wires, the voltage drop is measured with the second pair directly at the microswitch terminals.')))
@@ -84,19 +85,19 @@ c.push(...TABLE(
   [3400, 6238], t('Technické údaje', 'Technical data')))
 
 // ═══ Připojení ═════════════════════════════════════════════════════════
-chapter('Připojení', 'Connection')
+chapter('Zapojení v testeru', 'Connection in the tester')
 sub('Testovací zdroj', 'Test source', 'src')
 c.push(P(t(
-  'Externí zdroj 0–30 V se připojuje na svorky **VTEST+** a **VTEST−**. Mínus testovacího zdroje je spojen se systémovou zemí.',
-  'The external 0–30 V source is connected to the **VTEST+** and **VTEST−** terminals. The negative pole of the test source is connected to system ground.')))
+  'Testovací napětí dodává externí zdroj 0–30 V připojený na svorky **VTEST+** a **VTEST−**. Mínus testovacího zdroje je spojen se systémovou zemí.',
+  'The test voltage is supplied by an external 0–30 V source connected to the **VTEST+** and **VTEST−** terminals. The negative pole of the test source is connected to system ground.')))
 sub('Mikrospínač (Kelvinovo zapojení)', 'Microswitch (Kelvin connection)', 'kelvin')
 c.push(...TABLE(
   [t('Svorka mikrospínače', 'Microswitch terminal'), t('Excitace (proud)', 'Excitation (current)'), t('Sense (napětí)', 'Sense (voltage)')],
   [['COM', 'EXCITATION COM', 'SENSE COM'], ['NC', 'EXCITATION NC', 'SENSE NC'], ['NO', 'EXCITATION NO', 'SENSE NO']],
   [3200, 3200, 3238], t('Kelvinovo zapojení mikrospínače', 'Kelvin connection of the microswitch')))
-c.push(NOTE('warn', t(
-  'Pro přesnost měření ve stanoveném rozsahu je nezbytné Kelvinovo zapojení. Zapojení pouze 2 vodiči na kontakt vnáší chybu způsobenou úbytkem napětí na přívodech a kontaktech.',
-  'The Kelvin connection is essential for measurement accuracy in the specified range. Connecting only 2 wires per contact introduces an error caused by the voltage drop on the leads and contacts.')))
+c.push(NOTE('info', t(
+  'Kelvinovo zapojení zajišťuje přesnost měření ve stanoveném rozsahu: při zapojení pouze 2 vodiči na kontakt by výsledek zatížil úbytek napětí na přívodech a kontaktech.',
+  'The Kelvin connection ensures measurement accuracy in the specified range: with only 2 wires per contact the result would include the voltage drop on the leads and contacts.')))
 sub('Rozhraní pro PLC', 'PLC interface', 'plc')
 if (USER) {
   c.push(P(t(
@@ -112,11 +113,11 @@ if (USER) {
     [['1', 'I_NC', '7', 'U_NO'], ['2', 'GND', '8', 'GND'], ['3', 'I_NO', '9', 'CURR_SINK_SETPOINT'], ['4', 'GND', '10', 'GND'], ['5', 'U_NC', '11', '—'], ['6', 'GND', '12', 'GND']],
     [1000, 3000, 1000, 3000], t('Konektor analogových signálů', 'Analog signal connector')))
   c.push(...UL(t([
-    'Analogové signály připojovat na AI karty PLC vždy v párech (piny 1 + 2, 3 + 4, …).',
-    '**Kabeláž:** stíněný kabel, stínění připojit v rozváděči. Žíly odhalit tak, aby stínění dosahovalo co nejblíže k AI kartám PLC — nevést odhalené vodiče přes celý rozváděč.',
+    'Analogové signály se připojují na AI karty PLC v párech (piny 1 + 2, 3 + 4, …).',
+    '**Požadavek na kabeláž:** stíněný kabel se stíněním připojeným v rozváděči; stínění sahá co nejblíže k AI kartám PLC, odhalené vodiče nevedou přes celý rozváděč.',
   ], [
-    'Always connect the analog signals to the PLC AI cards in pairs (pins 1 + 2, 3 + 4, …).',
-    '**Cabling:** shielded cable, shield connected in the control cabinet. Strip the cores so that the shield reaches as close as possible to the PLC AI cards — do not run stripped conductors across the whole cabinet.',
+    'The analog signals are connected to the PLC AI cards in pairs (pins 1 + 2, 3 + 4, …).',
+    '**Cabling requirement:** shielded cable with the shield connected in the control cabinet; the shield reaches as close as possible to the PLC AI cards, stripped conductors do not run across the whole cabinet.',
   ])))
 }
 
@@ -140,27 +141,25 @@ if (!USER) {
 }
 
 // ═══ Měření ════════════════════════════════════════════════════════════
-chapter('Měření', 'Measurement')
-sub('Postup měření', 'Measurement procedure')
+chapter('Princip měření', 'Measurement principle')
+sub('Průběh měření', 'Measurement sequence')
 c.push(...OL(t([
-  'Zapnout napájení elektroniky 24 V.',
-  `Připojit zdroj testovacího napětí (kap. ${REF.src}).`,
-  `Připojit mikrospínač Kelvinovým zapojením (kap. ${REF.kelvin}).`,
-  'V PLC nastavit požadovaný testovací proud pomocí CURR_SINK_SETPOINT.',
-  'Číst kanály I_NC, U_NC (resp. I_NO, U_NO) z PLC a přepočítat podle kalibračních rovnic.',
-  'Vypočítat odpor: R = U / I.',
+  `Elektronika je napájená 24 V, testovací napětí dodává externí zdroj (kap. ${REF.src}).`,
+  `Mikrospínač je připojen Kelvinovým zapojením (kap. ${REF.kelvin}).`,
+  'PLC nastaví požadovaný testovací proud signálem CURR_SINK_SETPOINT.',
+  'PLC čte kanály I_NC, U_NC (resp. I_NO, U_NO) a přepočítá je na proud a napětí (převodní rovnice níže).',
+  'Odpor kontaktu se vypočte jako R = U / I.',
 ], [
-  'Switch on the 24 V electronics supply.',
-  `Connect the test voltage source (section ${REF.src}).`,
-  `Connect the microswitch with the Kelvin connection (section ${REF.kelvin}).`,
-  'In the PLC set the required test current with CURR_SINK_SETPOINT.',
-  'Read channels I_NC, U_NC (or I_NO, U_NO) from the PLC and convert them using the calibration equations.',
-  'Calculate the resistance: R = U / I.',
+  `The electronics are powered with 24 V, the test voltage is supplied by an external source (section ${REF.src}).`,
+  `The microswitch is connected with the Kelvin connection (section ${REF.kelvin}).`,
+  'The PLC sets the required test current with the CURR_SINK_SETPOINT signal.',
+  'The PLC reads channels I_NC, U_NC (or I_NO, U_NO) and converts them to current and voltage (conversion equations below).',
+  'The contact resistance is calculated as R = U / I.',
 ])))
 sub('Platnost měření', 'Measurement validity')
-c.push(NOTE('warn', t(
-  'Přesáhne-li výstupní napětí některého kanálu cca 10,5 V, zesilovač je v saturaci a měření je nutné považovat za neplatné.',
-  'If the output voltage of any channel exceeds approx. 10.5 V, the amplifier is saturated and the measurement must be considered invalid.')))
+c.push(NOTE('info', t(
+  'Přesáhne-li výstupní napětí některého kanálu cca 10,5 V, zesilovač je v saturaci a takové měření je neplatné.',
+  'If the output voltage of any channel exceeds approx. 10.5 V, the amplifier is saturated and such a measurement is invalid.')))
 sub('Převod na fyzikální jednotky', 'Conversion to physical units', 'conv')
 c.push(P(t('Pro každý kanál platí lineární převod, kde AI [V] je napětí přečtené z PLC (0–10 V) a slope / offset jsou kalibrační konstanty kanálu:', 'A linear conversion applies to each channel, where AI [V] is the voltage read from the PLC (0–10 V) and slope / offset are the calibration constants of the channel:')))
 c.push(...CODE([
