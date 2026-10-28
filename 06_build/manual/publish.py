@@ -38,10 +38,13 @@ DOCS = [
     ('an_user', AN, 'Analyzing', 'user'),
     ('an', AN, 'Analyzing', 'tech'),
     ('hmi', HMI, 'HMI', 'user'),
+    ('afe_user', None, 'AnalogFrontend', 'user'),       # deska 1AD01 — bez git projektu, jen 17.Dokumentace
+    ('afe_tech', None, 'AnalogFrontend', 'tech'),
 ]
 SAMPLES_TO = [GW, SV]
 EXPORT = ROOT / '17.Dokumentace'
-EXPORT_DIRS = {'ScadaViewer': '1.ScadaViewer', 'DatabaseGateway': '2.DatabaseGateway', 'Analyzing': '3.Analyzing', 'HMI': '4.HMI'}
+EXPORT_DIRS = {'ScadaViewer': '1.ScadaViewer', 'DatabaseGateway': '2.DatabaseGateway', 'Analyzing': '3.Analyzing', 'HMI': '4.HMI',
+               'AnalogFrontend': '6.Analogový měřící obvod'}
 EXPORT_SAMPLES = '5.Vzorové soubory'
 GW_SAMPLES = sorted((GW / '04_docs').glob('sample_*.*'))   # komentované (CZ / EN) i technické vzory + sample_production.xlsx
 
@@ -60,6 +63,8 @@ def version(product: str) -> str:
         return _py_version(GW / '00_src' / 'db_gateway' / '__init__.py')
     if product == 'Analyzing':
         return _py_version(AN / '00_src' / 'ads_analyzer' / '__init__.py')
+    if product == 'AnalogFrontend':
+        return 'hw1AD01'                                  # označení desky (hardware, bez verze softwaru)
     cfg = (HMI / 'MDS_JavaScripts' / '01_Config' / 'HMI_Config.js').read_text(encoding='utf-8')
     m = re.search(r"revision:\s*'(\d{4}-\d{2}-\d{2})", cfg)
     if not m:
@@ -103,7 +108,7 @@ def main() -> int:
                 prefix, suffix = f'{product}_{typ}_', f'_{lang}.{ext}'
                 name = f'{prefix}{ver}_{today}{suffix}'
                 source = HERE / f'{src}_{lang.lower()}.{ext}'
-                for dst in (proj / '04_docs' / 'manual', EXPORT / EXPORT_DIRS[product]):
+                for dst in ([proj / '04_docs' / 'manual'] if proj else []) + [EXPORT / EXPORT_DIRS[product]]:
                     put(source, dst, name, prefix, suffix)
                 print('ok', name)
     samples = sorted((HERE / 'vzory').iterdir()) + GW_SAMPLES

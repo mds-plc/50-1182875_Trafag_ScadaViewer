@@ -193,7 +193,7 @@ module.exports = function makeLib(opt) {
       [t('Zákazník', 'Customer'), 'Trafag AG'],
       [t('Projekt', 'Project'), '50-1182875'],
       [t('Stroj', 'Machine'), MACHINE],
-      [t('Software', 'Software'), `${opt.product} ${opt.version}`],
+      [opt.versionLabel || t('Software', 'Software'), `${opt.product} ${opt.version}`],
       [t('Vydání dokumentu', 'Document issue'), opt.issue],
       [t('Dodavatel', 'Supplier'), 'Mechatronic Design & Solutions (MDS)'],
     ]
