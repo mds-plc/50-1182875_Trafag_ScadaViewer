@@ -5,8 +5,8 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 
 | Typ (`docType`) | Pro koho | Obsah | Soubory v `04_docs/manual` |
 |-----------------|----------|-------|----------------------------|
-| `user` — **Návod k použití** / Instructions for Use | zákazník (kvalita, technologie, vedení, IT) | co produkt dělá, co znamenají data, chování při výpadku, vzorové soubory | `<Produkt>_Navod_k_pouziti_CS`, `<Produkt>_Instructions_for_Use_EN` |
-| `tech` — **Technický manuál** / Technical Manual | servis, programátor PLC, vývojář | rozhraní, algoritmy, konfigurace, instalace, diagnostika | `<Produkt>_Technicky_manual_CS`, `<Produkt>_Technical_Manual_EN` |
+| `user` — **Návod k použití** / Instructions for Use | zákazník (kvalita, technologie, vedení, IT) | co produkt dělá, co znamenají data, chování při výpadku, vzorové soubory | `<Produkt>_Navod_k_pouziti_<verze>_<datum>_CS`, `…_Instructions_for_Use_…_EN` |
+| `tech` — **Technický manuál** / Technical Manual | servis, programátor PLC, vývojář | rozhraní, algoritmy, konfigurace, instalace, diagnostika | `<Produkt>_Technicky_manual_<verze>_<datum>_CS`, `…_Technical_Manual_…_EN` |
 
 | Produkt | Návod k použití | Technický manuál |
 |---------|-----------------|------------------|
@@ -18,6 +18,10 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 Vzorové soubory (`vzory/`: PROD_ CSV + XLSX, TEST_ ZIP + XLSX — z ukázkových dat `demo/`, XLSX funkcemi ScadaViewer
 `build_blocks_xlsx` / `build_xlsx`) jdou do `04_docs/manual/vzorove_soubory` DatabaseGateway a ScadaViewer; popisuje je
 příloha Návodu k použití DatabaseGateway. Kopírování dokumentů i vzorů pod správnými názvy: **`python publish.py`**.
+Název souboru = `<Produkt>_<Typ>_<verze>_<RRRR-MM-DD>_<CS|EN>` (verze softwaru z `__init__.py`, HMI `rev<datum>` z `HMI_Config.js`;
+datum = den publikování); předchozí verze téhož dokumentu se v cíli smaže. Cíle: `04_docs/manual` projektu (HMI: jeho
+`04_docs/manual`) a souhrnná složka **`17.Dokumentace`** v kořeni projektu Trafag (`1.ScadaViewer`, `2.DatabaseGateway`,
+`3.Analyzing`, `4.HMI`, `5.Vzorové soubory`).
 
 **Sazba (`lib.js`, `build_manual.js`):** řádky tabulky se nedělí, všechny řádky kromě posledního jsou „svázat s dalším“ →
 tabulka, která se vejde na stranu, je vždy celá na jedné straně (delší má opakované záhlaví); nadpisy, obrázek s popiskem
