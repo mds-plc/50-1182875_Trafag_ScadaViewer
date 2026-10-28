@@ -23,15 +23,15 @@ const M = require('./lib')({
     : 'Storage and archiving of order and test measurement data — where the data is created, its format and what happens during an outage',
   version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
 })
-const { t, P, H1, H2, UL, FIG, NOTE, TABLE, ABOUT } = M
+const { t, P, H1, H2, UL, OL, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
 
 // ═══ 1 O tomto dokumentu ═══════════════════════════════════════════════
 c.push(H1(t('1  O tomto dokumentu', '1  About this document')))
 c.push(...ABOUT({
   purpose: t(
-    `Dokument popisuje službu DatabaseGateway verze ${VERSION} z pohledu uživatele dat: kde a kdy vznikají soubory zakázek a testovacích měření, jak jsou uspořádané, co znamenají jednotlivé údaje a co se s daty stane při výpadku sítě, řídicího systému nebo napájení. Přílohou jsou vzorové soubory.`,
-    `This document describes the DatabaseGateway service version ${VERSION} from the perspective of a data user: where and when the order and test measurement files are created, how they are structured, what the individual values mean and what happens to the data during a network, controller or power outage. Sample files are attached.`),
+    `Dokument popisuje službu DatabaseGateway verze ${VERSION} z pohledu uživatele dat: kde a kdy vznikají soubory zakázek a testovacích měření, jak jsou uspořádané, co znamenají jednotlivé údaje, jak služba funguje (komunikace s PLC, zabezpečení zápisu, synchronizace na NAS, nastavení) a co se s daty stane při výpadku sítě, řídicího systému nebo napájení. Přílohou jsou vzorové soubory.`,
+    `This document describes the DatabaseGateway service version ${VERSION} from the perspective of a data user: where and when the order and test measurement files are created, how they are structured, what the individual values mean, how the service works (communication with the PLC, write safety, NAS synchronisation, settings) and what happens to the data during a network, controller or power outage. Sample files are attached.`),
   audience: t('kvalita, technologie, vedení výroby a IT zákazníka (zpracování dat).', 'the customer’s quality, process engineering, production management and IT (data processing).'),
   related: t([
     '**DatabaseGateway — Technický manuál**: rozhraní s PLC, konfigurace, synchronizace na NAS, instalace a diagnostika.',
@@ -46,7 +46,7 @@ c.push(...ABOUT({
 }))
 
 // ═══ 2 Určené použití ══════════════════════════════════════════════════
-c.push(H1(t('2  Určené použití a funkce', '2  Intended use and function')))
+c.push(H1(t('2  Účel a funkce', '2  Purpose and function')))
 c.push(P(t(
   'DatabaseGateway je služba na PC EOL testeru mikrospínačů. Na pokyn řídicího systému (PLC) zapisuje data výrobních zakázek a testovacích měření do souborů CSV na lokální disk PC a na pozadí je nahrává na síťové úložiště Synology NAS, kde tvoří trvalý archiv. Službu obsluha neovládá; data se prohlížejí ve ScadaViewer.',
   'DatabaseGateway is a service on the PC of the microswitch EOL tester. On command of the controller (PLC) it writes the data of production orders and test measurements to CSV files on the local disk of the PC and uploads them in the background to the Synology NAS network storage, where they form the permanent archive. The operator does not control the service; the data is viewed in ScadaViewer.')))
@@ -131,7 +131,7 @@ c.push(...TABLE(
     ['`[TestingParameters]`', t('Parametry testu z receptury: rychlost, zrychlení, zpomalení a ryv pohonu, maximální síla, měřicí proud a napětí kontaktů, mez odporu.', 'Test parameters from the recipe: drive velocity, acceleration, deceleration and jerk, maximum force, contact measuring current and voltage, resistance limit.')],
     ['`[SortingCategories]`', t('Třídicí veličina (obvykle MD) a meze Min / Max kategorií 1–6; nepoužitá kategorie = prázdné buňky.', 'Sorting quantity (usually MD) and the Min / Max limits of categories 1–6; unused category = empty cells.')],
     ['`[SortingLimits]`', t('Limity 28 měřených parametrů: řádky Max a Min (Trafag) a Max_Supplier a Min_Supplier (dodavatel); neaktivní limit = prázdná buňka.', 'Limits of the 28 measured parameters: rows Max and Min (Trafag) and Max_Supplier and Min_Supplier (supplier); inactive limit = empty cell.')],
-    ['`[Data]`', t('Hlavička 37 sloupců a jeden řádek na každý změřený kus (kapitola 4.3).', 'Header of 37 columns and one row per measured piece (section 4.3).')],
+    ['`[Data]`', t('Hlavička 37 sloupců a jeden řádek na každý změřený kus (kap. 4.3).', 'Header of 37 columns and one row per measured piece (section 4.3).')],
   ],
   [2600, 7038], t('Bloky výrobního souboru', 'Production file blocks')))
 c.push(NOTE('info', t(
@@ -176,8 +176,95 @@ c.push(NOTE('info', t(
   'Kvůli signálovým datům má testovací soubor desítky MB. Ve ScadaViewer se signály zobrazují v grafech; export do Excelu (XLSX) obsahuje jen údaje testu a výsledky, bez signálů.',
   'Because of the signal data a test file is tens of MB in size. ScadaViewer shows the signals in charts; the Excel export (XLSX) contains only the test data and results, without the signals.')))
 
-// ═══ 6 Výpadky ═════════════════════════════════════════════════════════
-c.push(H1(t('6  Co se stane při výpadku', '6  What happens during an outage')))
+// ═══ 6 Jak služba funguje ══════════════════════════════════════════════
+c.push(H1(t('6  Jak služba funguje', '6  How the service works')))
+c.push(H2(t('6.1  Součásti služby', '6.1  Service components')))
+c.push(...TABLE(
+  [t('Součást', 'Component'), t('Úloha', 'Task')],
+  [
+    [t('Hlavní smyčka', 'Main loop'), t('Každých 10 ms se dotazuje PLC, provádí operace zakázek a testů a zapisuje soubory na lokální disk.', 'Polls the PLC every 10 ms, performs the order and test operations and writes the files to the local disk.')],
+    ['Heartbeat', t('Každých 0,5 s mění stav signálu pro PLC; zastaví se, pokud hlavní smyčka neproběhla déle než 30 s — PLC tak pozná zaseknutí služby.', 'Toggles a signal for the PLC every 0.5 s; it stops if the main loop has not run for more than 30 s — the PLC thus detects a stalled service.')],
+    [t('Synchronizace NAS', 'NAS synchronisation'), t('Jediná část, která přistupuje k NAS: nahrávání, ověření a čištění lokálních kopií (kap. 6.4).', 'The only part that accesses the NAS: upload, verification and clean-up of local copies (section 6.4).')],
+    [t('Záznam událostí', 'Event log'), t('Zapisuje log služby.', 'Writes the service log.')],
+  ],
+  [2600, 7038], t('Součásti DatabaseGateway', 'DatabaseGateway components')))
+c.push(H2(t('6.2  Komunikace s PLC', '6.2  Communication with the PLC')))
+c.push(P(t(
+  'Gateway komunikuje s PLC protokolem ADS (Beckhoff TwinCAT). Každá operace probíhá stejným potvrzovacím postupem (handshake):',
+  'Gateway communicates with the PLC via the ADS protocol (Beckhoff TwinCAT). Every operation follows the same confirmation sequence (handshake):')))
+c.push(...OL(t([
+  'PLC připraví data operace, nastaví číslo operace a vyšle požadavek (Run).',
+  'Gateway požadavek převezme a ohlásí zpracování (Busy); PLC požadavek shodí.',
+  'Gateway přečte data operace a operaci provede. Výsledek ohlásí jako Done (úspěch), Rejected (logické odmítnutí, např. zakázka neexistuje) nebo Error (technická chyba).',
+  'PLC převzetí výsledku potvrdí (Ack) a Gateway čeká na další požadavek.',
+], [
+  'The PLC prepares the operation data, sets the operation number and sends a request (Run).',
+  'Gateway accepts the request and reports processing (Busy); the PLC resets the request.',
+  'Gateway reads the operation data and performs the operation. It reports the result as Done (success), Rejected (logical refusal, e.g. the order does not exist) or Error (technical error).',
+  'The PLC acknowledges the result (Ack) and Gateway waits for the next request.',
+])))
+c.push(...FIG('gw_handshake', t('Časový průběh jedné operace mezi PLC a DatabaseGateway', 'Timing of one operation between the PLC and DatabaseGateway')))
+c.push(...TABLE(
+  ['Op', t('Operace', 'Operation'), t('Co Gateway udělá', 'What Gateway does')],
+  [
+    ['1', t('Založení zakázky', 'Create order'), t('Přečte číslo zakázky, recepturu, ID a název mikrospínače, testovací parametry, kategorie a limity a vytvoří soubor rozpracované zakázky.', 'Reads the order number, recipe, microswitch ID and name, test parameters, categories and limits and creates the order-in-progress file.')],
+    ['2', t('Přidání kusu', 'Add piece'), t('Přečte 28 parametrů kusu, stav, kategorii, 5 oblastí NOK, šarži a konstantu C a připíše řádek do souboru zakázky. Nová šarže přidá sloupec do bloku [Metadata].', 'Reads the 28 piece parameters, status, category, 5 NOK areas, lot and constant C and appends a row to the order file. A new lot adds a column to the [Metadata] block.')],
+    ['3', t('Uzavření zakázky', 'Close order'), t('Doplní čekající šarže a přesune soubor mezi uzavřené zakázky (stav Local); nahrání na NAS proběhne na pozadí.', 'Adds pending lots and moves the file to the closed orders (Local state); the upload to the NAS runs in the background.')],
+    ['4', t('Kontrola existence', 'Check existence'), t('Ověří, zda zakázka existuje na PC testeru (rozpracovaná, uzavřená nebo nahraná).', 'Checks whether the order exists on the tester PC (in progress, closed or uploaded).')],
+    ['5', t('Testovací záznam', 'Test record'), t('Přečte nastavení testu, informace o měření, 28 parametrů, 5 oblastí NOK a surové signály (6 kanálů) a uloží testovací soubor.', 'Reads the test settings, measurement information, 28 parameters, 5 NOK areas and raw signals (6 channels) and saves the test file.')],
+  ],
+  [700, 2400, 6538], t('Operace DatabaseGateway', 'DatabaseGateway operations')))
+c.push(P(t(
+  'Texty z PLC se čtou v kódování Windows-1250 (čeština). Znaky, které by poškodily soubor nebo jeho název (oddělovač CSV, znaky zakázané v názvu souboru, úvodní `=`, `+`, `@` jako ochrana proti vzorcům v Excelu), Gateway odmítne.',
+  'Texts from the PLC are read in the Windows-1250 encoding (Czech). Characters that would damage the file or its name (CSV separator, characters forbidden in file names, a leading `=`, `+`, `@` as protection against Excel formulas) are rejected by Gateway.')))
+c.push(H2(t('6.3  Zabezpečení zápisu', '6.3  Write safety')))
+c.push(...UL(t([
+  'Nová zakázka a testovací záznam se zapisují do dočasného souboru, uloží na disk (`fsync`) a teprve potom přejmenují — pod konečným názvem se nikdy neobjeví napůl zapsaný soubor.',
+  'Kus se připisuje do existujícího souboru; PLC dostane potvrzení Done až po uložení na disk. Neúplný poslední řádek po výpadku napájení se při dalším zápisu odřízne.',
+  'Přesuny mezi složkami jsou atomické přejmenování (ne kopie a smazání).',
+  'Na NAS se soubor nahrává pod dočasným názvem `{název}.part` a teprve po úplném přenosu se přejmenuje.',
+], [
+  'A new order and a test record are written to a temporary file, flushed to disk (`fsync`) and only then renamed — a half-written file never appears under the final name.',
+  'A piece is appended to the existing file; the PLC receives the Done confirmation only after the data is stored on the disk. An incomplete last row after a power failure is cut off at the next write.',
+  'Moves between folders are atomic renames (not copy and delete).',
+  'On the NAS a file is uploaded under the temporary name `{name}.part` and renamed only after the complete transfer.',
+])))
+c.push(H2(t('6.4  Synchronizace na NAS', '6.4  NAS synchronisation')))
+c.push(P(t('Synchronizace běží v cyklech; v každém cyklu proběhnou tyto kroky:', 'Synchronisation runs in cycles; every cycle performs these steps:')))
+c.push(...OL(t([
+  '**Dostupnost NAS** — test cílových složek, případně připojení sdílené složky. Výsledek se hlásí do PLC.',
+  '**Převzetí souborů** — uzavřené soubory, které ještě nejsou v evidenci synchronizace, se zařadí k nahrání.',
+  '**Nahrání** — soubor se zkopíruje na NAS a teprve po úspěšné kopii se lokálně přesune mezi nahrané (stav Synced). Při výpadku sítě počká zbytek na další cyklus.',
+  '**Ověření** — nahraný soubor musí na NAS existovat se stejnou velikostí. Soubor stejného jména s jinou velikostí Gateway nepřepíše a nahlásí chybu.',
+  '**Čištění** — lokální kopie ověřených souborů starší než nastavená doba (retence) se smažou, a to až po novém ověření na NAS. Rozpracované a dosud nenahrané soubory se nemažou nikdy.',
+], [
+  '**NAS availability** — test of the target folders, connecting the share if needed. The result is reported to the PLC.',
+  '**Adopting files** — closed files that are not yet in the synchronisation records are queued for upload.',
+  '**Upload** — the file is copied to the NAS and only after a successful copy moved locally to the uploaded files (Synced state). During a network outage the rest waits for the next cycle.',
+  '**Verification** — the uploaded file must exist on the NAS with the same size. Gateway does not overwrite a file of the same name with a different size and reports an error.',
+  '**Clean-up** — local copies of verified files older than the set period (retention) are deleted, only after a fresh check on the NAS. Files in progress and files not yet uploaded are never deleted.',
+])))
+c.push(H2(t('6.5  Nastavení', '6.5  Settings')))
+c.push(P(t(
+  'Chování služby řídí její konfigurace. Tabulka uvádí parametry důležité pro pochopení provozu s doporučenými, případně výchozími hodnotami; změny provádí servis podle Technického manuálu DatabaseGateway.',
+  'The behaviour of the service is controlled by its configuration. The table lists the parameters relevant for understanding the operation with their recommended or default values; changes are made by service according to the DatabaseGateway Technical Manual.')))
+c.push(...TABLE(
+  [t('Parametr', 'Parameter'), t('Hodnota', 'Value'), t('Význam', 'Meaning')],
+  [
+    ['`sync_interval_s`', t('30 s (doporučeno)', '30 s (recommended)'), t('pauza mezi cykly synchronizace', 'pause between synchronisation cycles')],
+    ['`file_retention_days`', t('30 dní (doporučeno)', '30 days (recommended)'), t('doba, po kterou zůstává lokální kopie nahraného souboru', 'period for which the local copy of an uploaded file is kept')],
+    ['`cleanup_interval_days`', t('1 den (doporučeno)', '1 day (recommended)'), t('jak často probíhá čištění', 'how often clean-up runs')],
+    ['`min_free_gb`', '2 GB', t('pod tímto volným místem na disku dostane PLC varování', 'below this free disk space the PLC receives a warning')],
+    ['`csv_separator` / `csv_encoding`', '`;` / UTF-8 s BOM', t('formát souborů (kap. 4.1)', 'file format (section 4.1)')],
+    ['`max_cycles` / `oversampling`', t('60 000 / 10', '60,000 / 10'), t('rozsah signálových dat testu (shodně s PLC a Analyzing)', 'extent of the test signal data (same as the PLC and Analyzing)')],
+    ['`shunt_resistance_ohm` / `voltage_gain`', '1,96 Ω / 1,0', t('přepočet proudů a napětí v signálových datech testu', 'conversion of currents and voltages in the test signal data')],
+    ['`poll_interval_ms` / `heartbeat_interval_s`', '10 ms / 0,5 s', t('perioda dotazování PLC / signálu Heartbeat', 'PLC polling / Heartbeat signal period')],
+    ['`reconnect_delay_s`', '5 s', t('pauza před opakovaným připojením k PLC', 'pause before reconnecting to the PLC')],
+  ],
+  [3800, 2200, 3638], t('Nastavení DatabaseGateway', 'DatabaseGateway settings')))
+
+// ═══ 7 Výpadky ═════════════════════════════════════════════════════════
+c.push(H1(t('7  Co se stane při výpadku', '7  What happens during an outage')))
 c.push(...TABLE(
   [t('Situace', 'Situation'), t('Co se stane s daty', 'What happens to the data')],
   [
@@ -202,9 +289,9 @@ c.push(P(t(
 const TEST_CSV = TEST_ZIP.replace(/\.zip$/, '.csv')
 const XLSX = f => SAMPLES.find(x => x.startsWith(f) && x.endsWith('.xlsx'))
 c.push(...TABLE([t('Soubor', 'File'), t('Obsah', 'Content')], [
-  [`\`${PROD_CSV}\``, t('Výrobní soubor (kapitola 4) — zakázka se třemi šaržemi, limity a kategoriemi.', 'Production file (chapter 4) — order with three lots, limits and categories.')],
+  [`\`${PROD_CSV}\``, t('Výrobní soubor (kap. 4) — zakázka se třemi šaržemi, limity a kategoriemi.', 'Production file (chapter 4) — order with three lots, limits and categories.')],
   [`\`${XLSX('PROD_')}\``, t('Stejná zakázka exportovaná ze ScadaViewer do Excelu — bloky nad sebou v listu PROD_DONE, čísla jako čísla.', 'The same order exported from ScadaViewer to Excel — blocks one below the other in the PROD_DONE sheet, numbers as numbers.')],
-  [`\`${TEST_CSV}\``, t('Testovací soubor (kapitola 5) včetně signálových dat (52 MB; v projektových složkách zabalený do ZIP).', 'Test file (chapter 5) including signal data (52 MB; packed in a ZIP in the project folders).')],
+  [`\`${TEST_CSV}\``, t('Testovací soubor (kap. 5) včetně signálových dat (52 MB; v projektových složkách zabalený do ZIP).', 'Test file (chapter 5) including signal data (52 MB; packed in a ZIP in the project folders).')],
   [`\`${XLSX('TEST_')}\``, t('Stejné testovací měření exportované ze ScadaViewer — jeden řádek s údaji testu a výsledky, bez signálů.', 'The same test measurement exported from ScadaViewer — one row with the test data and results, without signals.')],
   ['`sample_production_CZ.csv`, `sample_production_EN.csv`', t('Komentovaný vzor výrobního souboru (česky / anglicky) — popis všech bloků a sloupců.', 'Annotated sample production file (Czech / English) — description of all blocks and columns.')],
   ['`sample_testing_CZ.csv`, `sample_testing_EN.csv`', t('Komentovaný vzor testovacího souboru (česky / anglicky).', 'Annotated sample test file (Czech / English).')],
