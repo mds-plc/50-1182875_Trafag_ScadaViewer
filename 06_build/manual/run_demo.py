@@ -39,7 +39,7 @@ def _machine_time_status() -> dict:
         "ntp_server_enabled": True, "ntp_client_enabled": True, "announce_flags": 5, "announce": "reliable",
         "sync_type": "NoSync", "configured_peers": "", "source": "Local CMOS Clock", "stratum": 1,
         "synchronized": True, "last_sync": None, "poll_interval": "6 (64s)", "udp123_listening": True,
-        "addresses": ["192.168.100.10", "10.45.124.31"],
+        "addresses": ["192.168.1.10", "10.0.0.31"],
         "status_text": ("Leap Indicator: 0(no warning)\nStratum: 1 (primary reference - syncd by radio clock)\n"
                         "Precision: -23 (119.209ns per tick)\nRoot Delay: 0.0000000s\nRoot Dispersion: 10.0000000s\n"
                         "ReferenceId: 0x4C4F434C (source name:  \"LOCL\")\nSource: Local CMOS Clock\n"

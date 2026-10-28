@@ -1,7 +1,7 @@
 # Uživatelský manuál — generátor
 
 Výstup: `04_docs/manual/ScadaViewer_Uzivatelsky_manual_CS.docx|pdf` a `ScadaViewer_User_Manual_EN.docx|pdf`.
-Poslední přegenerování: 2026-10-27, verze aplikace 2.6.10 (vydání manuálu 2.0).
+Poslední přegenerování: 2026-10-28, verze aplikace 2.6.10 (vydání manuálu 2.0; revize textu proti kódu, ukázkové adresy místo skutečných).
 
 Po změně vzhledu aplikace nebo textů se manuál přegeneruje — screenshoty se nafotí znovu
 z ukázkového serveru, text je v `build_manual.js` (obě jazykové verze vedle sebe, `t(cs, en)`).
@@ -48,7 +48,7 @@ powershell -File word_finish.ps1 -In "%CD%\out_en.docx" -Pdf "%CD%\out_en.pdf"
 
 Výstup: `11.Parallel scripts\DatabaseGateway\04_docs\manual\DatabaseGateway_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
 a `11.Parallel scripts\Analyzing\04_docs\manual\Analyzing_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
-(vydání 1.0, 2026-10-27 — Gateway 2.6.2, Analyzing 2.6.3). Text ověřen proti kódu obou služeb (podklad:
+(vydání 1.0, 2026-10-28 po revizi — Gateway 2.6.2, Analyzing 2.6.3). Text ověřen proti kódu obou služeb (podklad:
 rozbor kódu se zdroji `soubor:řádek`); verze se čte z jejich `__init__.py`. Při změně služby text zkontrolovat.
 
 ```bat

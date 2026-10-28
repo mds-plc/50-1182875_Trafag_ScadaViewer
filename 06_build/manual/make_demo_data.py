@@ -132,6 +132,8 @@ def piece(ts: datetime, kind: str) -> str:
     elif kind == "md_low":
         nok[1] = 1
     rf = of - df
+    of, rf = round(of), round(rf)          # jako Analyzing: OF, RF na 1 mN, DF = OF − RF přesně
+    df = of - rf
     cat = next((i + 1 for i, (lo, hi) in enumerate(CATEGORIES) if lo <= round(md, 1) <= hi), 5)
     if kind in ("of_supplier", "rf_supplier"):
         cat = 6

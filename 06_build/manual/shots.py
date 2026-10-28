@@ -289,6 +289,17 @@ with sync_playwright() as p:
     goto(pg, url + '&record=3', '.chart-summary', 2.5)
     shot(pg, '13_record')
     shot(pg, '13_record_full', full=True)
+    # zvětšené diagramy (příručka Analyzing — čitelné popisky bodů a drah)
+    for k, (i, idx) in enumerate((('13c_force_max', 0), ('13d_times_max', 1))):
+        if not want(i):
+            continue
+        pg.locator('.rd-maximize-btn').nth(idx).click()
+        pg.wait_for_selector('.rd-modal-content', timeout=10000)
+        time.sleep(0.8)
+        pg.locator('.rd-modal-content svg').last.screenshot(path=str(OUT / f'{i}.png'))
+        print('shot', i)
+        pg.locator('.rd-modal-close').click()
+        time.sleep(0.4)
     if want('13b_param_explain'):
         row = pg.locator('tr', has=pg.locator('.rd-pt__abbr', has_text=re.compile(r'^RvT$')))
         row.locator('.rd-pt__graph-btn').first.click()
@@ -346,14 +357,14 @@ with sync_playwright() as p:
         pg.evaluate("""() => {
           const b = String.fromCharCode(92)
           const loc = ['C:', 'Data', 'DtbLoc'].join(b)
-          const nas = b + b + ['10.45.124.20', 'trafag_test'].join(b)
+          const nas = b + b + ['10.0.0.20', 'scada_archive'].join(b)
           const fix = s => /manual.demo.nas/i.test(s) ? nas : /manual.demo.local/i.test(s) ? loc : s
           document.querySelectorAll('input').forEach(i => { if (/manual.demo/i.test(i.value)) i.value = fix(i.value) })
           const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
           while (w.nextNode()) {
             let v = w.currentNode.nodeValue
             if (/manual.demo/i.test(v)) v = v.replace(/[A-Za-z]:[^\\s]*manual[\\\\/]demo[\\\\/]nas/gi, nas).replace(/[A-Za-z]:[^\\s]*manual[\\\\/]demo[\\\\/]local/gi, loc)
-            if (v.includes('127.0.0.254.1.1')) v = v.replace('127.0.0.254.1.1', '5.80.201.232.1.1')
+            if (v.includes('127.0.0.254.1.1')) v = v.replace('127.0.0.254.1.1', '5.12.34.56.1.1')
             if (v !== w.currentNode.nodeValue) w.currentNode.nodeValue = v
           }
         }""")
