@@ -8,7 +8,7 @@ Předchozí verze téhož dokumentu (stejný produkt, typ a jazyk) se v cílové
 Cíle: 04_docs/manual příslušného projektu a 17.Dokumentace/<n>.<Produkt> (kořen projektu Trafag, mimo git).
 Vzorové soubory si ponechávají své názvy (název je součástí formátu): ukázková zakázka a test (vzory/) + vzory
 DatabaseGateway (04_docs/sample_*: komentované CZ / EN, technické, sample_production.xlsx) — do 04_docs/manual/vzorove_soubory DatabaseGateway
-a ScadaViewer (testovací CSV zabalené v ZIP kvůli velikosti v gitu) a do 17.Dokumentace/5.Vzorové soubory (testovací CSV
+a ScadaViewer (testovací CSV zabalené v ZIP kvůli velikosti v gitu) a do 17.Dokumentace/7.Vzorové soubory (testovací CSV
 rozbalené).
 Použití: python publish.py   (po node build_*.js a word_finish.ps1; chybějící vstup = chyba, nic se nepřeskočí potichu)
 """
@@ -33,6 +33,7 @@ KIND = {'user': ('Navod_k_pouziti', 'Instructions_for_Use'), 'tech': ('Technicky
         'description': ('Technicky_popis', 'Technical_Description')}
 # (zdroj bez jazyka, projekt, produkt, typ)
 DOCS = [
+    ('arch', None, 'Architektura', 'description'),       # souhrnný dokument nad celým systémem — jen 17.Dokumentace
     ('out', SV, 'ScadaViewer', 'user'),
     ('sv_tech', SV, 'ScadaViewer', 'tech'),
     ('gw_user', GW, 'DatabaseGateway', 'description'),
@@ -44,9 +45,10 @@ DOCS = [
 ]
 SAMPLES_TO = [GW, SV]
 EXPORT = ROOT / '17.Dokumentace'
-EXPORT_DIRS = {'ScadaViewer': '1.ScadaViewer', 'DatabaseGateway': '2.DatabaseGateway', 'Analyzing': '3.Analyzing', 'HMI': '4.HMI',
-               'AnalogFrontend': '6.Analogový měřící obvod'}
-EXPORT_SAMPLES = '5.Vzorové soubory'
+# pořadí složek (rozhodnutí 2026-10-28): architektura, obsluhované aplikace, služby na pozadí, měřicí deska, vzory
+EXPORT_DIRS = {'Architektura': '1.Architektura systému', 'HMI': '2.HMI', 'ScadaViewer': '3.ScadaViewer',
+               'DatabaseGateway': '4.DatabaseGateway', 'Analyzing': '5.Analyzing', 'AnalogFrontend': '6.Analogový měřící obvod'}
+EXPORT_SAMPLES = '7.Vzorové soubory'
 GW_SAMPLES = sorted((GW / '04_docs').glob('sample_*.*'))   # komentované (CZ / EN) i technické vzory + sample_production.xlsx
 
 
@@ -58,7 +60,7 @@ def _py_version(init: Path) -> str:
 
 
 def version(product: str) -> str:
-    if product == 'ScadaViewer':
+    if product in ('ScadaViewer', 'Architektura'):          # vydání systému = verze ScadaViewer (balíček deploy_v…)
         return _py_version(SV / '00_backend' / 'scada' / '__init__.py')
     if product == 'DatabaseGateway':
         return _py_version(GW / '00_src' / 'db_gateway' / '__init__.py')

@@ -13,6 +13,7 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 | ScadaViewer | `build_manual.js` (vydání 2.1) | `build_scadaviewer_tech.js` (1.0) |
 | DatabaseGateway | — (zákaznická verze = **Technický popis**, `build_gateway_user.js`, `docType: 'description'`) | `build_gateway.js` (1.1) |
 | Analyzing | — (zákaznická verze = **Technický popis**, `build_analyzing_user.js`, `docType: 'description'`) | `build_analyzing.js` (1.1) |
+| **Architektura systému** | — | `build_architecture.js` — souhrnný Technický popis (součásti, tok dat, rozhraní, sítě, nasazení, mapa dokumentace); schéma `diagrams.py arch` |
 | HMI | `build_hmi.js` (rozpracováno) | — |
 | Analogový měřicí obvod 1AD01 | — | `build_afe.js` — **jeden** dokument „Technický popis“ (`docType: 'description'`; popis stavu a vysvětlení, zákazník s deskou nepracuje) |
 
@@ -21,8 +22,8 @@ Vzorové soubory (`vzory/`: PROD_ CSV + XLSX, TEST_ ZIP + XLSX — z ukázkovýc
 příloha Návodu k použití DatabaseGateway. Kopírování dokumentů i vzorů pod správnými názvy: **`python publish.py`**.
 Název souboru = `<Produkt>_<Typ>_<verze>_<RRRR-MM-DD>_<CS|EN>` (verze softwaru z `__init__.py`, HMI `rev<datum>` z `HMI_Config.js`;
 datum = den publikování); předchozí verze téhož dokumentu se v cíli smaže. Cíle: `04_docs/manual` projektu (HMI: jeho
-`04_docs/manual`) a souhrnná složka **`17.Dokumentace`** v kořeni projektu Trafag (`1.ScadaViewer`, `2.DatabaseGateway`,
-`3.Analyzing`, `4.HMI`, `5.Vzorové soubory`).
+`04_docs/manual`) a souhrnná složka **`17.Dokumentace`** v kořeni projektu Trafag (`1.Architektura systému`, `2.HMI`, `3.ScadaViewer`,
+`4.DatabaseGateway`, `5.Analyzing`, `6.Analogový měřící obvod`, `7.Vzorové soubory`).
 
 **Sazba (`lib.js`, `build_manual.js`):** řádky tabulky se nedělí, všechny řádky kromě posledního jsou „svázat s dalším“ →
 tabulka, která se vejde na stranu, je vždy celá na jedné straně (delší má opakované záhlaví); nadpisy, obrázek s popiskem
