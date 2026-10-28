@@ -123,11 +123,11 @@ TODO('ověřit přístupová práva rolí v HMI_Config.js `accessLocks` (seznam 
 c.push(H2(t('1.5  Související dokumenty', '1.5  Related documents')))
 c.push(...UL(t([
   '**ScadaViewer** — Návod k použití a technický manuál (prohlížení a export naměřených dat).',
-  '**DatabaseGateway**, **Analyzing** — Návod k použití a technický manuál (ukládání dat, vyhodnocení měření).',
+  '**DatabaseGateway**, **Analyzing** — Technický popis a Technický manuál (ukládání dat, vyhodnocení měření).',
   'Elektrotechnická dokumentace „Třídění mikrospínačů MPSG 2007, 50-1182875“ (ovládací panel +P01 — list 18).',
 ], [
   '**ScadaViewer** — Instructions for Use and Technical Manual (viewing and exporting the measured data).',
-  '**DatabaseGateway**, **Analyzing** — Instructions for Use and Technical Manual (data storage, measurement evaluation).',
+  '**DatabaseGateway**, **Analyzing** — Technical Description and Technical Manual (data storage, measurement evaluation).',
   'Electrical documentation “Microswitch sorting MPSG 2007, 50-1182875” (operator panel +P01 — sheet 18).',
 ])))
 

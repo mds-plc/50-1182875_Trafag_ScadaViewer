@@ -8,11 +8,11 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 | `user` — **Návod k použití** / Instructions for Use | zákazník (kvalita, technologie, vedení, IT) | co produkt dělá, co znamenají data, chování při výpadku, vzorové soubory | `<Produkt>_Navod_k_pouziti_<verze>_<datum>_CS`, `…_Instructions_for_Use_…_EN` |
 | `tech` — **Technický manuál** / Technical Manual | servis, programátor PLC, vývojář | rozhraní, algoritmy, konfigurace, instalace, diagnostika | `<Produkt>_Technicky_manual_<verze>_<datum>_CS`, `…_Technical_Manual_…_EN` |
 
-| Produkt | Návod k použití | Technický manuál |
+| Produkt | Návod k použití (obsluhuje zákazník: ScadaViewer, HMI) | Technický manuál |
 |---------|-----------------|------------------|
 | ScadaViewer | `build_manual.js` (vydání 2.1) | `build_scadaviewer_tech.js` (1.0) |
-| DatabaseGateway | `build_gateway_user.js` (1.0) | `build_gateway.js` (1.1) |
-| Analyzing | `build_analyzing_user.js` (1.0) | `build_analyzing.js` (1.1) |
+| DatabaseGateway | — (zákaznická verze = **Technický popis**, `build_gateway_user.js`, `docType: 'description'`) | `build_gateway.js` (1.1) |
+| Analyzing | — (zákaznická verze = **Technický popis**, `build_analyzing_user.js`, `docType: 'description'`) | `build_analyzing.js` (1.1) |
 | HMI | `build_hmi.js` (rozpracováno) | — |
 | Analogový měřicí obvod 1AD01 | — | `build_afe.js` — **jeden** dokument „Technický popis“ (`docType: 'description'`; popis stavu a vysvětlení, zákazník s deskou nepracuje) |
 

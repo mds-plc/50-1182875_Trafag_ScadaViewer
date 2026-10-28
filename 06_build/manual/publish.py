@@ -35,9 +35,9 @@ KIND = {'user': ('Navod_k_pouziti', 'Instructions_for_Use'), 'tech': ('Technicky
 DOCS = [
     ('out', SV, 'ScadaViewer', 'user'),
     ('sv_tech', SV, 'ScadaViewer', 'tech'),
-    ('gw_user', GW, 'DatabaseGateway', 'user'),
+    ('gw_user', GW, 'DatabaseGateway', 'description'),
     ('gw', GW, 'DatabaseGateway', 'tech'),
-    ('an_user', AN, 'Analyzing', 'user'),
+    ('an_user', AN, 'Analyzing', 'description'),
     ('an', AN, 'Analyzing', 'tech'),
     ('hmi', HMI, 'HMI', 'user'),
     ('afe', None, 'AnalogFrontend', 'description'),     # deska 1AD01 — technický popis, bez git projektu, jen 17.Dokumentace

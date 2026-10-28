@@ -35,11 +35,11 @@ c.push(...ABOUT({
   purpose: t(`Popisuje Analyzing verze ${VERSION}: princip činnosti, rozhraní s PLC, algoritmus vyhodnocení, konfiguraci, instalaci, uvedení do provozu včetně kalibrace polohy, provoz a řešení problémů. Naměřené hodnoty si obsluha prohlíží ve ScadaViewer.`, `It describes Analyzing version ${VERSION}: operating principle, PLC interface, evaluation algorithm, configuration, installation, commissioning including position calibration, operation and troubleshooting. Operators view the measured values in ScadaViewer.`),
   audience: t('údržba a servis EOL testeru, programátor PLC, technolog, správce IT.', 'EOL tester maintenance and service, PLC programmer, process engineer, IT administrator.'),
   related: t([
-    '**Analyzing — Návod k použití**: význam parametrů pro zákazníka.',
+    '**Analyzing — Technický popis**: význam parametrů pro zákazníka.',
     '**DatabaseGateway — Technický manuál**: uložení výsledků do souborů.',
     '**ScadaViewer — Technický manuál**: zobrazení výsledků.',
   ], [
-    '**Analyzing — Instructions for Use**: meaning of the parameters for the customer.',
+    '**Analyzing — Technical Description**: meaning of the parameters for the customer.',
     '**DatabaseGateway — Technical Manual**: storing the results in files.',
     '**ScadaViewer — Technical Manual**: displaying the results.',
   ]),

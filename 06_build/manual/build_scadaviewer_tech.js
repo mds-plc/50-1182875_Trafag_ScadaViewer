@@ -69,8 +69,8 @@ c.push(...TABLE(
   ],
   [2400, 4000, 3238], t('Zdroje dat', 'Data sources')))
 c.push(P(t(
-  'Stav souboru se odvozuje ze složky: `wip` = In progress, `done_local` = Local (čeká na NAS), `done_remote` = Synced. Formát souborů popisuje Návod k použití DatabaseGateway.',
-  'The file state is derived from the folder: `wip` = In progress, `done_local` = Local (waiting for the NAS), `done_remote` = Synced. The file format is described in the DatabaseGateway Instructions for Use.')))
+  'Stav souboru se odvozuje ze složky: `wip` = In progress, `done_local` = Local (čeká na NAS), `done_remote` = Synced. Formát souborů popisuje Technický popis DatabaseGateway.',
+  'The file state is derived from the folder: `wip` = In progress, `done_local` = Local (waiting for the NAS), `done_remote` = Synced. The file format is described in the DatabaseGateway Technical Description.')))
 c.push(H2(t('2.3  Poruchy a výpadky', '2.3  Faults and outages')))
 c.push(...TABLE(
   [t('Situace', 'Situation'), t('Chování', 'Behaviour')],

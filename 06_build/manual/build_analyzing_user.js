@@ -1,4 +1,4 @@
-// Návod k použití Analyzing (zákaznická verze) — generátor .docx (CS + EN)
+// Technický popis Analyzing (zákaznická verze — zákazník službu neobsluhuje) — generátor .docx (CS + EN)
 // Použití: node build_analyzing_user.js cs|en <výstupní.docx>
 // Obsah = jen to, co zákazník potřebuje k pochopení výsledků měření; podrobnosti (rozhraní PLC, algoritmus, konfigurace,
 // instalace, diagnostika) jsou v Technickém manuálu (build_analyzing.js). Fakta převzata z Technického manuálu
@@ -13,7 +13,7 @@ const VERSION = (fs.readFileSync(path.join(AN, '00_src', 'ads_analyzer', '__init
   .match(/__version__\s*=\s*["']([^"']+)["']/) || [])[1] || '?'
 
 const M = require('./lib')({
-  docType: 'user',
+  docType: 'description',
   lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'Analyzing',
   subtitle: L === 'cs'
     ? 'Vyhodnocení měření mikrospínačů — co se měří, jak vznikají výsledky a co znamenají'
@@ -27,16 +27,16 @@ const c = []
 c.push(H1(t('1  O tomto dokumentu', '1  About this document')))
 c.push(...ABOUT({
   purpose: t(
-    `Návod popisuje službu Analyzing verze ${VERSION} z pohledu uživatele výsledků: co EOL tester mikrospínačů měří, jak se z měření určují charakteristické body a parametry mikrospínače a jak číst výsledky v souborech zakázek a ve ScadaViewer.`,
+    `Dokument popisuje službu Analyzing verze ${VERSION} z pohledu uživatele výsledků: co EOL tester mikrospínačů měří, jak se z měření určují charakteristické body a parametry mikrospínače a jak číst výsledky v souborech zakázek a ve ScadaViewer.`,
     `This document describes the Analyzing service version ${VERSION} from the perspective of a user of the results: what the microswitch EOL tester measures, how the characteristic points and parameters of the microswitch are determined from the measurement and how to read the results in the order files and in ScadaViewer.`),
   audience: t('kvalita, technologie a vedení výroby zákazníka.', 'the customer’s quality, process engineering and production management.'),
   related: t([
     '**Analyzing — Technický manuál**: rozhraní s PLC, algoritmus vyhodnocení, konfigurace, instalace, kalibrace a diagnostika.',
-    '**DatabaseGateway — Návod k použití**: soubory zakázek a měření, ve kterých jsou výsledky uložené.',
+    '**DatabaseGateway — Technický popis**: soubory zakázek a měření, ve kterých jsou výsledky uložené.',
     '**ScadaViewer — Návod k použití**: prohlížení výsledků, diagramy a export.',
   ], [
     '**Analyzing — Technical Manual**: PLC interface, evaluation algorithm, configuration, installation, calibration and diagnostics.',
-    '**DatabaseGateway — Instructions for Use**: order and measurement files in which the results are stored.',
+    '**DatabaseGateway — Technical Description**: order and measurement files in which the results are stored.',
     '**ScadaViewer — Instructions for Use**: viewing the results, diagrams and export.',
   ]),
   history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
@@ -163,11 +163,11 @@ c.push(P(t(
   'The calibration constant **C** is the vertical distance of the measuring tip face (axis at rest) from the mounting-hole axis of the microswitch. It converts the sensor position to the customer position (section 3.1) and therefore affects all positions FP, OP, RP, TTP and FPR. Travels, forces, resistances and times do not depend on it.')))
 c.push(...UL(t([
   'C se určuje měřením kalibrační měrky známé výšky a je uložená v PLC.',
-  'Kalibraci je nutné zopakovat po každé změně startovní polohy pohonu, měřicího hrotu nebo upínacího přípravku.',
+  'Kalibrace se opakuje po každé změně startovní polohy pohonu, měřicího hrotu nebo upínacího přípravku.',
   'Hodnota C z PLC se ukládá ke každému kusu v souboru zakázky (sloupec `PositionReference`).',
 ], [
   'C is determined by measuring a calibration gauge of known height and is stored in the PLC.',
-  'Calibration must be repeated after every change of the drive start position, the measuring tip or the fixture.',
+  'Calibration is repeated after every change of the drive start position, the measuring tip or the fixture.',
   'The value of C from the PLC is stored with every piece in the order file (column `PositionReference`).',
 ])))
 c.push(NOTE('warn', t(

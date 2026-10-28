@@ -1,4 +1,4 @@
-// Návod k použití DatabaseGateway (zákaznická verze) — generátor .docx (CS + EN)
+// Technický popis DatabaseGateway (zákaznická verze — zákazník službu neobsluhuje) — generátor .docx (CS + EN)
 // Použití: node build_gateway_user.js cs|en <výstupní.docx>
 // Obsah = co zákazník potřebuje k pochopení dat: kde a kdy vznikají, formát souborů, chování při výpadku, vzorové soubory.
 // Rozhraní PLC, konfigurace, instalace a diagnostika jsou v Technickém manuálu (build_gateway.js). Fakta převzata z Technického
@@ -16,7 +16,7 @@ const PROD_CSV = SAMPLES.find(f => /^PROD_.*\.csv$/.test(f))
 const TEST_ZIP = SAMPLES.find(f => /^TEST_.*\.zip$/.test(f))
 
 const M = require('./lib')({
-  docType: 'user',
+  docType: 'description',
   lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'DatabaseGateway',
   subtitle: L === 'cs'
     ? 'Ukládání a archivace dat zakázek a testovacích měření — kde data vznikají, jaký mají formát a co se stane při výpadku'
@@ -30,16 +30,16 @@ const c = []
 c.push(H1(t('1  O tomto dokumentu', '1  About this document')))
 c.push(...ABOUT({
   purpose: t(
-    `Návod popisuje službu DatabaseGateway verze ${VERSION} z pohledu uživatele dat: kde a kdy vznikají soubory zakázek a testovacích měření, jak jsou uspořádané, co znamenají jednotlivé údaje a co se s daty stane při výpadku sítě, řídicího systému nebo napájení. Přílohou jsou vzorové soubory.`,
+    `Dokument popisuje službu DatabaseGateway verze ${VERSION} z pohledu uživatele dat: kde a kdy vznikají soubory zakázek a testovacích měření, jak jsou uspořádané, co znamenají jednotlivé údaje a co se s daty stane při výpadku sítě, řídicího systému nebo napájení. Přílohou jsou vzorové soubory.`,
     `This document describes the DatabaseGateway service version ${VERSION} from the perspective of a data user: where and when the order and test measurement files are created, how they are structured, what the individual values mean and what happens to the data during a network, controller or power outage. Sample files are attached.`),
   audience: t('kvalita, technologie, vedení výroby a IT zákazníka (zpracování dat).', 'the customer’s quality, process engineering, production management and IT (data processing).'),
   related: t([
     '**DatabaseGateway — Technický manuál**: rozhraní s PLC, konfigurace, synchronizace na NAS, instalace a diagnostika.',
-    '**Analyzing — Návod k použití**: význam měřených parametrů.',
+    '**Analyzing — Technický popis**: význam měřených parametrů.',
     '**ScadaViewer — Návod k použití**: prohlížení, export a tisk dat.',
   ], [
     '**DatabaseGateway — Technical Manual**: PLC interface, configuration, NAS synchronisation, installation and diagnostics.',
-    '**Analyzing — Instructions for Use**: meaning of the measured parameters.',
+    '**Analyzing — Technical Description**: meaning of the measured parameters.',
     '**ScadaViewer — Instructions for Use**: viewing, exporting and printing the data.',
   ]),
   history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
@@ -155,8 +155,8 @@ c.push(...TABLE(
   ],
   [900, 6300, 2438], t('Sloupce bloku [Data]', 'Columns of the [Data] block')))
 c.push(P(t(
-  'Význam parametrů ve sloupcích 2–29 vysvětluje Návod k použití Analyzing.',
-  'The meaning of the parameters in columns 2–29 is explained in the Analyzing Instructions for Use.')))
+  'Význam parametrů ve sloupcích 2–29 vysvětluje Technický popis Analyzing.',
+  'The meaning of the parameters in columns 2–29 is explained in the Analyzing Technical Description.')))
 
 // ═══ 5 Testovací soubor ════════════════════════════════════════════════
 c.push(H1(t('5  Testovací soubor TEST_', '5  Test file TEST_')))
@@ -187,12 +187,12 @@ c.push(...TABLE(
     [t('Dochází místo na disku PC', 'Tester PC disk running low'), t('Tester dostane varování; data se dál zapisují, dokud je místo.', 'The tester receives a warning; data continues to be written while space is available.')],
   ],
   [3000, 6638], t('Chování při výpadku', 'Behaviour during an outage')))
-c.push(NOTE('warn', t(
-  'Neotvírejte soubory zakázek přímo na PC testeru v Excelu nebo jiném programu — otevřený soubor může zdržet zápis dat. Pro práci s daty použijte ScadaViewer (export) nebo kopii z NAS.',
-  'Do not open order files directly on the tester PC in Excel or another program — an open file may delay writing the data. To work with the data, use ScadaViewer (export) or a copy from the NAS.')))
-c.push(NOTE('warn', t(
-  'Zakázka ve stavu Local existuje jen na PC testeru. Dokud není nahraná na NAS (Synced), nesmí se mazat.',
-  'An order in the Local state exists only on the tester PC. It must not be deleted until it has been uploaded to the NAS (Synced).')))
+c.push(NOTE('info', t(
+  'Soubor zakázky otevřený na PC testeru v jiném programu (např. Excel) může zdržet zápis dat. Pro práci s daty slouží export ze ScadaViewer nebo kopie z NAS.',
+  'An order file opened on the tester PC in another program (e.g. Excel) may delay writing the data. Data is worked with via the ScadaViewer export or a copy from the NAS.')))
+c.push(NOTE('info', t(
+  'Zakázka ve stavu Local existuje jen na PC testeru — do nahrání na NAS (Synced) je to jediná kopie dat.',
+  'An order in the Local state exists only on the tester PC — until it is uploaded to the NAS (Synced) it is the only copy of the data.')))
 
 // ═══ Přílohy ═══════════════════════════════════════════════════════════
 c.push(H1(t('Příloha A  Vzorové soubory', 'Appendix A  Sample files')))

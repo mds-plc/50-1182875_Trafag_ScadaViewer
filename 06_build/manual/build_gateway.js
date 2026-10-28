@@ -47,11 +47,11 @@ c.push(...ABOUT({
   purpose: t(`Popisuje DatabaseGateway verze ${VERSION}: princip činnosti, rozhraní s PLC, formát souborů, synchronizaci na NAS, konfiguraci, instalaci, diagnostiku a řešení problémů. Obsluha testeru se se službou přímo nesetkává — data prohlíží ve ScadaViewer.`, `It describes DatabaseGateway version ${VERSION}: operating principle, PLC interface, file format, NAS synchronisation, configuration, installation, diagnostics and troubleshooting. Tester operators do not interact with the service directly — they view the data in ScadaViewer.`),
   audience: t('údržba a servis EOL testeru, programátor PLC, správce IT.', 'EOL tester maintenance and service, PLC programmer, IT administrator.'),
   related: t([
-    '**DatabaseGateway — Návod k použití**: data, formát souborů a vzorové soubory pro zákazníka.',
+    '**DatabaseGateway — Technický popis**: data, formát souborů a vzorové soubory pro zákazníka.',
     '**ScadaViewer — Technický manuál**: čtení stejných dat a NAS.',
     '**Analyzing — Technický manuál**: výpočet parametrů kusu.',
   ], [
-    '**DatabaseGateway — Instructions for Use**: data, file format and sample files for the customer.',
+    '**DatabaseGateway — Technical Description**: data, file format and sample files for the customer.',
     '**ScadaViewer — Technical Manual**: reading the same data and NAS.',
     '**Analyzing — Technical Manual**: calculation of the piece parameters.',
   ]),

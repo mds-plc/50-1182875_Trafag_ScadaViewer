@@ -41,10 +41,10 @@ c.push(...ABOUT({
              'This document describes the 1AD01 analog front-end in the EOL tester: purpose, technical data, connection in the tester, measurement principle and conversion to physical units, and the board circuit. The board works automatically under PLC control — neither the operator nor the customer works with it. The circuit diagram is in the appendix.'),
   audience: t('kvalita a technologie zákazníka (pochopení měření odporu kontaktů); servis EOL testeru, elektrotechnik, programátor PLC.', 'the customer’s quality and process engineering (understanding the contact resistance measurement); EOL tester service, electrical engineer, PLC programmer.'),
   related: t([
-    '**Analyzing — Návod k použití**: odpory kontaktů ve výsledcích měření.',
+    '**Analyzing — Technický popis**: odpory kontaktů ve výsledcích měření.',
     'Elektrotechnická dokumentace EOL testeru (zapojení do rozváděče a PLC).',
   ], [
-    '**Analyzing — Instructions for Use**: contact resistances in the measurement results.',
+    '**Analyzing — Technical Description**: contact resistances in the measurement results.',
     'Electrical documentation of the EOL tester (wiring to the control cabinet and PLC).',
   ]),
   history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
