@@ -4,6 +4,7 @@
 // Zdroje: 17.Dokumentace/6.Analogový měřící obvod/Podklady — 1AD01_AnalogFrontend_Instructions_CZ.pdf (návod desky) a
 // 1AD01_AnalogFrontend_Schematics.pdf (KiCad). Platí pinout M12 a rozsah proudu cca 0–270 mA z návodu
 // (JST XH ve schématu = vnitřní konektory desky); hrubé kanály VOLTAGE_*_COARSE se nepoužívají.
+// Kalibrace desky se nepopisuje (rozhodnutí uživatele 2026-10-28).
 // Jen ověřená fakta z podkladů — nic nedomýšlet (chybějící údaje = poznámka „Doplnit“).
 // Obrázky schématu img/afe/sch_1..4.png (img je v .gitignore): pdftoppm -r 170 -png <Podklady>/1AD01_AnalogFrontend_Schematics.pdf
 // img/afe/raw, pak každý list oříznout o bílé okraje a otočit o 90° (PIL: ImageOps.invert(im).getbbox(), rotate(90, expand=True)).
@@ -35,8 +36,8 @@ const chapter = (cs, en) => { chap(cs, en); sec = 0 }
 // ═══ O tomto dokumentu ═════════════════════════════════════════════════
 chapter('O tomto dokumentu', 'About this document')
 c.push(...ABOUT({
-  purpose: t('Dokument popisuje analogový měřicí obvod 1AD01: k čemu slouží, technické údaje, připojení, měření a převod na fyzikální jednotky, zapojení, rozhraní pro PLC, kabeláž a kalibraci. V příloze je schéma zapojení.',
-             'This document describes the 1AD01 analog front-end: its purpose, technical data, connection, measurement and conversion to physical units, circuit, PLC interface, cabling and calibration. The circuit diagram is in the appendix.'),
+  purpose: t('Dokument popisuje analogový měřicí obvod 1AD01: k čemu slouží, technické údaje, připojení, měření a převod na fyzikální jednotky, zapojení, rozhraní pro PLC a kabeláž. V příloze je schéma zapojení.',
+             'This document describes the 1AD01 analog front-end: its purpose, technical data, connection, measurement and conversion to physical units, circuit, PLC interface and cabling. The circuit diagram is in the appendix.'),
   audience: t('kvalita, technologie a údržba zákazníka; servis EOL testeru, elektrotechnik, programátor PLC.', 'the customer’s quality, process engineering and maintenance; EOL tester service, electrical engineer, PLC programmer.'),
   related: t([
     '**Analyzing — Návod k použití**: odpory kontaktů ve výsledcích měření.',
@@ -172,84 +173,6 @@ c.push(...CODE([
   'R_NC [Ohm]  = U_NC / I_NC',
   'R_NO [Ohm]  = U_NO / I_NO',
 ]))
-
-// ═══ Kalibrace ═════════════════════════════════════════════════════════
-chapter('Kalibrace', 'Calibration')
-if (USER) {
-  c.push(P(t(
-    `Každý kanál má kalibrační konstanty (slope a offset), kterými se napětí z PLC převádí na proud a napětí (kap. ${REF.conv}). Kalibraci provádí servis kalibračním programem s přesným multimetrem podle Technického manuálu.`,
-    `Every channel has calibration constants (slope and offset) used to convert the PLC voltage to current and voltage (section ${REF.conv}). Calibration is performed by service with the calibration program and a precision multimeter according to the Technical Manual.`)))
-} else {
-  sub('Pomůcky', 'Equipment')
-  c.push(...UL(t([
-    'Multimetr Keysight 34461A (připojený přes LAN)',
-    'Zdroj testovacího napětí 0–30 V',
-    'Odpor 20 kΩ, víceotáčkový potenciometr 100 Ω, propojky',
-    'PC s Pythonem a kalibračním programem `calibrate.py`',
-    'Připojení k PLC přes síť (Modbus TCP) — PLC exportuje hodnoty ze svých AI',
-  ], [
-    'Keysight 34461A multimeter (connected via LAN)',
-    '0–30 V test voltage source',
-    '20 kΩ resistor, 100 Ω multi-turn potentiometer, jumpers',
-    'PC with Python and the `calibrate.py` calibration program',
-    'Network connection to the PLC (Modbus TCP) — the PLC exports the values of its AIs',
-  ])))
-  sub('Obecné pokyny', 'General instructions')
-  c.push(...UL(t([
-    'Deska musí být napájená 24 V po celou dobu kalibrace.',
-    'Před každým krokem odpojit všechny vstupy (VTEST, EXCITATION, SENSE), které nejsou v daném kroku výslovně uvedeny.',
-  ], [
-    'The board must be powered with 24 V throughout the calibration.',
-    'Before every step disconnect all inputs (VTEST, EXCITATION, SENSE) that are not explicitly listed for that step.',
-  ])))
-  sub('Proudové kanály I_NC a I_NO', 'Current channels I_NC and I_NO')
-  c.push(...OL(t([
-    'Zdroj testovacího napětí nastavit na **24 V**; plus zdroje → ampérmetr Keysight (rozsah 1 A) → VTEST+, mínus zdroje → VTEST−.',
-    'Propojkou spojit **EXCITATION NC** a **EXCITATION COM** (pro I_NO: **EXCITATION NO** a **EXCITATION COM**).',
-    'Spustit `calibrate.py`, zvolit kalibraci I_NC (resp. I_NO), počet bodů 11.',
-    'Na výzvu programu nastavovat CURR_SINK_SETPOINT v PLC na 0, 1, 2, … 10 V a každé nastavení potvrdit v programu.',
-  ], [
-    'Set the test voltage source to **24 V**; source plus → Keysight ammeter (1 A range) → VTEST+, source minus → VTEST−.',
-    'Connect **EXCITATION NC** and **EXCITATION COM** with a jumper (for I_NO: **EXCITATION NO** and **EXCITATION COM**).',
-    'Run `calibrate.py`, select calibration I_NC (or I_NO), 11 points.',
-    'When prompted, set CURR_SINK_SETPOINT in the PLC to 0, 1, 2, … 10 V and confirm every setting in the program.',
-  ])))
-  sub('Napěťové kanály U_NC a U_NO', 'Voltage channels U_NC and U_NO')
-  c.push(...OL(t([
-    'Sestavit dělič: VTEST+ → odpor **20 kΩ** → potenciometr **100 Ω** → GND (deska bez svorky GND: VTEST−). Jezdec potenciometru → **SENSE NC** (pro U_NO: **SENSE NO**), strana potenciometru na GND → **SENSE COM**.',
-    'Voltmetr Keysight paralelně: červený vodič → SENSE NC (resp. SENSE NO), černý → SENSE COM.',
-    'Zdroj VTEST nastavit na **20 V** (dělič dává na potenciometru cca 0–100 mV).',
-    'Spustit `calibrate.py`, zvolit kalibraci U_NC (resp. U_NO), počet bodů 11.',
-    'Na výzvu programu nastavovat potenciometrem přibližně 0, 10, 20, … 100 mV (hodnotu odečítat z displeje Keysightu v režimu auto-trigger) a každé nastavení potvrdit.',
-  ], [
-    'Build the divider: VTEST+ → **20 kΩ** resistor → **100 Ω** potentiometer → GND (board without a GND terminal: VTEST−). Potentiometer wiper → **SENSE NC** (for U_NO: **SENSE NO**), potentiometer side on GND → **SENSE COM**.',
-    'Keysight voltmeter in parallel: red lead → SENSE NC (or SENSE NO), black → SENSE COM.',
-    'Set the VTEST source to **20 V** (the divider gives approx. 0–100 mV on the potentiometer).',
-    'Run `calibrate.py`, select calibration U_NC (or U_NO), 11 points.',
-    'When prompted, set approximately 0, 10, 20, … 100 mV with the potentiometer (read the value on the Keysight display in auto-trigger mode) and confirm every setting.',
-  ])))
-  sub('Proudový sink', 'Current sink')
-  c.push(...OL(t([
-    'Zdroj testovacího napětí nastavit na **30 V**; plus zdroje → ampérmetr Keysight (rozsah 1 A) → EXCITATION COM, mínus zdroje → VTEST−.',
-    'Spustit `calibrate.py`, zvolit kalibraci proudového sinku.',
-    'Na výzvu programu nastavovat CURR_SINK_SETPOINT v PLC na 0, 1, 2, … 10 V a každé nastavení potvrdit.',
-  ], [
-    'Set the test voltage source to **30 V**; source plus → Keysight ammeter (1 A range) → EXCITATION COM, source minus → VTEST−.',
-    'Run `calibrate.py`, select the current sink calibration.',
-    'When prompted, set CURR_SINK_SETPOINT in the PLC to 0, 1, 2, … 10 V and confirm every setting.',
-  ])))
-  sub('Ověření a kalibrační konstanty', 'Verification and calibration constants')
-  c.push(...UL(t([
-    '`calibrate.py`, volba **7) Online monitor AI kanálů** — živé hodnoty včetně přepočtu na fyzikální jednotky a odporu.',
-    '`calibrate.py`, volba **8) Vypsat kalibrační konstanty** — slope a offset každého kanálu.',
-  ], [
-    '`calibrate.py`, option **7) Online monitor of AI channels** — live values including conversion to physical units and resistance.',
-    '`calibrate.py`, option **8) Print calibration constants** — slope and offset of every channel.',
-  ])))
-  c.push(NOTE('todo', t(
-    'umístění kalibračního programu `calibrate.py` a jeho návodu (`kalibrace/README.md`) — v projektu zatím není.',
-    'location of the `calibrate.py` calibration program and its instructions (`kalibrace/README.md`) — not yet in the project.')))
-}
 
 // ═══ Přílohy ═══════════════════════════════════════════════════════════
 if (!USER) {
