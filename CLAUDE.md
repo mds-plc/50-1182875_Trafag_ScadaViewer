@@ -266,7 +266,7 @@ CLAUDE.md                  ← tento soubor
 ├── roadmap.md                 ← stav, otázky pro Trafag, definice „hotovo"
 ├── project_reviews.md         ← průběžná hodnocení profesionality projektu
 ├── acceptance_test.md         ← závěrečný test před odevzdáním: automatické testy, výpadky, zátěž (+ naměřené hodnoty), soak, bezpečnost
-├── manual/                    ← uživatelský manuál CS + EN (Word + PDF, screenshoty) — generuje 06_build/manual/
+├── manual/                    ← Návod k použití a technický manuál CS + EN (Word + PDF) — generuje 06_build/manual/ (i pro Gateway a Analyzing)
 ├── architecture_critique.md   ← historická analýza (2026-07-20) — neaktualizuje se
 └── professional_improvements.md ← historická roadmapa vylepšení (2026-07-20) — neaktualizuje se
 
@@ -293,7 +293,7 @@ CLAUDE.md                  ← tento soubor
 │   └── nssm_install.bat       ← Windows service instalátor (vzor z DatabaseGateway)
 ├── docs/
 │   └── generate-docs.bat      ← pdoc (backend) + TypeDoc (frontend) → 06_build/docs/backend|frontend/ (gitignore)
-├── manual/                    ← generátor uživatelského manuálu (demo data, Playwright screenshoty, docx, Word → PDF) — README
+├── manual/                    ← generátor dokumentace EOL testeru — ScadaViewer, Gateway, Analyzing (lib.js = společný rámec; názvosloví v README)
 ├── loadtest/                  ← zátěžové testy: make_big_orders.py (vzorové velké zakázky → done_remote!), measure_api.py
 ├── deploy/                    ← nasazovací skript pro PC u stroje: deploy.bat / deploy.ps1 / rollback.bat (upgrade všech 3 aplikací) — README; krok 5d `$AnSettings` (Config.toml Analyzingu: op_definition, static_*), `$WipBlocksDeploy` (rozpracovaná zakázka nasazení zastaví)
 └── pdf/
@@ -909,7 +909,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | Přehled z názvů souborů (Fáze 37) | ✅ | okamžitý seznam, počet kusů na pozadí („…", `counts_pending`), jedno skenování složky naráz |
 | Připravenost na velký archiv (Fáze 38) | ✅ | SQLite cache + tabulka known, `FileMeta`, NAS výpis 15 s, dopočet z NAS jen pro stránku, lokální kopie, stropy paměti; 100 000 souborů: výpis 0,16 s |
 | Závislosti bez zranitelností (Fáze 39) | ✅ | vite 8, plugin-react 6, react-router-dom 7, SheetJS pryč — `npm audit` 0 |
-| Uživatelský manuál CS + EN | ✅ | `04_docs/manual/` (Word + PDF, 24 screenshotů), generátor `06_build/manual/` |
+| Návod k použití a technický manuál CS + EN | ✅ | `04_docs/manual/` (Word + PDF), generátor `06_build/manual/` — vydání 2.1 (2026-10-28, sjednocené názvosloví: EOL tester mikrospínačů / PC testeru) |
 | Limit lokálního úložiště + čištění (Fáze 29) | ✅ | `local_max_gb` (Config.toml / Nastavení admin+); topbar chip + `StorageBar` + toast; čištění `done_remote/` ověřené na NAS (každý přihlášený), `force` bez ověření jen po potvrzení rizika — viz audit_log 2026-09-25 |
 | NSSM service | ✅ | nssm_install.bat |
 | dev.bat | ✅ | spustí backend + frontend najednou |
@@ -972,7 +972,7 @@ Varianty: `tile--ok` (zelená), `tile--error` (červená), `tile--warning` (oran
 | `04_docs/audit_log.md` | Záznamy auditů kódu `/audit` |
 | `04_docs/project_reviews.md` | **Průběžná hodnocení profesionality** — srovnání s průmyslovým standardem |
 | `04_docs/acceptance_test.md` | **Závěrečný test před odevzdáním** — checklist: automatické testy, role, výpadky, zátěž dat a souběhu (+ naměřené hodnoty, `06_build/loadtest/`), dlouhodobý běh, bezpečnost, protokol |
-| `04_docs/manual/` | **Uživatelský manuál** CS + EN (Word + PDF) — přegenerování `06_build/manual/README.md` |
+| `04_docs/manual/` | **Návod k použití a technický manuál** CS + EN (Word + PDF) — přegenerování a závazné názvosloví `06_build/manual/README.md` |
 | `04_docs/how_to_extend.md` | **Průvodce rozšiřováním** — nový ADS symbol, endpoint, stránka, CSV sloupec, i18n klíč |
 | `04_docs/architecture_critique.md` | *Historická* analýza architektury (2026-07-20) — jen pro kontext |
 | `04_docs/professional_improvements.md` | *Historická* roadmapa vylepšení (2026-07-20) — jen pro kontext |

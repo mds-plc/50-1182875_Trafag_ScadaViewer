@@ -56,13 +56,13 @@ def eco(lang: str, focus: str) -> str:
     X1, W1, X2, W2, X3, W3 = 20, 280, 470, 320, 950, 270
     T, B, H = 50, 290, 124                                    # horní / dolní řada, výška boxu
     c1, c2, c3 = X1 + W1 / 2, X2 + W2 / 2, X3 + W3 / 2
-    b.append(box(X1, T, W1, H, 'PLC TwinCAT 3', [tr(lang, 'řízení linky, měření signálů', 'line control, signal acquisition'),
+    b.append(box(X1, T, W1, H, 'PLC TwinCAT 3', [tr(lang, 'řízení testeru, měření signálů', 'tester control, signal acquisition'),
                                                  'GVL GV_IO_ADS_API']))
     b.append(box(X2, T, W2, H, 'Analyzing (AdsAnalyzer)', [tr(lang, 'vyhodnocení měření kusu', 'evaluation of each piece'),
                                                           '→ AnalyzedParams'], **hi('an')))
     b.append(box(X1, B, W1, H, 'DatabaseGateway', [tr(lang, 'operace Op1–Op5 z PLC', 'operations Op1–Op5 from PLC'),
                                                     tr(lang, '→ soubory CSV', '→ CSV files')], **hi('gw')))
-    b.append(box(X2, B, W2, H, tr(lang, 'Lokální úložiště PC', 'Local PC storage'),
+    b.append(box(X2, B, W2, H, tr(lang, 'Úložiště PC testeru', 'Tester PC storage'),
                  ['production\\wip, done_local, done_remote', 'testing\\done_local, done_remote']))
     b.append(box(X3, B, W3, H, 'Synology NAS', [tr(lang, 'archiv (UNC)', 'archive (UNC)'), 'Production, Testing']))
     b.append(box(X3, T, W3, H, 'ScadaViewer', [tr(lang, 'webová aplikace', 'web application'),
@@ -77,12 +77,12 @@ def eco(lang: str, focus: str) -> str:
     b.append(arrow(X2 + W2, B + 62, X3 - 2, B + 62, tr(lang, 'nahrává Gateway', 'upload by Gateway'), dy=-10))
     b.append(arrow(c2 + 60, B, X3 + 40, T + H + 2, tr(lang, 'čte', 'reads'), dashed=True, lx=c2 + 210, ly=(T + H + B) / 2 - 2))
     b.append(arrow(c3, B, c3, T + H + 2, tr(lang, 'čte', 'reads'), dashed=True, lx=c3 + 12, ly=(T + H + B) / 2 + 5, anchor='start'))
-    # PLC → ScadaViewer (stav stroje, přihlášení obsluhy) — vede nad Analyzingem
+    # PLC → ScadaViewer (stav testeru, přihlášení obsluhy) — vede nad Analyzingem
     b.append(f'<path d="M {c1} {T} L {c1} 16 L {c3} 16 L {c3} {T - 4}" fill="none" stroke="{MUTED}" stroke-width="2" '
              f'stroke-dasharray="6 5" marker-end="url(#ah)"/>')
     b.append(f'<rect x="{c2 - 190}" y="4" width="380" height="24" fill="#FFFFFF"/>')
     b.append(f'<text x="{c2}" y="22" text-anchor="middle" font-size="15" fill="{MUTED}">'
-             f'{tr(lang, "ADS: stav stroje, přihlášení obsluhy", "ADS: machine state, operator sign-in")}</text>')
+             f'{tr(lang, "ADS: stav testeru, přihlášení obsluhy", "ADS: tester state, operator sign-in")}</text>')
     return svg(X3 + W3 + 20, B + H + 20, '\n'.join(b))
 
 

@@ -1,4 +1,4 @@
-// Provozní a servisní příručka DatabaseGateway — generátor .docx (CS + EN)
+// Návod k použití a technický manuál DatabaseGateway — generátor .docx (CS + EN)
 // Použití: node build_gateway.js cs|en <výstupní.docx>
 // Fakta ověřena proti kódu DatabaseGateway (00_src/db_gateway) — při změně Gateway text zkontrolovat.
 const fs = require('fs')
@@ -11,11 +11,10 @@ const VERSION = (fs.readFileSync(path.join(GW, '00_src', 'db_gateway', '__init__
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
 const M = require('./lib')({
   lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'DatabaseGateway',
-  docTitle: L === 'cs' ? 'Provozní a servisní příručka' : 'Operation and Service Manual',
   subtitle: L === 'cs'
-    ? 'Služba pro ukládání výrobních a testovacích dat z PLC do souborů CSV a jejich archivaci na Synology NAS — měřicí a třídicí linka Trafag AG'
-    : 'Service storing production and test data from the PLC to CSV files and archiving them on the Synology NAS — Trafag AG measuring and sorting line',
-  version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+    ? 'Služba pro ukládání výrobních a testovacích dat z PLC do souborů CSV a jejich archivaci na Synology NAS'
+    : 'Service storing production and test data from the PLC to CSV files and archiving them on the Synology NAS',
+  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE } = M
 const c = []
@@ -24,9 +23,9 @@ const c = []
 c.push(H1(t('1  Úvod', '1  Introduction')))
 c.push(H2(t('1.1  Účel služby', '1.1  Purpose of the service')))
 c.push(P(t(
-  'DatabaseGateway je služba Windows, která běží na PC u stroje vedle řídicího systému (Beckhoff TwinCAT 3). Na pokyn PLC přečte přes protokol ADS data výrobní zakázky nebo testovacího měření, zapíše je do souborů CSV na lokální disk a na pozadí je nahrává na síťové úložiště Synology NAS. PLC dostane potvrzení hned po bezpečném zápisu na lokální disk — na NAS nečeká, takže výpadek sítě výrobu nezastaví.',
-  'DatabaseGateway is a Windows service running on the machine PC next to the controller (Beckhoff TwinCAT 3). At the PLC’s request it reads the data of a production order or a test measurement via the ADS protocol, writes it to CSV files on the local disk and uploads them to the Synology NAS in the background. The PLC receives confirmation as soon as the data is safely written to the local disk — it does not wait for the NAS, so a network outage does not stop production.')))
-c.push(...FIG('eco_gw', t('Místo DatabaseGateway v ekosystému linky — obousměrná komunikace s PLC přes ADS, nahrávání na NAS zajišťuje DatabaseGateway', 'DatabaseGateway in the line ecosystem — bidirectional ADS communication with the PLC; uploads to the NAS are performed by DatabaseGateway')))
+  'DatabaseGateway je služba Windows, která běží na PC testeru vedle řídicího systému (Beckhoff TwinCAT 3). Na pokyn PLC přečte přes protokol ADS data výrobní zakázky nebo testovacího měření, zapíše je do souborů CSV na lokální disk a na pozadí je nahrává na síťové úložiště Synology NAS. PLC dostane potvrzení hned po bezpečném zápisu na lokální disk — na NAS nečeká, takže výpadek sítě výrobu nezastaví.',
+  'DatabaseGateway is a Windows service running on the tester PC next to the controller (Beckhoff TwinCAT 3). At the PLC’s request it reads the data of a production order or a test measurement via the ADS protocol, writes it to CSV files on the local disk and uploads them to the Synology NAS in the background. The PLC receives confirmation as soon as the data is safely written to the local disk — it does not wait for the NAS, so a network outage does not stop production.')))
+c.push(...FIG('eco_gw', t('Místo DatabaseGateway v ekosystému EOL testeru — obousměrná komunikace s PLC přes ADS, nahrávání na NAS zajišťuje DatabaseGateway', 'DatabaseGateway in the EOL tester ecosystem — bidirectional ADS communication with the PLC; uploads to the NAS are performed by DatabaseGateway')))
 c.push(P(t('Služba:', 'The service:')))
 c.push(...UL(t([
   'zakládá soubor zakázky, připisuje do něj každý změřený kus a zakázku uzavírá (operace Op1–Op3), ověřuje existenci zakázky (Op4) a ukládá testovací měření včetně surových signálů (Op5),',
@@ -42,10 +41,10 @@ c.push(...UL(t([
 c.push(NOTE('info', t(
   'DatabaseGateway naměřené hodnoty nevyhodnocuje — parametry kusu (síly, polohy, dráhy, odpory, časy) počítá služba Analyzing a Gateway je z PLC přebírá beze změny. Soubory na NAS nikdy nemaže; soubor jiného obsahu (jiné velikosti) nikdy nepřepíše.',
   'DatabaseGateway does not evaluate measured values — the piece parameters (forces, positions, travels, resistances, times) are calculated by the Analyzing service and Gateway takes them over from the PLC unchanged. It never deletes files on the NAS and never overwrites a file with different content (different size).')))
-c.push(H2(t('1.2  Pro koho je příručka', '1.2  Who this manual is for')))
+c.push(H2(t('1.2  Pro koho je dokument', '1.2  Who this document is for')))
 c.push(P(t(
-  `Příručka je určena pro údržbu a servis linky, programátora PLC a správce IT. Popisuje DatabaseGateway verze ${VERSION}: princip činnosti, rozhraní s PLC, formát souborů, synchronizaci na NAS, konfiguraci, instalaci, diagnostiku a řešení problémů. Obsluha stroje se se službou přímo nesetkává — data prohlíží ve ScadaViewer (samostatný uživatelský manuál).`,
-  `This manual is intended for line maintenance and service, the PLC programmer and the IT administrator. It describes DatabaseGateway version ${VERSION}: operating principle, PLC interface, file format, NAS synchronisation, configuration, installation, diagnostics and troubleshooting. Machine operators do not interact with the service directly — they view the data in ScadaViewer (separate user manual).`)))
+  `Dokument je určen pro údržbu a servis EOL testeru mikrospínačů, programátora PLC a správce IT. Popisuje DatabaseGateway verze ${VERSION}: princip činnosti, rozhraní s PLC, formát souborů, synchronizaci na NAS, konfiguraci, instalaci, diagnostiku a řešení problémů. Obsluha testeru se se službou přímo nesetkává — data prohlíží ve ScadaViewer (samostatný návod k použití a technický manuál).`,
+  `This document is intended for maintenance and service of the microswitch EOL tester, the PLC programmer and the IT administrator. It describes DatabaseGateway version ${VERSION}: operating principle, PLC interface, file format, NAS synchronisation, configuration, installation, diagnostics and troubleshooting. Tester operators do not interact with the service directly — they view the data in ScadaViewer (separate instructions for use and technical manual).`)))
 
 // ═══ 2 Princip činnosti ════════════════════════════════════════════════
 c.push(H1(t('2  Princip činnosti', '2  Operating principle')))
@@ -73,7 +72,7 @@ c.push(...OL(t([
   'Connects to the PLC (AMS Net ID, port 851), checks that the runtime ADS port responds (`read_state`; the RUN state is not checked), resets all its outputs to the PLC, opens access to the signal data and starts the heartbeat.',
   'Sets `Ready = TRUE` and `LocalStorage = TRUE` and logs “Služba připravena” (service ready). If the PLC holds `Run = TRUE` at that moment, Gateway waits for it to drop — a new operation starts only on a rising edge.',
 ])))
-c.push(H2(t('2.3  Chování při poruchách a výpadcích', '2.3  Behaviour during faults and outages')))
+c.push(H2(t('2.3  Poruchy a výpadky', '2.3  Faults and outages')))
 c.push(...TABLE(
   [t('Situace', 'Situation'), t('Chování služby', 'Service behaviour')],
   [
@@ -225,13 +224,13 @@ c.push(...TABLE(
     ['`production\\done_local`', t('Uzavřené zakázky čekající na nahrání na NAS.', 'Closed orders waiting for upload to the NAS.')],
     ['`production\\done_remote`', t('Zakázky nahrané na NAS (lokální kopie do vypršení retence).', 'Orders uploaded to the NAS (local copy until retention expires).')],
     ['`testing\\done_local`, `testing\\done_remote`', t('Testovací záznamy — stejně jako u zakázek.', 'Test records — as for orders.')],
-    ['`sync_state.json` (+ `.bak`)', t('Stav synchronizace (kapitola 5.5).', 'Synchronisation state (section 5.5).')],
+    ['`sync_state.json` (+ `.bak`)', t('Stav synchronizace (kap. 5.5).', 'Synchronisation state (section 5.5).')],
     ['`logs`', t('Log `db_gateway_current.log` a týdenní archivy.', 'Log `db_gateway_current.log` and weekly archives.')],
   ],
   [3600, 6038], t('Lokální složky', 'Local folders')))
 c.push(...FIG('gw_lifecycle', t('Životní cyklus souborů: 1. nahrání z done_local na NAS (přes .part), 2. přesun do done_remote, 3. ověření na NAS', 'File life cycle: 1. upload from done_local to the NAS (via .part), 2. move to done_remote, 3. verification on the NAS')))
 c.push(P(t(
-  'Uzavřený soubor se z `done_local` nejdřív zkopíruje na NAS (dočasný `{název}.part` a přejmenování), teprve po úspěšné kopii se lokálně přesune do `done_remote` a v dalších cyklech se ověřuje jeho existence a velikost na NAS (kapitola 5.1). Složky na PC se vytvoří při startu automaticky. Cílové složky na NAS (`production_path`, `testing_path`) se **nevytvářejí** — musí existovat předem.',
+  'Uzavřený soubor se z `done_local` nejdřív zkopíruje na NAS (dočasný `{název}.part` a přejmenování), teprve po úspěšné kopii se lokálně přesune do `done_remote` a v dalších cyklech se ověřuje jeho existence a velikost na NAS (kap. 5.1). Složky na PC se vytvoří při startu automaticky. Cílové složky na NAS (`production_path`, `testing_path`) se **nevytvářejí** — musí existovat předem.',
   'A closed file is first copied from `done_local` to the NAS (temporary `{name}.part` and rename); only after a successful copy is it moved locally to `done_remote`, and in the following cycles its existence and size on the NAS are verified (section 5.1). Folders on the PC are created automatically at start-up. The target folders on the NAS (`production_path`, `testing_path`) are **not created** — they must exist beforehand.')))
 c.push(P(t(
   'Čas v názvu souboru je místní čas PC v okamžiku Op1 (PROD_; při uzavření se nemění) nebo Op5 (TEST_). Existuje-li už TEST soubor stejného názvu (lokálně nebo v `sync_state.json`), časová značka se posune o potřebný počet sekund (WARNING v logu).',
@@ -345,8 +344,8 @@ c.push(...OL(t([
   '**Úklid záznamů** — záznamy v `sync_state.json`, jejichž soubor chybí, opraví (soubor je v `done_remote`) nebo odstraní.',
   '**Převzetí souborů** — soubory v `done_local` / `done_remote`, které v `sync_state.json` nejsou a jejichž poslední změna je starší než 60 s (soubor s časem v budoucnosti hned), převezme do fronty.',
   '**Nahrání** — každý čekající soubor zkopíruje na NAS (`{název}.part` → přejmenování) a teprve po úspěšné kopii ho lokálně přesune do `done_remote`. Výpadek uprostřed dávky = zbytek počká na další cyklus.',
-  '**Ověření** — u nahraných souborů zkontroluje existenci a shodu velikosti na NAS (kapitola 5.2).',
-  '**Čištění** — jednou za `cleanup_interval_days` smaže lokální kopie ověřených souborů starších než `file_retention_days` (kapitola 5.3).',
+  '**Ověření** — u nahraných souborů zkontroluje existenci a shodu velikosti na NAS (kap. 5.2).',
+  '**Čištění** — jednou za `cleanup_interval_days` smaže lokální kopie ověřených souborů starších než `file_retention_days` (kap. 5.3).',
 ], [
   '**NAS availability** — tests both target folders; if unreachable, tries to connect the share (`net use`, section 5.4). The result determines the `RemoteStorage` bit.',
   '**Record clean-up** — records in `sync_state.json` whose file is missing are fixed (file is in `done_remote`) or removed.',
@@ -502,7 +501,7 @@ c.push(NOTE('info', t(
   'For some keys the defaults in the code differ from the recommended values (`sync_interval_s` 300 vs. 30 s, `file_retention_days` 90 vs. 30, `cleanup_interval_days` 7 vs. 1). Always state them explicitly in the production configuration.')))
 
 // ═══ 7 Instalace ═══════════════════════════════════════════════════════
-c.push(H1(t('7  Instalace, aktualizace a odinstalace', '7  Installation, update and removal')))
+c.push(H1(t('7  Instalace a aktualizace', '7  Installation and update')))
 c.push(H2(t('7.1  Obsah balíčku', '7.1  Package contents')))
 c.push(P(t(
   'Balíček `db_gateway` obsahuje `db_gateway.exe`, složku `_internal` (běhové prostředí Pythonu, numpy, pyads), `Config.toml.example`, `nssm_install.bat` a prázdnou strukturu `03_output`. Soubor `Config.toml` balíček záměrně neobsahuje — při aktualizaci zůstává původní.',
@@ -510,12 +509,12 @@ c.push(P(t(
 c.push(H2(t('7.2  První instalace', '7.2  First installation')))
 c.push(...OL(t([
   'Zkopírujte složku `db_gateway` do cílového umístění (např. `C:\\apps\\v2.6.2_…-DatabaseGateway\\db_gateway`).',
-  'Z `Config.toml.example` vytvořte `Config.toml` a vyplňte AMS Net ID, `local_base_dir` a sekci `[server]` (kapitola 6).',
+  'Z `Config.toml.example` vytvořte `Config.toml` a vyplňte AMS Net ID, `local_base_dir` a sekci `[server]` (kap. 6).',
   'Na NAS vytvořte cílové složky `Production` a `Testing`; účet NAS musí mít čtení i zápis.',
   'V TwinCAT nastavte **statickou** ADS routu mezi PC a PLC; ve firewallu povolte TCP 48898 (ADS).',
   'Jako správce spusťte `nssm_install.bat` (nssm.exe v PATH nebo ve stejné složce). Vytvoří službu `DatabaseGateway` s automatickým startem, výstupy do `03_output\\logs\\nssm_*.log` (rotace 10 MB i za běhu) a 15 s na dokončení rozpracované operace při zastavení. Skript existující službu stejného jména nejdřív odstraní a novou **hned spustí** (zatím pod účtem LocalSystem, tj. bez přístupu na NAS).',
-  'Nastavte účet služby s přístupem na NAS: `nssm set DatabaseGateway ObjectName .\\<účet> <heslo>` a uložte údaje NAS přes `cmdkey` (kapitola 5.4).',
-  'Restartujte službu (`nssm restart DatabaseGateway`), aby běžela pod nastaveným účtem, a ověřte stav (kapitola 8.1).',
+  'Nastavte účet služby s přístupem na NAS: `nssm set DatabaseGateway ObjectName .\\<účet> <heslo>` a uložte údaje NAS přes `cmdkey` (kap. 5.4).',
+  'Restartujte službu (`nssm restart DatabaseGateway`), aby běžela pod nastaveným účtem, a ověřte stav (kap. 8.1).',
 ], [
   'Copy the `db_gateway` folder to its target location (e.g. `C:\\apps\\v2.6.2_…-DatabaseGateway\\db_gateway`).',
   'Create `Config.toml` from `Config.toml.example` and fill in the AMS Net ID, `local_base_dir` and the `[server]` section (chapter 6).',
@@ -525,10 +524,10 @@ c.push(...OL(t([
   'Set a service account with NAS access: `nssm set DatabaseGateway ObjectName .\\<account> <password>` and store the NAS credentials via `cmdkey` (section 5.4).',
   'Restart the service (`nssm restart DatabaseGateway`) so that it runs under the configured account, and check its state (section 8.1).',
 ])))
-c.push(H2(t('7.3  Aktualizace na PC u stroje', '7.3  Update on the machine PC')))
+c.push(H2(t('7.3  Aktualizace na PC testeru', '7.3  Update on the tester PC')))
 c.push(P(t(
-  'Aplikace linky (Analyzing, DatabaseGateway, ScadaViewer) se aktualizují vždy společně nasazovacím balíčkem `deploy_v<verze>`: `deploy.bat` spuštěný jako správce zkontroluje konfiguraci (např. cesty NAS pod `\\\\host\\share`, `max_cycles`), zastaví služby, zálohuje `exe` a `_internal` do `<složka>.backup_<čas>`, vymění program (Config.toml, data a logy zůstanou), upraví nastavení NSSM, služby spustí a ověří. Při chybě vrátí předchozí stav; ruční návrat zajistí `rollback.bat`.',
-  'The line applications (Analyzing, DatabaseGateway, ScadaViewer) are always updated together with the deployment package `deploy_v<version>`: `deploy.bat` run as administrator checks the configuration (e.g. NAS paths under `\\\\host\\share`, `max_cycles`), stops the services, backs up `exe` and `_internal` to `<folder>.backup_<time>`, replaces the program (Config.toml, data and logs are kept), adjusts the NSSM settings, starts the services and verifies them. On failure it restores the previous state; `rollback.bat` performs a manual rollback.')))
+  'Aplikace testeru (Analyzing, DatabaseGateway, ScadaViewer) se aktualizují vždy společně nasazovacím balíčkem `deploy_v<verze>`: `deploy.bat` spuštěný jako správce zkontroluje konfiguraci (např. cesty NAS pod `\\\\host\\share`, `max_cycles`), zastaví služby, zálohuje `exe` a `_internal` do `<složka>.backup_<čas>`, vymění program (Config.toml, data a logy zůstanou), upraví nastavení NSSM, služby spustí a ověří. Při chybě vrátí předchozí stav; ruční návrat zajistí `rollback.bat`.',
+  'The tester applications (Analyzing, DatabaseGateway, ScadaViewer) are always updated together with the deployment package `deploy_v<version>`: `deploy.bat` run as administrator checks the configuration (e.g. NAS paths under `\\\\host\\share`, `max_cycles`), stops the services, backs up `exe` and `_internal` to `<folder>.backup_<time>`, replaces the program (Config.toml, data and logs are kept), adjusts the NSSM settings, starts the services and verifies them. On failure it restores the previous state; `rollback.bat` performs a manual rollback.')))
 c.push(NOTE('warn', t(
   'Mění-li vydání datovou hlavičku CSV, musí být `production\\wip` prázdná — rozpracovanou zakázku nejdřív uzavřete na PLC (Op3) nebo ve ScadaViewer (Dokončit zakázku). Gateway, PLC program a ScadaViewer stejného vydání nasazujte společně. Důvod viz kapitola 4.3.',
   'If a release changes the CSV data header, `production\\wip` must be empty — close the order in progress first on the PLC (Op3) or in ScadaViewer (Finish order). Deploy Gateway, the PLC program and ScadaViewer of the same release together. For the reason see section 4.3.')))
@@ -640,6 +639,8 @@ c.push(H1(t('Příloha A  Pojmy a zkratky', 'Appendix A  Terms and abbreviations
 c.push(...TABLE(
   [t('Pojem', 'Term'), t('Význam', 'Meaning')],
   [
+    ['EOL tester', t('EOL tester mikrospínačů (End of Line) — zkušební stanice na konci výroby, která každý mikrospínač změří a roztřídí do kategorií; v textu zkráceně „tester“.', 'Microswitch EOL (end-of-line) tester — test station at the end of production that measures every microswitch and sorts it into categories; “tester” for short in the text.')],
+    [t('PC testeru', 'Tester PC'), t('Průmyslové PC EOL testeru, na kterém běží Analyzing, DatabaseGateway a ScadaViewer.', 'Industrial PC of the EOL tester running Analyzing, DatabaseGateway and ScadaViewer.')],
     ['ADS / AMS Net ID', t('Komunikační protokol Beckhoff TwinCAT (TCP 48898) / adresa zařízení v síti ADS (a.b.c.d.e.f).', 'Beckhoff TwinCAT communication protocol (TCP 48898) / device address in the ADS network (a.b.c.d.e.f).')],
     ['GVL', t('Globální seznam proměnných PLC; rozhraní Gateway `GV_IO_ADS_API.DatabaseGatewayApp`.', 'PLC global variable list; Gateway interface `GV_IO_ADS_API.DatabaseGatewayApp`.')],
     ['Handshake', t('Výměna Run → Busy → Done / Rejected → Ack mezi PLC a Gateway.', 'Exchange Run → Busy → Done / Rejected → Ack between PLC and Gateway.')],

@@ -1,5 +1,6 @@
-// Sdílené stavební bloky manuálů ekosystému Trafag (DatabaseGateway, Analyzing) — stejná úprava jako manuál ScadaViewer.
-// Použití: const M = require('./lib')({ lang, imgDir, product, docTitle, subtitle, version, issue })
+// Sdílené stavební bloky dokumentace EOL testeru mikrospínačů (ScadaViewer, DatabaseGateway, Analyzing).
+// Jednotný rámec všech tří dokumentů: titulní strana, záhlaví, zápatí, typ dokumentu a název stroje (DOC_TYPE, MACHINE).
+// Použití: const M = require('./lib')({ lang, imgDir, product, subtitle, version, issue })
 const fs = require('fs')
 const path = require('path')
 const {
@@ -16,6 +17,9 @@ module.exports = function makeLib(opt) {
   const PAGE_W = 11906, MARGIN = 1134
   const CONTENT = PAGE_W - 2 * MARGIN
   const CONTENT_PX = Math.round(CONTENT / 1440 * 96)
+  // Názvosloví společné všem dokumentům (rozhodnutí 2026-10-28): stroj = EOL tester mikrospínačů, dále jen „tester“
+  const DOC_TYPE = t('Návod k použití a technický manuál', 'Instructions for Use and Technical Manual')
+  const MACHINE = t('EOL tester mikrospínačů', 'Microswitch EOL tester')
   let figNo = 0, tabNo = 0, olNo = 0
 
   function runs(text, base = {}) {
@@ -137,9 +141,9 @@ module.exports = function makeLib(opt) {
     const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
     const nb = { top: none, bottom: none, left: none, right: none }
     return [
-      new Paragraph({ spacing: { before: 2600 }, children: [new TextRun({ text: 'MDS Machine Portal · Trafag AG', size: 22, color: MUTED, characterSpacing: 40 })] }),
+      new Paragraph({ spacing: { before: 2600 }, children: [new TextRun({ text: `Trafag AG · ${MACHINE}`, size: 22, color: MUTED, characterSpacing: 40 })] }),
       new Paragraph({ spacing: { before: 120, after: 0 }, children: [new TextRun({ text: opt.product, size: 72, bold: true, color: NAVY })] }),
-      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: opt.docTitle, size: 44, color: ACCENT })] }),
+      new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: DOC_TYPE, size: 44, color: ACCENT })] }),
       new Paragraph({
         spacing: { after: 1400 }, border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: ACCENT, space: 12 } },
         children: [new TextRun({ text: opt.subtitle, size: 24, color: '374151' })],
@@ -154,17 +158,18 @@ module.exports = function makeLib(opt) {
     ]
   }
 
-  function write(out, bodyChildren) {
+  function write(out, bodyChildren, counts) {
     const meta = [
       [t('Zákazník', 'Customer'), 'Trafag AG'],
       [t('Projekt', 'Project'), '50-1182875'],
-      [t('Verze aplikace', 'Application version'), opt.version],
+      [t('Stroj', 'Machine'), MACHINE],
+      [t('Software', 'Software'), `${opt.product} ${opt.version}`],
       [t('Vydání dokumentu', 'Document issue'), opt.issue],
       [t('Dodavatel', 'Supplier'), 'Mechatronic Design & Solutions (MDS)'],
     ]
     const doc = new Document({
       creator: 'Mechatronic Design & Solutions',
-      title: `${opt.product} — ${opt.docTitle}`,
+      title: `${opt.product} — ${DOC_TYPE}`,
       description: `${opt.product} ${opt.version}`,
       styles: {
         default: { document: { run: { font: FONT, size: 20, color: '1F2937' } } },
@@ -208,11 +213,11 @@ module.exports = function makeLib(opt) {
             border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: LINE, space: 4 } },
             tabStops: [{ type: TabStopType.RIGHT, position: CONTENT }],
             children: [new TextRun({ text: `${opt.product} ${opt.version}`, size: 16, color: MUTED }),
-                       new TextRun({ text: '\t' + opt.docTitle, size: 16, color: MUTED })],
+                       new TextRun({ text: '\t' + DOC_TYPE, size: 16, color: MUTED })],
           })] }) },
           footers: { default: new Footer({ children: [new Paragraph({
             tabStops: [{ type: TabStopType.RIGHT, position: CONTENT }],
-            children: [new TextRun({ text: 'Trafag AG · MDS', size: 16, color: MUTED }),
+            children: [new TextRun({ text: `Trafag AG · ${MACHINE}`, size: 16, color: MUTED }),
                        new TextRun({ children: ['\t', PageNumber.CURRENT, ' / ', PageNumber.TOTAL_PAGES], size: 16, color: MUTED })],
           })] }) },
           children: bodyChildren,
@@ -221,9 +226,10 @@ module.exports = function makeLib(opt) {
     })
     return Packer.toBuffer(doc).then(buf => {
       fs.writeFileSync(out, buf)
-      console.log('ok', out, `obrázků: ${figNo}, tabulek: ${tabNo}`)
+      const c = counts ? counts() : { figNo, tabNo }
+      console.log('ok', out, `obrázků: ${c.figNo}, tabulek: ${c.tabNo}`)
     })
   }
 
-  return { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, write }
+  return { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, write, DOC_TYPE, MACHINE }
 }

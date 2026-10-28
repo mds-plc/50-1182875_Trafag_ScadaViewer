@@ -1,7 +1,27 @@
-# Uživatelský manuál — generátor
+# Dokumentace EOL testeru — generátor (ScadaViewer, DatabaseGateway, Analyzing)
 
-Výstup: `04_docs/manual/ScadaViewer_Uzivatelsky_manual_CS.docx|pdf` a `ScadaViewer_User_Manual_EN.docx|pdf`.
-Poslední přegenerování: 2026-10-28, verze aplikace 2.6.10 (vydání manuálu 2.0; revize textu proti kódu, ukázkové adresy místo skutečných).
+Všechny tři dokumenty mají typ **Návod k použití a technický manuál** / **Instructions for Use and Technical Manual**
+a společný rámec z `lib.js` (titulní strana, záhlaví, zápatí, styly). Soubory v `04_docs/manual` příslušného projektu:
+`<Produkt>_Navod_k_pouziti_a_technicky_manual_CS` a `<Produkt>_Instructions_for_Use_and_Technical_Manual_EN` (`.docx` + `.pdf`).
+
+Poslední přegenerování: 2026-10-28 — ScadaViewer 2.6.10 (vydání 2.1), DatabaseGateway 2.6.2 a Analyzing 2.6.3 (vydání 1.1);
+sjednocené názvosloví ekosystému.
+
+## Názvosloví (závazné pro všechny tři dokumenty, rozhodnutí 2026-10-28)
+
+| Pojem | CS | EN |
+|-------|----|----|
+| Stroj | **EOL tester mikrospínačů**, dále „tester“ (ne „linka“, „stroj“) | **microswitch EOL tester**, then “tester” (not “line”, “machine”) |
+| PC u stroje | **PC testeru**; „u testeru“ = práce přímo na tomto PC | **tester PC**; “at the tester” |
+| Typ dokumentu | **Návod k použití a technický manuál**; v textu „dokument“ | **Instructions for Use and Technical Manual**; “document” in the text |
+| Odkaz na kapitolu | „kapitola 3.4“ v textu, „(kap. 3.4)“ v závorce | “section 3.4”, “chapter 5” |
+| Angličtina | — | britská (colour, behaviour, synchronisation) |
+
+Texty citované z aplikace (popisky tlačítek, hlášky v „…“) zůstávají doslova — aplikace sama používá „u stroje“ /
+“at the machine”; vysvětluje to heslo **PC testeru** v Pojmech. Kostra kapitol DatabaseGateway a Analyzing je stejná:
+1 Úvod · 2 Princip činnosti (2.3 Poruchy a výpadky) · 3 Rozhraní s PLC · specifické kapitoly · Konfigurace ·
+Instalace a aktualizace · (Analyzing: Uvedení do provozu) · 8 Provoz a diagnostika · 9 Řešení problémů · Příloha A Pojmy a zkratky.
+Popisky ve schématech (`diagrams.py`) se řídí stejnými pravidly.
 
 Po změně vzhledu aplikace nebo textů se manuál přegeneruje — screenshoty se nafotí znovu
 z ukázkového serveru, text je v `build_manual.js` (obě jazykové verze vedle sebe, `t(cs, en)`).
@@ -44,11 +64,10 @@ powershell -File word_finish.ps1 -In "%CD%\out_cs.docx" -Pdf "%CD%\out_cs.pdf"
 powershell -File word_finish.ps1 -In "%CD%\out_en.docx" -Pdf "%CD%\out_en.pdf"
 ```
 
-## Příručky DatabaseGateway a Analyzing (ekosystém)
+## Dokumenty DatabaseGateway a Analyzing
 
-Výstup: `11.Parallel scripts\DatabaseGateway\04_docs\manual\DatabaseGateway_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
-a `11.Parallel scripts\Analyzing\04_docs\manual\Analyzing_Provozni_prirucka_CS|Operation_Manual_EN.docx|pdf`
-(vydání 1.0, 2026-10-28 po revizi — Gateway 2.6.2, Analyzing 2.6.3). Text ověřen proti kódu obou služeb (podklad:
+Výstup: `11.Parallel scripts\DatabaseGateway\04_docs\manual\` a `11.Parallel scripts\Analyzing\04_docs\manual\`
+(názvy souborů viz výše). Text ověřen proti kódu obou služeb (podklad:
 rozbor kódu se zdroji `soubor:řádek`); verze se čte z jejich `__init__.py`. Při změně služby text zkontrolovat.
 
 ```bat
@@ -61,10 +80,10 @@ node build_analyzing.js cs an_cs.docx &  node build_analyzing.js en an_en.docx
 :: PDF jako u manuálu ScadaViewer (word_finish.ps1), pak kopie do 04_docs\manual obou projektů
 ```
 
-Sdílená úprava dokumentů: `lib.js` (titulní strana, obsah, tabulky, poznámky, kód, obrázky).
+Sdílená úprava dokumentů: `lib.js` (titulní strana, záhlaví, zápatí, obsah, tabulky, poznámky, kód, obrázky; `DOC_TYPE`, `MACHINE`).
 
 Poznámky:
-- Verze v manuálu se bere z `00_backend/scada/__init__.py` (`__version__`); vydání manuálu = `ISSUE` v `build_manual.js`.
+- Verze v manuálu se bere z `00_backend/scada/__init__.py` (`__version__`); vydání dokumentu = `ISSUE` v `build_manual.js`, u Gateway / Analyzing `issue` v jejich generátoru.
 - `shots.py` skrývá toasty jen přes CSS — mazání jejich DOM uzlů shodí React (`removeChild`). U výřezů skryje přilepenou
   horní lištu (jinak se překreslí přes obsah); klávesnice na obrazovce je vypnutá kromě snímku `21b_osk`.
 - V Nastavení → Připojení se cesty ukázkového serveru a fiktivní Net ID na snímku nahradí typickými

@@ -1,4 +1,4 @@
-// Provozní a servisní příručka Analyzing (AdsAnalyzer) — generátor .docx (CS + EN)
+// Návod k použití a technický manuál Analyzing (AdsAnalyzer) — generátor .docx (CS + EN)
 // Použití: node build_analyzing.js cs|en <výstupní.docx>
 // Fakta ověřena proti kódu Analyzing (00_src/ads_analyzer) — při změně Analyzingu text zkontrolovat.
 const fs = require('fs')
@@ -10,12 +10,11 @@ const AN = path.join(__dirname, '..', '..', '..', '..', '11.Parallel scripts', '
 const VERSION = (fs.readFileSync(path.join(AN, '00_src', 'ads_analyzer', '__init__.py'), 'utf8')
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
 const M = require('./lib')({
-  lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'Analyzing (AdsAnalyzer)',
-  docTitle: L === 'cs' ? 'Provozní a servisní příručka' : 'Operation and Service Manual',
+  lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'Analyzing',
   subtitle: L === 'cs'
-    ? 'Služba pro vyhodnocení měření mikrospínačů — výpočet sil, poloh, drah, odporů kontaktů a spínacích časů pro PLC — měřicí a třídicí linka Trafag AG'
-    : 'Service evaluating microswitch measurements — calculation of forces, positions, travels, contact resistances and switching times for the PLC — Trafag AG measuring and sorting line',
-  version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+    ? 'Služba pro vyhodnocení měření mikrospínačů — výpočet sil, poloh, drah, odporů kontaktů a spínacích časů pro PLC'
+    : 'Service evaluating microswitch measurements — calculation of forces, positions, travels, contact resistances and switching times for the PLC',
+  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE } = M
 const c = []
@@ -24,16 +23,16 @@ const c = []
 c.push(H1(t('1  Úvod', '1  Introduction')))
 c.push(H2(t('1.1  Účel služby', '1.1  Purpose of the service')))
 c.push(P(t(
-  'Analyzing (služba Windows `AdsAnalyzer`, program `ads_analyzer.exe`) běží na PC u stroje vedle řídicího systému Beckhoff TwinCAT 3. Po změření každého kusu přečte z PLC přes protokol ADS celý záznam měření — šest kanálů: napětí kontaktů U_NC a U_NO, proudy I_NC a I_NO, sílu F a polohu P — vypočte z něj charakteristické parametry mikrospínače (polohy, síly, dráhy, odpory kontaktů a spínací časy) a zapíše je jedním blokem zpět do PLC. PLC výsledky porovná s limity receptury, kus zatřídí (kategorie 1–6) a předá DatabaseGateway k uložení.',
-  'Analyzing (Windows service `AdsAnalyzer`, program `ads_analyzer.exe`) runs on the machine PC next to the Beckhoff TwinCAT 3 controller. After every piece is measured it reads the complete measurement record from the PLC via the ADS protocol — six channels: contact voltages U_NC and U_NO, currents I_NC and I_NO, force F and position P — calculates the characteristic microswitch parameters (positions, forces, travels, contact resistances and switching times) and writes them back to the PLC in one block. The PLC compares the results with the recipe limits, sorts the piece (categories 1–6) and passes it to DatabaseGateway for storage.')))
-c.push(...FIG('eco_an', t('Místo Analyzingu v ekosystému linky', 'Analyzing in the line ecosystem')))
+  'Analyzing (služba Windows `AdsAnalyzer`, program `ads_analyzer.exe`) běží na PC **EOL testeru mikrospínačů** vedle řídicího systému Beckhoff TwinCAT 3. Po změření každého kusu přečte z PLC přes protokol ADS celý záznam měření — šest kanálů: napětí kontaktů U_NC a U_NO, proudy I_NC a I_NO, sílu F a polohu P — vypočte z něj charakteristické parametry mikrospínače (polohy, síly, dráhy, odpory kontaktů a spínací časy) a zapíše je jedním blokem zpět do PLC. PLC výsledky porovná s limity receptury, kus zatřídí (kategorie 1–6) a předá DatabaseGateway k uložení.',
+  'Analyzing (Windows service `AdsAnalyzer`, program `ads_analyzer.exe`) runs on the PC of the **microswitch EOL tester** next to the Beckhoff TwinCAT 3 controller. After every piece is measured it reads the complete measurement record from the PLC via the ADS protocol — six channels: contact voltages U_NC and U_NO, currents I_NC and I_NO, force F and position P — calculates the characteristic microswitch parameters (positions, forces, travels, contact resistances and switching times) and writes them back to the PLC in one block. The PLC compares the results with the recipe limits, sorts the piece (categories 1–6) and passes it to DatabaseGateway for storage.')))
+c.push(...FIG('eco_an', t('Místo Analyzingu v ekosystému EOL testeru', 'Analyzing in the EOL tester ecosystem')))
 c.push(NOTE('info', t(
-  'Analyzing neposuzuje OK / NOK — tolerance a třídění vyhodnocuje PLC. Analyzing do databáze CSV nezapisuje; volitelně ukládá jen ladicí export signálů (oddíl 6.2).',
-  'Analyzing does not judge OK / NOK — tolerances and sorting are evaluated by the PLC. Analyzing does not write to the CSV database; optionally it only stores a debug signal export (section 6.2).')))
-c.push(H2(t('1.2  Pro koho je příručka', '1.2  Who this manual is for')))
+  'Analyzing neposuzuje OK / NOK — tolerance a třídění vyhodnocuje PLC. Analyzing do databáze CSV nezapisuje; volitelně ukládá jen ladicí export signálů (kap. 8.2).',
+  'Analyzing does not judge OK / NOK — tolerances and sorting are evaluated by the PLC. Analyzing does not write to the CSV database; optionally it only stores a debug signal export (section 8.2).')))
+c.push(H2(t('1.2  Pro koho je dokument', '1.2  Who this document is for')))
 c.push(P(t(
-  `Příručka je určena pro údržbu a servis linky, programátora PLC, technologa a správce IT. Popisuje Analyzing verze ${VERSION}: princip činnosti, rozhraní s PLC, algoritmus vyhodnocení, konfiguraci, logy, instalaci, uvedení do provozu včetně kalibrace polohy a řešení problémů. Naměřené hodnoty si obsluha prohlíží ve ScadaViewer.`,
-  `This manual is intended for line maintenance and service, the PLC programmer, the process engineer and the IT administrator. It describes Analyzing version ${VERSION}: operating principle, PLC interface, evaluation algorithm, configuration, logs, installation, commissioning including position calibration, and troubleshooting. Operators view the measured values in ScadaViewer.`)))
+  `Dokument je určen pro údržbu a servis EOL testeru mikrospínačů, programátora PLC, technologa a správce IT. Popisuje Analyzing verze ${VERSION}: princip činnosti, rozhraní s PLC, algoritmus vyhodnocení, konfiguraci, logy, instalaci, uvedení do provozu včetně kalibrace polohy a řešení problémů. Naměřené hodnoty si obsluha prohlíží ve ScadaViewer.`,
+  `This document is intended for maintenance and service of the microswitch EOL tester, the PLC programmer, the process engineer and the IT administrator. It describes Analyzing version ${VERSION}: operating principle, PLC interface, evaluation algorithm, configuration, logs, installation, commissioning including position calibration, and troubleshooting. Operators view the measured values in ScadaViewer.`)))
 
 // ═══ 2 Princip činnosti ════════════════════════════════════════════════
 c.push(H1(t('2  Princip činnosti', '2  Operating principle')))
@@ -49,7 +48,7 @@ c.push(...TABLE(
   [2200, 7438], t('Vlákna služby', 'Service threads')))
 c.push(H2(t('2.2  Spuštění a spojení s PLC', '2.2  Start-up and PLC connection')))
 c.push(...OL(t([
-  'Načte `Config.toml`. Chybí-li, služba nestartuje (záměrně — bez konfigurace by počítala polohy s C = 0, viz oddíl 4.4). Neplatná hodnota zastaví start s popisem chyby. Program se ukončí a NSSM jej po chvíli spustí znovu — chyba se proto v logu opakuje, dokud se `Config.toml` neopraví.',
+  'Načte `Config.toml`. Chybí-li, služba nestartuje (záměrně — bez konfigurace by počítala polohy s C = 0, viz kap. 4.4). Neplatná hodnota zastaví start s popisem chyby. Program se ukončí a NSSM jej po chvíli spustí znovu — chyba se proto v logu opakuje, dokud se `Config.toml` neopraví.',
   'Připojí se k PLC (AMS Net ID, AMS port 851), ověří, že ADS zařízení odpovídá, vynuluje své výstupy a otevře přístup k šesti kanálům záznamu.',
   'Ověří velikost struktury `In.Data.AnalyzedParams` v PLC (112 B). Nesouhlasí-li, každý kus skončí chybou E6, dokud se PLC program a služba nesladí.',
   'Drží-li PLC `Run = TRUE`, čeká na jeho shození (nová analýza začíná jen náběžnou hranou).',
@@ -61,7 +60,7 @@ c.push(...OL(t([
   'If the PLC holds `Run = TRUE`, it waits for it to drop (a new analysis starts only on a rising edge).',
   'Starts the heartbeat, sets `Ready = TRUE` and logs “Service ready”.',
 ])))
-c.push(H2(t('2.3  Výpadky', '2.3  Outages')))
+c.push(H2(t('2.3  Poruchy a výpadky', '2.3  Faults and outages')))
 c.push(...UL(t([
   '**Výpadek PLC / ADS** — služba se opakovaně připojuje (pauza 5 s, `reconnect_delay_s`, plus doba ADS timeoutu); výstupy do PLC při přerušeném spojení nenuluje, po obnovení je vynuluje a nastaví `Ready = TRUE`. Aktivní chyba se tím zruší.',
   '**Zastavení služby** — počká na rozpracovanou analýzu nejvýše 2 s, vynuluje výstupy, uzavře spojení.',
@@ -92,7 +91,7 @@ c.push(...TABLE(
     ['`In.CmdsResp.Analyzing.Done`', 'BOOL', 'AN → PLC', t('Výsledky zapsány.', 'Results written.')],
     ['`In.CmdsResp.Analyzing.Error` / `ErrorCode`', 'BOOL / UINT', 'AN → PLC', t('Chyba — blokuje další Run do ResetDiag.', 'Error — blocks further Run until ResetDiag.')],
     ['`In.CmdsResp.Analyzing.Warning` / `WarningCode`', 'BOOL / UINT', 'AN → PLC', t('Varování — neblokuje.', 'Warning — does not block.')],
-    ['`In.Data.AnalyzedParams`', 'DUT 112 B', 'AN → PLC', t('Výsledky kusu (oddíl 3.4).', 'Piece results (section 3.4).')],
+    ['`In.Data.AnalyzedParams`', 'DUT 112 B', 'AN → PLC', t('Výsledky kusu (kap. 3.4).', 'Piece results (section 3.4).')],
   ],
   [3500, 1100, 1100, 3938], t('Symboly rozhraní', 'Interface symbols')))
 c.push(H2(t('3.2  Handshake', '3.2  Handshake')))
@@ -201,10 +200,10 @@ c.push(NOTE('tip', t(
 c.push(H1(t('4  Vyhodnocení měření', '4  Measurement evaluation')))
 c.push(...FIG('an_pipeline', t('Průběh vyhodnocení jednoho kusu (odznak = kód, který krok může vyvolat; E = chyba, blokuje; W = varování, neblokuje)', 'Evaluation sequence of one piece (badge = code the step can raise; E = error, blocks; W = warning, does not block)')))
 c.push(P(t(
-  'Po náběžné hraně Run služba ověří výsledek kontroly struktury `AnalyzedParams` (E6), přečte záznam (E1 / E3) a zkontroluje `Valid` (W3) a `CyclesNum` > 0 (W1). Ve vlákně analýzy pak následuje předzpracování (E4), volba konstanty C (W8, oddíl 4.4), kontrola NaN / ∞ a předvalidace (W5), filtr, určení TTP a FP (W5), prahu přepnutí (W5), rozepnutí NC, sepnutí NO a RP (W5 / W6), FPR a výpočet parametrů (W2 / W4, NaN ve výsledku = W5). Nakonec hlavní vlákno zapíše výsledky a Done (chyba zápisu = E5). Kódy W8 a W2 výpočet nepřeruší, hlásí se až s výsledkem (oddíl 3.5).',
+  'Po náběžné hraně Run služba ověří výsledek kontroly struktury `AnalyzedParams` (E6), přečte záznam (E1 / E3) a zkontroluje `Valid` (W3) a `CyclesNum` > 0 (W1). Ve vlákně analýzy pak následuje předzpracování (E4), volba konstanty C (W8, kap. 4.4), kontrola NaN / ∞ a předvalidace (W5), filtr, určení TTP a FP (W5), prahu přepnutí (W5), rozepnutí NC, sepnutí NO a RP (W5 / W6), FPR a výpočet parametrů (W2 / W4, NaN ve výsledku = W5). Nakonec hlavní vlákno zapíše výsledky a Done (chyba zápisu = E5). Kódy W8 a W2 výpočet nepřeruší, hlásí se až s výsledkem (kap. 3.5).',
   'After a rising edge of Run the service checks the result of the `AnalyzedParams` structure check (E6), reads the record (E1 / E3) and checks `Valid` (W3) and `CyclesNum` > 0 (W1). The analysis thread then performs preprocessing (E4), selection of the constant C (W8, section 4.4), the NaN / ∞ check and pre-validation (W5), filtering, determination of TTP and FP (W5), the switching threshold (W5), NC opening, NO closing and RP (W5 / W6), FPR and the parameter calculation (W2 / W4, NaN in the result = W5). Finally the main thread writes the results and Done (write error = E5). Codes W8 and W2 do not interrupt the calculation; they are reported with the result (section 3.5).')))
 c.push(P(t(
-  'Detekce probíhá v souřadnicích enkodéru x (při stlačení roste). Na výstupu se polohy převedou na souřadnice zákazníka **P = C − x** — výšku hmatníku nad osou upevňovacích otvorů, která při stlačení klesá (konstanta C viz oddíl 4.4). Dráhy na C nezávisejí.',
+  'Detekce probíhá v souřadnicích enkodéru x (při stlačení roste). Na výstupu se polohy převedou na souřadnice zákazníka **P = C − x** — výšku hmatníku nad osou upevňovacích otvorů, která při stlačení klesá (konstanta C viz kap. 4.4). Dráhy na C nezávisejí.',
   'Detection works in encoder coordinates x (increasing when actuated). On output the positions are converted to customer coordinates **P = C − x** — the actuator height above the mounting-hole axis, which decreases when actuated (for the constant C see section 4.4). Travels do not depend on C.')))
 c.push(H2(t('4.1  Předzpracování a předvalidace', '4.1  Preprocessing and pre-validation')))
 c.push(...UL(t([
@@ -224,7 +223,7 @@ c.push(...TABLE(
     ['FP', t('Hrubý odhad: síla nad šumem (klidová úroveň + 3σ + 0,05 N), rostoucí a po posunu ≥ 10 µm, 3 vzorky za sebou; nesplní-li podmínku gradientu a pohybu žádný úsek, použije se první vzorek nad prahem. Upřesnění `sustained`: nula (medián) a σ síly z úseku bez kontaktu (klid a pohyb vozíku do 100 µm před dotykem), FP = první vzorek, od něhož je síla nad nulou + 5σ **50 vzorků (2,5 ms) za sebou**; leží-li více než 200 µm před hrubým odhadem, upřesnění se zamítne. FP ≥ TTP nebo nenalezeno = W5.', 'Coarse estimate: force above noise (rest level + 3σ + 0.05 N), rising and after ≥ 10 µm movement, 3 samples in a row; if no section meets the gradient and movement condition, the first sample above the threshold is used. Refinement `sustained`: zero (median) and σ of force from the contact-free section (rest and carriage movement up to 100 µm before contact), FP = first sample from which force stays above zero + 5σ for **50 samples (2.5 ms)**; if it lies more than 200 µm before the coarse estimate, the refinement is rejected. FP ≥ TTP or not found = W5.')],
     [t('Práh přepnutí', 'Switching threshold'), t('Klidová úroveň U_NC + 50 % rozkmitu U_NC (99. percentil) — stejný práh pro U_NO. Rozkmit < 2,0 V = „NC se nerozepnul“ = W5.', 'Rest level of U_NC + 50 % of the U_NC swing (99th percentile) — same threshold for U_NO. Swing < 2.0 V = “NC did not open” = W5.')],
     [t('Rozepnutí NC', 'NC opening'), t('Mezi FP a TTP první vzorek U_NC nad prahem, po kterém do 20 ms (400 vzorků) začne úsek 5 vzorků za sebou nad prahem; dřívější izolované překročení se přeskočí. Nevyhoví-li žádné překročení, ale stabilní úsek v záznamu je, platí první překročení; bez jediného stabilního úseku = nenalezeno (W5).', 'Between FP and TTP, the first U_NC sample above the threshold followed within 20 ms (400 samples) by a run of 5 consecutive samples above it; earlier isolated crossings are skipped. If no crossing qualifies but a stable run exists, the first crossing applies; without any stable run = not found (W5).')],
-    ['OP', t('Podle `op_definition`: `no_close` = **první sepnutí NO** (DIN 41636-1, nastaveno na stroji), `nc_open` = rozepnutí NC (výchozí v kódu). Sepnutí NO se hledá od konce nestability NC stejným pravidlem jako rozepnutí NC; sepne-li NO až za TTP, OP = TTP. Síla OF, odpory OP a časy se vždy vážou k rozepnutí NC.', 'Per `op_definition`: `no_close` = **first closing of NO** (DIN 41636-1, set on the machine), `nc_open` = NC opening (code default). NO closing is searched from the end of NC instability with the same rule as NC opening; if NO closes only after TTP, OP = TTP. The OF force, OP resistances and times are always tied to the NC opening.')],
+    ['OP', t('Podle `op_definition`: `no_close` = **první sepnutí NO** (DIN 41636-1, nastaveno na testeru), `nc_open` = rozepnutí NC (výchozí v kódu). Sepnutí NO se hledá od konce nestability NC stejným pravidlem jako rozepnutí NC; sepne-li NO až za TTP, OP = TTP. Síla OF, odpory OP a časy se vždy vážou k rozepnutí NC.', 'Per `op_definition`: `no_close` = **first closing of NO** (DIN 41636-1, set on the tester), `nc_open` = NC opening (code default). NO closing is searched from the end of NC instability with the same rule as NC opening; if NO closes only after TTP, OP = TTP. The OF force, OP resistances and times are always tied to the NC opening.')],
     ['RP', t('První potvrzené sepnutí NC při návratu (U_NC pod prahem za TTP). Nenalezeno = W6.', 'First confirmed closing of NC on return (U_NC below the threshold after TTP). Not found = W6.')],
     ['FPR', t('Od RP (při W6 od TTP) první vzorek, od něhož síla leží 50 vzorků za sebou v nule (nula + 5σ); nenalezeno = 0. U dobrého kusu ≈ FP.', 'From RP (with W6 from TTP), the first sample from which force stays at zero (zero + 5σ) for 50 samples; not found = 0. ≈ FP for a good piece.')],
   ],
@@ -266,8 +265,8 @@ c.push(P(t(
   'Konce úseků podle `times_method`: `stable_run` (výchozí) = poslední vzorek prvního úseku 5 stabilních vzorků (`stable_samples_count`) — i čisté přepnutí má proto UT a BT nejméně (5 − 1) × 50 µs = 200 µs; `bounce_end` = skutečný konec zákmitů (čisté přepnutí = 0). Volitelná korekce tření (`friction_correction_enabled`) je ve výchozím stavu vypnutá.',
   'Segment ends per `times_method`: `stable_run` (default) = the last sample of the first run of 5 stable samples (`stable_samples_count`) — so even a clean changeover has UT and BT of at least (5 − 1) × 50 µs = 200 µs; `bounce_end` = actual end of bouncing (clean changeover = 0). Optional friction correction (`friction_correction_enabled`) is off by default.')))
 c.push(P(t(
-  'Časová osa diagramu ve ScadaViewer začíná v 0 = rozepnutí NC, kde je v diagramu značka „OP“ (definice `nc_open`). S nastavením stroje `op_definition = "no_close"` leží spínací poloha OP až v prvním sepnutí NO, tj. o UT + RevT později; časy UT, RevT, BT a OpT se tím nemění.',
-  'The time axis of the ScadaViewer diagram starts at 0 = NC opening, where the diagram shows the “OP” mark (`nc_open` definition). With the machine setting `op_definition = "no_close"` the operating position OP lies at the first NO closing, i.e. UT + RevT later; the times UT, RevT, BT and OpT are not affected.')))
+  'Časová osa diagramu ve ScadaViewer začíná v 0 = rozepnutí NC, kde je v diagramu značka „OP“ (definice `nc_open`). S nastavením testeru `op_definition = "no_close"` leží spínací poloha OP až v prvním sepnutí NO, tj. o UT + RevT později; časy UT, RevT, BT a OpT se tím nemění.',
+  'The time axis of the ScadaViewer diagram starts at 0 = NC opening, where the diagram shows the “OP” mark (`nc_open` definition). With the tester setting `op_definition = "no_close"` the operating position OP lies at the first NO closing, i.e. UT + RevT later; the times UT, RevT, BT and OpT are not affected.')))
 c.push(...FIG('an_times', t('Spínací časy UT, RevT, BT a OpT (ScadaViewer, detail kusu; čas 0 = rozepnutí NC)', 'Switching times UT, RevT, BT and OpT (ScadaViewer, piece detail; time 0 = NC opening)'), 1, 0.8))
 c.push(H2(t('4.4  Kalibrační konstanta C', '4.4  Calibration constant C')))
 c.push(...OL(t([
@@ -319,7 +318,7 @@ c.push(...CODE([
 const CFG = (sec, rows, cap) => c.push(...TABLE([t('Klíč', 'Key'), t('Typ', 'Type'), t('Výchozí', 'Default'), t('Význam (validace)', 'Meaning (validation)')], rows, [3000, 800, 1300, 4538], cap || `[${sec}]`))
 CFG('general', [
   ['simulation_mode', 'bool', 'false', t('Syntetický signál místo dat z PLC — jen test, nikdy v provozu.', 'Synthetic signal instead of PLC data — testing only, never in operation.')],
-  ['export_csv', 'bool', 'false', t('Ukládat `signal_*.csv` + `summary_*.json` (oddíl 6.2); vzor `Config.toml.example` má `true` — v provozu nastavit `false`.', 'Store `signal_*.csv` + `summary_*.json` (section 6.2); the template `Config.toml.example` has `true` — set `false` in operation.')],
+  ['export_csv', 'bool', 'false', t('Ukládat `signal_*.csv` + `summary_*.json` (kap. 8.2); vzor `Config.toml.example` má `true` — v provozu nastavit `false`.', 'Store `signal_*.csv` + `summary_*.json` (section 8.2); the template `Config.toml.example` has `true` — set `false` in operation.')],
   ['export_csv_dir', 'str', '03_output/data_export', t('Složka exportu.', 'Export folder.')],
   ['export_csv_max_files', 'int', '50', t('Max. počet souborů každého druhu (≥ 1); vzor `Config.toml.example`: 500, tj. až 500 dvojic souborů.', 'Max. number of files of each kind (≥ 1); template `Config.toml.example`: 500, i.e. up to 500 pairs of files.')],
   ['export_min_free_gb', 'float', '10.0', t('Pod tímto volným místem export pozastaven; 0 = bez kontroly (≥ 0).', 'Export paused below this free space; 0 = no check (≥ 0).')],
@@ -327,11 +326,11 @@ CFG('general', [
 CFG('ads', [
   ['ams_net_id', 'str', '10.1.177.9.1.1', t('AMS Net ID PLC runtime.', 'AMS Net ID of the PLC runtime.')],
   ['port', 'int', '851', t('AMS port runtime (adresa uvnitř ADS, ne port firewallu).', 'AMS port of the runtime (address inside ADS, not a firewall port).')],
-  ['timeout_ms', 'int', '10000', t('Timeout ADS [ms]; na stroji 15 000 kvůli velkým čtením.', 'ADS timeout [ms]; 15,000 on the machine because of large reads.')],
+  ['timeout_ms', 'int', '10000', t('Timeout ADS [ms]; na testeru 15 000 kvůli velkým čtením.', 'ADS timeout [ms]; 15,000 on the tester because of large reads.')],
 ])
 CFG('measurement', [
   ['oversampling', 'int', '10', t('= PLC `cMEASURING_MAX_OVERSAMPLING` (≥ 1).', '= PLC `cMEASURING_MAX_OVERSAMPLING` (≥ 1).')],
-  ['max_cycles', 'int', '20000', t('= PLC `cMEASURING_MAX_CYCLES`; na stroji **60 000** (≥ 1). Menší než v PLC ořízne záznam (W6 / W5).', '= PLC `cMEASURING_MAX_CYCLES`; **60,000** on the machine (≥ 1). Smaller than in the PLC truncates the record (W6 / W5).')],
+  ['max_cycles', 'int', '20000', t('= PLC `cMEASURING_MAX_CYCLES`; na testeru **60 000** (≥ 1). Menší než v PLC ořízne záznam (W6 / W5).', '= PLC `cMEASURING_MAX_CYCLES`; **60,000** on the tester (≥ 1). Smaller than in the PLC truncates the record (W6 / W5).')],
   ['position_reference_um', 'float', '0.0', t('Záložní konstanta C [µm]; 0 = polohy enkodéru (≥ 0).', 'Fallback constant C [µm]; 0 = encoder positions (≥ 0).')],
   ['position_reference_min_um / _max_um', 'float', '8000 / 11000', t('Meze platného C z PLC (0 < min < max).', 'Limits of a valid C from the PLC (0 < min < max).')],
   ['position_reference_state_file', 'str', '03_output/state/…json', t('Soubor posledního platného C z PLC.', 'File of the last valid C from the PLC.')],
@@ -345,7 +344,7 @@ CFG('product', [
   ['voltage_gain', 'float', '1.0', t('Zesílení kanálů U_NC / U_NO (> 0).', 'Gain of the U_NC / U_NO channels (> 0).')],
 ])
 CFG('analysis.detection', [
-  ['op_definition', 'str', 'nc_open', t('`no_close` (první sepnutí NO, **stroj**) / `nc_open` (rozepnutí NC).', '`no_close` (first NO closing, **machine**) / `nc_open` (NC opening).')],
+  ['op_definition', 'str', 'nc_open', t('`no_close` (první sepnutí NO, **tester**) / `nc_open` (rozepnutí NC).', '`no_close` (first NO closing, **tester**) / `nc_open` (NC opening).')],
   ['switching_threshold_ratio', 'float', '0.5', t('Práh přepnutí jako podíl rozkmitu U_NC (0 < x < 1).', 'Switching threshold as a share of the U_NC swing (0 < x < 1).')],
   ['stable_samples_count', 'int', '5', t('Vzorků pro stabilní stav (≥ 1).', 'Samples for a stable state (≥ 1).')],
   ['switch_glitch_window_samples', 'int', '400', t('Potvrzení přepnutí do N vzorků (20 ms); 0 = vypnuto (≥ 0).', 'Changeover confirmation within N samples (20 ms); 0 = off (≥ 0).')],
@@ -380,9 +379,80 @@ c.push(NOTE('info', t(
   'Bez funkce (rezerva nebo historické): sekce `[actuator]` a `[analysis.correction]`, klíče `electric_settling_samples`, `electric_averaging_enabled` a `electric_window_samples` (poslední dva se ani nenačítají). Pro ladění odporů slouží `electric_window_um`.',
   'Without function (reserve or historical): sections `[actuator]` and `[analysis.correction]`, keys `electric_settling_samples`, `electric_averaging_enabled` and `electric_window_samples` (the last two are not even loaded). Use `electric_window_um` to tune resistances.')))
 
-// ═══ 6 Logy ════════════════════════════════════════════════════════════
-c.push(H1(t('6  Logy, export a diagnostika', '6  Logs, export and diagnostics')))
-c.push(H2(t('6.1  Logy', '6.1  Logs')))
+// ═══ 6 Instalace ═══════════════════════════════════════════════════════
+c.push(H1(t('6  Instalace a aktualizace', '6  Installation and update')))
+c.push(H2(t('6.1  Obsah balíčku', '6.1  Package contents')))
+c.push(P(t(
+  'Balíček `ads_analyzer` obsahuje `ads_analyzer.exe`, `_internal` (Python, numpy, scipy, pyads), `Config.toml.example`, `nssm_install.bat` a složky `03_output\\logs`, `03_output\\data_export`. `Config.toml` ani `nssm.exe` balíček neobsahuje. Cílové PC nepotřebuje Python; potřebuje ADS router TwinCAT a ADS routu k PLC.',
+  'The `ads_analyzer` package contains `ads_analyzer.exe`, `_internal` (Python, numpy, scipy, pyads), `Config.toml.example`, `nssm_install.bat` and the folders `03_output\\logs`, `03_output\\data_export`. The package contains neither `Config.toml` nor `nssm.exe`. The target PC does not need Python; it needs the TwinCAT ADS router and an ADS route to the PLC.')))
+c.push(H2(t('6.2  První instalace', '6.2  First installation')))
+c.push(...OL(t([
+  'Rozbalte balíček (např. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) a z `Config.toml.example` vytvořte `Config.toml` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — vzor má export zapnutý).',
+  'Běží-li PLC na jiném PC, nastavte v TwinCAT **statickou** ADS routu a na obou stranách povolte ve firewallu TCP 48898 (při přidávání routy vyhledáním i UDP 48899). AMS port 851 je adresa runtime uvnitř ADS, ve firewallu se nenastavuje. Běží-li PLC runtime na tomtéž PC, routa ani firewall potřeba nejsou.',
+  'Ověřte ruční spuštění `ads_analyzer.exe --config Config.toml` — čekejte na „Služba připravena“ a ukončete Ctrl+C.',
+  '`nssm.exe` (64bit) stáhněte z nssm.cc a uložte do složky služby nebo do PATH. Jako správce spusťte `nssm_install.bat`: služba `AdsAnalyzer`, automatický start, výstupy do `03_output\\logs\\nssm_*.log` (rotace po 10 MB i za běhu). `nssm.exe` musí po instalaci zůstat na místě — služba se přes něj spouští.',
+], [
+  'Extract the package (e.g. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) and create `Config.toml` from `Config.toml.example` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — the template has the export switched on).',
+  'If the PLC runs on a different PC, set up a **static** ADS route in TwinCAT and allow TCP 48898 in the firewall on both sides (and UDP 48899 when adding the route by search). AMS port 851 addresses the runtime inside ADS and is not a firewall port. If the PLC runtime runs on the same PC, neither a route nor a firewall rule is needed.',
+  'Check a manual run `ads_analyzer.exe --config Config.toml` — wait for “Service ready” and stop with Ctrl+C.',
+  'Download `nssm.exe` (64-bit) from nssm.cc and place it in the service folder or on the PATH. Run `nssm_install.bat` as administrator: service `AdsAnalyzer`, automatic start, output to `03_output\\logs\\nssm_*.log` (rotation every 10 MB, also while running). After installation `nssm.exe` must stay in place — the service is started through it.',
+])))
+c.push(P(t('Správa služby: `nssm start | stop | restart AdsAnalyzer`, `Get-Service AdsAnalyzer`.', 'Service management: `nssm start | stop | restart AdsAnalyzer`, `Get-Service AdsAnalyzer`.')))
+c.push(H2(t('6.3  Aktualizace na PC testeru', '6.3  Update on the tester PC')))
+c.push(P(t(
+  'Aplikace testeru se aktualizují společně nasazovacím balíčkem `deploy_v<verze>` (`deploy.bat` jako správce, návrat `rollback.bat`). Skript zkontroluje, že `position_reference_um > 0` a `production\\wip` je prázdná, zastaví služby (ScadaViewer → DatabaseGateway → AdsAnalyzer), vymění `exe` a `_internal` (záloha `<složka>.backup_<čas>`), `Config.toml` ponechá; nastaví v něm `max_cycles` na 60 000 (je-li menší), `op_definition = "no_close"`, `static_resistance_margin_um = 100.0` a `static_nc_exclude_pt_fraction = 0.5`, upraví nastavení NSSM, případně přejmenuje složku podle verze (a přepíše cesty), služby spustí a ověří.',
+  'The tester applications are updated together with the deployment package `deploy_v<version>` (`deploy.bat` as administrator, roll back with `rollback.bat`). The script checks that `position_reference_um > 0` and `production\\wip` is empty, stops the services (ScadaViewer → DatabaseGateway → AdsAnalyzer), replaces `exe` and `_internal` (backup `<folder>.backup_<time>`) and keeps `Config.toml`; it sets `max_cycles` to 60,000 (if lower), `op_definition = "no_close"`, `static_resistance_margin_um = 100.0` and `static_nc_exclude_pt_fraction = 0.5` in it, adjusts the NSSM settings, renames the versioned folder if applicable (rewriting paths), starts and verifies the services.')))
+c.push(NOTE('warn', t(
+  'PLC program musí odpovídat verzi služby: velikost `AnalyzedParams` 112 B (jinak každý kus skončí E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60 000 a `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (nesoulad se nehlásí — oříznutý záznam končí W6 / W5, jiné převzorkování dává chybná data).',
+  'The PLC program must match the service version: `AnalyzedParams` size 112 B (otherwise every piece ends with E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60,000 and `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (a mismatch is not reported — a truncated record ends with W6 / W5, a different oversampling yields wrong data).')))
+c.push(NOTE('warn', t(
+  'Od Analyzing 2.6.3 má RT novou definici: nové RT = FP − RP = PT − MD (dříve TTP − RP = OT + MD) — **limity RT v recepturách PLC je nutné přenastavit**, jinak budou kusy NOK.',
+  'Since Analyzing 2.6.3 RT has a new definition: new RT = FP − RP = PT − MD (previously TTP − RP = OT + MD) — **the RT limits in the PLC recipes must be adjusted**, otherwise pieces will be NOK.')))
+
+// ═══ 7 Uvedení do provozu ══════════════════════════════════════════════
+c.push(H1(t('7  Uvedení do provozu a kalibrace polohy', '7  Commissioning and position calibration')))
+c.push(H2(t('7.1  Kontrolní seznam', '7.1  Checklist')))
+c.push(...OL(t([
+  'PLC: AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES` = `max_cycles` (60 000), `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (10), symbol `Info.Calibration.PositionReference` s platným C.',
+  '`Config.toml`: AMS Net ID, `max_cycles`, `oversampling`, změřený `shunt_resistance_ohm`, `voltage_gain`, `position_reference_um`, `op_definition = "no_close"`, `simulation_mode = false`.',
+  'Start: „Spojení navázáno“, „Handles otevřeny“, „Služba připravena“; žádné „neznámý klíč“ ani E6.',
+  'Záznam (`--debug` + export): rozdíl časových značek ≈ 50 000 ns, plynulá poloha, U_NC na začátku < 2 V, U_NO > 4 V, napětí na sepnutém kontaktu jednotky mV, odpory sepnutých kontaktů jednotky až desítky mΩ.',
+  'Referenční kus změřte 5–10krát: WarningCode 0, pořadí poloh FP > OP > TTP (souřadnice zákazníka), dobrá opakovatelnost.',
+  'Hodnoty v PLC odpovídají souhrnu exportu (N → mN, Ω → mΩ); kalibrace C (kap. 7.2) a limity poloh v PLC.',
+], [
+  'PLC: AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES` = `max_cycles` (60,000), `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (10), symbol `Info.Calibration.PositionReference` with a valid C.',
+  '`Config.toml`: AMS Net ID, `max_cycles`, `oversampling`, measured `shunt_resistance_ohm`, `voltage_gain`, `position_reference_um`, `op_definition = "no_close"`, `simulation_mode = false`.',
+  'Start: “Connection established”, “Handles opened”, “Service ready”; no “unknown key” and no E6.',
+  'Record (`--debug` + export): timestamp difference ≈ 50,000 ns, smooth position, U_NC at the start < 2 V, U_NO > 4 V, voltage across a closed contact of a few mV, resistances of closed contacts from a few to tens of mΩ.',
+  'Measure the reference piece 5–10 times: WarningCode 0, position order FP > OP > TTP (customer coordinates), good repeatability.',
+  'Values in the PLC match the export summary (N → mN, Ω → mΩ); calibration of C (section 7.2) and position limits in the PLC.',
+])))
+c.push(H2(t('7.2  Kalibrace konstanty C', '7.2  Calibration of constant C')))
+c.push(P(t(
+  'C je svislá vzdálenost čela hrotu (vozík v klidu, enkodér 0) od osy upevňovacích otvorů; závisí na startovní poloze pohonu, hrotu a přípravku — každá jejich změna znamená novou kalibraci. Postup s kalibrační měrkou známé výšky H:',
+  'C is the vertical distance of the tip face (carriage at rest, encoder 0) from the mounting-hole axis; it depends on the drive start position, the tip and the fixture — every change of these requires a new calibration. Procedure with a calibration gauge of known height H:')))
+c.push(...OL(t([
+  'Zapněte `export_csv = true` a restartujte službu.',
+  'Proveďte 5 měření měrky s vyjmutím a vložením (0,2 mm/s; omezte zdvih a sílu — měrka je tuhá, hrozí přetížení snímače síly).',
+  'Na PC se zdrojovým projektem: `python 02_tools\\calibrate_position.py --config <Config.toml z testeru> --height-um <H> <signal_*.csv…>` — vypíše dotyk, rozptyl a hodnotu C (rozptyl má být v jednotkách µm). Bez `--config` se použije `Config.toml` zdrojového projektu — filtr a detekce musí odpovídat testeru.',
+  '**C nastavte v PLC** (`Info.Calibration.PositionReference`, primární zdroj) a stejnou hodnotu zapište do `Config.toml` `position_reference_um` jako zálohu; restart služby.',
+  'Ověření: `calibrate_position.py --verify <csv…>` změří výšku měrky (pozor — ověřuje C z Config.toml, ne z PLC).',
+  'Export opět vypněte.',
+], [
+  'Set `export_csv = true` and restart the service.',
+  'Perform 5 measurements of the gauge with removal and re-insertion (0.2 mm/s; limit travel and force — the gauge is rigid and the force sensor could be overloaded).',
+  'On a PC with the source project: `python 02_tools\\calibrate_position.py --config <Config.toml from the tester> --height-um <H> <signal_*.csv…>` — prints the contact, spread and the value of C (the spread should be a few µm). Without `--config` the `Config.toml` of the source project is used — filter and detection settings must match the tester.',
+  '**Set C in the PLC** (`Info.Calibration.PositionReference`, primary source) and write the same value to `Config.toml` `position_reference_um` as a fallback; restart the service.',
+  'Verification: `calibrate_position.py --verify <csv…>` measures the gauge height (note — it verifies C from Config.toml, not from the PLC).',
+  'Switch the export off again.',
+])))
+c.push(P(t(
+  'Délka záznamu: 60 000 cyklů × 500 µs = 30 s. Nevejde-li se pohyb tam a zpět (dlouhá dráha, nízká rychlost), chybí konec zpětného chodu → RP, FPR a statické odpory nenalezeny (W6). Příklad: 2,2 mm při 0,2 mm/s ≈ 83 % kapacity.',
+  'Record length: 60,000 cycles × 500 µs = 30 s. If the forward and return movement does not fit (long travel, low speed), the end of the return stroke is missing → RP, FPR and static resistances not found (W6). Example: 2.2 mm at 0.2 mm/s ≈ 83 % of capacity.')))
+
+// ═══ 8 Provoz a diagnostika ════════════════════════════════════════════════════════════
+c.push(H1(t('8  Provoz a diagnostika', '8  Operation and diagnostics')))
+c.push(H2(t('8.1  Logy', '8.1  Logs')))
 c.push(...TABLE(
   [t('Soubor (ve složce služby `03_output\\logs`)', 'File (in the service folder `03_output\\logs`)'), t('Obsah', 'Content')],
   [
@@ -409,11 +479,11 @@ c.push(...CODE([
 c.push(NOTE('tip', t(
   'Po nasazení zkontrolujte v `nssm_stdout.log`, že nechybí „Služba připravena“ a že se neobjevilo „neznámý klíč“ ani chyba „In.Data.AnalyzedParams: PLC … B ≠ Python 112 B“ (E6). Zpráva o shodě velikosti („112 B — souhlasí“) se zobrazuje jen s `--debug`.',
   'After deployment check in `nssm_stdout.log` that “Service ready” is present and that neither “unknown key” nor the error “In.Data.AnalyzedParams: PLC … B ≠ Python 112 B” (E6) appears. The size-match message (“112 B — matches”) is shown only with `--debug`.')))
-c.push(H2(t('6.2  Export signálů', '6.2  Signal export')))
+c.push(H2(t('8.2  Export signálů', '8.2  Signal export')))
 c.push(P(t(
   'Při `export_csv = true` se po každém kusu uloží do `03_output\\data_export` dvojice `signal_RRRRMMDD_HHMMSS.csv` (oddělovač čárka; ts, poloha enkodéru, síla N, napětí, proudy, odpory Ω) a `summary_…json` (metadata, použitá konstanta C a její zdroj, výsledky). Export se spustí po dokončení analýzy ve vlastním vlákně, souběžně se zápisem výsledků — Done nezdržuje; běží-li už dva exporty, export kusu se vynechá („Export signálu vynechán“). Nejstarší soubory nad `export_csv_max_files` se mažou a pod `export_min_free_gb` volného místa se export pozastaví. Plný záznam má až asi 66 MB — v běžném provozu export vypněte.',
   'With `export_csv = true`, after every piece a pair `signal_YYYYMMDD_HHMMSS.csv` (comma separator; ts, encoder position, force N, voltages, currents, resistances Ω) and `summary_…json` (metadata, the constant C used and its source, results) is stored in `03_output\\data_export`. The export starts after the analysis in its own thread, in parallel with writing the results — it does not delay Done; if two exports are already running, the export of the piece is skipped (“Signal export skipped”). The oldest files above `export_csv_max_files` are deleted and below `export_min_free_gb` free space the export pauses. A full record is up to about 66 MB — switch the export off in normal operation.')))
-c.push(H2(t('6.3  Diagnostika', '6.3  Diagnostics')))
+c.push(H2(t('8.3  Ladicí režim a nástroje', '8.3  Debug mode and tools')))
 c.push(...UL(t([
   '`--debug` (ruční spuštění v konzoli) vypisuje metadata záznamu, velikosti dávek, hex výpis prvního datového bloku (kontrola rozložení: rozdíl časových značek ≈ 50 000 ns), indexy bodů, práh a okna odporů.',
   'Pomocné skripty ve zdrojovém projektu (vyžadují Python, nejsou v balíčku): `02_tools\\calibrate_position.py`, `analyze_signal.py`, `plot_force_position.py`, `diagnose_*.py`.',
@@ -424,76 +494,6 @@ c.push(...UL(t([
 c.push(NOTE('warn', t(
   'Ruční spuštění `ads_analyzer.exe --config Config.toml --debug` se připojí k PLC a zapisuje do něj — nikdy současně se spuštěnou službou.',
   'A manual run `ads_analyzer.exe --config Config.toml --debug` connects to the PLC and writes to it — never at the same time as the running service.')))
-
-// ═══ 7 Instalace ═══════════════════════════════════════════════════════
-c.push(H1(t('7  Instalace a aktualizace', '7  Installation and update')))
-c.push(H2(t('7.1  Balíček a služba', '7.1  Package and service')))
-c.push(P(t(
-  'Balíček `ads_analyzer` obsahuje `ads_analyzer.exe`, `_internal` (Python, numpy, scipy, pyads), `Config.toml.example`, `nssm_install.bat` a složky `03_output\\logs`, `03_output\\data_export`. `Config.toml` ani `nssm.exe` balíček neobsahuje. Cílové PC nepotřebuje Python; potřebuje ADS router TwinCAT a ADS routu k PLC.',
-  'The `ads_analyzer` package contains `ads_analyzer.exe`, `_internal` (Python, numpy, scipy, pyads), `Config.toml.example`, `nssm_install.bat` and the folders `03_output\\logs`, `03_output\\data_export`. The package contains neither `Config.toml` nor `nssm.exe`. The target PC does not need Python; it needs the TwinCAT ADS router and an ADS route to the PLC.')))
-c.push(...OL(t([
-  'Rozbalte balíček (např. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) a z `Config.toml.example` vytvořte `Config.toml` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — vzor má export zapnutý).',
-  'Běží-li PLC na jiném PC, nastavte v TwinCAT **statickou** ADS routu a na obou stranách povolte ve firewallu TCP 48898 (při přidávání routy vyhledáním i UDP 48899). AMS port 851 je adresa runtime uvnitř ADS, ve firewallu se nenastavuje. Běží-li PLC runtime na tomtéž PC, routa ani firewall potřeba nejsou.',
-  'Ověřte ruční spuštění `ads_analyzer.exe --config Config.toml` — čekejte na „Služba připravena“ a ukončete Ctrl+C.',
-  '`nssm.exe` (64bit) stáhněte z nssm.cc a uložte do složky služby nebo do PATH. Jako správce spusťte `nssm_install.bat`: služba `AdsAnalyzer`, automatický start, výstupy do `03_output\\logs\\nssm_*.log` (rotace po 10 MB i za běhu). `nssm.exe` musí po instalaci zůstat na místě — služba se přes něj spouští.',
-], [
-  'Extract the package (e.g. `C:\\apps\\v2.6.3_…-AdsAnalyzer\\ads_analyzer`) and create `Config.toml` from `Config.toml.example` (AMS Net ID, `max_cycles`, `position_reference_um`, `op_definition`, `export_csv = false` — the template has the export switched on).',
-  'If the PLC runs on a different PC, set up a **static** ADS route in TwinCAT and allow TCP 48898 in the firewall on both sides (and UDP 48899 when adding the route by search). AMS port 851 addresses the runtime inside ADS and is not a firewall port. If the PLC runtime runs on the same PC, neither a route nor a firewall rule is needed.',
-  'Check a manual run `ads_analyzer.exe --config Config.toml` — wait for “Service ready” and stop with Ctrl+C.',
-  'Download `nssm.exe` (64-bit) from nssm.cc and place it in the service folder or on the PATH. Run `nssm_install.bat` as administrator: service `AdsAnalyzer`, automatic start, output to `03_output\\logs\\nssm_*.log` (rotation every 10 MB, also while running). After installation `nssm.exe` must stay in place — the service is started through it.',
-])))
-c.push(P(t('Správa služby: `nssm start | stop | restart AdsAnalyzer`, `Get-Service AdsAnalyzer`.', 'Service management: `nssm start | stop | restart AdsAnalyzer`, `Get-Service AdsAnalyzer`.')))
-c.push(H2(t('7.2  Aktualizace na PC u stroje', '7.2  Update on the machine PC')))
-c.push(P(t(
-  'Aplikace linky se aktualizují společně nasazovacím balíčkem `deploy_v<verze>` (`deploy.bat` jako správce, návrat `rollback.bat`). Skript zkontroluje, že `position_reference_um > 0` a `production\\wip` je prázdná, zastaví služby (ScadaViewer → DatabaseGateway → AdsAnalyzer), vymění `exe` a `_internal` (záloha `<složka>.backup_<čas>`), `Config.toml` ponechá; nastaví v něm `max_cycles` na 60 000 (je-li menší), `op_definition = "no_close"`, `static_resistance_margin_um = 100.0` a `static_nc_exclude_pt_fraction = 0.5`, upraví nastavení NSSM, případně přejmenuje složku podle verze (a přepíše cesty), služby spustí a ověří.',
-  'The line applications are updated together with the deployment package `deploy_v<version>` (`deploy.bat` as administrator, roll back with `rollback.bat`). The script checks that `position_reference_um > 0` and `production\\wip` is empty, stops the services (ScadaViewer → DatabaseGateway → AdsAnalyzer), replaces `exe` and `_internal` (backup `<folder>.backup_<time>`) and keeps `Config.toml`; it sets `max_cycles` to 60,000 (if lower), `op_definition = "no_close"`, `static_resistance_margin_um = 100.0` and `static_nc_exclude_pt_fraction = 0.5` in it, adjusts the NSSM settings, renames the versioned folder if applicable (rewriting paths), starts and verifies the services.')))
-c.push(NOTE('warn', t(
-  'PLC program musí odpovídat verzi služby: velikost `AnalyzedParams` 112 B (jinak každý kus skončí E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60 000 a `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (nesoulad se nehlásí — oříznutý záznam končí W6 / W5, jiné převzorkování dává chybná data).',
-  'The PLC program must match the service version: `AnalyzedParams` size 112 B (otherwise every piece ends with E6), `cMEASURING_MAX_CYCLES` = `max_cycles` = 60,000 and `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (a mismatch is not reported — a truncated record ends with W6 / W5, a different oversampling yields wrong data).')))
-c.push(NOTE('warn', t(
-  'Od Analyzing 2.6.3 má RT novou definici: nové RT = FP − RP = PT − MD (dříve TTP − RP = OT + MD) — **limity RT v recepturách PLC je nutné přenastavit**, jinak budou kusy NOK.',
-  'Since Analyzing 2.6.3 RT has a new definition: new RT = FP − RP = PT − MD (previously TTP − RP = OT + MD) — **the RT limits in the PLC recipes must be adjusted**, otherwise pieces will be NOK.')))
-
-// ═══ 8 Uvedení do provozu ══════════════════════════════════════════════
-c.push(H1(t('8  Uvedení do provozu a kalibrace polohy', '8  Commissioning and position calibration')))
-c.push(H2(t('8.1  Kontrolní seznam', '8.1  Checklist')))
-c.push(...OL(t([
-  'PLC: AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES` = `max_cycles` (60 000), `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (10), symbol `Info.Calibration.PositionReference` s platným C.',
-  '`Config.toml`: AMS Net ID, `max_cycles`, `oversampling`, změřený `shunt_resistance_ohm`, `voltage_gain`, `position_reference_um`, `op_definition = "no_close"`, `simulation_mode = false`.',
-  'Start: „Spojení navázáno“, „Handles otevřeny“, „Služba připravena“; žádné „neznámý klíč“ ani E6.',
-  'Záznam (`--debug` + export): rozdíl časových značek ≈ 50 000 ns, plynulá poloha, U_NC na začátku < 2 V, U_NO > 4 V, napětí na sepnutém kontaktu jednotky mV, odpory sepnutých kontaktů jednotky až desítky mΩ.',
-  'Referenční kus změřte 5–10krát: WarningCode 0, pořadí poloh FP > OP > TTP (souřadnice zákazníka), dobrá opakovatelnost.',
-  'Hodnoty v PLC odpovídají souhrnu exportu (N → mN, Ω → mΩ); kalibrace C (8.2) a limity poloh v PLC.',
-], [
-  'PLC: AnalyzedParams 112 B, `cMEASURING_MAX_CYCLES` = `max_cycles` (60,000), `cMEASURING_MAX_OVERSAMPLING` = `oversampling` (10), symbol `Info.Calibration.PositionReference` with a valid C.',
-  '`Config.toml`: AMS Net ID, `max_cycles`, `oversampling`, measured `shunt_resistance_ohm`, `voltage_gain`, `position_reference_um`, `op_definition = "no_close"`, `simulation_mode = false`.',
-  'Start: “Connection established”, “Handles opened”, “Service ready”; no “unknown key” and no E6.',
-  'Record (`--debug` + export): timestamp difference ≈ 50,000 ns, smooth position, U_NC at the start < 2 V, U_NO > 4 V, voltage across a closed contact of a few mV, resistances of closed contacts from a few to tens of mΩ.',
-  'Measure the reference piece 5–10 times: WarningCode 0, position order FP > OP > TTP (customer coordinates), good repeatability.',
-  'Values in the PLC match the export summary (N → mN, Ω → mΩ); calibration of C (8.2) and position limits in the PLC.',
-])))
-c.push(H2(t('8.2  Kalibrace konstanty C', '8.2  Calibration of constant C')))
-c.push(P(t(
-  'C je svislá vzdálenost čela hrotu (vozík v klidu, enkodér 0) od osy upevňovacích otvorů; závisí na startovní poloze pohonu, hrotu a přípravku — každá jejich změna znamená novou kalibraci. Postup s kalibrační měrkou známé výšky H:',
-  'C is the vertical distance of the tip face (carriage at rest, encoder 0) from the mounting-hole axis; it depends on the drive start position, the tip and the fixture — every change of these requires a new calibration. Procedure with a calibration gauge of known height H:')))
-c.push(...OL(t([
-  'Zapněte `export_csv = true` a restartujte službu.',
-  'Proveďte 5 měření měrky s vyjmutím a vložením (0,2 mm/s; omezte zdvih a sílu — měrka je tuhá, hrozí přetížení snímače síly).',
-  'Na PC se zdrojovým projektem: `python 02_tools\\calibrate_position.py --config <Config.toml ze stroje> --height-um <H> <signal_*.csv…>` — vypíše dotyk, rozptyl a hodnotu C (rozptyl má být v jednotkách µm). Bez `--config` se použije `Config.toml` zdrojového projektu — filtr a detekce musí odpovídat stroji.',
-  '**C nastavte v PLC** (`Info.Calibration.PositionReference`, primární zdroj) a stejnou hodnotu zapište do `Config.toml` `position_reference_um` jako zálohu; restart služby.',
-  'Ověření: `calibrate_position.py --verify <csv…>` změří výšku měrky (pozor — ověřuje C z Config.toml, ne z PLC).',
-  'Export opět vypněte.',
-], [
-  'Set `export_csv = true` and restart the service.',
-  'Perform 5 measurements of the gauge with removal and re-insertion (0.2 mm/s; limit travel and force — the gauge is rigid and the force sensor could be overloaded).',
-  'On a PC with the source project: `python 02_tools\\calibrate_position.py --config <Config.toml from the machine> --height-um <H> <signal_*.csv…>` — prints the contact, spread and the value of C (the spread should be a few µm). Without `--config` the `Config.toml` of the source project is used — filter and detection settings must match the machine.',
-  '**Set C in the PLC** (`Info.Calibration.PositionReference`, primary source) and write the same value to `Config.toml` `position_reference_um` as a fallback; restart the service.',
-  'Verification: `calibrate_position.py --verify <csv…>` measures the gauge height (note — it verifies C from Config.toml, not from the PLC).',
-  'Switch the export off again.',
-])))
-c.push(P(t(
-  'Délka záznamu: 60 000 cyklů × 500 µs = 30 s. Nevejde-li se pohyb tam a zpět (dlouhá dráha, nízká rychlost), chybí konec zpětného chodu → RP, FPR a statické odpory nenalezeny (W6). Příklad: 2,2 mm při 0,2 mm/s ≈ 83 % kapacity.',
-  'Record length: 60,000 cycles × 500 µs = 30 s. If the forward and return movement does not fit (long travel, low speed), the end of the return stroke is missing → RP, FPR and static resistances not found (W6). Example: 2.2 mm at 0.2 mm/s ≈ 83 % of capacity.')))
 
 // ═══ 9 Řešení problémů ═════════════════════════════════════════════════
 c.push(H1(t('9  Řešení problémů', '9  Troubleshooting')))
@@ -530,6 +530,8 @@ c.push(H1(t('Příloha A  Pojmy a zkratky', 'Appendix A  Terms and abbreviations
 c.push(...TABLE(
   [t('Pojem', 'Term'), t('Význam', 'Meaning')],
   [
+    ['EOL tester', t('EOL tester mikrospínačů (End of Line) — zkušební stanice na konci výroby, která každý mikrospínač změří a roztřídí do kategorií; v textu zkráceně „tester“.', 'Microswitch EOL (end-of-line) tester — test station at the end of production that measures every microswitch and sorts it into categories; “tester” for short in the text.')],
+    [t('PC testeru', 'Tester PC'), t('Průmyslové PC EOL testeru, na kterém běží Analyzing, DatabaseGateway a ScadaViewer.', 'Industrial PC of the EOL tester running Analyzing, DatabaseGateway and ScadaViewer.')],
     ['ADS / AMS Net ID / routa', t('Protokol Beckhoff TwinCAT / adresa runtime / statická cesta ADS mezi PC a PLC.', 'Beckhoff TwinCAT protocol / runtime address / static ADS route between PC and PLC.')],
     ['GVL / DUT', t('Globální seznam proměnných / datový typ (struktura) v PLC.', 'Global variable list / data type (structure) in the PLC.')],
     ['MeasuredRecord / AnalyzedParams', t('Záznam měření (6 kanálů) / výsledky kusu (28 hodnot, 112 B).', 'Measurement record (6 channels) / piece results (28 values, 112 B).')],
@@ -543,7 +545,7 @@ c.push(...TABLE(
     ['OF, RF, TTF, DF', t('Ovládací síla (v rozepnutí NC), vratná síla (v RP), síla na konci zdvihu, rozdíl sil OF − RF.', 'Operating force (at NC opening), release force (at RP), total travel force, differential force OF − RF.')],
     ['UT, RevT, BT, OpT', t('Doba nestability NC, doba přeletu kontaktu, doba odskoků NO, celková doba přepnutí.', 'NC instability time, contact transfer time, NO bounce time, total operating time.')],
     ['E1–E6 / W1–W8', t('Chybové (blokující) / varovné (neblokující) kódy.', 'Error (blocking) / warning (non-blocking) codes.')],
-    ['AN', t('Analyzing (ve sloupci Směr tabulky v oddílu 3.1).', 'Analyzing (in the Direction column of the table in section 3.1).')],
+    ['AN', t('Analyzing (ve sloupci Směr tabulky v kapitole 3.1).', 'Analyzing (in the Direction column of the table in section 3.1).')],
     ['DIN 41636-1', t('Norma pro mikrospínače; definice vratného zdvihu (Leerlaufweg) a spínací polohy.', 'Standard for microswitches; definition of the release travel (Leerlaufweg) and the operating position.')],
     ['NSSM', t('Nástroj, který spouští program jako službu Windows.', 'Tool running a program as a Windows service.')],
   ],
