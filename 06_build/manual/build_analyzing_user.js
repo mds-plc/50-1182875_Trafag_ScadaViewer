@@ -20,15 +20,15 @@ const M = require('./lib')({
     : 'Evaluation of microswitch measurements — what is measured, how the results are obtained and what they mean',
   version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
 })
-const { t, P, H1, H2, UL, FIG, NOTE, TABLE, ABOUT } = M
+const { t, P, H1, H2, UL, OL, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
 
 // ═══ 1 O tomto dokumentu ═══════════════════════════════════════════════
 c.push(H1(t('1  O tomto dokumentu', '1  About this document')))
 c.push(...ABOUT({
   purpose: t(
-    `Dokument popisuje službu Analyzing verze ${VERSION} z pohledu uživatele výsledků: co EOL tester mikrospínačů měří, jak se z měření určují charakteristické body a parametry mikrospínače, na jakém principu a s jakým nastavením vyhodnocení probíhá a jak číst výsledky a varování.`,
-    `This document describes the Analyzing service version ${VERSION} from the perspective of a user of the results: what the microswitch EOL tester measures, how the characteristic points and parameters of the microswitch are determined from the measurement, on which principle and with which settings the evaluation works and how to read the results and warnings.`),
+    `Dokument popisuje službu Analyzing verze ${VERSION} z pohledu uživatele výsledků: co EOL tester mikrospínačů měří, jak se z měření určují charakteristické body a parametry mikrospínače, jak služba komunikuje s PLC, na jakém principu a s jakým nastavením vyhodnocení probíhá a jak číst výsledky a varování.`,
+    `This document describes the Analyzing service version ${VERSION} from the perspective of a user of the results: what the microswitch EOL tester measures, how the characteristic points and parameters of the microswitch are determined from the measurement, how the service communicates with the PLC, on which principle and with which settings the evaluation works and how to read the results and warnings.`),
   audience: t('kvalita, technologie a vedení výroby zákazníka.', 'the customer’s quality, process engineering and production management.'),
   related: t([
     '**Analyzing — Technický manuál**: rozhraní s PLC, algoritmus vyhodnocení, konfigurace, instalace, kalibrace a diagnostika.',
@@ -162,7 +162,40 @@ c.push(P(t(
   'Po dokončení měření kusu převezme Analyzing z PLC celý záznam (až 60 000 cyklů po 500 µs, v každém cyklu 10 vzorků — vzorek každých 50 µs) a vyhodnotí ho. Detekce bodů probíhá v souřadnicích snímače polohy x (při stlačení roste); výsledné polohy se převedou na souřadnice zákazníka P = C − x.',
   'After a piece has been measured, Analyzing takes over the complete record from the PLC (up to 60,000 cycles of 500 µs, 10 samples per cycle — one sample every 50 µs) and evaluates it. The points are detected in the position sensor coordinates x (increasing when actuated); the resulting positions are converted to customer coordinates P = C − x.')))
 c.push(...FIG('an_pipeline', t('Průběh vyhodnocení jednoho kusu (odznak = kód, který krok může vyvolat; E = chyba, W = varování)', 'Evaluation sequence of one piece (badge = code the step can raise; E = error, W = warning)')))
-c.push(H2(t('6.1  Předzpracování a kontrola signálu', '6.1  Preprocessing and signal check')))
+c.push(H2(t('6.1  Komunikace s PLC', '6.1  Communication with the PLC')))
+c.push(P(t(
+  'Analyzing komunikuje s PLC protokolem ADS (Beckhoff TwinCAT). Vyhodnocení každého kusu probíhá stejným potvrzovacím postupem (handshake):',
+  'Analyzing communicates with the PLC via the ADS protocol (Beckhoff TwinCAT). The evaluation of every piece follows the same confirmation sequence (handshake):')))
+c.push(...OL(t([
+  'PLC dokončí měření kusu a vyšle požadavek na vyhodnocení (Run).',
+  'Analyzing ohlásí zpracování (Busy), do výsledků v PLC ihned zapíše „neplatný výsledek“ (0 / 9999,9) a přečte záznam měření.',
+  'Po vyhodnocení zapíše výsledky a ohlásí jejich platnost (Done), případně s kódem varování (Warning). Při chybě ohlásí Error s kódem chyby a výsledek neoznačí jako hotový.',
+  'PLC výsledky převezme a potvrdí (Ack); Analyzing čeká na další kus.',
+], [
+  'The PLC finishes measuring a piece and sends an evaluation request (Run).',
+  'Analyzing reports processing (Busy), immediately writes an “invalid result” (0 / 9999.9) to the results in the PLC and reads the measurement record.',
+  'After the evaluation it writes the results and reports them as valid (Done), with a warning code if applicable (Warning). On an error it reports Error with an error code and does not mark the result as finished.',
+  'The PLC takes over the results and acknowledges them (Ack); Analyzing waits for the next piece.',
+])))
+c.push(...FIG('an_handshake', t('Časový průběh vyhodnocení jednoho kusu mezi PLC a Analyzing', 'Timing of the evaluation of one piece between the PLC and Analyzing')))
+c.push(...TABLE(
+  [t('Směr', 'Direction'), t('Data', 'Data')],
+  [
+    ['PLC → Analyzing', t('Záznam měření: 6 kanálů (U_NC, U_NO, I_NC, I_NO, síla, poloha), počet naměřených cyklů, platnost záznamu a kalibrační konstanta C. Plný záznam (60 000 cyklů) se čte přibližně 1 s.', 'Measurement record: 6 channels (U_NC, U_NO, I_NC, I_NO, force, position), number of measured cycles, record validity and calibration constant C. A full record (60,000 cycles) is read in approximately 1 s.')],
+    ['Analyzing → PLC', t('Výsledky kusu: 28 hodnot (síly, dráhy, polohy, odpory, časy) v jednotkách zákazníka, zapsané jedním blokem; stav Busy / Done, kód varování a kód chyby.', 'Piece results: 28 values (forces, travels, positions, resistances, times) in customer units, written in one block; Busy / Done state, warning code and error code.')],
+    [t('Stav služby', 'Service state'), t('Heartbeat (mění stav každých 0,5 s — PLC podle něj pozná, že služba běží) a Ready (služba je připravená).', 'Heartbeat (toggles every 0.5 s — the PLC uses it to detect that the service is running) and Ready (the service is ready).')],
+  ],
+  [2400, 7238], t('Data vyměňovaná s PLC', 'Data exchanged with the PLC')))
+c.push(...UL(t([
+  '„Neplatný výsledek“ zapsaný hned na začátku zajišťuje, že kus, jehož vyhodnocení skončí chybou, nezdědí výsledky předchozího kusu. Výjimkou je nesoulad verze programu PLC a služby — tehdy se do PLC nezapisuje nic.',
+  'Varování vyhodnocení neblokuje (kap. 9). Chyba služby blokuje další vyhodnocení, dokud ji PLC nezruší.',
+  'Při výpadku spojení se služba automaticky znovu připojuje (po 5 s); po obnovení spojení nastaví Ready.',
+], [
+  'The “invalid result” written right at the start ensures that a piece whose evaluation ends with an error does not inherit the results of the previous piece. The exception is a version mismatch between the PLC program and the service — then nothing is written to the PLC.',
+  'A warning does not block the evaluation (chapter 9). A service error blocks further evaluations until the PLC clears it.',
+  'If the connection is lost, the service reconnects automatically (after 5 s); after the connection is restored it sets Ready.',
+])))
+c.push(H2(t('6.2  Předzpracování a kontrola signálu', '6.2  Preprocessing and signal check')))
 c.push(...UL(t([
   'Kanály se sjednotí na společnou časovou osu síly, poloha se na ni interpoluje.',
   '**Kontrola signálu:** na začátku záznamu (prvních 10 %, nejméně 100 vzorků) musí být průměr U_NC < 2,0 V (NC sepnutý) a průměr U_NO > 4,0 V (NO rozepnutý); v celém záznamu maximum síly ≥ 0,3 N (došlo ke kontaktu), rozsah polohy ≥ 100 µm (proběhl pohyb) a rozkmit U_NC ≥ 2,0 V (kontakt přepnul). Nesplněná podmínka = neplatný signál (W5).',
@@ -172,7 +205,7 @@ c.push(...UL(t([
   '**Signal check:** at the start of the record (first 10 %, at least 100 samples) the mean U_NC must be < 2.0 V (NC closed) and the mean U_NO > 4.0 V (NO open); over the whole record the force maximum ≥ 0.3 N (contact occurred), the position range ≥ 100 µm (movement occurred) and the U_NC swing ≥ 2.0 V (the contact switched). A condition not met = invalid signal (W5).',
   'Force and position are smoothed with a Savitzky–Golay filter (window 11 samples, order 3). Voltages, currents and resistances are not filtered.',
 ])))
-c.push(H2(t('6.2  Určení bodů', '6.2  Determination of the points')))
+c.push(H2(t('6.3  Určení bodů', '6.3  Determination of the points')))
 c.push(...TABLE(
   [t('Bod / veličina', 'Point / quantity'), t('Určení', 'Determination')],
   [
@@ -188,7 +221,7 @@ c.push(...TABLE(
 c.push(NOTE('info', t(
   'Ovládací síla OF, odpory v bodě OP a spínací časy se vážou k rozepnutí NC; spínací poloha OP leží v prvním sepnutí NO.',
   'The operating force OF, the resistances at OP and the switching times relate to the NC opening; the operating position OP lies at the first NO closing.')))
-c.push(H2(t('6.3  Odpory kontaktů', '6.3  Contact resistances')))
+c.push(H2(t('6.4  Odpory kontaktů', '6.4  Contact resistances')))
 c.push(...UL(t([
   'Odpor R = U / I; proud se počítá z napětí na bočníku 1,96 Ω. Proud do 1 mA znamená rozepnutý kontakt (9999,9 mΩ).',
   '**V bodech přepnutí:** úsek 3 µm dráhy před a za přepnutím každého kontaktu. Vzorek se počítá jako kontaktní, je-li proud nad 1 mA (a nad 10 % testovacího proudu) a napětí pod prahem. Má-li úsek alespoň 50 % kontaktních vzorků, odpor je jejich medián; jinak je kontakt rozepnutý.',
@@ -198,7 +231,7 @@ c.push(...UL(t([
   '**At the changeover points:** a 3 µm travel window before and after the changeover of each contact. A sample counts as a contact sample if the current is above 1 mA (and above 10 % of the test current) and the voltage is below the threshold. If at least 50 % of the window samples are contact samples, the resistance is their median; otherwise the contact is open.',
   '**Static resistances:** the highest resistance of the closed contact away from the changeover (maximum of a sliding 5-sample median). R_NC_Static — NC at rest before actuation and after return, excluding 50 % of the pre-travel at the changeover; R_NO_Static — NO after settling (closed for 5 ms) with a 100 µm margin from closing and opening. Fewer than 5 samples = 9999.9 mΩ.',
 ])))
-c.push(H2(t('6.4  Spínací časy', '6.4  Switching times')))
+c.push(H2(t('6.5  Spínací časy', '6.5  Switching times')))
 c.push(P(t(
   'Konec nestability a zákmitů kontaktu je poslední vzorek prvního úseku 5 stabilních vzorků za sebou. Proto i čisté přepnutí bez zákmitů má UT a BT nejméně (5 − 1) × 50 µs = 200 µs.',
   'The end of contact instability and bounce is the last sample of the first run of 5 consecutive stable samples. A clean changeover without bounce therefore has UT and BT of at least (5 − 1) × 50 µs = 200 µs.')))
@@ -215,7 +248,7 @@ c.push(...TABLE(
     ['`switching_threshold_ratio`', '0,5', t('práh přepnutí = 50 % rozkmitu U_NC', 'switching threshold = 50 % of the U_NC swing')],
     ['`stable_samples_count`', '5', t('vzorků pro stabilní stav kontaktu', 'samples for a stable contact state')],
     ['`switch_glitch_window_samples`', t('400 (20 ms)', '400 (20 ms)'), t('okno potvrzení přepnutí', 'changeover confirmation window')],
-    ['`times_method`', '`stable_run`', t('konec úseků spínacích časů (kap. 6.4)', 'end of the switching time segments (section 6.4)')],
+    ['`times_method`', '`stable_run`', t('konec úseků spínacích časů (kap. 6.5)', 'end of the switching time segments (section 6.5)')],
     ['`bounce_settle_samples`', t('100 (5 ms)', '100 (5 ms)'), t('ustálení NO (začátek úseku R_NO_Static)', 'NO settling (start of the R_NO_Static segment)')],
     ['`electric_window_um`', '3 µm', t('úsek pro odpory v bodech přepnutí', 'window for resistances at the changeover points')],
     ['`static_resistance_margin_um`', '100 µm *', t('odstup R_NO_Static od přepnutí NO', 'R_NO_Static margin from the NO changeover')],
@@ -226,7 +259,7 @@ c.push(...TABLE(
     ['`min_position_change_um`', '10 µm', t('nejmenší posun před FP', 'minimum movement before FP')],
     ['`fp_refinement_method`', '`sustained`', t('upřesnění FP (síla trvale nad nulou)', 'FP refinement (force steadily above zero)')],
     [t('filtr síly a polohy', 'force and position filter'), t('Savitzky–Golay, okno 11, řád 3', 'Savitzky–Golay, window 11, order 3'), t('vyhlazení před detekcí bodů', 'smoothing before point detection')],
-    [t('kontrola signálu', 'signal check'), t('zapnuta; 2,0 V / 4,0 V / 0,3 N / 100 µm', 'on; 2.0 V / 4.0 V / 0.3 N / 100 µm'), t('meze předvalidace (kap. 6.1)', 'pre-validation limits (section 6.1)')],
+    [t('kontrola signálu', 'signal check'), t('zapnuta; 2,0 V / 4,0 V / 0,3 N / 100 µm', 'on; 2.0 V / 4.0 V / 0.3 N / 100 µm'), t('meze předvalidace (kap. 6.2)', 'pre-validation limits (section 6.2)')],
     ['`oversampling` / `max_cycles`', t('10 / 60 000 *', '10 / 60,000 *'), t('vzorek 50 µs, záznam nejvýše 30 s (shodně s PLC)', 'sample 50 µs, record at most 30 s (same as the PLC)')],
     ['`position_reference_min_um` / `_max_um`', '8 000 / 11 000 µm', t('meze platné konstanty C z PLC', 'limits of a valid constant C from the PLC')],
   ],
@@ -280,7 +313,7 @@ c.push(...TABLE(
     ['W2', t('Testovací proud kontaktem NC nikde nepřekročil 1 mA.', 'The test current through the NC contact never exceeded 1 mA.'), t('vypočtené; odpory NC 9999,9', 'calculated; NC resistances 9999.9')],
     ['W3', t('PLC označilo záznam jako neplatný.', 'The PLC marked the record as invalid.'), t('neplatné', 'invalid')],
     ['W4', t('Výsledky mimo očekávaný rozsah (TT ≤ 0, OF ≤ 0 nebo OpT < 0).', 'Results out of the expected range (TT ≤ 0, OF ≤ 0 or OpT < 0).'), t('vypočtené', 'calculated')],
-    ['W5', t('Neplatný signál — nesplněná kontrola signálu (kap. 6.1), kontakt nepřepnul, FP nenalezeno.', 'Invalid signal — signal check failed (section 6.1), contact did not switch, FP not found.'), t('neplatné', 'invalid')],
+    ['W5', t('Neplatný signál — nesplněná kontrola signálu (kap. 6.2), kontakt nepřepnul, FP nenalezeno.', 'Invalid signal — signal check failed (section 6.2), contact did not switch, FP not found.'), t('neplatné', 'invalid')],
     ['W6', t('Částečné výsledky — při návratu nenalezeno RP nebo nenalezeno sepnutí NO.', 'Partial results — RP not found on return or NO closing not found.'), t('dopředný chod vypočten; RP, RF, DF, RT, MD, RevT = 0', 'forward stroke calculated; RP, RF, DF, RT, MD, RevT = 0')],
     ['W8', t('Konstanta C z PLC chybí nebo je mimo meze (kap. 8).', 'Constant C from the PLC missing or out of range (chapter 8).'), t('plné, polohy se záložní konstantou C', 'full, positions with the fallback constant C')],
   ],
