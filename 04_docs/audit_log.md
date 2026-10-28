@@ -5,6 +5,19 @@
 
 ---
 
+## [2026-10-28] Časový diagram spínacích časů — popisek osy a značka času 0
+
+Detail záznamu → diagram spínacích časů: osa měla „0 = OP“ a na čase 0 značku „OP“ podle původní definice OP
+(rozepnutí NC). Od Analyzing 2.6.3 je OP první sepnutí NO, takže popisek neodpovídal výpočtu.
+
+| # | Závažnost | Popis | Soubor | Status |
+|---|-----------|-------|--------|--------|
+| 1 | 🔵 LOW | Osa „0 = rozepnutí NC“ (i18n `chart.switchTimesAxisZero`), značka na čase 0 „NC ↑“ místo „OP“ (diagram popisuje kontakty, OP se v něm nevyznačuje) | `ParamDiagrams.tsx`, `i18n/*.ts` | ✅ Opraveno (tsc, lint 0, FE 267 testů) |
+
+Snímky detailu záznamu v dokumentaci (ScadaViewer, Analyzing) nafoceny znovu.
+
+---
+
 ## [2026-10-27] Nasazení 2.6.10 na stroji selhalo — zápis do logu (deploy.ps1)
 
 Krok 5c (přejmenování složek) proběhl, pak `Log` → `Add-Content -Encoding utf8` hodil „Stream was not readable“

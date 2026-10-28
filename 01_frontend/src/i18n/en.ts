@@ -230,6 +230,7 @@ export const en: Translations = {
     forceTravelAria: 'Force–travel hysteresis diagram',
     switchTimesAria: 'Contact switching times — U_NC and U_NO voltage',
     switchTimesAxisCompressed: 'axis compressed — segments not to scale',
+    switchTimesAxisZero: '0 = NC opening',
   },
   settings: {
     title:           'Settings',

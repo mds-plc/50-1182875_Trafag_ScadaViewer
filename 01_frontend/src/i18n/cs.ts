@@ -230,6 +230,7 @@ export const cs: Translations = {
     forceTravelAria: 'Diagram síla–dráha s hysterezí',
     switchTimesAria: 'Spínací časy kontaktů — napětí U_NC a U_NO',
     switchTimesAxisCompressed: 'osa zkrácena — úseky nejsou v měřítku',
+    switchTimesAxisZero: '0 = rozepnutí NC',
   },
   settings: {
     title:           'Nastavení',

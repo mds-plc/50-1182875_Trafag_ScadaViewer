@@ -200,8 +200,8 @@ function body() {
     ],
     [1700, 2300, 5638], t('Stavy souboru zakázky', 'Order file states')))
   c.push(P(t(
-    'Výrobní soubor má od verze DatabaseGateway 2.3 blokovou strukturu: `[Metadata]` (zakázka, receptura, ID a název mikrospínače, šarže výrobce mikrospínačů), `[TestingParameters]` (parametry testu z receptury), `[SortingCategories]` (meze kategorií 1–6), `[SortingLimits]` (limity Trafag a výrobce mikrospínačů pro každý měřený parametr) a `[Data]` (jeden řádek na kus). ScadaViewer čte i starší soubory s jednodušší hlavičkou.',
-    'Since DatabaseGateway 2.3 the production file has a block structure: `[Metadata]` (order, recipe, microswitch ID and name, supplier lots), `[TestingParameters]` (test parameters from the recipe), `[SortingCategories]` (limits of categories 1–6), `[SortingLimits]` (Trafag and supplier limits of every measured parameter) and `[Data]` (one row per piece). ScadaViewer also reads older files with a simpler header.')))
+    'Výrobní soubor má blokovou strukturu: `[Metadata]` (zakázka, receptura, ID a název mikrospínače, šarže výrobce mikrospínačů), `[TestingParameters]` (parametry testu z receptury), `[SortingCategories]` (meze kategorií 1–6), `[SortingLimits]` (limity Trafag a výrobce mikrospínačů pro každý měřený parametr) a `[Data]` (jeden řádek na kus).',
+    'The production file has a block structure: `[Metadata]` (order, recipe, microswitch ID and name, supplier lots), `[TestingParameters]` (test parameters from the recipe), `[SortingCategories]` (limits of categories 1–6), `[SortingLimits]` (Trafag and supplier limits of every measured parameter) and `[Data]` (one row per piece).')))
   c.push(P(t(
     'Hodnoty jsou v jednotkách zákazníka: síly v mN, polohy a dráhy v µm, časy v µs, odpory kontaktů v mΩ. Polohy FP, OP, RP, TTP a FPR udávají výšku hmatníku nad osou upevňovacích otvorů (P = C − x, kde C je kalibrační konstanta testeru a x dráha vozíku); při stlačení proto klesají.',
     'Values are in customer units: forces in mN, positions and travels in µm, times in µs, contact resistances in mΩ. The positions FP, OP, RP, TTP and FPR give the height of the actuator above the mounting-hole axis (P = C − x, where C is the calibration constant of the tester and x the carriage travel); they therefore decrease when the switch is actuated.')))
@@ -599,7 +599,7 @@ function body() {
     [t('Prvek', 'Item'), t('Definice', 'Definition')],
     [
       ['FP', t('Klidová poloha hmatníku bez vnější síly.', 'Free position of the actuator without external force.')],
-      ['OP', t('Poloha bodu sepnutí na dopředné cestě – od Analyzing 2.6.3 první sepnutí kontaktu NO (u starších souborů rozepnutí kontaktu NC).', 'Operating position on the forward stroke – since Analyzing 2.6.3 the first closing of the NO contact (in older files the opening of the NC contact).')],
+      ['OP', t('Poloha bodu sepnutí na dopředné cestě – první sepnutí kontaktu NO.', 'Operating position on the forward stroke – the first closing of the NO contact.')],
       ['RP', t('Poloha bodu uvolnění (zpětného přepnutí kontaktu NC) na zpáteční cestě.', 'Releasing position (return changeover of the NC contact) on the return stroke.')],
       ['TTP', t('Konec zdvihu — nejhlubší bod stlačení.', 'End of travel — the deepest point of actuation.')],
       ['FPR', t('Volná poloha po návratu — kde síla při zpětném chodu klesne na nulu; u dobrého kusu blízko FP.', 'Free position return — where the force drops to zero on the return stroke; close to FP for a good piece.')],
@@ -614,14 +614,11 @@ function body() {
       ['Static', t('Statický odpor sepnutého kontaktu NC a NO mimo okamžik přepnutí.', 'Static resistance of the closed NC and NO contact outside the changeover.')],
     ],
     [1900, 7738], t('Body, dráhy a síly v diagramu síla–dráha', 'Points, travels and forces in the force–travel diagram')))
-  c.push(NOTE('info', t(
-    'Definice RvT se změnila s Analyzing 2.6.3 (27. 10. 2026): dříve dráha od konce zdvihu zpět do RP (TTP → RP), nyní dráha od klidové polohy do RP (FP → RP); nová hodnota je proto výrazně menší. Aplikace u každého kusu pozná, která definice platí, a u starších souborů kótu označí „RvT (TTP → RP)“. V souborech zapsaných před zavedením jednotek zákazníka (do 11. 10. 2026) jsou polohy na stupnici enkodéru — při stlačení rostou; aplikace na to upozorní poznámkou. Soubory bez kalibrační konstanty C mají C dopočtenou (C = TTP + největší dráha vozíku).',
-    'The definition of RvT changed with Analyzing 2.6.3 (27 Oct 2026): previously the travel from the end of travel back to RP (TTP → RP), now the travel from the free position to RP (FP → RP); the new value is therefore considerably smaller. The application recognises for every piece which definition applies and labels the dimension “RvT (TTP → RP)” for older files. In files written before customer units were introduced (until 11 Oct 2026) the positions are on the encoder scale — they increase when actuated; the application shows a note. For files without the calibration constant C, C is derived (C = TTP + maximum carriage travel).')))
-
+  
   c.push(H2(t('5.2  Spínací časy kontaktů', '5.2  Contact switching times')))
   c.push(P(t(
-    'Průběh napětí kontaktů NO (nahoře) a NC (dole) při přepnutí, obdobně jako na osciloskopu. Čas 0 je začátek rozpínání kontaktu NC (popisek osy v aplikaci uvádí „0 = OP“ podle starší definice OP; od Analyzing 2.6.3 leží OP až na konci RevT, při prvním sepnutí NO). Vyznačené časy:',
-    'The voltage of the NO (top) and NC (bottom) contacts during the changeover, similar to an oscilloscope. Time 0 is the start of opening of the NC contact (the axis label in the application says “0 = OP” according to the older OP definition; since Analyzing 2.6.3 OP lies at the end of RevT, at the first closing of NO). Marked times:')))
+    'Průběh napětí kontaktů NO (nahoře) a NC (dole) při přepnutí, obdobně jako na osciloskopu. Čas 0 je začátek rozpínání kontaktu NC. Vyznačené časy:',
+    'The voltage of the NO (top) and NC (bottom) contacts during the changeover, similar to an oscilloscope. Time 0 is the start of opening of the NC contact. Marked times:')))
   c.push(...UL(t([
     '**UT** (Unstable Time) — doba nestability rozpínacího kontaktu NC: od začátku rozpínání do ustálení v rozepnutém stavu.',
     '**RevT** (Reverse Time) — doba přeběhu, kdy jsou oba kontakty rozepnuté: od ustáleného rozepnutí NC do prvního dotyku kontaktu NO.',
@@ -677,8 +674,8 @@ function body() {
 
   c.push(H2(t('6.1  Signálová data', '6.1  Signal data')))
   c.push(P(t(
-    'Záložka **Signálová data** zobrazí průběh měření v grafech; vpravo nahoře je počet vzorků. Polohy jsou ve stejných souřadnicích jako výsledky (výška nad osou upevňovacích otvorů, C v popisku osy). Bod RP se určuje elektricky — přepnutím kontaktu NC při prahu 50 % rozsahu napětí U_NC, stejně jako v analýze. Bod OP je od Analyzing 2.6.3 první sepnutí kontaktu NO (poloha z tabulky výsledků); u starších souborů rozepnutí kontaktu NC při stejném prahu. Grafy mají pět podzáložek:',
-    'The **Signal data** tab shows the measurement in charts; the number of samples is at the top right. Positions use the same coordinates as the results (height above the mounting-hole axis, C in the axis label). The RP point is determined electrically — by the NC contact changeover at a threshold of 50 % of the U_NC voltage range, as in the analysis. Since Analyzing 2.6.3 the OP point is the first closing of the NO contact (position taken from the results table); in older files it is the opening of the NC contact at the same threshold. The charts have five sub-tabs:')))
+    'Záložka **Signálová data** zobrazí průběh měření v grafech; vpravo nahoře je počet vzorků. Polohy jsou ve stejných souřadnicích jako výsledky (výška nad osou upevňovacích otvorů, C v popisku osy). Bod RP se určuje elektricky — přepnutím kontaktu NC při prahu 50 % rozsahu napětí U_NC, stejně jako v analýze. Bod OP je první sepnutí kontaktu NO (poloha z tabulky výsledků). Grafy mají pět podzáložek:',
+    'The **Signal data** tab shows the measurement in charts; the number of samples is at the top right. Positions use the same coordinates as the results (height above the mounting-hole axis, C in the axis label). The RP point is determined electrically — by the NC contact changeover at a threshold of 50 % of the U_NC voltage range, as in the analysis. The OP point is the first closing of the NO contact (position taken from the results table). The charts have five sub-tabs:')))
   c.push(...TABLE(
     [t('Podzáložka', 'Sub-tab'), t('Co zobrazuje', 'What it shows')],
     [
@@ -802,8 +799,8 @@ function body() {
   // ═══ Příloha A ─ parametry ════════════════════════════════════════════
   c.push(H1(t('Příloha A  Přehled parametrů', 'Appendix A  Parameter overview')))
   c.push(P(t(
-    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Formát hodnot: síly v mN (celá čísla), polohy a dráhy v µm s rozlišením 0,1 µm, časy v µs, odpory kontaktů v mΩ s rozlišením 0,1 mΩ; odpor nad 999,9 mΩ (rozepnutý kontakt) se zobrazuje jako ∞, nestanovená hodnota jako „—“. Zkratky OvT a RvT (dráhy) se liší od OpT a RevT (časy), aby nedošlo k záměně. Parametry DF a FPR jsou v souborech od 21. 10. 2026, statické odpory od 22. 10. 2026; starší soubory je nemají. Popisy UT a RevT jsou zde oproti nápovědě „?“ v aplikaci upřesněny podle výpočtu v Analyzing (viz kap. 5.2).',
-    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Value format: forces in mN (integers), positions and travels in µm with a resolution of 0.1 µm, times in µs, contact resistances in mΩ with a resolution of 0.1 mΩ; a resistance above 999.9 mΩ (open contact) is shown as ∞, an undetermined value as “—”. The abbreviations OvT and RvT (travels) differ from OpT and RevT (times) to avoid confusion. The parameters DF and FPR are present in files from 21 Oct 2026, the static resistances from 22 Oct 2026; older files do not contain them. The descriptions of UT and RevT given here are more precise than the “?” help in the application and follow the calculation in Analyzing (see section 5.2).')))
+    'Zkratky a názvy parametrů jsou v aplikaci v angličtině (odborné názvy podle zákazníka). Formát hodnot: síly v mN (celá čísla), polohy a dráhy v µm s rozlišením 0,1 µm, časy v µs, odpory kontaktů v mΩ s rozlišením 0,1 mΩ; odpor nad 999,9 mΩ (rozepnutý kontakt) se zobrazuje jako ∞, nestanovená hodnota jako „—“. Zkratky OvT a RvT (dráhy) se liší od OpT a RevT (časy), aby nedošlo k záměně. Popisy UT a RevT jsou zde oproti nápovědě „?“ v aplikaci upřesněny podle výpočtu v Analyzing (viz kap. 5.2).',
+    'Parameter abbreviations and names are shown in English in the application (technical names as used by the customer). Value format: forces in mN (integers), positions and travels in µm with a resolution of 0.1 µm, times in µs, contact resistances in mΩ with a resolution of 0.1 mΩ; a resistance above 999.9 mΩ (open contact) is shown as ∞, an undetermined value as “—”. The abbreviations OvT and RvT (travels) differ from OpT and RevT (times) to avoid confusion. The descriptions of UT and RevT given here are more precise than the “?” help in the application and follow the calculation in Analyzing (see section 5.2).')))
   const desc = L === 'cs' ? params.desc : params.desc_en
   // DOČASNÁ OPRAVA do úpravy PARAM_DESC / PARAM_DESC_EN v 01_frontend/src/utils/paramMeta.ts (pak params.json
   // přegenerovat přes extract_params.py a tuto mapu smazat). Popisy UT a RevT v aplikaci neodpovídají výpočtu

@@ -197,8 +197,8 @@ c.push(NOTE('warn', t(
 // ═══ Přílohy ═══════════════════════════════════════════════════════════
 c.push(H1(t('Příloha A  Vzorové soubory', 'Appendix A  Sample files')))
 c.push(P(t(
-  'Ke dokumentu jsou přiloženy vzorové soubory ve složce `vzorove_soubory`. Obsahují ukázkovou zakázku a testovací měření v aktuálním formátu; čísla zakázek, šarže a hodnoty jsou smyšlené.',
-  'Sample files are attached to this document in the `vzorove_soubory` folder. They contain a sample order and test measurement in the current format; order numbers, lots and values are fictitious.')))
+  'Ke dokumentu jsou přiloženy vzorové soubory ve složce `vzorove_soubory`. Obsahují ukázkovou zakázku a testovací měření ve formátu popsaném v kapitolách 4 a 5; čísla zakázek, šarže a hodnoty jsou smyšlené.',
+  'Sample files are attached to this document in the `vzorove_soubory` folder. They contain a sample order and test measurement in the format described in chapters 4 and 5; order numbers, lots and values are fictitious.')))
 const DESC = f => {
   if (/^PROD_.*\.csv$/.test(f)) return t('Výrobní soubor (kapitola 4) — zakázka se třemi šaržemi, limity a kategoriemi.', 'Production file (chapter 4) — order with three lots, limits and categories.')
   if (/^PROD_.*\.xlsx$/.test(f)) return t('Stejná zakázka exportovaná ze ScadaViewer do Excelu — bloky nad sebou v listu PROD_DONE, čísla jako čísla.', 'The same order exported from ScadaViewer to Excel — blocks one below the other in the PROD_DONE sheet, numbers as numbers.')

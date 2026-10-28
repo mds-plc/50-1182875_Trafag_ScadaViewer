@@ -83,9 +83,6 @@ c.push(H2(t('3.1  Poloha v souřadnicích zákazníka', '3.1  Position in custom
 c.push(P(t(
   'Polohy se uvádějí jako **výška ovládacího prvku nad osou upevňovacích otvorů** mikrospínače, P = C − x, kde x je poloha odměřená snímačem (enkodérem) osy a C je kalibrační konstanta testeru (kapitola 6). Čím je ovládací prvek stlačený víc, tím je poloha P menší. Polohy jsou v µm s rozlišením 0,1 µm.',
   'Positions are given as the **height of the actuator above the mounting-hole axis** of the microswitch, P = C − x, where x is the position measured by the axis sensor (encoder) and C is the calibration constant of the tester (chapter 6). The more the actuator is pressed, the smaller the position P. Positions are in µm with a resolution of 0.1 µm.')))
-c.push(NOTE('info', t(
-  'Starší soubory (před zavedením souřadnic zákazníka) mají polohy na stupnici enkodéru; ScadaViewer u nich zobrazuje poznámku.',
-  'Older files (before customer coordinates were introduced) have positions on the encoder scale; ScadaViewer shows a note for them.')))
 
 // ═══ 4 Charakteristické body ═══════════════════════════════════════════
 c.push(H1(t('4  Charakteristické body', '4  Characteristic points')))
@@ -133,9 +130,6 @@ c.push(...TABLE(
     ['TT (TT_TotalTravel)', 'FP − TTP', t('Celkový zdvih.', 'Total travel.')],
   ],
   [3000, 2000, 4638], t('Dráhy', 'Travels')))
-c.push(NOTE('warn', t(
-  'Od Analyzing 2.6.3 (říjen 2026) je RT = FP − RP. Starší soubory mají RT = TTP − RP; ScadaViewer je rozliší a v diagramu označí „RvT (TTP → RP)“. Hodnoty RT z obou období nelze přímo porovnávat a limity RT v recepturách musí odpovídat nové definici.',
-  'Since Analyzing 2.6.3 (October 2026) RT = FP − RP. Older files have RT = TTP − RP; ScadaViewer distinguishes them and labels the diagram “RvT (TTP → RP)”. RT values from the two periods cannot be compared directly and the RT limits in the recipes must match the new definition.')))
 c.push(H2(t('5.3  Polohy [µm]', '5.3  Positions [µm]')))
 c.push(P(t(
   'FP, OP, RP, TTP a FPR (kapitola 4) — v souřadnicích zákazníka, rozlišení 0,1 µm.',

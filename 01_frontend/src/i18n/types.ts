@@ -247,6 +247,7 @@ export interface Translations {
     forceTravelAria: string
     switchTimesAria: string
     switchTimesAxisCompressed: string
+    switchTimesAxisZero: string
   }
   settings: {
     title: string

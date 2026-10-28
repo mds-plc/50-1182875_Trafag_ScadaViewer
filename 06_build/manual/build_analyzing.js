@@ -266,8 +266,8 @@ c.push(P(t(
   'Konce úseků podle `times_method`: `stable_run` (výchozí) = poslední vzorek prvního úseku 5 stabilních vzorků (`stable_samples_count`) — i čisté přepnutí má proto UT a BT nejméně (5 − 1) × 50 µs = 200 µs; `bounce_end` = skutečný konec zákmitů (čisté přepnutí = 0). Volitelná korekce tření (`friction_correction_enabled`) je ve výchozím stavu vypnutá.',
   'Segment ends per `times_method`: `stable_run` (default) = the last sample of the first run of 5 stable samples (`stable_samples_count`) — so even a clean changeover has UT and BT of at least (5 − 1) × 50 µs = 200 µs; `bounce_end` = actual end of bouncing (clean changeover = 0). Optional friction correction (`friction_correction_enabled`) is off by default.')))
 c.push(P(t(
-  'Časová osa diagramu ve ScadaViewer začíná v 0 = rozepnutí NC, kde je v diagramu značka „OP“ (definice `nc_open`). S nastavením testeru `op_definition = "no_close"` leží spínací poloha OP až v prvním sepnutí NO, tj. o UT + RevT později; časy UT, RevT, BT a OpT se tím nemění.',
-  'The time axis of the ScadaViewer diagram starts at 0 = NC opening, where the diagram shows the “OP” mark (`nc_open` definition). With the tester setting `op_definition = "no_close"` the operating position OP lies at the first NO closing, i.e. UT + RevT later; the times UT, RevT, BT and OpT are not affected.')))
+  'Časová osa diagramu ve ScadaViewer začíná v 0 = rozepnutí NC (značka „NC ↑“); spínací poloha OP (`op_definition = "no_close"`) leží v prvním sepnutí NO (značka „NO ↓“), tj. o UT + RevT později.',
+  'The time axis of the ScadaViewer diagram starts at 0 = NC opening (“NC ↑” mark); the operating position OP (`op_definition = "no_close"`) lies at the first NO closing (“NO ↓” mark), i.e. UT + RevT later.')))
 c.push(...FIG('an_times', t('Spínací časy UT, RevT, BT a OpT (ScadaViewer, detail kusu; čas 0 = rozepnutí NC)', 'Switching times UT, RevT, BT and OpT (ScadaViewer, piece detail; time 0 = NC opening)'), 1, 0.8))
 c.push(H2(t('4.4  Kalibrační konstanta C', '4.4  Calibration constant C')))
 c.push(...OL(t([

@@ -380,7 +380,8 @@ export function ForceTravelDiagram({ record, highlight }: DiagramProps) {
 //        → úsek BT (Bounce Time)
 //   OpT (Operating Time) = UT + RevT + BT — ověřeno na 215 reálných záznamech.
 //
-// Časová osa je v MĚŘÍTKU skutečných hodnot záznamu (0 = OP), jako mřížka osciloskopu.
+// Časová osa je v MĚŘÍTKU skutečných hodnot záznamu (0 = rozepnutí NC), jako mřížka osciloskopu.
+// Poloha OP (první sepnutí NO) se v časovém diagramu nevyznačuje — diagram popisuje kontakty, ne polohy.
 // Průběhy jsou schematické (produkční záznam nemá surový signál) — tvar hran a zákmitů je
 // ilustrativní, polohy hran a délky úseků odpovídají naměřeným časům.
 // Výjimka: úsek kratší než MIN_SEGMENT_PX (RevT stovky ms vedle UT / BT 0,2 ms) by se slil
@@ -558,7 +559,7 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
       <rect x={xUt} y={Y_HIGH - 20} width={Math.max(0, xNo - xUt)} height={Y_AXIS - Y_HIGH + 20} fill={BAND.rev} opacity={band('rt_reversetime', 0.10)} />
       <rect x={xNo} y={Y_HIGH - 20} width={Math.max(0, xEnd - xNo)} height={Y_AXIS - Y_HIGH + 20} fill={BAND.bt}  opacity={band('bt_bouncetime', 0.12)} />
 
-      {/* ── Časová osa [ms], 0 = OP ── */}
+      {/* ── Časová osa [ms], 0 = rozepnutí NC ── */}
       <line x1={X0} y1={Y_AXIS} x2={X1} y2={Y_AXIS} stroke={C_AXIS} strokeWidth={1.5} />
       {ticks.map(v => (
         <g key={`t${v}`}>
@@ -578,12 +579,12 @@ export function TimeDiagram({ record, highlight }: DiagramProps) {
         )
       })}
       <text x={X1} y={Y_AXIS + 30} textAnchor="end" fontSize={10} fill={C_AXIS}>
-        t [ms] · 0 = OP{scaled ? '' : ` · ${t.chart.switchTimesAxisCompressed}`}
+        t [ms] · {t.chart.switchTimesAxisZero}{scaled ? '' : ` · ${t.chart.switchTimesAxisCompressed}`}
       </text>
 
       {/* ── Události ── */}
       {[
-        { xe: xOp,  label: 'OP',        color: '#43a047' },
+        { xe: xOp,  label: 'NC ↑',      color: C_NC },
         { xe: xNo,  label: 'NO ↓',      color: C_NO },
         { xe: xEnd, label: 'NO stable', color: C_NO },
       ].map((e, i, all) => {
