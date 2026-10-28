@@ -90,9 +90,11 @@ module.exports = function makeLib(opt) {
   }
 
   function NOTE(kind, text) {
-    const color = kind === 'warn' ? 'B45309' : kind === 'info' ? '374151' : ACCENT
-    const fill = kind === 'warn' ? 'FEF3C7' : kind === 'info' ? 'F3F4F6' : 'EFF6FF'
-    const label = kind === 'warn' ? t('Pozor: ', 'Caution: ') : kind === 'info' ? t('Poznámka: ', 'Note: ') : t('Tip: ', 'Tip: ')
+    // 'todo' = rozpracovaný dokument: chybí podklad (snímek, postup z PLC) — ve vydaném dokumentu nesmí zůstat
+    const color = kind === 'warn' ? 'B45309' : kind === 'info' ? '374151' : kind === 'todo' ? 'BE185D' : ACCENT
+    const fill = kind === 'warn' ? 'FEF3C7' : kind === 'info' ? 'F3F4F6' : kind === 'todo' ? 'FCE7F3' : 'EFF6FF'
+    const label = kind === 'warn' ? t('Pozor: ', 'Caution: ') : kind === 'info' ? t('Poznámka: ', 'Note: ')
+      : kind === 'todo' ? t('Doplnit: ', 'To be completed: ') : t('Tip: ', 'Tip: ')
     return new Paragraph({
       spacing: { before: 120, after: 180, line: 276 },
       keepLines: true,   // rámeček se nelámal přes stranu

@@ -80,6 +80,15 @@ node build_analyzing.js cs an_cs.docx &  node build_analyzing.js en an_en.docx
 :: PDF jako u manuálu ScadaViewer (word_finish.ps1), pak kopie do 04_docs\manual obou projektů
 ```
 
+## Dokument HMI (rozpracovaný — kostra 2026-10-28, vydání 0.1)
+
+`node build_hmi.js cs hmi_cs.docx` / `en hmi_en.docx` (+ `word_finish.ps1`). Zatím jen v této složce, do HMI projektu se
+kopíruje až hotový. Zdroje: kapitoly obrazovek z vestavěné nápovědy HMI (`9.HMI Program\…\MDS_JavaScripts\01_Config\HMI_Help.js`),
+názvy režimů z `HMI_Config.js` (`ValueToText.MachineMode`), role z `accessLocks`, ovládací panel +P01 z elektroschématu
+(list 18 rozložení, 32 / 44 vstupy a kontrolky). Růžové poznámky **Doplnit** (`NOTE('todo', …)`) = chybějící podklady
+(snímky, fotka panelu, chování kontrolek a přechody režimů z PLC, alarmy) — ve vydaném dokumentu nesmí zůstat.
+Texty převzaté z nápovědy HMI používají slovo „stroj“ jako obrazovka HMI.
+
 Sdílená úprava dokumentů: `lib.js` (titulní strana, záhlaví, zápatí, obsah, tabulky, poznámky, kód, obrázky; `DOC_TYPE`, `MACHINE`).
 
 Poznámky:
