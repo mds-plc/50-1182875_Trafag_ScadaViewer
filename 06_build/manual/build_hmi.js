@@ -1,4 +1,4 @@
-// Návod k použití a technický manuál HMI EOL testeru (dotykový panel + tlačítka ovládacího panelu) — generátor .docx (CS + EN)
+// Návod k použití HMI EOL testeru (dotykový panel + tlačítka ovládacího panelu) — generátor .docx (CS + EN)
 // Použití: node build_hmi.js cs|en <výstupní.docx>
 // ROZPRACOVÁNO (kostra 2026-10-28): poznámky „Doplnit" (NOTE 'todo') označují chybějící podklady — snímky obrazovek,
 // fotku ovládacího panelu a chování kontrolek / režimů z PLC programu. Kapitoly obrazovek se plní z vestavěné nápovědy
@@ -26,6 +26,7 @@ const REVISION = String(META.revision || '').slice(0, 10) || '?'
 const MODE_TEXT = (CONF && CONF.ValueToText && CONF.ValueToText.MachineMode.states) || {}
 
 const M = require('./lib')({
+  docType: 'user',
   lang: L, imgDir: path.join(__dirname, 'img', 'hmi', L), product: 'HMI',
   version: (L === 'cs' ? 'rev. ' : 'rev. ') + REVISION,
   issue: L === 'cs' ? '0.1 · pracovní verze · říjen 2026' : '0.1 · working draft · October 2026',

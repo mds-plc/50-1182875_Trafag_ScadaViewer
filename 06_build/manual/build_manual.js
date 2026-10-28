@@ -1,4 +1,4 @@
-// Návod k použití a technický manuál ScadaViewer — generátor .docx (CS + EN)
+// Návod k použití ScadaViewer — generátor .docx (CS + EN)
 // Použití: node build_manual.js cs|en <výstupní.docx>
 // Text odpovídá verzi aplikace v 00_backend/scada/__init__.py; popisky tlačítek = i18n/cs.ts / en.ts.
 const fs = require('fs')
@@ -869,7 +869,7 @@ function body() {
 
 // ── Dokument — společný rámec dokumentace testeru (lib.js: titulní strana, záhlaví, zápatí, styly) ──
 const M = require('./lib')({
-  lang: L, imgDir: IMG, product: 'ScadaViewer', version: VERSION, issue: ISSUE,
+  lang: L, imgDir: IMG, product: 'ScadaViewer', docType: 'user', version: VERSION, issue: ISSUE,
   subtitle: t('Webová aplikace pro prohlížení, vyhodnocení a export výrobních a testovacích dat mikrospínačů',
               'Web application for viewing, evaluating and exporting production and test data of microswitches'),
 })

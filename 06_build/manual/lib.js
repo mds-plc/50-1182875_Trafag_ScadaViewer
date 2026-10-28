@@ -1,6 +1,9 @@
 // Sdílené stavební bloky dokumentace EOL testeru mikrospínačů (ScadaViewer, DatabaseGateway, Analyzing).
-// Jednotný rámec všech tří dokumentů: titulní strana, záhlaví, zápatí, typ dokumentu a název stroje (DOC_TYPE, MACHINE).
-// Použití: const M = require('./lib')({ lang, imgDir, product, subtitle, version, issue })
+// Jednotný rámec všech dokumentů: titulní strana, záhlaví, zápatí, typ dokumentu a název stroje (DOC_TYPE, MACHINE).
+// Dva typy (rozhodnutí 2026-10-28): 'user' = Návod k použití (zákazník — co produkt dělá a co znamenají data),
+// 'tech' = Technický manuál (podrobně pro servis a vývojáře — rozhraní, konfigurace, instalace, diagnostika).
+// Struktura podle IEC/IEEE 82079-1: identifikace (titulní strana), O tomto dokumentu (ABOUT), určené použití, přílohy.
+// Použití: const M = require('./lib')({ lang, imgDir, product, docType: 'user' | 'tech', subtitle, version, issue })
 const fs = require('fs')
 const path = require('path')
 const {
@@ -18,7 +21,12 @@ module.exports = function makeLib(opt) {
   const CONTENT = PAGE_W - 2 * MARGIN
   const CONTENT_PX = Math.round(CONTENT / 1440 * 96)
   // Názvosloví společné všem dokumentům (rozhodnutí 2026-10-28): stroj = EOL tester mikrospínačů, dále jen „tester“
-  const DOC_TYPE = t('Návod k použití a technický manuál', 'Instructions for Use and Technical Manual')
+  const DOC_TYPES = {
+    user: t('Návod k použití', 'Instructions for Use'),
+    tech: t('Technický manuál', 'Technical Manual'),
+  }
+  if (!DOC_TYPES[opt.docType]) throw new Error("docType musí být 'user' nebo 'tech'")
+  const DOC_TYPE = DOC_TYPES[opt.docType]
   const MACHINE = t('EOL tester mikrospínačů', 'Microswitch EOL tester')
   let figNo = 0, tabNo = 0, olNo = 0
 
@@ -139,6 +147,26 @@ module.exports = function makeLib(opt) {
     return out
   }
 
+  // „O tomto dokumentu“ (IEC/IEEE 82079-1): účel, cílová skupina, konvence, související dokumenty, historie revizí.
+  // o = { purpose, audience, related: [..], history: [[vydání, datum, změna], ..] } — texty už přeložené (t()).
+  function ABOUT(o) {
+    const out = [P(o.purpose)]
+    out.push(P(`**${t('Cílová skupina', 'Target group')}:** ${o.audience}`))
+    out.push(P(`**${t('Konvence', 'Conventions')}:**`))
+    out.push(NOTE('warn', t('Upozornění na situaci, která může vést ke ztrátě dat, chybnému vyhodnocení nebo poškození zařízení.', 'Notice of a situation that may lead to data loss, incorrect evaluation or equipment damage.')))
+    out.push(NOTE('info', t('Doplňující informace k pochopení textu.', 'Additional information for understanding the text.')))
+    out.push(NOTE('tip', t('Doporučený postup nebo praktická rada.', 'Recommended practice or practical advice.')))
+    out.push(P(t('Texty z obrazovky (tlačítka, hlášky) jsou uvedeny **tučně** nebo v uvozovkách, názvy souborů, sloupců a hodnot `neproporcionálním písmem`.', 'Screen texts (buttons, messages) are shown in **bold** or in quotation marks, file, column and value names in `monospace`.')))
+    if (o.related && o.related.length) {
+      out.push(P(`**${t('Související dokumenty', 'Related documents')}:**`))
+      out.push(...UL(o.related))
+    }
+    if (o.history && o.history.length) {
+      out.push(...TABLE([t('Vydání', 'Issue'), t('Datum', 'Date'), t('Změna', 'Change')], o.history, [1400, 1600, 6638], t('Historie revizí', 'Revision history')))
+    }
+    return out
+  }
+
   function titlePage(meta) {
     const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
     const nb = { top: none, bottom: none, left: none, right: none }
@@ -233,5 +261,5 @@ module.exports = function makeLib(opt) {
     })
   }
 
-  return { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, write, DOC_TYPE, MACHINE }
+  return { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, ABOUT, write, DOC_TYPE, MACHINE }
 }

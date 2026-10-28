@@ -1,4 +1,4 @@
-// Návod k použití a technický manuál Analyzing (AdsAnalyzer) — generátor .docx (CS + EN)
+// Technický manuál Analyzing (AdsAnalyzer) — generátor .docx (CS + EN)
 // Použití: node build_analyzing.js cs|en <výstupní.docx>
 // Fakta ověřena proti kódu Analyzing (00_src/ads_analyzer) — při změně Analyzingu text zkontrolovat.
 const fs = require('fs')
@@ -10,6 +10,7 @@ const AN = path.join(__dirname, '..', '..', '..', '..', '11.Parallel scripts', '
 const VERSION = (fs.readFileSync(path.join(AN, '00_src', 'ads_analyzer', '__init__.py'), 'utf8')
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
 const M = require('./lib')({
+  docType: 'tech',
   lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'Analyzing',
   subtitle: L === 'cs'
     ? 'Služba pro vyhodnocení měření mikrospínačů — výpočet sil, poloh, drah, odporů kontaktů a spínacích časů pro PLC'

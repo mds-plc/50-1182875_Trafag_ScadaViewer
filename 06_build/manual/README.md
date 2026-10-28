@@ -1,11 +1,25 @@
 # Dokumentace EOL testeru — generátor (ScadaViewer, DatabaseGateway, Analyzing)
 
-Všechny tři dokumenty mají typ **Návod k použití a technický manuál** / **Instructions for Use and Technical Manual**
-a společný rámec z `lib.js` (titulní strana, záhlaví, zápatí, styly). Soubory v `04_docs/manual` příslušného projektu:
-`<Produkt>_Navod_k_pouziti_a_technicky_manual_CS` a `<Produkt>_Instructions_for_Use_and_Technical_Manual_EN` (`.docx` + `.pdf`).
+Každý produkt má dvě verze dokumentace (rozhodnutí 2026-10-28), obě se společným rámcem z `lib.js` (titulní strana,
+záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle **IEC/IEEE 82079-1**:
 
-Poslední přegenerování: 2026-10-28 — ScadaViewer 2.6.10 (vydání 2.1), DatabaseGateway 2.6.2 a Analyzing 2.6.3 (vydání 1.1);
-sjednocené názvosloví ekosystému.
+| Typ (`docType`) | Pro koho | Obsah | Soubory v `04_docs/manual` |
+|-----------------|----------|-------|----------------------------|
+| `user` — **Návod k použití** / Instructions for Use | zákazník (kvalita, technologie, vedení, IT) | co produkt dělá, co znamenají data, chování při výpadku, vzorové soubory | `<Produkt>_Navod_k_pouziti_CS`, `<Produkt>_Instructions_for_Use_EN` |
+| `tech` — **Technický manuál** / Technical Manual | servis, programátor PLC, vývojář | rozhraní, algoritmy, konfigurace, instalace, diagnostika | `<Produkt>_Technicky_manual_CS`, `<Produkt>_Technical_Manual_EN` |
+
+| Produkt | Návod k použití | Technický manuál |
+|---------|-----------------|------------------|
+| ScadaViewer | `build_manual.js` (vydání 2.1) | připravuje se |
+| DatabaseGateway | `build_gateway_user.js` (1.0) | `build_gateway.js` (1.1) |
+| Analyzing | `build_analyzing_user.js` (1.0) | `build_analyzing.js` (1.1) |
+| HMI | `build_hmi.js` (rozpracováno) | — |
+
+Vzorové soubory (`vzory/`: PROD_ CSV + XLSX, TEST_ ZIP + XLSX — z ukázkových dat `demo/`, XLSX funkcemi ScadaViewer
+`build_blocks_xlsx` / `build_xlsx`) jdou do `04_docs/manual/vzorove_soubory` DatabaseGateway a ScadaViewer; popisuje je
+příloha Návodu k použití DatabaseGateway. Kopírování dokumentů i vzorů pod správnými názvy: **`python publish.py`**.
+
+Poslední přegenerování: 2026-10-28 — ScadaViewer 2.6.10, DatabaseGateway 2.6.2, Analyzing 2.6.3.
 
 ## Názvosloví (závazné pro všechny tři dokumenty, rozhodnutí 2026-10-28)
 
@@ -13,7 +27,7 @@ sjednocené názvosloví ekosystému.
 |-------|----|----|
 | Stroj | **EOL tester mikrospínačů**, dále „tester“ (ne „linka“, „stroj“) | **microswitch EOL tester**, then “tester” (not “line”, “machine”) |
 | PC u stroje | **PC testeru**; „u testeru“ = práce přímo na tomto PC | **tester PC**; “at the tester” |
-| Typ dokumentu | **Návod k použití a technický manuál**; v textu „dokument“ | **Instructions for Use and Technical Manual**; “document” in the text |
+| Typ dokumentu | **Návod k použití** / **Technický manuál**; v textu „dokument“ | **Instructions for Use** / **Technical Manual**; “document” in the text |
 | Odkaz na kapitolu | „kapitola 3.4“ v textu, „(kap. 3.4)“ v závorce | “section 3.4”, “chapter 5” |
 | Angličtina | — | britská (colour, behaviour, synchronisation) |
 

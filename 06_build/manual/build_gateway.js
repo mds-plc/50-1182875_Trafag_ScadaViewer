@@ -1,4 +1,4 @@
-// Návod k použití a technický manuál DatabaseGateway — generátor .docx (CS + EN)
+// Technický manuál DatabaseGateway — generátor .docx (CS + EN)
 // Použití: node build_gateway.js cs|en <výstupní.docx>
 // Fakta ověřena proti kódu DatabaseGateway (00_src/db_gateway) — při změně Gateway text zkontrolovat.
 const fs = require('fs')
@@ -10,6 +10,7 @@ const GW = path.join(__dirname, '..', '..', '..', '..', '11.Parallel scripts', '
 const VERSION = (fs.readFileSync(path.join(GW, '00_src', 'db_gateway', '__init__.py'), 'utf8')
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
 const M = require('./lib')({
+  docType: 'tech',
   lang: L, imgDir: path.join(__dirname, 'img', 'eco', L), product: 'DatabaseGateway',
   subtitle: L === 'cs'
     ? 'Služba pro ukládání výrobních a testovacích dat z PLC do souborů CSV a jejich archivaci na Synology NAS'
