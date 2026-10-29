@@ -328,8 +328,8 @@ export const cs: Translations = {
     projContact:   'Kontakt',
     docsTile:      'Dokumentace',
     docsAbout:     'ScadaViewer je webová aplikace pro prohlížení výrobních a testovacích dat mikrospínačů z linky Trafag AG. Umožňuje procházet zakázky a testy na lokálním úložišti i na Synology NAS, zobrazit detail zakázky (rozložení kategorií, časový průběh, parametry), detail záznamu s diagramy síla–dráha a spínacích časů, signálová data testů, tisknout protokoly a hlídat zaplnění lokálního úložiště. Stav spojení s PLC TwinCAT 3 je vidět v horní liště.',
-    docsManual:    'Uživatelský manuál',
-    docsManualNote:'Bude doplněn po dokončení projektu.',
+    docsManual:    'Návod k použití',
+    docsManualNote:'ScadaViewer — Návod k použití a Technický manuál (CS / EN, PDF) jsou součástí dokumentace EOL testeru dodané se strojem.',
   },
   login: {
     waitingPLC:       'Čekám na přihlášení operátora na PLC terminálu…',

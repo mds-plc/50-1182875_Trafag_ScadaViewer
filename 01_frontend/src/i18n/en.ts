@@ -328,8 +328,8 @@ export const en: Translations = {
     projContact:   'Contact',
     docsTile:      'Documentation',
     docsAbout:     'ScadaViewer is a web application for browsing production and test data of microswitches from the Trafag AG line. It lets you browse orders and tests on local storage and on the Synology NAS, view order details (category distribution, timeline, parameters), record details with force–travel and switching-time diagrams, test signal data, print reports and monitor local storage usage. The TwinCAT 3 PLC connection status is shown in the top bar.',
-    docsManual:    'User manual',
-    docsManualNote:'Will be added after project completion.',
+    docsManual:    'Instructions for Use',
+    docsManualNote:'ScadaViewer — Instructions for Use and Technical Manual (CS / EN, PDF) are part of the EOL tester documentation supplied with the machine.',
   },
   login: {
     waitingPLC:       'Waiting for operator login on PLC terminal…',

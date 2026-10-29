@@ -74,7 +74,7 @@ export const helpCs: Translations['help'] = {
       intro: 'Informace o aplikaci: verze, projekt, zákazník a dodavatel, popis aplikace a dokumentace.',
       items: [
         { title: 'Projekt', text: 'Verze aplikace (hlásí server), číslo projektu a kontakty.' },
-        { title: 'Dokumentace', text: 'Stručný popis aplikace; uživatelský manuál bude doplněn.' },
+        { title: 'Dokumentace', text: 'Stručný popis aplikace a odkaz na Návod k použití a Technický manuál v dokumentaci testeru.' },
       ],
     },
   },

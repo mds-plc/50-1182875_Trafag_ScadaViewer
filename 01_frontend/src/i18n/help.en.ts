@@ -74,7 +74,7 @@ export const helpEn: Translations['help'] = {
       intro: 'Information about the application: version, project, customer and supplier, description and documentation.',
       items: [
         { title: 'Project', text: 'Application version (reported by the server), project number and contacts.' },
-        { title: 'Documentation', text: 'Short description of the application; the user manual will be added.' },
+        { title: 'Documentation', text: 'Short description of the application and a reference to the Instructions for Use and Technical Manual in the tester documentation.' },
       ],
     },
   },

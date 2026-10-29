@@ -5,6 +5,16 @@
 
 ---
 
+## [2026-10-29] Vydání 2.7.0 — společné závěrečné vydání (Analyzing, DatabaseGateway, ScadaViewer)
+
+Všechny tři aplikace ve verzi 2.7.0, balíček `deploy_v2.7.0`. Formát CSV, rozhraní PLC ani Config.toml se proti 2.6.10
+(AN 2.6.3, GW 2.6.2) nemění. Analyzing a DatabaseGateway beze změny kódu (jen verze a dokumentace). ScadaViewer: popisek
+časového diagramu (záznam níže), Info → Dokumentace odkazuje na Návod k použití a Technický manuál (dřív „bude doplněn“),
+`deploy.ps1` s opravou zápisu logu (záznam 2026-10-27). Testy: ScadaViewer backend 529, frontend 267 (tsc, lint 0),
+DatabaseGateway 150, Analyzing 155.
+
+---
+
 ## [2026-10-28] Časový diagram spínacích časů — popisek osy a značka času 0
 
 Detail záznamu → diagram spínacích časů: osa měla „0 = OP“ a na čase 0 značku „OP“ podle původní definice OP
