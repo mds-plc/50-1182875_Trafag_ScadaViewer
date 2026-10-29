@@ -15,7 +15,7 @@ const M = require('./lib')({
   subtitle: L === 'cs'
     ? 'Služba pro vyhodnocení měření mikrospínačů — výpočet sil, poloh, drah, odporů kontaktů a spínacích časů pro PLC'
     : 'Service evaluating microswitch measurements — calculation of forces, positions, travels, contact resistances and switching times for the PLC',
-  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
+  version: VERSION, issue: L === 'cs' ? '1.2 · říjen 2026' : '1.2 · October 2026',
 })
 const { t, P, H1, H2, H3, UL, OL, CODE, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
@@ -46,6 +46,7 @@ c.push(...ABOUT({
   history: [
     ['1.0', '2026-10-27', t('První vydání.', 'First issue.')],
     ['1.1', '2026-10-28', t('Jednotné názvosloví dokumentace, popis aktuálního stavu.', 'Unified documentation terminology, description of the current state.')],
+    ['1.2', '2026-10-29', t('Aktualizace pro verzi softwaru 2.7.0 (závěrečné vydání).', 'Update for software version 2.7.0 (final release).')],
   ],
 }))
 

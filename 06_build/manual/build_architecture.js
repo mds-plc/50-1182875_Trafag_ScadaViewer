@@ -27,7 +27,7 @@ const M = require('./lib')({
   subtitle: L === 'cs'
     ? 'Softwarové součásti EOL testeru mikrospínačů, tok dat, rozhraní, komunikace a nasazení'
     : 'Software components of the microswitch EOL tester, data flow, interfaces, communication and deployment',
-  issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+  issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, UL, OL, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
@@ -40,7 +40,7 @@ c.push(...ABOUT({
     'This document describes the software architecture of the microswitch EOL tester: which software components it consists of, how data flows between them, which interfaces they communicate through and how the software is deployed on the tester PC. The tester hardware (electrical wiring, networks, measuring equipment) is described in other documentation. Details of the individual components are given in their own documents (chapter 8).'),
   audience: t('zákazník (IT, kvalita, technologie, vedení výroby), servis EOL testeru.', 'the customer (IT, quality, process engineering, production management), EOL tester service.'),
   related: t(['Dokumentace jednotlivých součástí — přehled v kapitole 8.'], ['Documentation of the individual components — overview in chapter 8.']),
-  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
+  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')], ['1.1', '2026-10-29', t('Aktualizace pro verzi softwaru 2.7.0 (závěrečné vydání).', 'Update for software version 2.7.0 (final release).')]],
 }))
 
 // ═══ 2 Přehled ═════════════════════════════════════════════════════════

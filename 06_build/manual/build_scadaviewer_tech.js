@@ -17,7 +17,7 @@ const M = require('./lib')({
   subtitle: L === 'cs'
     ? 'Webová aplikace pro prohlížení, vyhodnocení a export dat EOL testeru — architektura, rozhraní, konfigurace, instalace a provoz'
     : 'Web application for viewing, evaluating and exporting EOL tester data — architecture, interfaces, configuration, installation and operation',
-  version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, UL, OL, CODE, NOTE, TABLE, ABOUT } = M
 const c = []
@@ -38,7 +38,7 @@ c.push(...ABOUT({
     '**DatabaseGateway — Technical Manual**: file writing and NAS synchronisation (same data folder and same NAS).',
     '**Analyzing — Technical Manual**: calculation of the parameters shown by ScadaViewer.',
   ]),
-  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
+  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')], ['1.1', '2026-10-29', t('Aktualizace pro verzi softwaru 2.7.0 (závěrečné vydání).', 'Update for software version 2.7.0 (final release).')]],
 }))
 
 // ═══ 2 Princip činnosti ════════════════════════════════════════════════

@@ -21,7 +21,7 @@ const M = require('./lib')({
   subtitle: L === 'cs'
     ? 'Ukládání a archivace dat zakázek a testovacích měření — kde data vznikají, jaký mají formát a co se stane při výpadku'
     : 'Storage and archiving of order and test measurement data — where the data is created, its format and what happens during an outage',
-  version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, UL, OL, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
@@ -42,7 +42,7 @@ c.push(...ABOUT({
     '**Analyzing — Technical Description**: meaning of the measured parameters.',
     '**ScadaViewer — Instructions for Use**: viewing, exporting and printing the data.',
   ]),
-  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
+  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')], ['1.1', '2026-10-29', t('Aktualizace pro verzi softwaru 2.7.0 (závěrečné vydání).', 'Update for software version 2.7.0 (final release).')]],
 }))
 
 // ═══ 2 Určené použití ══════════════════════════════════════════════════

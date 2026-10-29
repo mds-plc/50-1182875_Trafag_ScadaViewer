@@ -18,7 +18,7 @@ const M = require('./lib')({
   subtitle: L === 'cs'
     ? 'Vyhodnocení měření mikrospínačů — co se měří, jak vznikají výsledky a co znamenají'
     : 'Evaluation of microswitch measurements — what is measured, how the results are obtained and what they mean',
-  version: VERSION, issue: L === 'cs' ? '1.0 · říjen 2026' : '1.0 · October 2026',
+  version: VERSION, issue: L === 'cs' ? '1.1 · říjen 2026' : '1.1 · October 2026',
 })
 const { t, P, H1, H2, UL, OL, FIG, NOTE, TABLE, ABOUT } = M
 const c = []
@@ -39,7 +39,7 @@ c.push(...ABOUT({
     '**DatabaseGateway — Technical Description**: order and measurement files in which the results are stored.',
     '**ScadaViewer — Instructions for Use**: viewing the results, diagrams and export.',
   ]),
-  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')]],
+  history: [['1.0', '2026-10-28', t('První vydání.', 'First issue.')], ['1.1', '2026-10-29', t('Aktualizace pro verzi softwaru 2.7.0 (závěrečné vydání).', 'Update for software version 2.7.0 (final release).')]],
 }))
 
 // ═══ 2 Určené použití ══════════════════════════════════════════════════

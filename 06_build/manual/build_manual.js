@@ -18,7 +18,7 @@ const params = JSON.parse(fs.readFileSync(path.join(__dirname, 'params.json'), '
 // Verze aplikace — jediný zdroj je scada/__init__.py (__version__), ne natvrdo v textu manuálu
 const VERSION = (fs.readFileSync(path.join(__dirname, '..', '..', '00_backend', 'scada', '__init__.py'), 'utf8')
   .match(/__version__\s*=\s*"([^"]+)"/) || [])[1] || '?'
-const ISSUE = t('2.1 · říjen 2026', '2.1 · October 2026')
+const ISSUE = t('2.2 · říjen 2026', '2.2 · October 2026')
 const NAVY = '161C2D', ACCENT = '2563EB', MUTED = '6B7280', LINE = 'D1D5DB'
 const PAGE_W = 11906, MARGIN = 1134                       // A4, okraje 2 cm
 const CONTENT = PAGE_W - 2 * MARGIN                        // 9638 DXA ≈ 17 cm
@@ -768,8 +768,8 @@ function body() {
   // ═══ 8 Info ═══════════════════════════════════════════════════════════
   c.push(H1(t('8  Info', '8  Info')))
   c.push(P(t(
-    'Stránka Info ukazuje verzi aplikace (hlásí ji server), číslo projektu, zákazníka, dodavatele a kontakt; záložka Dokumentace obsahuje stručný popis aplikace (poznámka „Uživatelský manuál – Bude doplněn po dokončení projektu.“ tam zatím zůstává, návodem k použití je tento dokument). Verzi uvádějte při hlášení problému.',
-    'The Info page shows the application version (reported by the server), project number, customer, supplier and contact; the Documentation tab contains a brief description of the application (the note “User manual – Will be added after project completion.” is still shown there; this document contains the instructions for use). Please quote the version when reporting a problem.')))
+    'Stránka Info ukazuje verzi aplikace (hlásí ji server), číslo projektu, zákazníka, dodavatele a kontakt; záložka Dokumentace obsahuje stručný popis aplikace a odkaz na Návod k použití (tento dokument) a Technický manuál. Verzi uvádějte při hlášení problému.',
+    'The Info page shows the application version (reported by the server), project number, customer, supplier and contact; the Documentation tab contains a brief description of the application and a reference to the Instructions for Use (this document) and the Technical Manual. Please quote the version when reporting a problem.')))
   c.push(...FIG('24_info', t('Stránka Info', 'Info page')))
 
   // ═══ 9 Řešení problémů ════════════════════════════════════════════════
