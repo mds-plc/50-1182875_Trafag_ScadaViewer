@@ -40,10 +40,15 @@ const M = require('./lib')({
 const { t, P, H1, H2, H3, UL, NOTE, TABLE, FIG, ABOUT } = M
 const c = []
 const TODO = (cs, en) => c.push(NOTE('todo', t(cs, en)))
-// snímek obrazovky ze složky Podklady (název bez přípony)
-const SHOT = (name, cs, en) => {
-  if (!fs.existsSync(path.join(SHOTS, `${name}.png`))) throw new Error('chybí snímek ' + name)
-  c.push(...FIG(name, t(cs, en), 1, 0.5))
+// Snímek obrazovky ze složky Podklady (název bez přípony). Velikost podle úlohy snímku (sazba bez poloprázdných stran):
+//   'main'  = hlavní snímek stránky, plná šířka, hned pod nadpisem;  'state' = další stav téže stránky, 3/4 šířky;
+//   'dialog' = jen výřez dialogu z img/hmi (crop_hmi.py — spustit před buildem).
+const CROPS = path.join(__dirname, 'img', 'hmi')
+const SHOT = (name, cs, en, kind = 'main') => {
+  const file = kind === 'dialog' ? path.join(CROPS, `${name}.png`) : path.join(SHOTS, `${name}.png`)
+  if (!fs.existsSync(file)) throw new Error('chybí snímek ' + file + (kind === 'dialog' ? ' (spustit crop_hmi.py)' : ''))
+  const [frac, scale, maxH] = kind === 'main' ? [1, 0.5, 820] : kind === 'state' ? [0.75, 0.5, 820] : [0.6, 0.8, 250]
+  c.push(...FIG(file, t(cs, en), frac, scale, maxH))
 }
 let ch = 0
 let sec = 0
@@ -61,7 +66,7 @@ function helpPage(key) {
     c.push(...UL(h.can))
   }
   for (const s of h.sections || []) {
-    c.push(P(`**${s.title}**`))
+    c.push(P(`**${s.title}**`, { spacing: { before: 200, after: 80, line: 288 }, keepNext: true }))
     if (s.text) c.push(P(s.text))
     const items = s.items || []
     if (items.length && typeof items[0] === 'object') {
@@ -117,7 +122,7 @@ c.push(...UL(t([
   'Box 1 – Box 6',
   'Main switch, E-STOP, Operator panel',
 ])))
-SHOT('16_02_Systemove_informace_detail_vzduchova_uprava', 'Zvýrazněná část v 3D modelu (vzduchová úprava)', 'Highlighted part in the 3D model (air preparation unit)')
+SHOT('16_02_Systemove_informace_detail_vzduchova_uprava', 'Zvýrazněná část v 3D modelu (vzduchová úprava)', 'Highlighted part in the 3D model (air preparation unit)', 'state')
 
 // ═══ Ovládací panel ════════════════════════════════════════════════════
 chapter('Ovládací panel', 'Operator panel')
@@ -176,11 +181,11 @@ c.push(...TABLE(
   ],
   [3200, 6438], t('Spodní navigační lišta', 'Bottom navigation bar')))
 sub('Uživatel, jazyk, režim obrazovky a nápověda', 'User, language, screen mode and help')
-SHOT('01_02_Domovska_stranka_prihlaseny_uzivatel', 'Přihlášený uživatel', 'Signed-in user')
-SHOT('01_03_Domovska_stranka_dialog_odhlaseni', 'Dotaz na odhlášení uživatele', 'Sign-out confirmation')
-SHOT('01_04_Domovska_stranka_volba_jazyka', 'Volba jazyka (čeština / angličtina)', 'Language selection (Czech / English)')
-SHOT('01_05_Domovska_stranka_rezim_obrazovky', 'Režim obrazovky (světlý / tmavý)', 'Screen mode (light / dark)')
-SHOT('01_06_Domovska_stranka_napoveda', 'Nápověda ke stránce', 'Help for the page')
+SHOT('01_02_Domovska_stranka_prihlaseny_uzivatel', 'Přihlášený uživatel', 'Signed-in user', 'dialog')
+SHOT('01_03_Domovska_stranka_dialog_odhlaseni', 'Dotaz na odhlášení uživatele', 'Sign-out confirmation', 'dialog')
+SHOT('01_04_Domovska_stranka_volba_jazyka', 'Volba jazyka (čeština / angličtina)', 'Language selection (Czech / English)', 'dialog')
+SHOT('01_05_Domovska_stranka_rezim_obrazovky', 'Režim obrazovky (světlý / tmavý)', 'Screen mode (light / dark)', 'dialog')
+SHOT('01_06_Domovska_stranka_napoveda', 'Nápověda ke stránce', 'Help for the page', 'state')
 TODO('přihlášení uživatele (karta na čtečce?) a uživatelské role — co která role smí.', 'user sign-in (card on the reader?) and user roles — what each role may do.')
 
 // ═══ Domovská stránka a režimy ═════════════════════════════════════════
@@ -188,7 +193,7 @@ chapter('Domovská stránka a režimy stroje', 'Home page and machine modes')
 sub('Domovská stránka', 'Home page')
 helpPage('menu')
 c.push(P(t('Ovládací lišta nahoře: Inicializace, Start produkce, Stop produkce, Reset, Požadavek testu. Dlaždice Inicializace, Produkce a Testovací režim otevírají stejnojmenné stránky.',
-           'Control bar at the top: Initialization, Production start, Production stop, Reset, Test request. The Initialization, Production and Test mode tiles open the pages of the same name.')))
+           'Control bar at the top: Initialization, Production start, Production stop, Reset, Test request. The Initialization, Production and Test mode tiles open the pages of the same name.'), { spacing: { before: 160, after: 120, line: 288 } }))
 sub('Režimy stroje', 'Machine modes')
 const MODES = [0, 3, 4, 5, 6, 9, 10, 11, 14, 15, 16, 17, 20, 21, 25, 30]
 const modeName = n => (MODE_TEXT[n] && MODE_TEXT[n].labels && MODE_TEXT[n].labels[L]) || String(n)
@@ -198,59 +203,59 @@ TODO('význam režimů a přechody mezi nimi (jak se tester do režimu dostane) 
 
 // ═══ Inicializace ══════════════════════════════════════════════════════
 chapter('Inicializace', 'Initialization')
-helpPage('initialization')
 SHOT('03_01_Inicializace_probiha', 'Inicializace probíhá', 'Initialization in progress')
-SHOT('03_02_Inicializace_dokoncena', 'Inicializace dokončena', 'Initialization finished')
+helpPage('initialization')
+SHOT('03_02_Inicializace_dokoncena', 'Inicializace dokončena', 'Initialization finished', 'state')
 
 // ═══ Produkce ══════════════════════════════════════════════════════════
 chapter('Produkce', 'Production')
+SHOT('04_03_Produkce_bezi_zakazka_kus_1', 'Produkce — běžící zakázka, výsledek analýzy kusu, statistika a boxy', 'Production — running order, piece analysis result, statistics and boxes')
 helpPage('production')
-sub('Zakázka', 'Order')
-SHOT('04_01_Produkce_bez_zakazky', 'Produkce bez zakázky — vytvoření zakázky vlevo', 'Production without an order — creating an order on the left')
-SHOT('04_02_Produkce_hlaseni_vytvorte_zakazku', 'Hlášení: automatický cyklus lze spustit až po vytvoření zakázky', 'Message: the automatic cycle can only be started after creating an order')
+sub('Vytvoření zakázky', 'Creating an order')
+SHOT('04_01_Produkce_bez_zakazky', 'Produkce bez zakázky — vytvoření zakázky vlevo', 'Production without an order — creating an order on the left', 'state')
+SHOT('04_02_Produkce_hlaseni_vytvorte_zakazku', 'Hlášení: automatický cyklus lze spustit až po vytvoření zakázky', 'Message: the automatic cycle can only be started after creating an order', 'dialog')
 sub('Běžící zakázka', 'Running order')
-SHOT('04_03_Produkce_bezi_zakazka_kus_1', 'Běžící zakázka — výsledek analýzy kusu, statistika a boxy', 'Running order — piece analysis result, statistics and boxes')
-SHOT('04_04_Produkce_bezi_zakazka_kus_2', 'Běžící zakázka — další kus', 'Running order — next piece')
+SHOT('04_04_Produkce_bezi_zakazka_kus_2', 'Běžící zakázka — další kus (počty v boxech a statistika se průběžně mění)', 'Running order — next piece (box counts and statistics update continuously)', 'state')
 sub('Dokončení zakázky a boxy', 'Finishing the order and boxes')
-SHOT('04_05_Produkce_hlaseni_zakazka_dokoncena', 'Hlášení: zakázka dokončena, je třeba ji uzavřít', 'Message: order finished, it has to be closed')
-SHOT('04_06_Produkce_dialog_uzavrit_zakazku', 'Dotaz na uzavření zakázky', 'Order closing confirmation')
-SHOT('04_07_Produkce_dialog_reset_boxu', 'Dotaz na reset počítadla boxu', 'Box counter reset confirmation')
+SHOT('04_05_Produkce_hlaseni_zakazka_dokoncena', 'Hlášení: zakázka dokončena, je třeba ji uzavřít', 'Message: order finished, it has to be closed', 'dialog')
+SHOT('04_06_Produkce_dialog_uzavrit_zakazku', 'Dotaz na uzavření zakázky', 'Order closing confirmation', 'dialog')
+SHOT('04_07_Produkce_dialog_reset_boxu', 'Dotaz na reset počítadla boxu', 'Box counter reset confirmation', 'dialog')
 
 // ═══ Testovací režim ═══════════════════════════════════════════════════
 chapter('Testovací režim', 'Test mode')
+SHOT('05_04_Testovaci_rezim_vysledek_mereni', 'Testovací režim — parametry testu, výsledek a naměřené hodnoty', 'Test mode — test parameters, result and measured values')
 helpPage('testmode')
-SHOT('05_01_Testovaci_rezim', 'Testovací režim — parametry testu vlevo', 'Test mode — test parameters on the left')
-SHOT('05_02_Testovaci_rezim_upravene_parametry', 'Upravené parametry (rozdíl proti receptuře)', 'Edited parameters (difference from the recipe)')
-SHOT('05_03_Testovaci_rezim_dialog_spustit_mereni', 'Dotaz na spuštění měření se souhrnem parametrů', 'Measurement start confirmation with a parameter summary')
-SHOT('05_04_Testovaci_rezim_vysledek_mereni', 'Výsledek testovacího měření', 'Test measurement result')
+SHOT('05_01_Testovaci_rezim', 'Testovací režim před měřením', 'Test mode before the measurement', 'state')
+SHOT('05_02_Testovaci_rezim_upravene_parametry', 'Upravené parametry (rozdíl proti receptuře)', 'Edited parameters (difference from the recipe)', 'state')
+SHOT('05_03_Testovaci_rezim_dialog_spustit_mereni', 'Dotaz na spuštění měření se souhrnem parametrů', 'Measurement start confirmation with a parameter summary', 'dialog')
 
 // ═══ Alarmy, statistika, safety, osvětlení ═════════════════════════════
 chapter('Alarmy', 'Alarms')
-helpPage('alarms')
 SHOT('17_01_Alarmy', 'Alarmy', 'Alarms')
+helpPage('alarms')
 TODO('seznam alarmů PLC (číslo, text, příčina, odstranění).', 'list of PLC alarms (number, text, cause, remedy).')
 
 chapter('Statistika', 'Statistics')
 helpPage('statistics')
 sub('Počítadla', 'Counters')
-helpPage('statistics.Counters')
 SHOT('11_02_Statistika_pocitadla', 'Statistika — počítadla', 'Statistics — counters')
+helpPage('statistics.Counters')
 sub('Časy cyklů', 'Cycle times')
-helpPage('statistics.CycleTimes')
 SHOT('11_03_Statistika_casy_cyklu', 'Statistika — časy cyklů', 'Statistics — cycle times')
+helpPage('statistics.CycleTimes')
 
 chapter('Safety', 'Safety')
-helpPage('safety')
 SHOT('08_01_Safety', 'Safety — bezpečnostní vstupy a výstupy', 'Safety — safety inputs and outputs')
+helpPage('safety')
 
 chapter('Osvětlení stroje', 'Machine lights')
-helpPage('lights')
 SHOT('18_01_Osvetleni_stroje', 'Osvětlení stroje', 'Machine lights')
+helpPage('lights')
 
 // ═══ Hlavní menu ═══════════════════════════════════════════════════════
 chapter('Hlavní menu', 'Main menu')
-helpPage('settings')
 SHOT('02_01_Hlavni_menu', 'Hlavní menu', 'Main menu')
+helpPage('settings')
 c.push(...TABLE(
   [t('Skupina', 'Group'), t('Stránky', 'Pages')],
   [
@@ -261,13 +266,13 @@ c.push(...TABLE(
   [2600, 7038], t('Stránky hlavního menu', 'Main menu pages')))
 
 sub('Přehled cyklů', 'Cycle overview')
-helpPage('settings.Stations')
 SHOT('06_01_Prehled_cyklu_neaktivni', 'Přehled cyklů — řídicí cykly a podcykly', 'Cycle overview — control cycles and sub-cycles')
-SHOT('06_02_Prehled_cyklu_homing_init_bezi', 'Přehled cyklů — běžící cykly Homing a Init', 'Cycle overview — Homing and Init cycles running')
+helpPage('settings.Stations')
+SHOT('06_02_Prehled_cyklu_homing_init_bezi', 'Přehled cyklů — běžící cykly Homing a Init', 'Cycle overview — Homing and Init cycles running', 'state')
 
 sub('Servis', 'Service')
-helpPage('settings.Service')
 SHOT('07_01_Servis_menu', 'Servis — rozcestník', 'Service — hub')
+helpPage('settings.Service')
 const SERVICE = [
   ['settings.Service.Valves', '07_02_Servis_Valce', 'Válce', 'Cylinders'],
   ['settings.Service.Drivers', '07_03_Servis_Pohon', 'Pohon', 'Drive'],
@@ -281,8 +286,8 @@ const SERVICE = [
 ]
 for (const [key, shot, cs, en] of SERVICE) {
   c.push(H3(t(cs, en)))
+  SHOT(shot, `Servis — ${cs}`, `Service — ${en}`, 'state')
   helpPage(key)
-  SHOT(shot, `Servis — ${cs}`, `Service — ${en}`)
 }
 TODO('stránka Ověření měřidel (Servis › Měření) — snímek a popis.', 'Gauge verification page (Service › Measurement) — screenshot and description.')
 
@@ -290,18 +295,18 @@ sub('Diagnostika', 'Diagnostics')
 TODO('stránka Diagnostika — snímek a popis.', 'Diagnostics page — screenshot and description.')
 
 sub('Prediktivní údržba', 'Predictive maintenance')
-helpPage('settings.PredictiveMaintenance')
 SHOT('09_01_Prediktivni_udrzba', 'Prediktivní údržba', 'Predictive maintenance')
+helpPage('settings.PredictiveMaintenance')
 
 sub('Receptury', 'Recipes')
 helpPage('settings.Recipes')
 c.push(H3(t('Výběr', 'Selection')))
-helpPage('settings.Recipes.Selection')
 SHOT('10_02_Receptury_vyber', 'Receptury — výběr', 'Recipes — selection')
-SHOT('10_14_Receptury_vyber_dve_receptury', 'Výběr ze dvou receptur', 'Selection from two recipes')
+helpPage('settings.Recipes.Selection')
+SHOT('10_14_Receptury_vyber_dve_receptury', 'Výběr ze dvou receptur', 'Selection from two recipes', 'state')
 c.push(H3(t('Přehled', 'Overview')))
-helpPage('settings.Recipes.Overview')
 SHOT('10_16_Receptury_prehled_porovnani', 'Přehled — porovnání vybrané receptury s běžící', 'Overview — comparing the selected recipe with the running one')
+helpPage('settings.Recipes.Overview')
 c.push(H3(t('Úprava', 'Edit')))
 helpPage('settings.Recipes.Edit')
 const EDIT = [
@@ -317,25 +322,28 @@ const EDIT = [
   ['10_13_Receptury_novy_recept_neulozeny', 'nový recept před uložením', 'new recipe before saving'],
   ['10_15_Receptury_uprava_vyber_receptury', 'volba upravované receptury', 'selecting the recipe to edit'],
 ]
-for (const [shot, cs, en] of EDIT) SHOT(shot, `Úprava receptury — ${cs}`, `Recipe edit — ${en}`)
+for (const [shot, cs, en] of EDIT) {
+  const kind = shot === '10_04_Receptury_uprava_identifikace' ? 'main' : shot === '10_12_Receptury_dialog_novy_recept' ? 'dialog' : 'state'
+  SHOT(shot, `Úprava receptury — ${cs}`, `Recipe edit — ${en}`, kind)
+}
 TODO('záložka Cyklus v úpravě receptury — snímek.', 'Cycle tab of the recipe edit — screenshot.')
 
 sub('Historie zakázek', 'Order history')
-helpPage('settings.History')
 SHOT('12_01_Historie_zakazek', 'Historie zakázek', 'Order history')
+helpPage('settings.History')
 
 sub('Databáze', 'Database')
+SHOT('13_02_Databaze_stav_serveru', 'Databáze — stav serveru', 'Database — server status')
 helpPage('settings.Database')
 helpPage('settings.Database.Server')
-SHOT('13_02_Databaze_stav_serveru', 'Databáze — stav serveru', 'Database — server status')
 
 sub('Správa uživatelů', 'User management')
-helpPage('settings.UserManagement')
 SHOT('14_01_Sprava_uzivatelu', 'Správa uživatelů', 'User management')
+helpPage('settings.UserManagement')
 
 sub('Nastavení HMI', 'HMI settings')
-helpPage('settings.HmiSettings')
 SHOT('15_01_Nastaveni_HMI', 'Nastavení HMI — režim obrazovky a jazyk', 'HMI settings — screen mode and language')
+helpPage('settings.HmiSettings')
 
 sub('Systémové informace', 'System information')
 helpPage('settings.SystemInformation')

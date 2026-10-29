@@ -78,14 +78,14 @@ module.exports = function makeLib(opt) {
     return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), data: b }
   }
 
-  function FIG(file, caption, frac = 1, maxScale = 0.5) {
+  // maxH = nejvyšší výška obrázku [px] (vysoký dialog nesmí zabrat celou stranu)
+  function FIG(file, caption, frac = 1, maxScale = 0.5, maxH = 820) {
     const full = path.isAbsolute(file) ? file : path.join(opt.imgDir, `${file}.png`)
     if (!fs.existsSync(full)) throw new Error('chybí obrázek ' + full)
     const { w, h, data } = pngSize(full)
     let width = Math.min(Math.round(CONTENT_PX * frac), Math.round(w * maxScale))
     let height = Math.round(h * width / w)
-    const MAX_H = 820
-    if (height > MAX_H) { width = Math.round(width * MAX_H / height); height = MAX_H }
+    if (height > maxH) { width = Math.round(width * maxH / height); height = maxH }
     figNo += 1
     return [
       new Paragraph({

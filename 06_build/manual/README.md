@@ -14,7 +14,7 @@ záhlaví, zápatí, styly, kapitola „O tomto dokumentu“) a strukturou podle
 | DatabaseGateway | — (zákaznická verze = **Technický popis**, `build_gateway_user.js`, `docType: 'description'`) | `build_gateway.js` (1.1) |
 | Analyzing | — (zákaznická verze = **Technický popis**, `build_analyzing_user.js`, `docType: 'description'`) | `build_analyzing.js` (1.1) |
 | **Architektura softwaru** | — | `build_architecture.js` — souhrnný Technický popis (součásti, tok dat, rozhraní, sítě, nasazení, mapa dokumentace); schéma `diagrams.py arch` |
-| HMI | `build_hmi.js` (rozpracováno) | — |
+| HMI | `build_hmi.js` (pracovní verze; snímky z `17.Dokumentace/2.HMI/1.Podklady`, před buildem `python crop_hmi.py` — výřezy dialogů do img/hmi) | — |
 | Analogový měřicí obvod 1AD01 | — | `build_afe.js` — **jeden** dokument „Technický popis“ (`docType: 'description'`; popis stavu a vysvětlení, zákazník s deskou nepracuje) |
 | Program robota ABB | — | `build_robot.js` — **jeden** dokument „Technický manuál“ (`docType: 'tech'`) ze zálohy `13.Robot/4.Zálohy` (RAPID, EIO), Safety Reportu a `1.Architektura/*.xlsx` (při rozporu platí EIO.cfg); po nové záloze upravit `ZALOHA` a hodnoty; verze v názvu = `bk` + datum poslední zálohy |
 
