@@ -290,6 +290,9 @@ def arch(lang: str) -> str:
     R1, R2, R3, R4 = 70, 230, 390, 550                       # y řádků
     hi = dict(fill='#EFF6FF', stroke=ACCENT, title_color=ACCENT, bold_border=True)
     b.append(box(A, R2, W, H, tr(lang, 'PLC program', 'PLC program'), ['TwinCAT 3', tr(lang, 'řízení, měření, třídění', 'control, measurement, sorting')]))
+    b.append(box(A, R4, W, H, tr(lang, 'Program robota', 'Robot program'), ['ABB RAPID', tr(lang, 'vyzvednutí a třídění kusů', 'picking and sorting pieces')]))
+    b.append(f'<line x1="{A + W / 2}" y1="{R2 + H + 2}" x2="{A + W / 2}" y2="{R4 - 4}" stroke="{ACCENT}" stroke-width="2" marker-end="url(#ahb)" marker-start="url(#ahb)"/>')
+    b.append(f'<text x="{A + W / 2 + 12}" y="{(R2 + H + R4) / 2 + 5}" font-size="15" font-weight="700" fill="{ACCENT}">EtherCAT / FSoE</text>')
     b.append(box(B, R1, W, H, 'TwinCAT HMI', [tr(lang, 'ovládání testeru', 'tester operation')], **hi))
     b.append(box(B, R2, W, H, 'Analyzing', [tr(lang, 'služba Windows', 'Windows service'), tr(lang, 'vyhodnocení měření', 'measurement evaluation')]))
     b.append(box(B, R3, W, H, 'DatabaseGateway', [tr(lang, 'služba Windows', 'Windows service'), tr(lang, 'ukládání a archivace dat', 'data storage and archiving')]))
@@ -319,7 +322,88 @@ def arch(lang: str) -> str:
     return svg(D + W + 30, R4 + H + 30, '\n'.join(b))
 
 
+# ── 7. Robot: výměna povelu s PLC ───────────────────────────────────────────
+def rb_cycle(lang: str) -> str:
+    rows = [('do_ProcReq', 'R'), ('di_ProcStart', 'P'), ('gi_ProcNum', 'P'), ('do_ProcBusy', 'R'),
+            ('go_ProcNum', 'R'), ('do_ProcDone', 'R')]
+    x0, x1, top, rh = 250, 1080, 60, 66
+    b = []
+    for i, (name, who) in enumerate(rows):
+        y = top + i * rh
+        b.append(f'<text x="20" y="{y + 26}" font-size="18" font-weight="700" fill="{NAVY}">{name}</text>')
+        col = ACCENT if who == 'P' else GREEN
+        lab = 'PLC → robot' if who == 'P' else 'robot → PLC'
+        b.append(f'<text x="20" y="{y + 47}" font-size="14" fill="{col}">{lab}</text>')
+        b.append(f'<line x1="{x0}" y1="{y + 46}" x2="{x1}" y2="{y + 46}" stroke="#E5E7EB"/>')
+
+    def wave(i, edges, color, start_hi=False):
+        y = top + i * rh
+        hi, lo = y + 14, y + 42
+        level = hi if start_hi else lo
+        pts = [f'{x0},{level}']
+        for ex in edges:
+            pts.append(f'{ex},{level}')
+            level = hi if level == lo else lo
+            pts.append(f'{ex},{level}')
+        pts.append(f'{x1},{level}')
+        b.append(f'<polyline points="{" ".join(pts)}" fill="none" stroke="{color}" stroke-width="2.5"/>')
+
+    def bus(i, segs, color):
+        y = top + i * rh
+        hi, lo, mid = y + 14, y + 42, y + 28
+        for xa, xb, label, filled in segs:
+            fill = '#EFF6FF' if filled else '#FFFFFF'
+            b.append(f'<polygon points="{xa},{mid} {xa + 8},{hi} {xb - 8},{hi} {xb},{mid} {xb - 8},{lo} {xa + 8},{lo}" '
+                     f'fill="{fill}" stroke="{color}" stroke-width="2"/>')
+            b.append(f'<text x="{(xa + xb) / 2}" y="{mid + 6}" text-anchor="middle" font-size="16" fill="{NAVY}">{label}</text>')
+
+    S, B, E, D, R, P = 330, 400, 760, 790, 810, 850
+    wave(0, [B - 20, R], GREEN, start_hi=True)
+    wave(1, [S, P], ACCENT)
+    bus(2, [(x0, S - 50, '', False), (S - 50, P + 30, '1–7', True), (P + 30, x1, '', False)], ACCENT)
+    wave(3, [B, E], GREEN)
+    bus(4, [(x0, B, '0', False), (B, E, tr(lang, 'číslo procedury', 'procedure number'), True), (E, x1, '0', False)], GREEN)
+    wave(5, [D, D + 110], GREEN)
+    y3 = top + 3 * rh
+    b.append(f'<rect x="{B + 70}" y="{y3 + 16}" width="220" height="24" rx="6" fill="#ECFDF5"/>')
+    b.append(f'<text x="{B + 180}" y="{y3 + 34}" text-anchor="middle" font-size="15" fill="{GREEN}">'
+             f'{tr(lang, "pohyb robota", "robot motion")}</text>')
+    y5 = top + 5 * rh
+    b.append(f'<text x="{D + 120}" y="{y5 + 34}" font-size="14" fill="{MUTED}">{tr(lang, "0,5 s", "0.5 s")}</text>')
+    steps = [(x0 + 30, '1'), (S, '2'), (B, '3'), (E, '4'), (R, '5')]
+    for x, n in steps:
+        b.append(f'<line x1="{x}" y1="{top - 10}" x2="{x}" y2="{top + 6 * rh}" stroke="#94A3B8" stroke-dasharray="3 4"/>')
+        b.append(f'<circle cx="{x}" cy="{top - 22}" r="14" fill="{NAVY}"/><text x="{x}" y="{top - 16}" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">{n}</text>')
+    # legenda kroků 1–5 je v textu příručky (build_robot.js)
+    return svg(1100, top + 6 * rh + 14, '\n'.join(b))
+
+
+# ── 8. Robot: pozice v boxu ─────────────────────────────────────────────────
+def rb_box(lang: str) -> str:
+    ox, oy, sx, sy = 120, 110, 130, 110          # sloupec 25 mm, řada 52 mm (vzdálenosti jen schematicky)
+    b = []
+    b.append(f'<rect x="{ox - 60}" y="{oy - 50}" width="{2 * sx + 120}" height="{3 * sy + 100}" rx="12" fill="{SOFT}" stroke="{LINE}" stroke-width="1.5"/>')
+    for col in range(3):
+        for row in range(4):
+            p = col * 4 + row + 1
+            x, y = ox + col * sx, oy + row * sy
+            first = p == 1
+            b.append(f'<circle cx="{x}" cy="{y}" r="26" fill="{"#EFF6FF" if first else "#FFFFFF"}" '
+                     f'stroke="{ACCENT if first else NAVY}" stroke-width="{3 if first else 2}"/>')
+            b.append(f'<text x="{x}" y="{y + 7}" text-anchor="middle" font-size="20" font-weight="700" fill="{NAVY}">{p}</text>')
+    ax = ox + 2 * sx + 100
+    b.append(arrow(ox, oy - 75, ox + 2 * sx, oy - 75, tr(lang, 'sloupec 0 → 2: krok 25 mm', 'column 0 → 2: step 25 mm'), color=ACCENT))
+    b.append(arrow(ax, oy, ax, oy + 3 * sy, '', color=ACCENT))
+    b.append(f'<text x="{ax + 14}" y="{oy + 1.5 * sy}" font-size="15" fill="{ACCENT}">{tr(lang, "řada 0 → 3:", "row 0 → 3:")}</text>')
+    b.append(f'<text x="{ax + 14}" y="{oy + 1.5 * sy + 20}" font-size="15" fill="{ACCENT}">{tr(lang, "krok 52 mm", "step 52 mm")}</text>')
+    b.append(f'<text x="{ox - 60}" y="{oy + 3 * sy + 85}" font-size="15" fill="{MUTED}">'
+             f'{tr(lang, "pozice 1 = naučený bod pPlacePart_N boxu N", "position 1 = taught point pPlacePart_N of box N")}</text>')
+    return svg(ax + 170, oy + 3 * sy + 100, '\n'.join(b))
+
+
 DIAGRAMS = {
+    'rb_cycle': rb_cycle,
+    'rb_box': rb_box,
     'arch': arch,
     'an_handshake': an_handshake,
     'an_pipeline': an_pipeline,

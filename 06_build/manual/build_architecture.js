@@ -59,6 +59,7 @@ c.push(...TABLE(
   [t('Součást', 'Component'), t('Typ', 'Type'), t('Úloha', 'Task')],
   [
     [t('PLC program', 'PLC program'), 'Beckhoff TwinCAT 3', t('Řízení testeru, měření průběhu síly, polohy a signálů kontaktů, třídění kusů podle receptury.', 'Tester control, measurement of the force, position and contact signals, sorting of pieces by recipe.')],
+    [t('Program robota', 'Robot program'), t('ABB RAPID (řídicí systém OmniCore)', 'ABB RAPID (OmniCore controller)'), t('Vyzvednutí změřeného kusu a jeho odložení do boxu 1–6 podle povelů PLC.', 'Picking the measured piece and placing it into box 1–6 on PLC commands.')],
     ['HMI', t('TwinCAT HMI (webová aplikace)', 'TwinCAT HMI (web application)'), t('Ovládání testeru obsluhou: režimy, zakázky, receptury, alarmy, statistiky.', 'Tester operation: modes, orders, recipes, alarms, statistics.')],
     ['Analyzing', t('služba Windows', 'Windows service'), t('Vyhodnocení měření každého kusu — polohy, síly, dráhy, odpory a spínací časy.', 'Evaluation of every piece measurement — positions, forces, travels, resistances and switching times.')],
     ['DatabaseGateway', t('služba Windows', 'Windows service'), t('Zápis dat zakázek a testů do souborů CSV a jejich archivace na NAS.', 'Writing order and test data to CSV files and archiving them on the NAS.')],
@@ -97,6 +98,7 @@ c.push(...TABLE(
     ['ADS (TwinCAT)', 'PLC ↔ Analyzing', t('Záznam měření kusu → 28 výsledků; potvrzovací postup Run / Busy / Done / Ack.', 'Piece measurement record → 28 results; Run / Busy / Done / Ack handshake.')],
     ['ADS (TwinCAT)', 'PLC ↔ DatabaseGateway', t('Operace zakázek a testů Op1–Op5 se stejným potvrzovacím postupem.', 'Order and test operations Op1–Op5 with the same handshake.')],
     ['ADS (TwinCAT)', 'PLC → ScadaViewer', t('Stav testeru a zakázky, přihlášení na PLC; ScadaViewer posílá stav připravenosti.', 'Tester and order state, sign-in on the PLC; ScadaViewer sends its readiness.')],
+    ['EtherCAT', t('PLC ↔ program robota', 'PLC ↔ robot program'), t('Povel procedury 1–7 s potvrzováním, číslo boxu a pozice, chapadlo, pracovní zóny; bezpečnostní signály přes FSoE.', 'Procedure command 1–7 with acknowledgement, box and position number, gripper, work zones; safety signals via FSoE.')],
     ['ADS (TwinCAT HMI)', 'PLC ↔ HMI', t('Ovládání a zobrazení stavu testeru.', 'Operation and display of the tester state.')],
     [t('Soubory CSV', 'CSV files'), 'DatabaseGateway → ScadaViewer', t('Lokální úložiště PC testeru; formát popisuje technický popis DatabaseGateway.', 'Local storage of the tester PC; the format is described in the DatabaseGateway technical description.')],
     ['SMB', t('služby → NAS', 'services → NAS'), t('DatabaseGateway zapisuje, ScadaViewer jen čte.', 'DatabaseGateway writes, ScadaViewer only reads.')],
@@ -115,6 +117,7 @@ c.push(...TABLE(
     ['ADS (TwinCAT)', 'TCP 48898', t('PLC program ↔ Analyzing, DatabaseGateway, ScadaViewer, HMI', 'PLC program ↔ Analyzing, DatabaseGateway, ScadaViewer, HMI')],
     ['SMB', 'TCP 445', t('DatabaseGateway (zápis) a ScadaViewer (čtení) → NAS', 'DatabaseGateway (write) and ScadaViewer (read) → NAS')],
     ['HTTP', 'TCP 8080', t('prohlížeč → ScadaViewer (kiosk na PC testeru, kancelář)', 'browser → ScadaViewer (kiosk on the tester PC, office)')],
+    ['EtherCAT (FSoE)', t('průmyslová sběrnice', 'fieldbus'), t('PLC program ↔ program robota', 'PLC program ↔ robot program')],
     ['HTTP', 'TCP 1010', t('kiosk → TwinCAT HMI (jen v rámci PC testeru)', 'kiosk → TwinCAT HMI (within the tester PC only)')],
   ],
   [2200, 2000, 5438], t('Protokoly a porty', 'Protocols and ports')))
@@ -150,7 +153,8 @@ c.push(...TABLE(
     ['4.DatabaseGateway', t('Technický popis; Technický manuál', 'Technical Description; Technical Manual'), t('zákazník; servis', 'customer; service')],
     ['5.Analyzing', t('Technický popis; Technický manuál', 'Technical Description; Technical Manual'), t('zákazník; servis', 'customer; service')],
     ['6.Analogový měřící obvod', t('Technický popis desky 1AD01', '1AD01 board Technical Description'), t('zákazník, servis', 'customer, service')],
-    ['7.Vzorové soubory', t('Vzorové soubory zakázky a testu (CSV, XLSX)', 'Sample order and test files (CSV, XLSX)'), t('zákazník (zpracování dat)', 'customer (data processing)')],
+    ['7.Robot', t('Technický manuál programu robota', 'Robot Program Technical Manual'), t('servis', 'service')],
+    ['8.Vzorové soubory', t('Vzorové soubory zakázky a testu (CSV, XLSX)', 'Sample order and test files (CSV, XLSX)'), t('zákazník (zpracování dat)', 'customer (data processing)')],
   ],
   [2800, 4000, 2838], t('Dokumentace systému', 'System documentation')))
 

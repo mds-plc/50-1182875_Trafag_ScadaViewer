@@ -8,7 +8,7 @@ Předchozí verze téhož dokumentu (stejný produkt, typ a jazyk) se v cílové
 Cíle: 04_docs/manual příslušného projektu a 17.Dokumentace/<n>.<Produkt> (kořen projektu Trafag, mimo git).
 Vzorové soubory si ponechávají své názvy (název je součástí formátu): ukázková zakázka a test (vzory/) + vzory
 DatabaseGateway (04_docs/sample_*: komentované CZ / EN, technické, sample_production.xlsx) — do 04_docs/manual/vzorove_soubory DatabaseGateway
-a ScadaViewer (testovací CSV zabalené v ZIP kvůli velikosti v gitu) a do 17.Dokumentace/7.Vzorové soubory (testovací CSV
+a ScadaViewer (testovací CSV zabalené v ZIP kvůli velikosti v gitu) a do 17.Dokumentace/8.Vzorové soubory (testovací CSV
 rozbalené).
 Použití: python publish.py   (po node build_*.js a word_finish.ps1; chybějící vstup = chyba, nic se nepřeskočí potichu)
 """
@@ -27,6 +27,7 @@ SV = ROOT / '10.Scada program' / 'ScadaViewer'
 GW = ROOT / '11.Parallel scripts' / 'DatabaseGateway'
 AN = ROOT / '11.Parallel scripts' / 'Analyzing'
 HMI = ROOT / '9.HMI Program' / '50-1182875_HMI_Trafag'
+ROBOT = ROOT / '13.Robot'
 
 KIND = {'user': ('Navod_k_pouziti', 'Instructions_for_Use'), 'tech': ('Technicky_manual', 'Technical_Manual'),
         'combined': ('Navod_a_technicky_manual', 'Instructions_and_Technical_Manual'),
@@ -42,13 +43,15 @@ DOCS = [
     ('an', AN, 'Analyzing', 'tech'),
     ('hmi', HMI, 'HMI', 'user'),
     ('afe', None, 'AnalogFrontend', 'description'),     # deska 1AD01 — technický popis, bez git projektu, jen 17.Dokumentace
+    ('rb', None, 'Robot', 'tech'),                        # program robota ABB — technický manuál, jen 17.Dokumentace
 ]
 SAMPLES_TO = [GW, SV]
 EXPORT = ROOT / '17.Dokumentace'
 # pořadí složek (rozhodnutí 2026-10-28): architektura, obsluhované aplikace, služby na pozadí, měřicí deska, vzory
 EXPORT_DIRS = {'Architektura': '1.Architektura softwaru', 'HMI': '2.HMI', 'ScadaViewer': '3.ScadaViewer',
-               'DatabaseGateway': '4.DatabaseGateway', 'Analyzing': '5.Analyzing', 'AnalogFrontend': '6.Analogový měřící obvod'}
-EXPORT_SAMPLES = '7.Vzorové soubory'
+               'DatabaseGateway': '4.DatabaseGateway', 'Analyzing': '5.Analyzing', 'AnalogFrontend': '6.Analogový měřící obvod',
+               'Robot': '7.Robot'}
+EXPORT_SAMPLES = '8.Vzorové soubory'
 GW_SAMPLES = sorted((GW / '04_docs').glob('sample_*.*'))   # komentované (CZ / EN) i technické vzory + sample_production.xlsx
 
 
@@ -66,6 +69,8 @@ def version(product: str) -> str:
         return _py_version(GW / '00_src' / 'db_gateway' / '__init__.py')
     if product == 'Analyzing':
         return _py_version(AN / '00_src' / 'ads_analyzer' / '__init__.py')
+    if product == 'Robot':                               # program robota nemá číslo verze → datum poslední zálohy
+        return 'bk' + latest_robot_backup().name.rsplit('_', 1)[1]
     if product == 'AnalogFrontend':
         return 'hw1AD01'                                  # označení desky (hardware, bez verze softwaru)
     cfg = (HMI / 'MDS_JavaScripts' / '01_Config' / 'HMI_Config.js').read_text(encoding='utf-8')
@@ -73,6 +78,13 @@ def version(product: str) -> str:
     if not m:
         raise SystemExit('CHYBÍ meta.revision v HMI_Config.js')
     return 'rev' + m.group(1)
+
+
+def latest_robot_backup() -> Path:
+    dirs = sorted(d for d in (ROBOT / '4.Zálohy').glob('920-100056_BACKUP_*') if d.is_dir())
+    if not dirs:
+        raise SystemExit('CHYBÍ záloha robota v 13.Robot/4.Zálohy')
+    return dirs[-1]
 
 
 LOCKED: list[Path] = []      # soubory otevřené v jiném programu (PDF prohlížeč, Word) — přeskočí se, vypíšou na konci
@@ -114,6 +126,11 @@ def main() -> int:
                 for dst in ([proj / '04_docs' / 'manual'] if proj else []) + [EXPORT / EXPORT_DIRS[product]]:
                     put(source, dst, name, prefix, suffix)
                 print('ok', name)
+    # podklady robota: Safety Configuration Report a ZIP aktuální zálohy (předchozí zálohy se smažou)
+    pod = EXPORT / EXPORT_DIRS['Robot'] / 'Podklady'
+    bk = latest_robot_backup()
+    put(ROBOT / '5.Safety protokol' / '920-100056_SafetyReport.pdf', pod, '920-100056_SafetyReport.pdf', '920-100056_Safety', '.pdf')
+    put(bk.with_suffix('.zip'), pod, bk.name + '.zip', '920-100056_BACKUP_', '.zip')
     samples = sorted((HERE / 'vzory').iterdir()) + GW_SAMPLES
     for dst in [p / '04_docs' / 'manual' / 'vzorove_soubory' for p in SAMPLES_TO]:
         dst.mkdir(parents=True, exist_ok=True)
