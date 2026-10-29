@@ -77,8 +77,10 @@
 #   nazev bezici zakazky z PLC). Pozadavky jako 2.6.6 / 2.6.7 (limity RT v PLC, $WipBlocksDeploy = $true).
 # 2.6.9 (2026-10-27): jen ScadaViewer 2.6.9 - hlavicka Databaze (ovladaci prvky vedle nadpisu, kompaktni ukazatel USB).
 # 2.6.10 (2026-10-27): jen ScadaViewer 2.6.10 - hromadne stazeni podle filtru / vyberu (u stroje na flashku, vzdalene ZIP).
+# 2.7.0 (2026-10-29): SPOLECNE zaverecne vydani - vsechny tri aplikace 2.7.0. Format CSV, PLC ani Config.toml proti 2.6.10
+#   beze zmeny (AN a GW jen verze, SV popisek casoveho diagramu + odkaz na dokumentaci). Z verzi pred 2.6.6 plati vse z 2.6.6.
 
-param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.6.10', [string]$MoveTo = '', [switch]$NoMove,
+param([switch]$Rollback, [switch]$NoRename, [string]$Version = '2.7.0', [string]$MoveTo = '', [switch]$NoMove,
       [string]$MoveDataTo = '', [switch]$NoMoveData)
 
 # Cil presunu aplikaci z profilu uzivatele (krok 5c) - nabidne se, kdyz aplikace lezi v C:\Users\...
@@ -88,12 +90,12 @@ $DefaultDataRoot = Join-Path $env:SystemDrive 'Data'
 
 # Datum v novem nazvu slozek (v<verze>_<datum>-<nazev>), krok 5c - datum buildu kazde aplikace; nezmenena aplikace
 # (stejna verze i datum) se tak neprejmenuje znovu
-$AppDates = @{ AdsAnalyzer = '2026-10-27'; DatabaseGateway = '2026-10-26'; ScadaViewer = '2026-10-27' }
+$AppDates = @{ AdsAnalyzer = '2026-10-29'; DatabaseGateway = '2026-10-29'; ScadaViewer = '2026-10-29' }
 # [measurement] max_cycles v Config.toml Analyzingu a Gateway musi byt >= velikost bufferu v PLC (cMEASURING_MAX_CYCLES);
 # nizsi hodnota orizne zaznam mereni. Config.toml se pri nasazeni neprepisuje -> skript ho zkontroluje / nastavi (krok 5d).
 $MinMaxCycles = 60000
 
-$AppVersions = @{ AdsAnalyzer = '2.6.3'; DatabaseGateway = '2.6.2'; ScadaViewer = '2.6.10' }
+$AppVersions = @{ AdsAnalyzer = '2.7.0'; DatabaseGateway = '2.7.0'; ScadaViewer = '2.7.0' }
 # Meni vydani datovou hlavicku CSV (sloupce [Data]) nebo vyznam hodnot? $true = rozpracovana zakazka (production\wip)
 # nasazeni ZASTAVI (Gateway by do WIP se starou hlavickou kusy nepridala / kusy by se tridily podle limitu stare
 # definice). $false = jen upozorneni, zakazka po nasazeni pokracuje.
